@@ -29,9 +29,10 @@ export default function AdminUsers() {
   const bootstrapQuery = useDockBootstrapData();
   const utils = trpc.useUtils();
   const updateUserMutation = trpc.dock.updateUser.useMutation({
-    onSuccess: async () => {
-      await utils.dock.bootstrap.invalidate();
-    },
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
+  });
+  const setStatusAuditedM = trpc.admin.setUserStatusAudited.useMutation({
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
   });
   const { users, companies } = bootstrapQuery.data;
 
@@ -57,10 +58,9 @@ export default function AdminUsers() {
         text: 'Suspend',
         style: 'destructive',
         onPress: () => {
-          void updateUserMutation.mutateAsync({ id: u.id, payload: { status: 'Suspended' } }).then(() => {
-            setDetailModal(false);
-          }).catch((error: unknown) => {
-            Alert.alert('Unable to suspend user', error instanceof Error ? error.message : 'Unknown error');
+          setStatusAuditedM.mutate({ userId: u.id, status: 'Suspended', reason: 'Suspended by admin' }, {
+            onSuccess: () => setDetailModal(false),
+            onError: (e: Error) => Alert.alert('Unable to suspend user', e.message),
           });
         },
       },
@@ -68,11 +68,9 @@ export default function AdminUsers() {
   };
 
   const handleReinstate = (u: User) => {
-    void updateUserMutation.mutateAsync({ id: u.id, payload: { status: 'Active' } }).then(() => {
-      setDetailModal(false);
-      Alert.alert('User Reinstated');
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to reinstate user', error instanceof Error ? error.message : 'Unknown error');
+    setStatusAuditedM.mutate({ userId: u.id, status: 'Active', reason: 'Reinstated by admin' }, {
+      onSuccess: () => { setDetailModal(false); Alert.alert('User Reinstated'); },
+      onError: (e: Error) => Alert.alert('Unable to reinstate user', e.message),
     });
   };
 

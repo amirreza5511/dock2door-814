@@ -19,11 +19,11 @@ export default function SPJobs() {
   const user = useAuthStore((s) => s.user);
   const bootstrapQuery = useDockBootstrapData();
   const utils = trpc.useUtils();
-  const updateRecordMutation = trpc.dock.updateRecord.useMutation({
-    onSuccess: async () => {
-      await utils.dock.bootstrap.invalidate();
-    },
-  });
+  const invalidate = async () => { await utils.dock.bootstrap.invalidate(); };
+  const acceptMutation = trpc.serviceJobs.accept.useMutation({ onSuccess: invalidate });
+  const declineMutation = trpc.serviceJobs.decline.useMutation({ onSuccess: invalidate });
+  const checkInMutation = trpc.serviceJobs.checkIn.useMutation({ onSuccess: invalidate });
+  const completeMutation = trpc.serviceJobs.complete.useMutation({ onSuccess: invalidate });
   const { serviceListings, serviceJobs, companies } = bootstrapQuery.data;
 
   const [filter, setFilter] = useState<JobStatus | 'All'>('All');
@@ -37,14 +37,9 @@ export default function SPJobs() {
   const getCustomer = (cid: string) => companies.find((c) => c.id === cid)?.name ?? cid;
 
   const handleAccept = (j: ServiceJob) => {
-    void updateRecordMutation.mutateAsync({
-      table: 'service_jobs',
-      id: j.id,
-      payload: { status: 'Accepted' },
-    }).then(() => {
-      setDetailModal(false);
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to accept job', error instanceof Error ? error.message : 'Unknown error');
+    acceptMutation.mutate({ id: j.id }, {
+      onSuccess: () => setDetailModal(false),
+      onError: (e: Error) => Alert.alert('Unable to accept job', e.message),
     });
   };
 
@@ -52,43 +47,28 @@ export default function SPJobs() {
     Alert.alert('Decline Job?', 'This cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Decline',
-        style: 'destructive',
-        onPress: () => {
-          void updateRecordMutation.mutateAsync({
-            table: 'service_jobs',
-            id: j.id,
-            payload: { status: 'Cancelled' },
-          }).then(() => {
-            setDetailModal(false);
-          }).catch((error: unknown) => {
-            Alert.alert('Unable to decline job', error instanceof Error ? error.message : 'Unknown error');
-          });
-        },
+        text: 'Decline', style: 'destructive',
+        onPress: () => declineMutation.mutate({ id: j.id, reason: 'Declined by provider' }, {
+          onSuccess: () => setDetailModal(false),
+          onError: (e: Error) => Alert.alert('Unable to decline', e.message),
+        }),
       },
     ]);
   };
 
   const handleCheckIn = (j: ServiceJob) => {
-    void updateRecordMutation.mutateAsync({
-      table: 'service_jobs',
-      id: j.id,
-      payload: { status: 'InProgress', checkInTs: new Date().toISOString() },
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to check in', error instanceof Error ? error.message : 'Unknown error');
+    checkInMutation.mutate({ id: j.id }, {
+      onError: (e: Error) => Alert.alert('Unable to check in', e.message),
     });
   };
 
   const handleCheckOut = (j: ServiceJob) => {
-    void updateRecordMutation.mutateAsync({
-      table: 'service_jobs',
-      id: j.id,
-      payload: { status: 'Completed', checkOutTs: new Date().toISOString(), paymentStatus: 'Pending' },
-    }).then(() => {
-      Alert.alert('Job Complete', 'Check-out recorded. Awaiting customer confirmation.');
-      setDetailModal(false);
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to complete job', error instanceof Error ? error.message : 'Unknown error');
+    completeMutation.mutate({ id: j.id }, {
+      onSuccess: () => {
+        Alert.alert('Job Complete', 'Check-out recorded. Awaiting customer confirmation.');
+        setDetailModal(false);
+      },
+      onError: (e: Error) => Alert.alert('Unable to complete job', e.message),
     });
   };
 

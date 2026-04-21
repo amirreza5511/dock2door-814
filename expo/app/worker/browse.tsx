@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftCategory, ShiftPost } from '@/constants/types';
+import { trpc } from '@/lib/trpc';
 
 const CATEGORY_COLORS: Record<ShiftCategory, string> = {
   General: C.yellow, Driver: C.blue, Forklift: C.accent, HighReach: C.purple,
@@ -17,7 +18,11 @@ const CATEGORY_COLORS: Record<ShiftCategory, string> = {
 export default function BrowseShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftPosts, shiftApplications, workerProfiles, companies, addShiftApplication } = useDockData();
+  const { shiftPosts, shiftApplications, workerProfiles, companies } = useDockData();
+  const utils = trpc.useUtils();
+  const applyM = trpc.shifts.apply.useMutation({
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
+  });
 
   const [query, setQuery] = useState('');
   const [filterCat, setFilterCat] = useState<ShiftCategory | 'All'>('All');
@@ -48,18 +53,17 @@ export default function BrowseShifts() {
       return;
     }
     setSubmitting(true);
-    setTimeout(() => {
-      addShiftApplication({
-        id: `sa${Date.now()}`,
-        shiftId: selected.id,
-        workerUserId: user.id,
-        status: 'Applied',
-        appliedAt: new Date().toISOString(),
-      });
-      setSubmitting(false);
-      setApplyModal(false);
-      Alert.alert('Applied!', 'Your application has been sent. The employer will review it.');
-    }, 500);
+    applyM.mutate(
+      { shiftId: selected.id },
+      {
+        onSettled: () => setSubmitting(false),
+        onSuccess: () => {
+          setApplyModal(false);
+          Alert.alert('Applied!', 'Your application has been sent. The employer will review it.');
+        },
+        onError: (e: Error) => Alert.alert('Unable to apply', e.message),
+      },
+    );
   };
 
   const CATEGORIES: (ShiftCategory | 'All')[] = ['All', 'General', 'Driver', 'Forklift', 'HighReach'];

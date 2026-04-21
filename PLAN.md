@@ -234,4 +234,20 @@ Warehouse Provider flow is now fully wired UI → `transition_booking` RPC → D
   - Admin tabs (`expo/app/admin/_layout.tsx`) + dashboard quick-nav + pending-cert stat updated with the Certifications entry (status-based, not `admin_approved`).
   - `WorkerCertification` type + `mapWorkerCert` bootstrap mapper extended with `status`, `filePath`, `notes`, `reviewedAt/By`, `createdAt`.
 
-Next flow (per section 6 order): Service Jobs — customer creates `service_jobs` request → provider accept/decline/complete with audit.
+- [x] `0008_jobs_shifts_admin.sql` — Service-job state machine (`service_job_transitions`, `service_job_history`, `enforce_service_job_transition` trigger, `transition_service_job` RPC), `provider_company_id` derived from listing via BEFORE INSERT trigger, tight INSERT/UPDATE RLS. Shift/labour RPCs: `employer_accept_applicant`, `employer_reject_applicant`, `worker_apply_shift`, `worker_clock_in` (enforces Approved Forklift/HighReach certification where required), `worker_clock_out`, `employer_confirm_hours` — all audited. Company staff RPCs: `company_add_member`, `company_remove_member` (owner/admin only, reason required on remove).
+- [x] Service Jobs wired end-to-end:
+  - `expo/lib/trpc.ts` — `serviceJobs.{listMine,create,accept,decline,checkIn,complete}` procedures on `transition_service_job`.
+  - `expo/app/customer/services.tsx` — uses `serviceJobs.create` (no client spoofing of provider_company_id).
+  - `expo/app/service-provider/jobs.tsx` — accept/decline/check-in/complete via RPC.
+- [x] Shift / Labour flow wired end-to-end:
+  - `expo/lib/trpc.ts` — `shifts.{create,apply,withdraw,acceptApplicant,rejectApplicant,clockIn,clockOut,confirmHours,setStatus}`.
+  - `expo/app/employer/shifts.tsx` — accept/reject applicants + confirm hours via RPC.
+  - `expo/app/worker/browse.tsx` — `worker_apply_shift` RPC.
+  - `expo/app/worker/my-shifts.tsx` — clock in/out + withdraw via RPC.
+- [x] Admin status mutations audited:
+  - `expo/lib/trpc.ts` — `admin.{setCompanyStatusAudited,setUserStatusAudited,setListingStatusAudited}` routed through existing `admin_*` RPCs.
+  - `expo/app/admin/users.tsx` + `expo/app/admin/companies.tsx` — suspend/approve/reinstate now call the audited RPCs (reason captured → `audit_logs`).
+- [x] Warehouse Provider staff management:
+  - `expo/app/warehouse-provider/staff.tsx` — list / add (by email lookup) / remove members through `company_add_member` / `company_remove_member` RPCs; registered as a tab in `warehouse-provider/_layout.tsx`.
+
+All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/Labour, Admin, Staff) are wired UI → RPC → DB trigger/state-machine → `audit_logs`.

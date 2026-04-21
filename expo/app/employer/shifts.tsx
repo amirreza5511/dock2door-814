@@ -10,14 +10,20 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftPost, ShiftStatus } from '@/constants/types';
+import { trpc } from '@/lib/trpc';
 
 const FILTERS: (ShiftStatus | 'All')[] = ['All', 'Posted', 'Filled', 'InProgress', 'Completed', 'Cancelled'];
 
 export default function EmployerShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftPosts, shiftApplications, shiftAssignments, timeEntries, workerProfiles, users,
-    setApplicationStatus, addShiftAssignment, setShiftStatus, updateTimeEntry, setAssignmentStatus } = useDockData();
+  const { shiftPosts, shiftApplications, shiftAssignments, timeEntries, workerProfiles, users } = useDockData();
+  const utils = trpc.useUtils();
+  const invalidate = async () => { await utils.dock.bootstrap.invalidate(); };
+  const acceptApplicantM = trpc.shifts.acceptApplicant.useMutation({ onSuccess: invalidate });
+  const rejectApplicantM = trpc.shifts.rejectApplicant.useMutation({ onSuccess: invalidate });
+  const confirmHoursM = trpc.shifts.confirmHours.useMutation({ onSuccess: invalidate });
+  const setStatusM = trpc.shifts.setStatus.useMutation({ onSuccess: invalidate });
 
   const [filter, setFilter] = useState<ShiftStatus | 'All'>('All');
   const [selected, setSelected] = useState<ShiftPost | null>(null);
@@ -38,32 +44,30 @@ export default function EmployerShifts() {
 
   const getTimeEntry = (assignmentId: string) => timeEntries.find((t) => t.assignmentId === assignmentId);
 
-  const handleAcceptApplicant = (shiftId: string, workerUserId: string, appId: string) => {
-    const shift = shiftPosts.find((s) => s.id === shiftId);
-    if (!shift) return;
-    setApplicationStatus(appId, 'Accepted');
-    addShiftAssignment({
-      id: `ass${Date.now()}`,
-      shiftId,
-      workerUserId,
-      confirmedRate: shift.hourlyRate ?? (shift.flatRate ?? 0),
-      status: 'Scheduled',
-      createdAt: new Date().toISOString(),
+  const handleAcceptApplicant = (_shiftId: string, _workerUserId: string, appId: string) => {
+    acceptApplicantM.mutate({ applicationId: appId }, {
+      onError: (e: Error) => Alert.alert('Unable to accept', e.message),
     });
-    setShiftStatus(shiftId, 'Filled');
   };
 
   const handleRejectApplicant = (appId: string) => {
-    setApplicationStatus(appId, 'Rejected');
+    rejectApplicantM.mutate({ applicationId: appId, reason: 'Rejected by employer' }, {
+      onError: (e: Error) => Alert.alert('Unable to reject', e.message),
+    });
   };
 
-  const handleConfirmHours = (assignmentId: string, teId: string) => {
+  const handleConfirmHours = (_assignmentId: string, teId: string) => {
     if (!confirmHours) { Alert.alert('Enter confirmed hours'); return; }
-    updateTimeEntry(teId, { employerConfirmedHours: Number(confirmHours), employerNotes: confirmNotes });
-    setAssignmentStatus(assignmentId, 'Completed');
-    setConfirmHours('');
-    setConfirmNotes('');
-    Alert.alert('Hours Confirmed', 'Worker payment will be processed.');
+    confirmHoursM.mutate(
+      { timeEntryId: teId, hours: Number(confirmHours), notes: confirmNotes },
+      {
+        onSuccess: () => {
+          setConfirmHours(''); setConfirmNotes('');
+          Alert.alert('Hours Confirmed', 'Worker payment will be processed.');
+        },
+        onError: (e: Error) => Alert.alert('Unable to confirm hours', e.message),
+      },
+    );
   };
 
   return (
@@ -208,7 +212,7 @@ export default function EmployerShifts() {
 
                 <View style={styles.actionBtns}>
                   {selected.status === 'Posted' && (
-                    <Button label="Cancel Shift" onPress={() => { setShiftStatus(selected.id, 'Cancelled'); setDetailModal(false); }} variant="danger" fullWidth />
+                    <Button label="Cancel Shift" onPress={() => { setStatusM.mutate({ id: selected.id, status: 'Cancelled' }); setDetailModal(false); }} variant="danger" fullWidth />
                   )}
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>

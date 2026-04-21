@@ -25,9 +25,10 @@ export default function AdminCompanies() {
   const bootstrapQuery = useDockBootstrapData();
   const utils = trpc.useUtils();
   const updateCompanyMutation = trpc.dock.updateCompany.useMutation({
-    onSuccess: async () => {
-      await utils.dock.bootstrap.invalidate();
-    },
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
+  });
+  const setStatusAuditedM = trpc.admin.setCompanyStatusAudited.useMutation({
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
   });
   const { companies, warehouseListings, serviceListings } = bootstrapQuery.data;
 
@@ -51,11 +52,9 @@ export default function AdminCompanies() {
   };
 
   const handleApprove = (id: string) => {
-    void updateCompanyMutation.mutateAsync({ id, payload: { status: 'Approved' } }).then(() => {
-      setDetailModal(false);
-      Alert.alert('Company Approved', 'The company is now active on the platform.');
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to approve company', error instanceof Error ? error.message : 'Unknown error');
+    setStatusAuditedM.mutate({ companyId: id, status: 'Approved', reason: 'Approved by admin' }, {
+      onSuccess: () => { setDetailModal(false); Alert.alert('Company Approved', 'The company is now active on the platform.'); },
+      onError: (e: Error) => Alert.alert('Unable to approve company', e.message),
     });
   };
 
@@ -66,10 +65,9 @@ export default function AdminCompanies() {
         text: 'Suspend',
         style: 'destructive',
         onPress: () => {
-          void updateCompanyMutation.mutateAsync({ id, payload: { status: 'Suspended' } }).then(() => {
-            setDetailModal(false);
-          }).catch((error: unknown) => {
-            Alert.alert('Unable to suspend company', error instanceof Error ? error.message : 'Unknown error');
+          setStatusAuditedM.mutate({ companyId: id, status: 'Suspended', reason: 'Suspended by admin' }, {
+            onSuccess: () => setDetailModal(false),
+            onError: (e: Error) => Alert.alert('Unable to suspend company', e.message),
           });
         },
       },
@@ -179,10 +177,9 @@ export default function AdminCompanies() {
                   )}
                   {selected.status === 'Suspended' && (
                     <Button label="Reinstate Company" onPress={() => {
-                      void updateCompanyMutation.mutateAsync({ id: selected.id, payload: { status: 'Approved' } }).then(() => {
-                        setDetailModal(false);
-                      }).catch((error: unknown) => {
-                        Alert.alert('Unable to reinstate company', error instanceof Error ? error.message : 'Unknown error');
+                      setStatusAuditedM.mutate({ companyId: selected.id, status: 'Approved', reason: 'Reinstated by admin' }, {
+                        onSuccess: () => setDetailModal(false),
+                        onError: (e: Error) => Alert.alert('Unable to reinstate company', e.message),
                       });
                     }} variant="outline" fullWidth />
                   )}

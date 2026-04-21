@@ -39,7 +39,7 @@ export default function Services() {
   const user = useAuthStore((s) => s.user);
   const bootstrapQuery = useDockBootstrapData();
   const utils = trpc.useUtils();
-  const createServiceJobMutation = trpc.dock.createRecord.useMutation({
+  const createServiceJobMutation = trpc.serviceJobs.create.useMutation({
     onSuccess: async () => {
       await utils.dock.bootstrap.invalidate();
     },
@@ -94,23 +94,14 @@ export default function Services() {
     setSubmitting(true);
     try {
       await createServiceJobMutation.mutateAsync({
-        table: 'service_jobs',
-        payload: {
-          serviceId: service.id,
-          customerCompanyId: user.companyId,
-          locationAddress: address,
-          locationCity: city,
-          dateTimeStart: dateTime,
-          durationHours,
-          notes,
-          totalPrice: estimatedTotal ?? 0,
-          status: 'Requested',
-          paymentStatus: 'Pending',
-          checkInTs: null,
-          checkOutTs: null,
-          customerConfirmed: false,
-          createdAt: new Date().toISOString(),
-        },
+        serviceId: service.id,
+        customerCompanyId: user.companyId,
+        locationAddress: address,
+        locationCity: city,
+        dateTimeStart: dateTime,
+        durationHours,
+        notes,
+        totalPrice: estimatedTotal ?? 0,
       });
       setBookModal(false);
       setAddress('');

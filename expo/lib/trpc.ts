@@ -1063,6 +1063,214 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // SERVICE JOBS — provider + customer flows (audited via DB triggers/RPCs)
+  // =========================================================================
+  'serviceJobs.listMine': async (_input, ctx) => {
+    if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
+    const q = supabase.from('service_jobs').select('*').order('created_at', { ascending: false });
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : await q.or(`customer_company_id.eq.${ctx.user.companyId},provider_company_id.eq.${ctx.user.companyId}`);
+    if (error) throwErr(error, 'Unable to load service jobs');
+    return (data ?? []).map(mapServiceJob);
+  },
+
+  'serviceJobs.create': async (input: {
+    serviceId: string; customerCompanyId?: string;
+    locationAddress: string; locationCity: string;
+    dateTimeStart: string; durationHours: number;
+    notes?: string; totalPrice?: number;
+  }, ctx) => {
+    const cid = input.customerCompanyId ?? ctx.user.companyId;
+    if (!cid) throw new Error('Company context required');
+    const { data, error } = await supabase.from('service_jobs').insert({
+      service_id: input.serviceId,
+      customer_company_id: cid,
+      location_address: input.locationAddress,
+      location_city: input.locationCity,
+      date_time_start: input.dateTimeStart,
+      duration_hours: input.durationHours,
+      notes: input.notes ?? '',
+      total_price: input.totalPrice ?? 0,
+      status: 'Requested',
+      payment_status: 'Pending',
+    }).select().single();
+    if (error) throwErr(error, 'Unable to create service job');
+    return { id: data!.id };
+  },
+
+  'serviceJobs.accept': async (input: { id: string; reason?: string }) => {
+    const { error } = await supabase.rpc('transition_service_job', {
+      p_job_id: input.id, p_next_status: 'Accepted',
+      p_reason: input.reason ?? null, p_check_in: false, p_check_out: false,
+    });
+    if (error) throwErr(error, 'Unable to accept job');
+    return { success: true };
+  },
+  'serviceJobs.decline': async (input: { id: string; reason?: string }) => {
+    const { error } = await supabase.rpc('transition_service_job', {
+      p_job_id: input.id, p_next_status: 'Cancelled',
+      p_reason: input.reason ?? 'Declined by provider', p_check_in: false, p_check_out: false,
+    });
+    if (error) throwErr(error, 'Unable to decline job');
+    return { success: true };
+  },
+  'serviceJobs.checkIn': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('transition_service_job', {
+      p_job_id: input.id, p_next_status: 'InProgress',
+      p_reason: 'Provider checked in', p_check_in: true, p_check_out: false,
+    });
+    if (error) throwErr(error, 'Unable to check in');
+    return { success: true };
+  },
+  'serviceJobs.complete': async (input: { id: string; reason?: string }) => {
+    const { error } = await supabase.rpc('transition_service_job', {
+      p_job_id: input.id, p_next_status: 'Completed',
+      p_reason: input.reason ?? 'Completed by provider', p_check_in: false, p_check_out: true,
+    });
+    if (error) throwErr(error, 'Unable to complete job');
+    return { success: true };
+  },
+
+  // =========================================================================
+  // SHIFTS / LABOUR
+  // =========================================================================
+  'shifts.listOpen': async () => {
+    const { data, error } = await supabase.from('shift_posts').select('*').eq('status', 'Posted').order('date');
+    if (error) throwErr(error, 'Unable to load shifts');
+    return data ?? [];
+  },
+  'shifts.listMineEmployer': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase.from('shift_posts').select('*').eq('employer_company_id', ctx.user.companyId).order('created_at', { ascending: false });
+    if (error) throwErr(error, 'Unable to load shifts');
+    return data ?? [];
+  },
+  'shifts.create': async (input: AnyRecord, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Company context required');
+    const { data, error } = await supabase.from('shift_posts').insert({
+      employer_company_id: ctx.user.companyId,
+      title: input.title,
+      category: input.category,
+      location_address: input.locationAddress ?? '',
+      location_city: input.locationCity ?? '',
+      date: input.date,
+      start_time: input.startTime,
+      end_time: input.endTime,
+      hourly_rate: input.hourlyRate ?? null,
+      flat_rate: input.flatRate ?? null,
+      minimum_hours: input.minimumHours ?? 1,
+      workers_needed: input.workersNeeded ?? 1,
+      requirements: input.requirements ?? '',
+      notes: input.notes ?? '',
+      status: 'Posted',
+    }).select().single();
+    if (error) throwErr(error, 'Unable to create shift');
+    return { id: data!.id };
+  },
+  'shifts.setStatus': async (input: { id: string; status: string }) => {
+    const { error } = await supabase.from('shift_posts').update({ status: input.status }).eq('id', input.id);
+    if (error) throwErr(error, 'Unable to update shift');
+    return { success: true };
+  },
+  'shifts.apply': async (input: { shiftId: string }) => {
+    const { data, error } = await supabase.rpc('worker_apply_shift', { p_shift_id: input.shiftId });
+    if (error) throwErr(error, 'Unable to apply');
+    return { id: data as string };
+  },
+  'shifts.withdraw': async (input: { applicationId: string }) => {
+    const { error } = await supabase.from('shift_applications').update({ status: 'Withdrawn' }).eq('id', input.applicationId);
+    if (error) throwErr(error, 'Unable to withdraw');
+    return { success: true };
+  },
+  'shifts.acceptApplicant': async (input: { applicationId: string; rate?: number }) => {
+    const { data, error } = await supabase.rpc('employer_accept_applicant', {
+      p_application_id: input.applicationId, p_rate: input.rate ?? null,
+    });
+    if (error) throwErr(error, 'Unable to accept applicant');
+    return { assignmentId: data as string };
+  },
+  'shifts.rejectApplicant': async (input: { applicationId: string; reason?: string }) => {
+    const { error } = await supabase.rpc('employer_reject_applicant', {
+      p_application_id: input.applicationId, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to reject');
+    return { success: true };
+  },
+  'shifts.clockIn': async (input: { assignmentId: string }) => {
+    const { data, error } = await supabase.rpc('worker_clock_in', { p_assignment_id: input.assignmentId });
+    if (error) throwErr(error, 'Unable to clock in');
+    return { timeEntryId: data as string };
+  },
+  'shifts.clockOut': async (input: { assignmentId: string }) => {
+    const { error } = await supabase.rpc('worker_clock_out', { p_assignment_id: input.assignmentId });
+    if (error) throwErr(error, 'Unable to clock out');
+    return { success: true };
+  },
+  'shifts.confirmHours': async (input: { timeEntryId: string; hours: number; notes?: string }) => {
+    const { error } = await supabase.rpc('employer_confirm_hours', {
+      p_time_entry_id: input.timeEntryId, p_hours: input.hours, p_notes: input.notes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to confirm hours');
+    return { success: true };
+  },
+
+  // =========================================================================
+  // COMPANY STAFF
+  // =========================================================================
+  'company.listMembers': async (input: { companyId: string }) => {
+    const { data, error } = await supabase
+      .from('company_users')
+      .select('id,user_id,company_role,status,profiles(id,name,email,role)')
+      .eq('company_id', input.companyId);
+    if (error) throwErr(error, 'Unable to load staff');
+    return data ?? [];
+  },
+  'company.addMember': async (input: { companyId: string; userId: string; role?: 'Owner' | 'Staff' }) => {
+    const { error } = await supabase.rpc('company_add_member', {
+      p_company_id: input.companyId, p_user_id: input.userId, p_role: input.role ?? 'Staff',
+    });
+    if (error) throwErr(error, 'Unable to add member');
+    return { success: true };
+  },
+  'company.removeMember': async (input: { companyId: string; userId: string; reason: string }) => {
+    const { error } = await supabase.rpc('company_remove_member', {
+      p_company_id: input.companyId, p_user_id: input.userId, p_reason: input.reason,
+    });
+    if (error) throwErr(error, 'Unable to remove member');
+    return { success: true };
+  },
+  'company.findUserByEmail': async (input: { email: string }) => {
+    const { data } = await supabase.from('profiles').select('id,name,email').eq('email', input.email.trim().toLowerCase()).maybeSingle();
+    return data;
+  },
+
+  // =========================================================================
+  // ADMIN — audited status mutations
+  // =========================================================================
+  'admin.setCompanyStatusAudited': async (input: { companyId: string; status: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_set_company_status', {
+      p_company_id: input.companyId, p_status: input.status, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update company');
+    return { success: true };
+  },
+  'admin.setUserStatusAudited': async (input: { userId: string; status: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_set_user_status', {
+      p_user_id: input.userId, p_status: input.status, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update user');
+    return { success: true };
+  },
+  'admin.setListingStatusAudited': async (input: { listingId: string; status: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_set_listing_status', {
+      p_listing_id: input.listingId, p_status: input.status, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update listing');
+    return { success: true };
+  },
+
+  // =========================================================================
   // CERTIFICATIONS
   // =========================================================================
   'certifications.listMine': async (_input, ctx) => {

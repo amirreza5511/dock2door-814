@@ -9,13 +9,19 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftAssignment } from '@/constants/types';
+import { trpc } from '@/lib/trpc';
 
 type ViewTab = 'Applications' | 'Assignments';
 
 export default function WorkerMyShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftApplications, shiftAssignments, shiftPosts, timeEntries, addTimeEntry, updateTimeEntry, setAssignmentStatus, setApplicationStatus, companies } = useDockData();
+  const { shiftApplications, shiftAssignments, shiftPosts, timeEntries, companies } = useDockData();
+  const utils = trpc.useUtils();
+  const invalidate = async () => { await utils.dock.bootstrap.invalidate(); };
+  const withdrawM = trpc.shifts.withdraw.useMutation({ onSuccess: invalidate });
+  const clockInM = trpc.shifts.clockIn.useMutation({ onSuccess: invalidate });
+  const clockOutM = trpc.shifts.clockOut.useMutation({ onSuccess: invalidate });
 
   const [tab, setTab] = useState<ViewTab>('Applications');
   const [selectedAss, setSelectedAss] = useState<ShiftAssignment | null>(null);
@@ -31,32 +37,24 @@ export default function WorkerMyShifts() {
   const handleWithdraw = (appId: string) => {
     Alert.alert('Withdraw Application', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Withdraw', style: 'destructive', onPress: () => setApplicationStatus(appId, 'Withdrawn') },
+      { text: 'Withdraw', style: 'destructive', onPress: () => withdrawM.mutate({ applicationId: appId }, {
+        onError: (e: Error) => Alert.alert('Unable to withdraw', e.message),
+      }) },
     ]);
   };
 
   const handleStartShift = (ass: ShiftAssignment) => {
-    const existing = getTimeEntry(ass.id);
-    if (existing) return;
-    addTimeEntry({
-      id: `te${Date.now()}`,
-      assignmentId: ass.id,
-      startTimestamp: new Date().toISOString(),
-      endTimestamp: null,
-      employerConfirmedHours: null,
-      employerNotes: '',
+    clockInM.mutate({ assignmentId: ass.id }, {
+      onSuccess: () => Alert.alert('Shift Started!', 'Your start time has been recorded.'),
+      onError: (e: Error) => Alert.alert('Unable to start shift', e.message),
     });
-    setAssignmentStatus(ass.id, 'InProgress');
-    Alert.alert('Shift Started!', 'Your start time has been recorded.');
   };
 
   const handleEndShift = (ass: ShiftAssignment) => {
-    const te = getTimeEntry(ass.id);
-    if (!te) return;
-    updateTimeEntry(te.id, { endTimestamp: new Date().toISOString() });
-    setAssignmentStatus(ass.id, 'Completed');
-    Alert.alert('Shift Ended!', 'Awaiting employer to confirm your hours.');
-    setDetailModal(false);
+    clockOutM.mutate({ assignmentId: ass.id }, {
+      onSuccess: () => { Alert.alert('Shift Ended!', 'Awaiting employer to confirm your hours.'); setDetailModal(false); },
+      onError: (e: Error) => Alert.alert('Unable to end shift', e.message),
+    });
   };
 
   return (
