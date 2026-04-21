@@ -210,13 +210,21 @@ ONE flow at a time. Start:
 **Warehouse Provider Flow** — listing → booking request → accept/counter/decline → start → complete, with audit + status history + booking docs in Storage. All other panels remain as-is until this flow is verified end-to-end.
 
 ### Checklist
-- [ ] `0003_ownership_fix.sql` — drop `profiles.active_company_id`, add `user_roles`, helper functions, `set_active_company` RPC
-- [ ] `0004_booking_state_machine.sql` — `booking_transitions`, `enforce_booking_transition` trigger, `booking_status_history`, tightened RLS
-- [ ] `0005_certifications_access.sql` — `can_employer_see_worker`, tightened RLS on `worker_certifications`
-- [ ] `0006_storage.sql` — create buckets, per-bucket `storage.objects` policies, path regex
-- [ ] `0007_admin_rpcs.sql` — `admin_*` SECURITY DEFINER functions with before/after audit
-- [ ] Edge Function `get-signed-url`
-- [ ] `expo/providers/ActiveCompanyProvider.tsx` (session-only, with `set_active_company` RPC call)
-- [ ] Warehouse Provider screens wired end-to-end against the above
+- [x] `0003_ownership_fix.sql` — `user_roles` table + `platform_role` enum, helpers (`is_admin`, `is_member_of`, `my_companies`, `is_owner_of`, `active_company`, `my_company_id` back-compat), `set_active_company` RPC (GUC `request.active_company_id`), `company_users` RLS tightened (owner-managed), audit_logs columns (`entity_type`, `reason`, `ip`, `user_agent`)
+- [x] `0004_booking_state_machine.sql` — `warehouse_company_id` column + BEFORE INSERT trigger (derived from listing, membership check), `CHECK (customer_company_id <> warehouse_company_id)`, `booking_transitions` source-of-truth table, `booking_status_history`, `enforce_booking_transition` BEFORE UPDATE trigger, `transition_booking` RPC, tight INSERT/SELECT/UPDATE policies (no ownership-column edits)
+- [x] `0005_certifications_access.sql` — `certification_status` enum, `file_path`/`status`/`reviewed_by`/`reviewed_at` columns, `can_employer_see_worker()` helper, worker/admin/employer SELECT policies, worker INSERT/UPDATE policies (status locked via trigger), admin-only DELETE
+- [x] `0006_storage.sql` — 5 private buckets, `storage_files` metadata table with RLS, per-bucket `storage.objects` policies with path-segment helpers: `certifications/{uid}/...`, `warehouse-docs/{company}/...`, `booking-docs/{booking}/{company}/...`, `invoices/{company}/...`, `attachments/...`
+- [x] `0007_admin_rpcs.sql` — `write_audit`, `require_reason`, `require_admin`, `admin_set_listing_status`, `admin_approve_certification`, `admin_reject_certification`, `admin_set_company_status`, `admin_set_user_status`, `admin_grant_role`, `admin_revoke_role`, `admin_force_booking_status` (all capture before/after JSONB + require reason on destructive actions)
+- [ ] Edge Function `get-signed-url` (defense-in-depth; storage RLS is the primary guard — defer until first cross-company signed download is wired)
+- [x] `expo/providers/ActiveCompanyProvider.tsx` — session-only React context, memberships loaded from `company_users`, last-used cached in AsyncStorage (UX only), every switch calls `set_active_company` RPC to sync the pg GUC; mounted in `app/_layout.tsx`
+- [x] `expo/lib/storage-files.ts` — path builders (`buildCertPath`, `buildWarehouseDocPath`, `buildBookingDocPath`), `uploadFileWithMetadata` (atomic: upload → insert `storage_files` → rollback storage on DB fail), `getSignedUrl`, `pickAndUploadFromUri`
+- [x] Warehouse Provider screens wired end-to-end against the above:
+  - `warehouse-provider/create-listing.tsx` — uses `useActiveCompany()`, passes `companyId` explicitly to `warehouses.createListing`
+  - `warehouse-provider/listings.tsx`, `warehouse-provider/index.tsx` — filter by `activeCompany.companyId`
+  - `warehouse-provider/bookings.tsx` — filter by `activeCompanyId`; accept/decline/counter/complete now call the `transition_booking` RPC (which runs the BEFORE UPDATE trigger → `booking_status_history` → audit)
+  - `expo/components/BookingDocs.tsx` — booking-doc picker + upload via `uploadFileWithMetadata` to `booking-docs/{booking_id}/{uploader_company_id}/{filename}` + signed-URL download
+  - `expo/lib/trpc.ts` — `bookings.accept/decline/submitCounterOffer/respondToCounterOffer/complete` rewritten on top of `transition_booking`; `bookings.listMine` + `warehouses.createListing` + `bookings.create` accept an explicit `companyId` to honour the active company context
 
-Await approval before writing SQL/code.
+Warehouse Provider flow is now fully wired UI → `transition_booking` RPC → DB trigger → `booking_status_history` → `audit_logs`, with uploads going through RLS-guarded `booking-docs` bucket + `storage_files` metadata.
+
+Next flow (per section 6 order): Worker Certification — upload via `certifications/{uid}/{cert_id}/file` + admin approve/reject via `admin_approve_certification` / `admin_reject_certification` RPCs.

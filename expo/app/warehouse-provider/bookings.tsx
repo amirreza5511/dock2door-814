@@ -13,6 +13,8 @@ import C from '@/constants/colors';
 import type { WarehouseBooking, BookingStatus } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
+import BookingDocs from '@/components/BookingDocs';
 
 const STATUS_FILTERS: (BookingStatus | 'All')[] = ['All', 'Requested', 'Accepted', 'CounterOffered', 'Confirmed', 'InProgress', 'Completed', 'Cancelled'];
 
@@ -20,6 +22,8 @@ export default function WPBookings() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const { activeCompany } = useActiveCompany();
+  const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
   const bootstrapQuery = useDockBootstrapData();
   const utils = trpc.useUtils();
   const invalidate = async () => {
@@ -40,7 +44,7 @@ export default function WPBookings() {
   const [responseNotes, setResponseNotes] = useState('');
   const [msgText, setMsgText] = useState('');
 
-  const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === user?.companyId).map((l) => l.id), [warehouseListings, user]);
+  const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
   const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, myListingIds]);
   const filtered = useMemo(() => filter === 'All' ? myBookings : myBookings.filter((b) => b.status === filter), [myBookings, filter]);
 
@@ -245,6 +249,10 @@ export default function WPBookings() {
                     fullWidth
                     icon={<Package size={15} color={C.accent} />}
                   />
+                )}
+
+                {activeCompanyId && (
+                  <BookingDocs bookingId={selected.id} uploaderCompanyId={activeCompanyId} />
                 )}
 
                 {/* Messages */}

@@ -8,6 +8,7 @@ import { useAuthStore } from '@/store/auth';
 import { canAccessSegment, getRoleRoute } from '@/lib/access';
 import { trpc, trpcClient } from '@/lib/trpc';
 import C from '@/constants/colors';
+import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -104,12 +105,14 @@ export default function RootLayout() {
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
-        <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
-          <StatusBar style="light" />
-          <RootLayoutNav />
-          <BootstrapController />
-          <AuthGuard />
-        </GestureHandlerRootView>
+        <ActiveCompanyProvider>
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
+            <StatusBar style="light" />
+            <RootLayoutNav />
+            <BootstrapController />
+            <AuthGuard />
+          </GestureHandlerRootView>
+        </ActiveCompanyProvider>
       </QueryClientProvider>
     </trpc.Provider>
   );

@@ -10,6 +10,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 
 export default function WarehouseProviderDashboard() {
   const insets = useSafeAreaInsets();
@@ -17,10 +18,12 @@ export default function WarehouseProviderDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const bootstrapQuery = useDockBootstrapData();
+  const { activeCompany } = useActiveCompany();
   const { warehouseListings, warehouseBookings, companies, payments } = bootstrapQuery.data;
 
-  const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
-  const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === user?.companyId), [warehouseListings, user]);
+  const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
+  const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
+  const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId), [warehouseListings, activeCompanyId]);
   const myListingIds = useMemo(() => myListings.map((l) => l.id), [myListings]);
   const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)), [warehouseBookings, myListingIds]);
 

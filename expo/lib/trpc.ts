@@ -265,12 +265,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // =========================================================================
   // BOOKINGS
   // =========================================================================
-  'bookings.listMine': async (_input, ctx) => {
+  'bookings.listMine': async (input: { companyId?: string } | undefined, ctx) => {
+    const companyId = input?.companyId ?? ctx.user.companyId;
     const q = supabase.from('warehouse_bookings').select('*');
     const { data, error } = isAdmin(ctx.user.role)
       ? await q.order('created_at', { ascending: false })
-      : ctx.user.companyId
-        ? await q.eq('customer_company_id', ctx.user.companyId).order('created_at', { ascending: false })
+      : companyId
+        ? await q.or(`customer_company_id.eq.${companyId},warehouse_company_id.eq.${companyId}`).order('created_at', { ascending: false })
         : { data: [], error: null };
     if (error) throwErr(error, 'Unable to load bookings');
     return (data ?? []).map(mapWarehouseBooking);
@@ -279,11 +280,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'bookings.create': async (input: {
     listingId: string; palletsRequested: number; startDate: string;
     endDate: string; handlingRequired: boolean; customerNotes: string; proposedPrice: number;
+    customerCompanyId?: string;
   }, ctx) => {
-    if (!ctx.user.companyId) throw new Error('Company context required');
+    const customerCompanyId = input.customerCompanyId ?? ctx.user.companyId;
+    if (!customerCompanyId) throw new Error('Company context required');
     const { data, error } = await supabase.from('warehouse_bookings').insert({
       listing_id: input.listingId,
-      customer_company_id: ctx.user.companyId,
+      customer_company_id: customerCompanyId,
       pallets_requested: input.palletsRequested,
       start_date: input.startDate,
       end_date: input.endDate,
@@ -297,51 +300,63 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { id: data!.id };
   },
 
-  'bookings.accept': async (input: { id: string; note?: string }, ctx) => {
-    const patch: AnyRecord = { status: 'Confirmed' };
-    if (input.note) patch.provider_response_notes = input.note;
-    const { error } = await supabase.from('warehouse_bookings').update(patch).eq('id', input.id);
+  'bookings.accept': async (input: { id: string; note?: string }) => {
+    const { error } = await supabase.rpc('transition_booking', {
+      p_booking_id: input.id,
+      p_next_status: 'Accepted',
+      p_reason: input.note ?? null,
+      p_counter_offer_price: null,
+      p_response_notes: input.note ?? null,
+    });
     if (error) throwErr(error, 'Unable to accept booking');
-    return { success: true, status: 'Confirmed' as const };
+    return { success: true, status: 'Accepted' as const };
   },
 
-  'bookings.decline': async (input: { id: string; note?: string }, ctx) => {
-    const { data: existing } = await supabase
-      .from('warehouse_bookings')
-      .select('customer_company_id,listing_id')
-      .eq('id', input.id)
-      .single();
-    const isCustomer = existing?.customer_company_id === ctx.user.companyId;
-    const patch: AnyRecord = { status: isCustomer ? 'Cancelled' : 'Cancelled' };
-    if (input.note) patch.provider_response_notes = input.note;
-    const { error } = await supabase.from('warehouse_bookings').update(patch).eq('id', input.id);
+  'bookings.decline': async (input: { id: string; note?: string }) => {
+    const { error } = await supabase.rpc('transition_booking', {
+      p_booking_id: input.id,
+      p_next_status: 'Cancelled',
+      p_reason: input.note ?? 'Declined by provider',
+      p_counter_offer_price: null,
+      p_response_notes: input.note ?? null,
+    });
     if (error) throwErr(error, 'Unable to decline booking');
-    return { success: true, status: patch.status };
+    return { success: true, status: 'Cancelled' as const };
   },
 
-  'bookings.submitCounterOffer': async (input: { id: string; amount: number; message?: string }, ctx) => {
-    const patch: AnyRecord = {
-      status: 'CounterOffered',
-      counter_offer_price: input.amount,
-    };
-    if (input.message) patch.provider_response_notes = input.message;
-    const { error } = await supabase.from('warehouse_bookings').update(patch).eq('id', input.id);
+  'bookings.submitCounterOffer': async (input: { id: string; amount: number; message?: string }) => {
+    const { error } = await supabase.rpc('transition_booking', {
+      p_booking_id: input.id,
+      p_next_status: 'CounterOffered',
+      p_reason: input.message ?? null,
+      p_counter_offer_price: input.amount,
+      p_response_notes: input.message ?? null,
+    });
     if (error) throwErr(error, 'Unable to submit counter offer');
     return { id: input.id };
   },
 
   'bookings.respondToCounterOffer': async (input: { counterOfferId: string; action: 'accept' | 'reject'; note?: string }) => {
-    // counterOfferId equals booking id in this simplified model
-    const patch: AnyRecord = input.action === 'accept'
-      ? { status: 'Confirmed' }
-      : { status: 'Requested', counter_offer_price: null };
-    const { error } = await supabase.from('warehouse_bookings').update(patch).eq('id', input.counterOfferId);
+    const next = input.action === 'accept' ? 'Accepted' : 'Requested';
+    const { error } = await supabase.rpc('transition_booking', {
+      p_booking_id: input.counterOfferId,
+      p_next_status: next,
+      p_reason: input.note ?? (input.action === 'accept' ? 'Customer accepted counter' : 'Customer rejected counter'),
+      p_counter_offer_price: null,
+      p_response_notes: input.note ?? null,
+    });
     if (error) throwErr(error, 'Unable to respond to counter offer');
-    return { success: true, bookingStatus: patch.status, counterOfferStatus: input.action === 'accept' ? 'Accepted' : 'Rejected' };
+    return { success: true, bookingStatus: next, counterOfferStatus: input.action === 'accept' ? 'Accepted' : 'Rejected' };
   },
 
-  'bookings.complete': async (input: { id: string }) => {
-    const { error } = await supabase.from('warehouse_bookings').update({ status: 'Completed' }).eq('id', input.id);
+  'bookings.complete': async (input: { id: string; reason?: string }) => {
+    const { error } = await supabase.rpc('transition_booking', {
+      p_booking_id: input.id,
+      p_next_status: 'Completed',
+      p_reason: input.reason ?? 'Completed by provider',
+      p_counter_offer_price: null,
+      p_response_notes: null,
+    });
     if (error) throwErr(error, 'Unable to complete booking');
     return { success: true };
   },
@@ -350,9 +365,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // WAREHOUSES
   // =========================================================================
   'warehouses.createListing': async (input: AnyRecord, ctx) => {
-    if (!ctx.user.companyId) throw new Error('Company context required');
+    const companyId = (input.companyId as string | undefined) ?? ctx.user.companyId;
+    if (!companyId) throw new Error('Company context required');
     const { data, error } = await supabase.from('warehouse_listings').insert({
-      company_id: ctx.user.companyId,
+      company_id: companyId,
       name: input.name,
       address: input.address,
       city: input.city,

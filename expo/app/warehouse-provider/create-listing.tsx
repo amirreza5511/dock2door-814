@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 
 type WarehouseType = 'Dry' | 'Chill' | 'Frozen';
 type StorageTerm = 'Daily' | 'Weekly' | 'Monthly';
@@ -18,6 +19,7 @@ export default function CreateListing() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
+  const { activeCompany } = useActiveCompany();
   const createMutation = trpc.warehouses.createListing.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -48,8 +50,13 @@ export default function CreateListing() {
       Alert.alert('Missing Fields', 'Please fill in all required fields');
       return;
     }
+    if (!activeCompany) {
+      Alert.alert('No active company', 'Select a company to act as before creating a listing.');
+      return;
+    }
     try {
       await createMutation.mutateAsync({
+        companyId: activeCompany.companyId,
         name,
         address,
         city,

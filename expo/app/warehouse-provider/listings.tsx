@@ -11,10 +11,13 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ListingStatus, WarehouseListing } from '@/constants/types';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 
 export default function WPListings() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+  const { activeCompany } = useActiveCompany();
+  const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
   const bootstrapQuery = useDockBootstrapData();
   const { warehouseListings, warehouseBookings } = bootstrapQuery.data;
   const utils = trpc.useUtils();
@@ -31,7 +34,7 @@ export default function WPListings() {
   const [editModal, setEditModal] = useState(false);
   const [editData, setEditData] = useState<Partial<WarehouseListing>>({});
 
-  const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === user?.companyId), [warehouseListings, user]);
+  const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId), [warehouseListings, activeCompanyId]);
 
   const bookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
