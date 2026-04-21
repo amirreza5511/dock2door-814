@@ -78,6 +78,12 @@ create table if not exists public.booking_transitions (
   primary key (from_status, to_status)
 );
 
+alter table public.booking_transitions enable row level security;
+
+drop policy if exists "bt_read_all_authenticated" on public.booking_transitions;
+create policy "bt_read_all_authenticated" on public.booking_transitions for select
+  using (auth.role() = 'authenticated');
+
 insert into public.booking_transitions (from_status, to_status, actor_side) values
   ('Requested',     'Accepted',       'warehouse'),
   ('Requested',     'CounterOffered', 'warehouse'),
