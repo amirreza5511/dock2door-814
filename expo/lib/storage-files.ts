@@ -81,6 +81,24 @@ export async function uploadFileWithMetadata(args: UploadArgs): Promise<Uploaded
 }
 
 export async function getSignedUrl(bucket: Bucket, path: string, expiresInSeconds: number = 60): Promise<string> {
+  // Preferred: go through the `get-signed-url` Edge Function for defense-in-depth
+  // authorization (re-runs `can_read_storage_object` server-side + audit log).
+  // Falls back to direct storage signing when the Edge Function isn't deployed
+  // (development / local Supabase).
+  try {
+    const { data, error } = await supabase.functions.invoke<{ signedUrl?: string; error?: string }>('get-signed-url', {
+      body: { bucket, path, expiresIn: expiresInSeconds },
+    });
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+    if (error) {
+      console.log('[storage] get-signed-url edge function unavailable, falling back', error.message);
+    }
+  } catch (err) {
+    console.log('[storage] get-signed-url invoke threw, falling back', err);
+  }
+
   const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresInSeconds);
   if (error || !data?.signedUrl) {
     throw new Error(error?.message ?? 'Unable to generate signed URL');

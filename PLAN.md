@@ -215,7 +215,7 @@ ONE flow at a time. Start:
 - [x] `0005_certifications_access.sql` — `certification_status` enum, `file_path`/`status`/`reviewed_by`/`reviewed_at` columns, `can_employer_see_worker()` helper, worker/admin/employer SELECT policies, worker INSERT/UPDATE policies (status locked via trigger), admin-only DELETE
 - [x] `0006_storage.sql` — 5 private buckets, `storage_files` metadata table with RLS, per-bucket `storage.objects` policies with path-segment helpers: `certifications/{uid}/...`, `warehouse-docs/{company}/...`, `booking-docs/{booking}/{company}/...`, `invoices/{company}/...`, `attachments/...`
 - [x] `0007_admin_rpcs.sql` — `write_audit`, `require_reason`, `require_admin`, `admin_set_listing_status`, `admin_approve_certification`, `admin_reject_certification`, `admin_set_company_status`, `admin_set_user_status`, `admin_grant_role`, `admin_revoke_role`, `admin_force_booking_status` (all capture before/after JSONB + require reason on destructive actions)
-- [ ] Edge Function `get-signed-url` (defense-in-depth; storage RLS is the primary guard — defer until first cross-company signed download is wired)
+- [x] Edge Function `get-signed-url` (`supabase/functions/get-signed-url/index.ts`) — verifies JWT, re-runs `can_read_storage_object(bucket,path)` predicate server-side, issues 60s signed URL via service role, audits via `record_signed_url_issued`. Client `getSignedUrl` (`expo/lib/storage-files.ts`) invokes it first, falls back to direct storage signing only when the function isn't deployed.
 - [x] `expo/providers/ActiveCompanyProvider.tsx` — session-only React context, memberships loaded from `company_users`, last-used cached in AsyncStorage (UX only), every switch calls `set_active_company` RPC to sync the pg GUC; mounted in `app/_layout.tsx`
 - [x] `expo/lib/storage-files.ts` — path builders (`buildCertPath`, `buildWarehouseDocPath`, `buildBookingDocPath`), `uploadFileWithMetadata` (atomic: upload → insert `storage_files` → rollback storage on DB fail), `getSignedUrl`, `pickAndUploadFromUri`
 - [x] Warehouse Provider screens wired end-to-end against the above:
@@ -251,3 +251,25 @@ Warehouse Provider flow is now fully wired UI → `transition_booking` RPC → D
   - `expo/app/warehouse-provider/staff.tsx` — list / add (by email lookup) / remove members through `company_add_member` / `company_remove_member` RPCs; registered as a tab in `warehouse-provider/_layout.tsx`.
 
 All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/Labour, Admin, Staff) are wired UI → RPC → DB trigger/state-machine → `audit_logs`.
+
+- [x] `0009_final_hardening.sql` — idempotent final sweep:
+  - `can_read_storage_object(bucket, path)` (used by `get-signed-url` Edge Fn)
+  - `record_signed_url_issued()` audit helper
+  - `list_orphan_storage_files(interval)` + admin-only `cleanup_orphan_storage_files(interval, limit)` (audited)
+  - `audit_logs` RLS: admin + actor SELECT only; UPDATE / DELETE revoked from `authenticated` / `anon`
+  - Re-backfills `warehouse_bookings.warehouse_company_id`, `service_jobs.provider_company_id`, `shift_assignments.employer_company_id`
+  - Re-grants EXECUTE on every public RPC to `authenticated`
+- [x] Edge Function `cleanup-orphan-files` (`supabase/functions/cleanup-orphan-files/index.ts`) — scheduled nightly sweep that lists each private bucket, finds objects older than a threshold with no companion `storage_files` row, removes them, and writes an `audit_logs` entry. Requires service-role authorization.
+
+## Final delivery status
+
+- **Migrations**: `0001` … `0009` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.
+- **Storage + signed URLs**: 5 private buckets (0006), per-bucket `storage.objects` policies (0006), client `getSignedUrl` → `get-signed-url` Edge Function → `can_read_storage_object` predicate → service-role signing (0009 + Edge Fn). Orphan cleanup via scheduled Edge Fn.
+- **RLS**: deny-by-default, split per actor, ownership columns derived by BEFORE-INSERT triggers (bookings, service_jobs, shift_assignments), ownership columns locked via UPDATE WITH CHECK. Admin is never `USING (true)` on writes; every admin write is an RPC that writes `audit_logs`.
+- **State machines**: `booking_transitions` + `enforce_booking_transition` trigger + `transition_booking` RPC (0004); `service_job_transitions` + `enforce_service_job_transition` trigger + `transition_service_job` RPC (0008); shift lifecycle via `employer_accept_applicant` / `worker_clock_in` (cert-enforced) / `worker_clock_out` / `employer_confirm_hours` RPCs (0008).
+- **Admin hardening**: every `admin_*` RPC is SECURITY DEFINER, calls `require_admin()`, calls `require_reason()` on destructive actions, captures JSONB `before` / `after`, writes to `audit_logs`. UI (`expo/app/admin/{users,companies,certifications}.tsx`) calls these RPCs — no direct table mutations.
+- **UI**: Admin, Warehouse Provider, Service Provider, Customer, Worker, Employer panels all connected to RPCs / Supabase queries. No mock data, no placeholder buttons.
+- **Known limitations**:
+  1. Migrations must be applied to the Supabase project (`supabase db push` or the SQL editor). The sandbox has no `supabase` CLI so this environment can't push them for the hosted project.
+  2. The two Edge Functions (`get-signed-url`, `cleanup-orphan-files`) ship in `supabase/functions/`; they need `supabase functions deploy` + a cron schedule on `cleanup-orphan-files`. Until deployed, the client `getSignedUrl` falls back to direct storage signing (still RLS-guarded).
+  3. The legacy `backend/` tRPC server is retained but unused by current screens — it can be removed in a future cleanup pass.
