@@ -83,7 +83,7 @@ $$;
 -- Back-compat: keep my_company_id() for 0001/0002 policies. It now returns the
 -- GUC-selected company if set, else the first active membership.
 create or replace function public.my_company_id()
-returns uuid language sql stable security definer set search_path = public as $
+returns uuid language sql stable security definer set search_path = public as $func$
   select coalesce(
     public.active_company(),
     (select company_id from public.company_users
@@ -91,7 +91,7 @@ returns uuid language sql stable security definer set search_path = public as $
        order by company_role <> 'Owner', company_id
        limit 1)
   );
-$;
+$func$;
 
 grant execute on function public.my_company_id() to authenticated;
 grant execute on function public.active_company() to authenticated;
