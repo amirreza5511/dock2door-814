@@ -116,6 +116,7 @@ create policy "ur_admin_write" on public.user_roles for all
 --    owners can manage members of their own company
 -- =========================================================================
 drop policy if exists "company_users_self_read" on public.company_users;
+drop policy if exists "cu_read_members" on public.company_users;
 create policy "cu_read_members" on public.company_users for select
   using (
     public.is_admin()
