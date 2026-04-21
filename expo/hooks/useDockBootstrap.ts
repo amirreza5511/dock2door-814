@@ -223,7 +223,13 @@ function mapWorkerCert(r: Row): WorkerCertification {
     type: r.type,
     expiryDate: r.expiry_date ?? '',
     certificateFile: r.certificate_file ?? '',
+    filePath: r.file_path ?? '',
+    status: (r.status as WorkerCertification['status']) ?? 'Pending',
+    notes: r.notes ?? '',
+    reviewedAt: r.reviewed_at ?? null,
+    reviewedBy: r.reviewed_by ?? null,
     adminApproved: Boolean(r.admin_approved),
+    createdAt: r.created_at ?? new Date().toISOString(),
   };
 }
 

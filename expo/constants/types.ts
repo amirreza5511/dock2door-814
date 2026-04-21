@@ -170,13 +170,21 @@ export interface WorkerProfile {
   createdAt: string;
 }
 
+export type CertificationStatus = 'Pending' | 'Approved' | 'Rejected' | 'Expired';
+
 export interface WorkerCertification {
   id: string;
   workerUserId: string;
   type: 'Forklift' | 'HighReach';
   expiryDate: string;
   certificateFile: string;
+  filePath: string;
+  status: CertificationStatus;
+  notes: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
   adminApproved: boolean;
+  createdAt: string;
 }
 
 export interface ShiftPost {

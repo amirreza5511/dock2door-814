@@ -227,4 +227,11 @@ ONE flow at a time. Start:
 
 Warehouse Provider flow is now fully wired UI → `transition_booking` RPC → DB trigger → `booking_status_history` → `audit_logs`, with uploads going through RLS-guarded `booking-docs` bucket + `storage_files` metadata.
 
-Next flow (per section 6 order): Worker Certification — upload via `certifications/{uid}/{cert_id}/file` + admin approve/reject via `admin_approve_certification` / `admin_reject_certification` RPCs.
+- [x] Worker Certification flow wired end-to-end:
+  - `expo/app/worker/profile.tsx` — pick file → insert `worker_certifications` row (status forced to `Pending` via `wc_guard` trigger) → upload to `certifications/{uid}/{cert_id}/{filename}` via `uploadFileWithMetadata` → patch `file_path`. Rolls back the row if the upload fails. Shows live list with signed-URL open and rejection reason.
+  - `expo/app/admin/certifications.tsx` — pending/approved/rejected/expired filter, signed-URL preview, approve/reject via `admin_approve_certification` / `admin_reject_certification` RPCs (reason required on reject; all writes audited by the RPC into `audit_logs`).
+  - `expo/lib/trpc.ts` — `certifications.listMine`, `certifications.listPending`, `certifications.create`, `certifications.adminApprove`, `certifications.adminReject` procedures.
+  - Admin tabs (`expo/app/admin/_layout.tsx`) + dashboard quick-nav + pending-cert stat updated with the Certifications entry (status-based, not `admin_approved`).
+  - `WorkerCertification` type + `mapWorkerCert` bootstrap mapper extended with `status`, `filePath`, `notes`, `reviewedAt/By`, `createdAt`.
+
+Next flow (per section 6 order): Service Jobs — customer creates `service_jobs` request → provider accept/decline/complete with audit.

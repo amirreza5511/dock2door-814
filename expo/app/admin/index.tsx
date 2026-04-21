@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut } from 'lucide-react-native';
+import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -25,7 +25,7 @@ export default function AdminDashboard() {
     openDisputes: disputes.filter((d) => d.status === 'Open').length,
     pendingListings: warehouseListings.filter((l) => l.status === 'PendingApproval').length + serviceListings.filter((l) => l.status === 'PendingApproval').length,
     totalRevenue: payments.filter((p) => p.status === 'Paid').reduce((s, p) => s + p.commissionAmount, 0),
-    pendingCerts: workerCertifications.filter((c) => !c.adminApproved).length,
+    pendingCerts: workerCertifications.filter((c) => c.status === 'Pending').length,
     totalCompanies: companies.length,
     totalUsers: users.length,
   }), [companies, users, warehouseListings, serviceListings, disputes, payments, workerCertifications]);
@@ -183,6 +183,7 @@ export default function AdminDashboard() {
             {[
               { label: 'Companies', icon: Building2, route: '/admin/companies', color: C.blue },
               { label: 'Users', icon: Users, route: '/admin/users', color: C.green },
+              { label: 'Certifications', icon: Award, route: '/admin/certifications', color: C.yellow },
               { label: 'Disputes', icon: AlertTriangle, route: '/admin/disputes', color: C.red },
               { label: 'Platform Settings', icon: CheckCircle, route: '/admin/platform-settings', color: C.accent },
             ].map((n) => (

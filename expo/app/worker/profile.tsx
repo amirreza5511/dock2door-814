@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText } from 'lucide-react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -10,16 +12,49 @@ import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftCategory } from '@/constants/types';
+import { supabase } from '@/lib/supabase';
+import { buildCertPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
 
 const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
+
+interface CertRow {
+  id: string;
+  worker_user_id: string;
+  type: string;
+  expiry_date: string | null;
+  file_path: string | null;
+  certificate_file: string | null;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Expired';
+  notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+async function listMyCerts(userId: string): Promise<CertRow[]> {
+  const { data, error } = await supabase
+    .from('worker_certifications')
+    .select('id,worker_user_id,type,expiry_date,file_path,certificate_file,status,notes,reviewed_at,created_at')
+    .eq('worker_user_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<CertRow[]>();
+  if (error) throw new Error(error.message);
+  return data ?? [];
+}
 
 export default function WorkerProfile() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { workerProfiles, workerCertifications, updateWorkerProfile, addWorkerCertification } = useDockData();
+  const { workerProfiles, updateWorkerProfile } = useDockData();
+  const queryClient = useQueryClient();
 
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
-  const myCerts = useMemo(() => workerCertifications.filter((c) => c.workerUserId === user?.id), [workerCertifications, user]);
+
+  const certsQuery = useQuery({
+    queryKey: ['worker-certs', user?.id],
+    queryFn: () => (user ? listMyCerts(user.id) : Promise.resolve([] as CertRow[])),
+    enabled: Boolean(user),
+    staleTime: 15_000,
+  });
 
   const [editing, setEditing] = useState(false);
   const [editBio, setEditBio] = useState(profile?.bio ?? '');
@@ -47,20 +82,100 @@ export default function WorkerProfile() {
     Alert.alert('Profile Updated!');
   };
 
-  const handleAddCert = () => {
-    if (!certExpiry || !user) { Alert.alert('Enter expiry date'); return; }
-    addWorkerCertification({
-      id: `wc${Date.now()}`,
-      workerUserId: user.id,
-      type: certType,
-      expiryDate: certExpiry,
-      certificateFile: `cert-${user.id}-${certType}.pdf`,
-      adminApproved: false,
-    });
-    setAddingCert(false);
-    setCertExpiry('');
-    Alert.alert('Certificate Submitted', 'Admin will review and approve your certificate.');
+  const uploadMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('Not authenticated');
+      if (!certExpiry.trim()) throw new Error('Enter expiry date (YYYY-MM-DD)');
+
+      const picked = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+        type: ['application/pdf', 'image/*'],
+      });
+      if (picked.canceled || !picked.assets?.[0]) return null;
+      const asset = picked.assets[0];
+      const filename = asset.name ?? `certificate-${Date.now()}`;
+      const mime = asset.mimeType ?? 'application/octet-stream';
+
+      // 1) Insert the cert row FIRST so the storage path uses its real id.
+      const { data: row, error: insertErr } = await supabase
+        .from('worker_certifications')
+        .insert({
+          worker_user_id: user.id,
+          type: certType,
+          expiry_date: certExpiry,
+          file_path: '',
+          certificate_file: '',
+          notes: '',
+        })
+        .select('id')
+        .single();
+      if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create certification');
+
+      const certId = row.id as string;
+      const path = buildCertPath(user.id, certId, filename);
+
+      let body: Blob;
+      if (Platform.OS === 'web' && asset.file) {
+        body = asset.file;
+      } else {
+        const res = await fetch(asset.uri);
+        body = await res.blob();
+      }
+
+      try {
+        await uploadFileWithMetadata({
+          bucket: 'certifications',
+          path,
+          file: body,
+          contentType: mime,
+          entityType: 'worker_certification',
+          entityId: certId,
+          companyId: null,
+        });
+      } catch (err) {
+        // rollback cert row if upload fails
+        await supabase.from('worker_certifications').delete().eq('id', certId);
+        throw err;
+      }
+
+      const { error: updateErr } = await supabase
+        .from('worker_certifications')
+        .update({ file_path: path, certificate_file: path })
+        .eq('id', certId);
+      if (updateErr) throw new Error(updateErr.message);
+
+      return certId;
+    },
+    onSuccess: (result) => {
+      if (!result) return;
+      setAddingCert(false);
+      setCertExpiry('');
+      void queryClient.invalidateQueries({ queryKey: ['worker-certs', user?.id] });
+      Alert.alert('Certificate Submitted', 'Admin will review and approve your certificate.');
+    },
+    onError: (err: unknown) => {
+      Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error');
+    },
+  });
+
+  const openCert = async (row: CertRow) => {
+    const path = row.file_path ?? row.certificate_file;
+    if (!path) { Alert.alert('No file attached'); return; }
+    try {
+      const url = await getSignedUrl('certifications', path, 60);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(url, '_blank');
+      } else {
+        const { Linking } = await import('react-native');
+        await Linking.openURL(url);
+      }
+    } catch (err) {
+      Alert.alert('Unable to open file', err instanceof Error ? err.message : 'Unknown error');
+    }
   };
+
+  const myCerts = certsQuery.data ?? [];
 
   if (!profile) {
     return (
@@ -74,14 +189,13 @@ export default function WorkerProfile() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Profile</Text>
-        <TouchableOpacity onPress={() => { setEditBio(profile.bio); setEditRate(String(profile.hourlyExpectation)); setEditCities(profile.coverageCities.join(', ')); setEditSkills(profile.skills); setEditing(true); }} style={styles.editBtn}>
+        <TouchableOpacity onPress={() => { setEditBio(profile.bio); setEditRate(String(profile.hourlyExpectation)); setEditCities(profile.coverageCities.join(', ')); setEditSkills(profile.skills); setEditing(true); }} style={styles.editBtn} testID="edit-profile-btn">
           <Edit size={16} color={C.textSecondary} />
           <Text style={styles.editBtnText}>Edit</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
-        {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarWrap}>
             <Text style={styles.avatarText}>{profile.displayName.charAt(0)}</Text>
@@ -120,7 +234,6 @@ export default function WorkerProfile() {
           </View>
         </Card>
 
-        {/* Skills */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Skills</Text>
           <View style={styles.skillsRow}>
@@ -132,7 +245,6 @@ export default function WorkerProfile() {
           </View>
         </View>
 
-        {/* Coverage */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Coverage Cities</Text>
           <View style={styles.skillsRow}>
@@ -145,7 +257,6 @@ export default function WorkerProfile() {
           </View>
         </View>
 
-        {/* Bio */}
         {profile.bio && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About Me</Text>
@@ -155,58 +266,77 @@ export default function WorkerProfile() {
           </View>
         )}
 
-        {/* Certifications */}
         <View style={styles.section}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Certifications</Text>
-            <TouchableOpacity onPress={() => setAddingCert(true)} style={styles.addCertBtn}>
-              <Text style={styles.addCertText}>+ Add</Text>
+            <TouchableOpacity onPress={() => setAddingCert((v) => !v)} style={styles.addCertBtn} testID="add-cert-btn">
+              <Text style={styles.addCertText}>{addingCert ? 'Cancel' : '+ Add'}</Text>
             </TouchableOpacity>
           </View>
-          {myCerts.length === 0 && (
-            <Card>
-              <Text style={styles.noCertText}>No certifications uploaded yet.</Text>
-            </Card>
-          )}
-          {myCerts.map((c) => (
-            <Card key={c.id} style={styles.certCard}>
-              <View style={styles.certRow}>
-                <View style={[styles.certIcon, { backgroundColor: c.adminApproved ? C.greenDim : C.yellowDim }]}>
-                  <Award size={18} color={c.adminApproved ? C.green : C.yellow} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.certType}>{c.type} Certificate</Text>
-                  <Text style={styles.certExpiry}>Expires: {c.expiryDate}</Text>
-                  <Text style={styles.certFile}>{c.certificateFile}</Text>
-                </View>
-                <StatusBadge status={c.adminApproved ? 'Approved' : 'PendingApproval'} />
-              </View>
-            </Card>
-          ))}
-        </View>
 
-        {/* Add Cert Form */}
-        {addingCert && (
-          <View style={styles.section}>
-            <Card elevated>
-              <Text style={styles.sectionTitle}>Add Certification</Text>
+          {addingCert && (
+            <Card elevated style={styles.addCertForm}>
+              <Text style={styles.formTitle}>New Certification</Text>
               <View style={styles.certTypeRow}>
-                {(['Forklift', 'HighReach'] as ('Forklift' | 'HighReach')[]).map((t) => (
+                {(['Forklift', 'HighReach'] as const).map((t) => (
                   <TouchableOpacity key={t} onPress={() => setCertType(t)} style={[styles.certTypeChip, certType === t && styles.certTypeChipActive]}>
                     <Text style={[styles.certTypeText, certType === t && styles.certTypeTextActive]}>{t}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
               <View style={styles.formGap}>
-                <Input label="Expiry Date (YYYY-MM-DD)" value={certExpiry} onChangeText={setCertExpiry} placeholder="2026-06-30" />
-                <Button label="Submit Certificate" onPress={handleAddCert} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
-                <Button label="Cancel" onPress={() => setAddingCert(false)} variant="ghost" fullWidth />
+                <Input label="Expiry Date (YYYY-MM-DD)" value={certExpiry} onChangeText={setCertExpiry} placeholder="2026-06-30" testID="cert-expiry-input" />
+                <Button
+                  label={uploadMutation.isPending ? 'Uploading…' : 'Pick file & Submit'}
+                  onPress={() => uploadMutation.mutate()}
+                  disabled={uploadMutation.isPending}
+                  fullWidth
+                  icon={<Upload size={15} color={C.white} />}
+                />
+                <Text style={styles.hint}>Accepted: PDF or image. File goes to secure storage; admin will review.</Text>
               </View>
             </Card>
-          </View>
-        )}
+          )}
 
-        {/* Edit Modal */}
+          {certsQuery.isLoading ? (
+            <Text style={styles.noCertText}>Loading certifications…</Text>
+          ) : myCerts.length === 0 ? (
+            <Card>
+              <Text style={styles.noCertText}>No certifications uploaded yet.</Text>
+            </Card>
+          ) : (
+            myCerts.map((c) => {
+              const statusColor = c.status === 'Approved' ? C.green : c.status === 'Rejected' ? C.red : C.yellow;
+              const dim = c.status === 'Approved' ? C.greenDim : c.status === 'Rejected' ? C.redDim : C.yellowDim;
+              return (
+                <Card key={c.id} style={styles.certCard}>
+                  <TouchableOpacity onPress={() => void openCert(c)} activeOpacity={0.85}>
+                    <View style={styles.certRow}>
+                      <View style={[styles.certIcon, { backgroundColor: dim }]}>
+                        <Award size={18} color={statusColor} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.certType}>{c.type} Certificate</Text>
+                        <Text style={styles.certExpiry}>Expires: {c.expiry_date ?? '—'}</Text>
+                        {c.file_path ? (
+                          <View style={styles.fileRow}>
+                            <FileText size={11} color={C.textMuted} />
+                            <Text style={styles.certFile} numberOfLines={1}>{(c.file_path.split('/').pop() ?? c.file_path)}</Text>
+                          </View>
+                        ) : null}
+                        {c.status === 'Rejected' && c.notes ? (
+                          <Text style={styles.rejectNote}>Reason: {c.notes}</Text>
+                        ) : null}
+                      </View>
+                      <StatusBadge status={c.status} />
+                    </View>
+                  </TouchableOpacity>
+                </Card>
+              );
+            })
+          )}
+        </View>
+
         {editing && (
           <View style={styles.section}>
             <Card elevated>
@@ -269,18 +399,23 @@ const styles = StyleSheet.create({
   addCertBtn: { padding: 6 },
   addCertText: { fontSize: 14, color: C.accent, fontWeight: '700' as const },
   noCertText: { fontSize: 13, color: C.textMuted, textAlign: 'center' },
+  addCertForm: { marginBottom: 12 },
+  formTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text, marginBottom: 10 },
   certCard: { marginBottom: 8 },
   certRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   certIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   certType: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   certExpiry: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
-  certFile: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  fileRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  certFile: { fontSize: 11, color: C.textMuted, flex: 1 },
+  rejectNote: { fontSize: 12, color: C.red, marginTop: 4 },
   certTypeRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   certTypeChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   certTypeChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   certTypeText: { fontSize: 14, color: C.textSecondary, fontWeight: '600' as const },
   certTypeTextActive: { color: C.accent },
   formGap: { gap: 12 },
+  hint: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   skillsLabel: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const, marginBottom: 8 },
   skillToggle: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   skillToggleActive: { backgroundColor: C.accentDim, borderColor: C.accent },

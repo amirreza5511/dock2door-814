@@ -1063,6 +1063,62 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // CERTIFICATIONS
+  // =========================================================================
+  'certifications.listMine': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('worker_certifications')
+      .select('*')
+      .eq('worker_user_id', ctx.user.id)
+      .order('created_at', { ascending: false });
+    if (error) throwErr(error, 'Unable to load certifications');
+    return data ?? [];
+  },
+
+  'certifications.listPending': async () => {
+    const { data, error } = await supabase
+      .from('worker_certifications')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throwErr(error, 'Unable to load certifications');
+    return data ?? [];
+  },
+
+  'certifications.create': async (
+    input: { type: string; expiryDate: string | null; filePath: string; notes?: string },
+    ctx,
+  ) => {
+    const { data, error } = await supabase.from('worker_certifications').insert({
+      worker_user_id: ctx.user.id,
+      type: input.type,
+      expiry_date: input.expiryDate,
+      file_path: input.filePath,
+      certificate_file: input.filePath,
+      notes: input.notes ?? '',
+    }).select().single();
+    if (error) throwErr(error, 'Unable to save certification');
+    return { id: data!.id };
+  },
+
+  'certifications.adminApprove': async (input: { id: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_approve_certification', {
+      p_cert_id: input.id,
+      p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to approve certification');
+    return { success: true };
+  },
+
+  'certifications.adminReject': async (input: { id: string; reason: string }) => {
+    const { error } = await supabase.rpc('admin_reject_certification', {
+      p_cert_id: input.id,
+      p_reason: input.reason,
+    });
+    if (error) throwErr(error, 'Unable to reject certification');
+    return { success: true };
+  },
+
+  // =========================================================================
   // UPLOADS — stubbed (no storage backend)
   // =========================================================================
   'uploads.createPresignedUrl': async () => {
