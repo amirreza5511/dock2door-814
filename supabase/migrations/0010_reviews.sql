@@ -58,7 +58,7 @@ do $$ begin
     );
 exception when duplicate_object then null; when others then null; end $;
 
-do $$ begin
+do $ begin
   alter table public.reviews
     add constraint reviews_unique_per_context
       unique (reviewer_user_id, context_kind, context_id, target_kind);
