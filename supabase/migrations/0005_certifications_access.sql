@@ -53,6 +53,12 @@ $$;
 -- =========================================================================
 drop policy if exists "wc_self_read" on public.worker_certifications;
 drop policy if exists "wc_self_write" on public.worker_certifications;
+drop policy if exists "wc_worker_read" on public.worker_certifications;
+drop policy if exists "wc_admin_read" on public.worker_certifications;
+drop policy if exists "wc_employer_read" on public.worker_certifications;
+drop policy if exists "wc_worker_insert" on public.worker_certifications;
+drop policy if exists "wc_worker_update" on public.worker_certifications;
+drop policy if exists "wc_admin_delete" on public.worker_certifications;
 
 -- Worker can read own
 create policy "wc_worker_read" on public.worker_certifications for select
