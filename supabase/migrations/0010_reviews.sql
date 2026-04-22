@@ -35,14 +35,34 @@ create table if not exists public.reviews (
   context_id uuid not null,
   rating int not null check (rating between 1 and 5),
   comment text not null default '',
-  created_at timestamptz not null default now(),
-  constraint reviews_target_valid check (
-    (target_kind = 'company' and target_company_id is not null and target_user_id is null)
-    or (target_kind = 'worker' and target_user_id is not null and target_company_id is null)
-  ),
-  constraint reviews_unique_per_context
-    unique (reviewer_user_id, context_kind, context_id, target_kind)
+  created_at timestamptz not null default now()
 );
+
+-- Backfill columns if an older partial version of this table already exists
+alter table public.reviews add column if not exists reviewer_user_id uuid;
+alter table public.reviews add column if not exists reviewer_company_id uuid;
+alter table public.reviews add column if not exists target_kind review_target_kind;
+alter table public.reviews add column if not exists target_company_id uuid;
+alter table public.reviews add column if not exists target_user_id uuid;
+alter table public.reviews add column if not exists context_kind review_context_kind;
+alter table public.reviews add column if not exists context_id uuid;
+alter table public.reviews add column if not exists rating int;
+alter table public.reviews add column if not exists comment text not null default '';
+alter table public.reviews add column if not exists created_at timestamptz not null default now();
+
+do $ begin
+  alter table public.reviews
+    add constraint reviews_target_valid check (
+      (target_kind = 'company' and target_company_id is not null and target_user_id is null)
+      or (target_kind = 'worker' and target_user_id is not null and target_company_id is null)
+    );
+exception when duplicate_object then null; when others then null; end $;
+
+do $ begin
+  alter table public.reviews
+    add constraint reviews_unique_per_context
+      unique (reviewer_user_id, context_kind, context_id, target_kind);
+exception when duplicate_object then null; when others then null; end $;
 
 create index if not exists idx_reviews_target_company on public.reviews(target_company_id) where target_company_id is not null;
 create index if not exists idx_reviews_target_user on public.reviews(target_user_id) where target_user_id is not null;
