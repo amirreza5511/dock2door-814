@@ -50,7 +50,7 @@ alter table public.reviews add column if not exists rating int;
 alter table public.reviews add column if not exists comment text not null default '';
 alter table public.reviews add column if not exists created_at timestamptz not null default now();
 
-do $$ begin
+do $ begin
   alter table public.reviews
     add constraint reviews_target_valid check (
       (target_kind = 'company' and target_company_id is not null and target_user_id is null)
