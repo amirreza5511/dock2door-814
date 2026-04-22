@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, Clock, DollarSign, LogIn, LogOut as LogOutIcon, CheckCircle } from 'lucide-react-native';
+import { MapPin, Clock, DollarSign, LogIn, LogOut as LogOutIcon, CheckCircle, Star } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -10,6 +10,7 @@ import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftAssignment } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
+import ReviewModal from '@/components/ReviewModal';
 
 type ViewTab = 'Applications' | 'Assignments';
 
@@ -26,6 +27,20 @@ export default function WorkerMyShifts() {
   const [tab, setTab] = useState<ViewTab>('Applications');
   const [selectedAss, setSelectedAss] = useState<ShiftAssignment | null>(null);
   const [detailModal, setDetailModal] = useState(false);
+  const [reviewFor, setReviewFor] = useState<ShiftAssignment | null>(null);
+
+  const completedAssignmentIds = useMemo(
+    () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
+    [myAssignments],
+  );
+  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'shift_assignment', contextIds: completedAssignmentIds },
+    { enabled: completedAssignmentIds.length > 0 },
+  );
+  const reviewedAssignmentIds = useMemo(
+    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQuery.data],
+  );
 
   const myApps = useMemo(() => shiftApplications.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()), [shiftApplications, user]);
   const myAssignments = useMemo(() => shiftAssignments.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftAssignments, user]);
@@ -197,6 +212,18 @@ export default function WorkerMyShifts() {
                     {selectedAss.status === 'InProgress' && (
                       <Button label="End Shift" onPress={() => handleEndShift(selectedAss)} fullWidth size="lg" variant="outline" icon={<LogOutIcon size={16} color={C.accent} />} />
                     )}
+                    {['Completed', 'HoursConfirmed', 'Confirmed'].includes(selectedAss.status) && !reviewedAssignmentIds.has(selectedAss.id) && shift && (
+                      <Button
+                        label="Rate Employer"
+                        onPress={() => { setDetailModal(false); setReviewFor(selectedAss); }}
+                        fullWidth
+                        variant="outline"
+                        icon={<Star size={15} color={C.accent} />}
+                      />
+                    )}
+                    {['Completed', 'HoursConfirmed', 'Confirmed'].includes(selectedAss.status) && reviewedAssignmentIds.has(selectedAss.id) && (
+                      <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this employer</Text>
+                    )}
                     <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                   </View>
                 </View>
@@ -205,6 +232,17 @@ export default function WorkerMyShifts() {
           })()}
         </View>
       </Modal>
+
+      <ReviewModal
+        visible={!!reviewFor}
+        onClose={() => setReviewFor(null)}
+        title="Rate this employer"
+        subtitle={reviewFor ? getEmployerName(getShift(reviewFor.shiftId)?.employerCompanyId ?? '') : undefined}
+        contextKind="shift_assignment"
+        contextId={reviewFor?.id ?? ''}
+        targetKind="company"
+        targetCompanyId={reviewFor ? getShift(reviewFor.shiftId)?.employerCompanyId ?? null : null}
+      />
     </View>
   );
 }

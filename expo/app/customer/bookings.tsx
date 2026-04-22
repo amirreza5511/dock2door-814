@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Warehouse, Wrench, AlertCircle, CheckCircle, Package } from 'lucide-react-native';
+import { Warehouse, Wrench, AlertCircle, CheckCircle, Package, Star } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -15,6 +15,8 @@ import C from '@/constants/colors';
 import type { WarehouseBooking } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
+import ReviewModal from '@/components/ReviewModal';
+import type { ServiceJob } from '@/constants/types';
 
 type TabType = 'Warehouse' | 'Services';
 
@@ -37,6 +39,22 @@ export default function CustomerBookings() {
   const [selectedBooking, setSelectedBooking] = useState<WarehouseBooking | null>(null);
   const [msgText, setMsgText] = useState('');
   const [detailModal, setDetailModal] = useState(false);
+  const [reviewTarget, setReviewTarget] = useState<{
+    kind: 'warehouse_booking' | 'service_job';
+    id: string;
+    targetCompanyId: string;
+    title: string;
+  } | null>(null);
+
+  const completedBookingIds = useMemo(() => warehouseBookings.filter((b) => b.status === 'Completed' && b.customerCompanyId === user?.companyId).map((b) => b.id), [warehouseBookings, user]);
+  const completedJobIds = useMemo(() => serviceJobs.filter((j) => j.status === 'Completed' && j.customerCompanyId === user?.companyId).map((j) => j.id), [serviceJobs, user]);
+  const myBookingReviewsQuery = trpc.reviews.listMineByContext.useQuery({ contextKind: 'warehouse_booking', contextIds: completedBookingIds }, { enabled: completedBookingIds.length > 0 });
+  const myJobReviewsQuery = trpc.reviews.listMineByContext.useQuery({ contextKind: 'service_job', contextIds: completedJobIds }, { enabled: completedJobIds.length > 0 });
+  const reviewedBookingIds = useMemo(() => new Set(((myBookingReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)), [myBookingReviewsQuery.data]);
+  const reviewedJobIds = useMemo(() => new Set(((myJobReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)), [myJobReviewsQuery.data]);
+
+  const getWarehouseCompanyId = (listingId: string) => warehouseListings.find((l) => l.id === listingId)?.companyId ?? null;
+  const getServiceCompanyId = (serviceId: string) => serviceListings.find((l) => l.id === serviceId)?.companyId ?? null;
 
   const myBookings = useMemo(() => warehouseBookings.filter((b) => b.customerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, user]);
   const myJobs = useMemo(() => serviceJobs.filter((j) => j.customerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [serviceJobs, user]);
@@ -183,7 +201,7 @@ export default function CustomerBookings() {
               <Wrench size={40} color={C.textMuted} />
               <Text style={styles.emptyText}>No service jobs yet</Text>
             </View>
-          ) : myJobs.map((j) => (
+          ) : myJobs.map((j: ServiceJob) => (
             <Card key={j.id} style={styles.bookingCard}>
               <View style={styles.cardTopRow}>
                 <View style={[styles.typeIcon, { backgroundColor: C.accentDim }]}>
@@ -203,6 +221,27 @@ export default function CustomerBookings() {
                 <View style={styles.checkInRow}>
                   <CheckCircle size={13} color={C.green} />
                   <Text style={styles.checkInText}>Checked in {j.checkInTs.replace('T', ' ').slice(0, 16)}</Text>
+                </View>
+              )}
+              {j.status === 'Completed' && !reviewedJobIds.has(j.id) && (() => {
+                const spCoId = getServiceCompanyId(j.serviceId);
+                if (!spCoId) return null;
+                return (
+                  <View style={{ marginTop: 8 }}>
+                    <Button
+                      label="Rate Service Provider"
+                      onPress={() => setReviewTarget({ kind: 'service_job', id: j.id, targetCompanyId: spCoId, title: getServiceName(j.serviceId) })}
+                      variant="outline"
+                      size="sm"
+                      icon={<Star size={13} color={C.accent} />}
+                    />
+                  </View>
+                );
+              })()}
+              {j.status === 'Completed' && reviewedJobIds.has(j.id) && (
+                <View style={styles.checkInRow}>
+                  <Star size={13} color={C.yellow} fill={C.yellow} />
+                  <Text style={styles.checkInText}>Reviewed</Text>
                 </View>
               )}
             </Card>
@@ -284,6 +323,25 @@ export default function CustomerBookings() {
                   {['Requested', 'CounterOffered'].includes(selectedBooking.status) && (
                     <Button label="Cancel Booking" onPress={() => handleCancel(selectedBooking.id, 'booking')} variant="danger" fullWidth />
                   )}
+                  {selectedBooking.status === 'Completed' && !reviewedBookingIds.has(selectedBooking.id) && (() => {
+                    const whCoId = getWarehouseCompanyId(selectedBooking.listingId);
+                    if (!whCoId) return null;
+                    return (
+                      <Button
+                        label="Rate Warehouse"
+                        onPress={() => setReviewTarget({ kind: 'warehouse_booking', id: selectedBooking.id, targetCompanyId: whCoId, title: getListingName(selectedBooking.listingId) })}
+                        variant="outline"
+                        fullWidth
+                        icon={<Star size={15} color={C.accent} />}
+                      />
+                    );
+                  })()}
+                  {selectedBooking.status === 'Completed' && reviewedBookingIds.has(selectedBooking.id) && (
+                    <View style={styles.alertBanner}>
+                      <CheckCircle size={14} color={C.green} />
+                      <Text style={[styles.alertText, { color: C.green }]}>You rated this warehouse</Text>
+                    </View>
+                  )}
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>
               </View>
@@ -291,6 +349,17 @@ export default function CustomerBookings() {
           )}
         </View>
       </Modal>
+
+      <ReviewModal
+        visible={!!reviewTarget}
+        onClose={() => setReviewTarget(null)}
+        title={reviewTarget?.kind === 'warehouse_booking' ? 'Rate this warehouse' : 'Rate this service provider'}
+        subtitle={reviewTarget?.title}
+        contextKind={reviewTarget?.kind ?? 'warehouse_booking'}
+        contextId={reviewTarget?.id ?? ''}
+        targetKind="company"
+        targetCompanyId={reviewTarget?.targetCompanyId ?? null}
+      />
     </View>
   );
 }

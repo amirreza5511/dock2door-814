@@ -260,6 +260,13 @@ All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/L
   - Re-backfills `warehouse_bookings.warehouse_company_id`, `service_jobs.provider_company_id`, `shift_assignments.employer_company_id`
   - Re-grants EXECUTE on every public RPC to `authenticated`
 - [x] Edge Function `cleanup-orphan-files` (`supabase/functions/cleanup-orphan-files/index.ts`) — scheduled nightly sweep that lists each private bucket, finds objects older than a threshold with no companion `storage_files` row, removes them, and writes an `audit_logs` entry. Requires service-role authorization.
+- [x] `0010_reviews.sql` — generic reviews / ratings:
+  - `reviews` table (1–5 rating + comment) with `review_target_kind` (`company` | `worker`) + `review_context_kind` (`warehouse_booking` | `service_job` | `shift_assignment`), unique per (reviewer, context, target_kind).
+  - `post_review(...)` SECURITY DEFINER RPC — validates context is `Completed`, that caller is a real participant (customer/warehouse/provider/employer/worker), and that target matches the opposite side. Only write path (no direct INSERT policies).
+  - RLS: public-read for authenticated users; writes only via RPC.
+  - `review_summaries` view — count + avg rating per target (company or worker).
+  - UI: `components/ui/StarRating.tsx`, `components/ReviewModal.tsx`; Rate buttons wired into `customer/bookings`, `warehouse-provider/bookings`, `service-provider/jobs`, `worker/my-shifts`, `employer/shifts` (shows once, hides after submitted via `reviews.listMineByContext`).
+  - `expo/lib/trpc.ts` — `reviews.{post,listForCompany,listForWorker,summaries,listMineByContext}`.
 
 ## Final delivery status
 

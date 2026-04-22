@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, XCircle, ArrowRightLeft, Package } from 'lucide-react-native';
+import { CheckCircle, XCircle, ArrowRightLeft, Package, Star } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -15,6 +15,7 @@ import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import BookingDocs from '@/components/BookingDocs';
+import ReviewModal from '@/components/ReviewModal';
 
 const STATUS_FILTERS: (BookingStatus | 'All')[] = ['All', 'Requested', 'Accepted', 'CounterOffered', 'Confirmed', 'InProgress', 'Completed', 'Cancelled'];
 
@@ -43,6 +44,17 @@ export default function WPBookings() {
   const [counterPrice, setCounterPrice] = useState('');
   const [responseNotes, setResponseNotes] = useState('');
   const [msgText, setMsgText] = useState('');
+  const [reviewFor, setReviewFor] = useState<WarehouseBooking | null>(null);
+
+  const completedBookingIds = useMemo(() => warehouseBookings.filter((b) => b.status === 'Completed' && myListingIds.includes(b.listingId)).map((b) => b.id), [warehouseBookings, myListingIds]);
+  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'warehouse_booking', contextIds: completedBookingIds },
+    { enabled: completedBookingIds.length > 0 },
+  );
+  const reviewedBookingIds = useMemo(
+    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQuery.data],
+  );
 
   const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
   const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, myListingIds]);
@@ -241,6 +253,19 @@ export default function WPBookings() {
                   <Button label="Mark as Completed" onPress={() => handleComplete(selected)} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
                 )}
 
+                {selected.status === 'Completed' && !reviewedBookingIds.has(selected.id) && (
+                  <Button
+                    label="Rate Customer"
+                    onPress={() => { setDetailModal(false); setReviewFor(selected); }}
+                    variant="outline"
+                    fullWidth
+                    icon={<Star size={15} color={C.accent} />}
+                  />
+                )}
+                {selected.status === 'Completed' && reviewedBookingIds.has(selected.id) && (
+                  <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this customer</Text>
+                )}
+
                 {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selected.status) && (
                   <Button
                     label="Open Fulfillment"
@@ -275,6 +300,17 @@ export default function WPBookings() {
           )}
         </View>
       </Modal>
+
+      <ReviewModal
+        visible={!!reviewFor}
+        onClose={() => setReviewFor(null)}
+        title="Rate this customer"
+        subtitle={reviewFor ? getCustomerName(reviewFor.customerCompanyId) : undefined}
+        contextKind="warehouse_booking"
+        contextId={reviewFor?.id ?? ''}
+        targetKind="company"
+        targetCompanyId={reviewFor?.customerCompanyId ?? null}
+      />
     </View>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Users, CheckCircle, XCircle, Clock } from 'lucide-react-native';
+import { Users, CheckCircle, XCircle, Clock, Star } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftPost, ShiftStatus } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
+import ReviewModal from '@/components/ReviewModal';
 
 const FILTERS: (ShiftStatus | 'All')[] = ['All', 'Posted', 'Filled', 'InProgress', 'Completed', 'Cancelled'];
 
@@ -30,6 +31,23 @@ export default function EmployerShifts() {
   const [detailModal, setDetailModal] = useState(false);
   const [confirmHours, setConfirmHours] = useState('');
   const [confirmNotes, setConfirmNotes] = useState('');
+  const [reviewFor, setReviewFor] = useState<{ assignmentId: string; workerUserId: string; workerName: string } | null>(null);
+
+  const myAssignmentIds = useMemo(
+    () => shiftAssignments
+      .filter((a) => myShifts.some((s) => s.id === a.shiftId))
+      .filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status))
+      .map((a) => a.id),
+    [shiftAssignments, myShifts],
+  );
+  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'shift_assignment', contextIds: myAssignmentIds },
+    { enabled: myAssignmentIds.length > 0 },
+  );
+  const reviewedAssignmentIds = useMemo(
+    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQuery.data],
+  );
 
   const myShifts = useMemo(() => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftPosts, user]);
   const filtered = useMemo(() => filter === 'All' ? myShifts : myShifts.filter((s) => s.status === filter), [myShifts, filter]);
@@ -204,6 +222,21 @@ export default function EmployerShifts() {
                               <Text style={styles.confirmedText}>{te.employerConfirmedHours}h confirmed</Text>
                             </View>
                           )}
+                          {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) && !reviewedAssignmentIds.has(ass.id) && (
+                            <TouchableOpacity
+                              onPress={() => setReviewFor({ assignmentId: ass.id, workerUserId: ass.workerUserId, workerName: getWorkerName(ass.workerUserId) })}
+                              style={styles.rateBtn}
+                            >
+                              <Star size={14} color={C.accent} />
+                              <Text style={styles.rateBtnText}>Rate</Text>
+                            </TouchableOpacity>
+                          )}
+                          {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) && reviewedAssignmentIds.has(ass.id) && (
+                            <View style={styles.ratedBadge}>
+                              <Star size={12} color={C.yellow} fill={C.yellow} />
+                              <Text style={styles.ratedText}>Rated</Text>
+                            </View>
+                          )}
                         </View>
                       );
                     })}
@@ -221,6 +254,17 @@ export default function EmployerShifts() {
           )}
         </View>
       </Modal>
+
+      <ReviewModal
+        visible={!!reviewFor}
+        onClose={() => setReviewFor(null)}
+        title="Rate this worker"
+        subtitle={reviewFor?.workerName}
+        contextKind="shift_assignment"
+        contextId={reviewFor?.assignmentId ?? ''}
+        targetKind="worker"
+        targetUserId={reviewFor?.workerUserId ?? null}
+      />
     </View>
   );
 }
@@ -278,4 +322,8 @@ const styles = StyleSheet.create({
   confirmedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   confirmedText: { fontSize: 13, color: C.green, fontWeight: '600' as const },
   actionBtns: { gap: 10 },
+  rateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  rateBtnText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+  ratedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratedText: { fontSize: 12, color: C.yellow, fontWeight: '600' as const },
 });

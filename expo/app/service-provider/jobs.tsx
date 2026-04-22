@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, XCircle, MapPin, Clock, LogIn, LogOut as LogOutIcon } from 'lucide-react-native';
+import { CheckCircle, XCircle, MapPin, Clock, LogIn, LogOut as LogOutIcon, Star } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
@@ -11,6 +11,7 @@ import C from '@/constants/colors';
 import type { ServiceJob, JobStatus } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
+import ReviewModal from '@/components/ReviewModal';
 
 const FILTERS: (JobStatus | 'All')[] = ['All', 'Requested', 'Accepted', 'Scheduled', 'InProgress', 'Completed', 'Cancelled'];
 
@@ -29,6 +30,17 @@ export default function SPJobs() {
   const [filter, setFilter] = useState<JobStatus | 'All'>('All');
   const [selected, setSelected] = useState<ServiceJob | null>(null);
   const [detailModal, setDetailModal] = useState(false);
+  const [reviewFor, setReviewFor] = useState<ServiceJob | null>(null);
+
+  const completedJobIds = useMemo(() => myJobs.filter((j) => j.status === 'Completed').map((j) => j.id), [myJobs]);
+  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'service_job', contextIds: completedJobIds },
+    { enabled: completedJobIds.length > 0 },
+  );
+  const reviewedJobIds = useMemo(
+    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQuery.data],
+  );
 
   const myListingIds = useMemo(() => serviceListings.filter((l) => l.companyId === user?.companyId).map((l) => l.id), [serviceListings, user]);
   const myJobs = useMemo(() => serviceJobs.filter((j) => myListingIds.includes(j.serviceId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [serviceJobs, myListingIds]);
@@ -181,6 +193,18 @@ export default function SPJobs() {
                   {selected.status === 'InProgress' && (
                     <Button label="Check Out (End Job)" onPress={() => handleCheckOut(selected)} fullWidth size="lg" variant="outline" icon={<LogOutIcon size={16} color={C.accent} />} />
                   )}
+                  {selected.status === 'Completed' && !reviewedJobIds.has(selected.id) && (
+                    <Button
+                      label="Rate Customer"
+                      onPress={() => { setDetailModal(false); setReviewFor(selected); }}
+                      variant="outline"
+                      fullWidth
+                      icon={<Star size={15} color={C.accent} />}
+                    />
+                  )}
+                  {selected.status === 'Completed' && reviewedJobIds.has(selected.id) && (
+                    <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this customer</Text>
+                  )}
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>
               </View>
@@ -188,6 +212,17 @@ export default function SPJobs() {
           )}
         </View>
       </Modal>
+
+      <ReviewModal
+        visible={!!reviewFor}
+        onClose={() => setReviewFor(null)}
+        title="Rate this customer"
+        subtitle={reviewFor ? getCustomer(reviewFor.customerCompanyId) : undefined}
+        contextKind="service_job"
+        contextId={reviewFor?.id ?? ''}
+        targetKind="company"
+        targetCompanyId={reviewFor?.customerCompanyId ?? null}
+      />
     </View>
   );
 }

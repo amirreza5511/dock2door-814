@@ -1327,6 +1327,102 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // REVIEWS / RATINGS
+  // =========================================================================
+  'reviews.post': async (input: {
+    contextKind: 'warehouse_booking' | 'service_job' | 'shift_assignment';
+    contextId: string;
+    targetKind: 'company' | 'worker';
+    targetCompanyId?: string | null;
+    targetUserId?: string | null;
+    rating: number;
+    comment?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('post_review', {
+      p_context_kind: input.contextKind,
+      p_context_id: input.contextId,
+      p_target_kind: input.targetKind,
+      p_target_company_id: input.targetCompanyId ?? null,
+      p_target_user_id: input.targetUserId ?? null,
+      p_rating: input.rating,
+      p_comment: input.comment ?? '',
+    });
+    if (error) throwErr(error, 'Unable to submit review');
+    return { id: data as string };
+  },
+
+  'reviews.listForCompany': async (input: { companyId: string }) => {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id, rating, comment, created_at, reviewer_user_id, reviewer_company_id, context_kind, context_id, target_kind, profiles:reviewer_user_id(name), reviewer_company:reviewer_company_id(name)')
+      .eq('target_company_id', input.companyId)
+      .order('created_at', { ascending: false });
+    if (error) throwErr(error, 'Unable to load reviews');
+    return (data ?? []).map((r: Row) => ({
+      id: r.id as string,
+      rating: Number(r.rating ?? 0),
+      comment: (r.comment ?? '') as string,
+      createdAt: (r.created_at ?? '') as string,
+      reviewerUserId: (r.reviewer_user_id ?? '') as string,
+      reviewerName: (r.profiles?.name ?? 'User') as string,
+      reviewerCompanyName: (r.reviewer_company?.name ?? null) as string | null,
+      contextKind: (r.context_kind ?? '') as string,
+      contextId: (r.context_id ?? '') as string,
+    }));
+  },
+
+  'reviews.listForWorker': async (input: { userId: string }) => {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id, rating, comment, created_at, reviewer_user_id, reviewer_company_id, context_kind, context_id, target_kind, reviewer_company:reviewer_company_id(name)')
+      .eq('target_user_id', input.userId)
+      .order('created_at', { ascending: false });
+    if (error) throwErr(error, 'Unable to load reviews');
+    return (data ?? []).map((r: Row) => ({
+      id: r.id as string,
+      rating: Number(r.rating ?? 0),
+      comment: (r.comment ?? '') as string,
+      createdAt: (r.created_at ?? '') as string,
+      reviewerUserId: (r.reviewer_user_id ?? '') as string,
+      reviewerCompanyName: (r.reviewer_company?.name ?? 'Employer') as string,
+      contextKind: (r.context_kind ?? '') as string,
+      contextId: (r.context_id ?? '') as string,
+    }));
+  },
+
+  'reviews.summaries': async () => {
+    const { data, error } = await supabase.from('review_summaries').select('*');
+    if (error) throwErr(error, 'Unable to load review summaries');
+    return (data ?? []).map((r: Row) => ({
+      targetKind: (r.target_kind ?? 'company') as 'company' | 'worker',
+      targetId: r.target_id as string,
+      count: Number(r.count ?? 0),
+      avgRating: Number(r.avg_rating ?? 0),
+    }));
+  },
+
+  'reviews.listMineByContext': async (input: {
+    contextKind: 'warehouse_booking' | 'service_job' | 'shift_assignment';
+    contextIds: string[];
+  }, ctx) => {
+    if (input.contextIds.length === 0) return [];
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('id, context_kind, context_id, target_kind, rating')
+      .eq('reviewer_user_id', ctx.user.id)
+      .eq('context_kind', input.contextKind)
+      .in('context_id', input.contextIds);
+    if (error) throwErr(error, 'Unable to load my reviews');
+    return (data ?? []).map((r: Row) => ({
+      id: r.id as string,
+      contextKind: r.context_kind as string,
+      contextId: r.context_id as string,
+      targetKind: r.target_kind as string,
+      rating: Number(r.rating ?? 0),
+    }));
+  },
+
+  // =========================================================================
   // UPLOADS — stubbed (no storage backend)
   // =========================================================================
   'uploads.createPresignedUrl': async () => {
