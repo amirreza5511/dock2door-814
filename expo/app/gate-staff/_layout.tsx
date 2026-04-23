@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard } from 'lucide-react-native';
+import { LayoutDashboard, MoveRight } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 export default function GateStaffLayout() {
@@ -14,6 +14,7 @@ export default function GateStaffLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Gate', tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} /> }} />
+      <Tabs.Screen name="yard" options={{ title: 'Yard', tabBarIcon: ({ color }) => <MoveRight size={22} color={color} /> }} />
     </Tabs>
   );
 }

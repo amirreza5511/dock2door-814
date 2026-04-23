@@ -14,7 +14,7 @@ void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 const PUBLIC_SEGMENTS = ['', 'auth', '+not-found'];
-const SHARED_SEGMENTS = ['fulfillment'];
+const SHARED_SEGMENTS = ['fulfillment', 'messages', 'notifications', 'reviews'];
 
 function AuthGuard() {
   const { user, isHydrated } = useAuthStore();
@@ -77,6 +77,9 @@ function RootLayoutNav() {
       <Stack.Screen name="admin" />
       <Stack.Screen name="super-admin" />
       <Stack.Screen name="fulfillment" />
+      <Stack.Screen name="messages" />
+      <Stack.Screen name="notifications" />
+      <Stack.Screen name="reviews" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

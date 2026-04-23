@@ -1431,6 +1431,255 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'uploads.confirmUpload': async () => {
     throw new Error('File uploads are not configured');
   },
+
+  // =========================================================================
+  // PAYMENTS — live Stripe intent creation via Edge Function
+  // =========================================================================
+  'payments.createPaymentIntent': async (input: { invoiceId: string }) => {
+    const { data, error } = await supabase.functions.invoke('create-payment-intent', {
+      body: { invoice_id: input.invoiceId },
+    });
+    if (error) throwErr(error, 'Unable to create payment intent');
+    return data as { client_secret: string; payment_intent_id: string; amount: number; currency: string };
+  },
+
+  'payments.renderInvoice': async (input: { invoiceId: string }) => {
+    if (!input.invoiceId) return { html: '' };
+    const { data: inv } = await supabase.from('invoices').select('*').eq('id', input.invoiceId).maybeSingle();
+    if (!inv) return { html: '' };
+    const { data: lines } = await supabase.from('invoice_lines').select('*').eq('invoice_id', input.invoiceId);
+    const lineRows = (lines ?? []).map((l: Row) =>
+      `<tr><td>${l.description ?? ''}</td><td style="text-align:right">${Number(l.quantity ?? 1)}</td><td style="text-align:right">${Number(l.unit_price ?? 0).toFixed(2)}</td><td style="text-align:right">${Number(l.line_total ?? 0).toFixed(2)}</td></tr>`
+    ).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${inv.invoice_number ?? inv.id}</title><style>body{font-family:-apple-system,Helvetica,Arial,sans-serif;padding:32px;color:#0F1E2F;}h1{margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px 8px;border-bottom:1px solid #E5E7EB;font-size:13px}.tot{font-weight:700;font-size:16px}</style></head><body><h1>Invoice ${inv.invoice_number ?? inv.id}</h1><p>Date: ${new Date(inv.created_at ?? Date.now()).toLocaleDateString()}</p><p>Status: ${inv.status}</p><table><thead><tr><th style="text-align:left">Description</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>${lineRows}</tbody></table><p style="text-align:right;margin-top:18px">Subtotal: ${Number(inv.subtotal_amount ?? 0).toFixed(2)}</p><p style="text-align:right">Tax: ${Number(inv.tax_amount ?? 0).toFixed(2)}</p><p class="tot" style="text-align:right">Total: ${Number(inv.total_amount ?? 0).toFixed(2)} ${String(inv.currency ?? 'CAD').toUpperCase()}</p></body></html>`;
+    return { html };
+  },
+
+  // =========================================================================
+  // SHIPPING — EasyPost label purchase + shipments + tracking
+  // =========================================================================
+  'shipping.listShipments': async (_input, ctx) => {
+    const q = supabase.from('shipments').select('*').is('archived_at', null).order('created_at', { ascending: false });
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : ctx.user.companyId
+        ? await q.or(`customer_company_id.eq.${ctx.user.companyId},provider_company_id.eq.${ctx.user.companyId}`)
+        : { data: [], error: null };
+    if (error) throwErr(error, 'Unable to load shipments');
+    return data ?? [];
+  },
+  'shipping.getShipment': async (input: { id: string }) => {
+    const { data: ship, error } = await supabase.from('shipments').select('*').eq('id', input.id).maybeSingle();
+    if (error || !ship) throw new Error('Shipment not found');
+    const { data: events } = await supabase.from('tracking_events').select('*').eq('shipment_id', input.id).order('occurred_at', { ascending: false });
+    const { data: pkgs } = await supabase.from('shipment_packages').select('*').eq('shipment_id', input.id);
+    return { shipment: ship, events: events ?? [], packages: pkgs ?? [] };
+  },
+  'shipping.createForOrder': async (input: { orderId: string; carrierCode: string; serviceLevel: string; shipFrom: AnyRecord; shipTo: AnyRecord }) => {
+    const { data, error } = await supabase.rpc('create_shipment_for_order', {
+      p_order_id: input.orderId,
+      p_carrier_code: input.carrierCode,
+      p_service_level: input.serviceLevel,
+      p_ship_from: input.shipFrom,
+      p_ship_to: input.shipTo,
+    });
+    if (error) throwErr(error, 'Unable to create shipment');
+    return { id: data as string };
+  },
+  'shipping.purchaseLabel': async (input: { shipmentId: string }) => {
+    const { data, error } = await supabase.functions.invoke('purchase-shipping-label', {
+      body: { shipment_id: input.shipmentId },
+    });
+    if (error) throwErr(error, 'Unable to purchase label');
+    return data as { tracking_code: string; label_url: string; carrier: string; rate: number; currency: string };
+  },
+
+  // =========================================================================
+  // RETURNS / RMA
+  // =========================================================================
+  'returns.list': async (_input, ctx) => {
+    const q = supabase.from('return_authorizations').select('*').order('created_at', { ascending: false });
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : ctx.user.companyId
+        ? await q.or(`customer_company_id.eq.${ctx.user.companyId},provider_company_id.eq.${ctx.user.companyId}`)
+        : { data: [], error: null };
+    if (error) throwErr(error, 'Unable to load returns');
+    return data ?? [];
+  },
+  'returns.request': async (input: { orderId: string; reason: string; items?: AnyRecord[] }) => {
+    const { data, error } = await supabase.rpc('request_rma', {
+      p_order_id: input.orderId,
+      p_reason: input.reason,
+      p_items: input.items ?? [],
+    });
+    if (error) throwErr(error, 'Unable to request return');
+    return { id: data as string };
+  },
+
+  // =========================================================================
+  // WMS — locations, stock levels, receipts, cycle counts
+  // =========================================================================
+  'wms.listLocations': async (_input, ctx) => {
+    if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
+    const q = supabase.from('warehouse_locations').select('*').is('archived_at', null).order('zone').order('aisle');
+    const { data, error } = isAdmin(ctx.user.role) ? await q : await q.eq('company_id', ctx.user.companyId!);
+    if (error) throwErr(error, 'Unable to load locations');
+    return data ?? [];
+  },
+  'wms.createLocation': async (input: AnyRecord, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Company context required');
+    const { data, error } = await supabase.from('warehouse_locations').insert({
+      company_id: ctx.user.companyId,
+      listing_id: input.listingId ?? null,
+      zone: input.zone ?? '',
+      aisle: input.aisle ?? '',
+      rack: input.rack ?? '',
+      level: input.level ?? '',
+      bin: input.bin ?? '',
+      label: input.label ?? '',
+    }).select().single();
+    if (error) throwErr(error, 'Unable to create location');
+    return { id: data!.id };
+  },
+  'wms.listStockLevels': async (input: { variantId?: string; locationId?: string } | undefined, ctx) => {
+    let q = supabase.from('stock_levels').select('*, product_variants(sku,name), warehouse_locations(label,zone,aisle,bin)').order('updated_at', { ascending: false }).limit(500);
+    if (input?.variantId) q = q.eq('variant_id', input.variantId);
+    if (input?.locationId) q = q.eq('location_id', input.locationId);
+    if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('company_id', ctx.user.companyId);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load stock');
+    return data ?? [];
+  },
+  'wms.listReceipts': async (_input, ctx) => {
+    const q = supabase.from('inventory_receipts').select('*').order('created_at', { ascending: false }).limit(200);
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : ctx.user.companyId ? await q.eq('warehouse_company_id', ctx.user.companyId) : { data: [], error: null };
+    if (error) throwErr(error, 'Unable to load receipts');
+    return data ?? [];
+  },
+  'wms.receive': async (input: { receiptId?: string; variantId: string; locationId: string; quantity: number; lotCode?: string; reference?: string }) => {
+    const { data, error } = await supabase.rpc('wms_receive', {
+      p_receipt_id: input.receiptId ?? null,
+      p_variant_id: input.variantId,
+      p_location_id: input.locationId,
+      p_quantity: input.quantity,
+      p_lot_code: input.lotCode ?? null,
+      p_reference: input.reference ?? '',
+    });
+    if (error) throwErr(error, 'Unable to record receipt');
+    return { movementId: data as string };
+  },
+  'wms.adjust': async (input: { variantId: string; locationId: string; delta: number; reason: string }) => {
+    const { error } = await supabase.rpc('wms_adjust', {
+      p_variant_id: input.variantId,
+      p_location_id: input.locationId,
+      p_delta: input.delta,
+      p_reason: input.reason,
+    });
+    if (error) throwErr(error, 'Unable to adjust stock');
+    return { success: true };
+  },
+  'wms.listCycleCounts': async (_input, ctx) => {
+    const q = supabase.from('cycle_counts').select('*').order('created_at', { ascending: false }).limit(200);
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : ctx.user.companyId ? await q.eq('company_id', ctx.user.companyId) : { data: [], error: null };
+    if (error) throwErr(error, 'Unable to load cycle counts');
+    return data ?? [];
+  },
+
+  // =========================================================================
+  // YARD / GATE / POD
+  // =========================================================================
+  'yard.listEvents': async (input: { appointmentId?: string } | undefined, ctx) => {
+    let q = supabase.from('gate_events').select('*').order('occurred_at', { ascending: false }).limit(200);
+    if (input?.appointmentId) q = q.eq('appointment_id', input.appointmentId);
+    else if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('warehouse_company_id', ctx.user.companyId);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load gate events');
+    return data ?? [];
+  },
+  'yard.recordEvent': async (input: { appointmentId: string; kind: string; notes?: string; meta?: AnyRecord }) => {
+    const { data, error } = await supabase.rpc('gate_record_event', {
+      p_appointment_id: input.appointmentId,
+      p_kind: input.kind,
+      p_notes: input.notes ?? '',
+      p_meta: input.meta ?? {},
+    });
+    if (error) throwErr(error, 'Unable to record gate event');
+    return { id: data as string };
+  },
+  'yard.listMoves': async (_input, ctx) => {
+    const q = supabase.from('yard_moves').select('*').order('created_at', { ascending: false }).limit(200);
+    const { data, error } = isAdmin(ctx.user.role)
+      ? await q
+      : ctx.user.companyId ? await q.eq('warehouse_company_id', ctx.user.companyId) : { data: [], error: null };
+    if (error) throwErr(error, 'Unable to load yard moves');
+    return data ?? [];
+  },
+  'pod.list': async (input: { appointmentId?: string; shipmentId?: string } | undefined) => {
+    let q = supabase.from('pods').select('*').order('created_at', { ascending: false }).limit(100);
+    if (input?.appointmentId) q = q.eq('appointment_id', input.appointmentId);
+    if (input?.shipmentId) q = q.eq('shipment_id', input.shipmentId);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load PODs');
+    return data ?? [];
+  },
+  'pod.attach': async (input: { appointmentId?: string; shipmentId?: string; filePath: string; signerName?: string; notes?: string }) => {
+    const { data, error } = await supabase.rpc('attach_pod', {
+      p_appointment_id: input.appointmentId ?? null,
+      p_shipment_id: input.shipmentId ?? null,
+      p_file_path: input.filePath,
+      p_signer_name: input.signerName ?? '',
+      p_notes: input.notes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to attach POD');
+    return { id: data as string };
+  },
+
+  // =========================================================================
+  // NOTIFICATIONS / PUSH
+  // =========================================================================
+  'notifications.registerPushToken': async (input: { token: string; platform: string }, ctx) => {
+    const { error } = await supabase.rpc('register_push_token', {
+      p_user_id: ctx.user.id,
+      p_token: input.token,
+      p_platform: input.platform,
+    });
+    if (error) throwErr(error, 'Unable to register push token');
+    return { success: true };
+  },
+  'notifications.getPreferences': async (_input, ctx) => {
+    const { data } = await supabase.from('notification_preferences').select('*').eq('user_id', ctx.user.id).maybeSingle();
+    return data ?? { user_id: ctx.user.id, email_enabled: true, push_enabled: true, sms_enabled: false };
+  },
+  'notifications.savePreferences': async (input: AnyRecord, ctx) => {
+    await supabase.from('notification_preferences').upsert({
+      user_id: ctx.user.id,
+      email_enabled: input.email ?? true,
+      push_enabled: input.push ?? true,
+      sms_enabled: input.sms ?? false,
+    }, { onConflict: 'user_id' });
+    return { success: true };
+  },
+  'notifications.markAllRead': async (_input, ctx) => {
+    await supabase.from('notifications').update({ read: true, read_at: new Date().toISOString() }).eq('user_id', ctx.user.id).is('read_at', null);
+    return { success: true };
+  },
+
+  // =========================================================================
+  // REVIEWS — ratings by company / user (extends reviews namespace)
+  // =========================================================================
+  'reviews.companySummary': async (input: { companyId: string }) => {
+    const { data } = await supabase.from('review_summaries').select('*').eq('target_kind', 'company').eq('target_id', input.companyId).maybeSingle();
+    return data ?? { count: 0, avg_rating: 0 };
+  },
+  'reviews.workerSummary': async (input: { userId: string }) => {
+    const { data } = await supabase.from('review_summaries').select('*').eq('target_kind', 'worker').eq('target_id', input.userId).maybeSingle();
+    return data ?? { count: 0, avg_rating: 0 };
+  },
 };
 
 // ---------------------------------------------------------------------------
