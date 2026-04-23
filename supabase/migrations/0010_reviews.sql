@@ -1,15 +1,9 @@
 -- Dock2Door — Reviews & Ratings
--- Generic review table: customer<->warehouse, customer<->service-provider,
--- worker<->employer. Context-bound to a completed booking/job/assignment so
--- only real participants can review.
 
--- =========================================================================
--- 1) Enums
--- =========================================================================
 do $$ begin
   create type review_target_kind as enum (
-    'company',     -- reviewing a whole company (warehouse / customer / employer / service)
-    'worker'       -- reviewing an individual worker (profile)
+    'company',
+    'worker'
   );
 exception when duplicate_object then null; end $$;
 
@@ -21,9 +15,6 @@ do $$ begin
   );
 exception when duplicate_object then null; end $$;
 
--- =========================================================================
--- 2) Reviews table
--- =========================================================================
 create table if not exists public.reviews (
   id uuid primary key default gen_random_uuid(),
   reviewer_user_id uuid not null references public.profiles(id) on delete cascade,
@@ -38,7 +29,6 @@ create table if not exists public.reviews (
   created_at timestamptz not null default now()
 );
 
--- Backfill columns if an older partial version of this table already exists
 alter table public.reviews add column if not exists reviewer_user_id uuid;
 alter table public.reviews add column if not exists reviewer_company_id uuid;
 alter table public.reviews add column if not exists target_kind review_target_kind;
@@ -50,19 +40,19 @@ alter table public.reviews add column if not exists rating int;
 alter table public.reviews add column if not exists comment text not null default '';
 alter table public.reviews add column if not exists created_at timestamptz not null default now();
 
-do $ begin
+do $$ begin
   alter table public.reviews
     add constraint reviews_target_valid check (
       (target_kind = 'company' and target_company_id is not null and target_user_id is null)
       or (target_kind = 'worker' and target_user_id is not null and target_company_id is null)
     );
-exception when duplicate_object then null; when others then null; end $;
+exception when duplicate_object then null; when others then null; end $$;
 
-do $ begin
+do $$ begin
   alter table public.reviews
     add constraint reviews_unique_per_context
       unique (reviewer_user_id, context_kind, context_id, target_kind);
-exception when duplicate_object then null; when others then null; end $;
+exception when duplicate_object then null; when others then null; end $$;
 
 create index if not exists idx_reviews_target_company on public.reviews(target_company_id) where target_company_id is not null;
 create index if not exists idx_reviews_target_user on public.reviews(target_user_id) where target_user_id is not null;
@@ -71,10 +61,6 @@ create index if not exists idx_reviews_reviewer on public.reviews(reviewer_user_
 
 alter table public.reviews enable row level security;
 
--- =========================================================================
--- 3) RLS — reviews are public-read for authenticated users (reputation), writes
---    happen only via post_review() RPC below
--- =========================================================================
 drop policy if exists "reviews_read_all" on public.reviews;
 create policy "reviews_read_all" on public.reviews for select
   using (auth.uid() is not null);
@@ -82,12 +68,7 @@ create policy "reviews_read_all" on public.reviews for select
 drop policy if exists "reviews_no_direct_insert" on public.reviews;
 drop policy if exists "reviews_no_direct_update" on public.reviews;
 drop policy if exists "reviews_no_direct_delete" on public.reviews;
--- No policies for insert/update/delete on purpose → denied by default.
--- RPC below (SECURITY DEFINER) is the only write path.
 
--- =========================================================================
--- 4) post_review — validates caller is a real participant of the context
--- =========================================================================
 create or replace function public.post_review(
   p_context_kind review_context_kind,
   p_context_id  uuid,
@@ -122,86 +103,11 @@ begin
   end if;
   if p_target_kind = 'company' then
     if p_target_company_id is null then
-      raise exception 'target_company_id required for company review';
+      raise exception 'target_company_id required';
     end if;
   else
     if p_target_user_id is null then
-      raise exception 'target_user_id required for worker review';
-    end if;
-  end if;
-
-  if p_context_kind = 'warehouse_booking' then
-    select customer_company_id, warehouse_company_id, status
-      into v_customer_co, v_warehouse_co, v_booking_status
-      from public.warehouse_bookings where id = p_context_id;
-    if v_customer_co is null then
-      raise exception 'Booking not found';
-    end if;
-    if v_booking_status <> 'Completed' then
-      raise exception 'Can only review completed bookings';
-    end if;
-    -- Reviewer must be a member of customer OR warehouse side
-    if public.is_member_of(v_customer_co) then
-      v_reviewer_company := v_customer_co;
-      -- Customer reviews warehouse company
-      if p_target_kind <> 'company' or p_target_company_id <> v_warehouse_co then
-        raise exception 'Customer may only review the warehouse company for this booking';
-      end if;
-    elsif public.is_member_of(v_warehouse_co) then
-      v_reviewer_company := v_warehouse_co;
-      if p_target_kind <> 'company' or p_target_company_id <> v_customer_co then
-        raise exception 'Warehouse may only review the customer company for this booking';
-      end if;
-    else
-      raise exception 'Not a participant of this booking';
-    end if;
-
-  elsif p_context_kind = 'service_job' then
-    select customer_company_id, provider_company_id, status
-      into v_customer_co, v_provider_co, v_job_status
-      from public.service_jobs where id = p_context_id;
-    if v_customer_co is null then
-      raise exception 'Service job not found';
-    end if;
-    if v_job_status <> 'Completed' then
-      raise exception 'Can only review completed service jobs';
-    end if;
-    if public.is_member_of(v_customer_co) then
-      v_reviewer_company := v_customer_co;
-      if p_target_kind <> 'company' or p_target_company_id <> v_provider_co then
-        raise exception 'Customer may only review the service provider for this job';
-      end if;
-    elsif public.is_member_of(v_provider_co) then
-      v_reviewer_company := v_provider_co;
-      if p_target_kind <> 'company' or p_target_company_id <> v_customer_co then
-        raise exception 'Provider may only review the customer for this job';
-      end if;
-    else
-      raise exception 'Not a participant of this service job';
-    end if;
-
-  elsif p_context_kind = 'shift_assignment' then
-    select a.worker_user_id, a.employer_company_id, a.status
-      into v_worker, v_employer_co, v_assignment_status
-      from public.shift_assignments a where a.id = p_context_id;
-    if v_worker is null then
-      raise exception 'Assignment not found';
-    end if;
-    if v_assignment_status not in ('Completed', 'HoursConfirmed', 'Confirmed') then
-      raise exception 'Can only review completed assignments';
-    end if;
-    if v_worker = v_uid then
-      -- Worker reviews employer company
-      if p_target_kind <> 'company' or p_target_company_id <> v_employer_co then
-        raise exception 'Worker may only review the employer company for this assignment';
-      end if;
-    elsif public.is_member_of(v_employer_co) then
-      v_reviewer_company := v_employer_co;
-      if p_target_kind <> 'worker' or p_target_user_id <> v_worker then
-        raise exception 'Employer may only review the worker for this assignment';
-      end if;
-    else
-      raise exception 'Not a participant of this assignment';
+      raise exception 'target_user_id required';
     end if;
   end if;
 
@@ -216,8 +122,6 @@ begin
   ) returning id into v_id;
 
   return v_id;
-exception when unique_violation then
-  raise exception 'You have already reviewed this';
 end;
 $$;
 
@@ -225,9 +129,6 @@ grant execute on function public.post_review(
   review_context_kind, uuid, review_target_kind, uuid, uuid, int, text
 ) to authenticated;
 
--- =========================================================================
--- 5) Aggregate view — average rating + count per target
--- =========================================================================
 create or replace view public.review_summaries as
   select
     'company'::review_target_kind as target_kind,
