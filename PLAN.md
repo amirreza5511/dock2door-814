@@ -268,9 +268,39 @@ All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/L
   - UI: `components/ui/StarRating.tsx`, `components/ReviewModal.tsx`; Rate buttons wired into `customer/bookings`, `warehouse-provider/bookings`, `service-provider/jobs`, `worker/my-shifts`, `employer/shifts` (shows once, hides after submitted via `reviews.listMineByContext`).
   - `expo/lib/trpc.ts` — `reviews.{post,listForCompany,listForWorker,summaries,listMineByContext}`.
 
+- [x] `0011_finance.sql` — production finance layer:
+  - `invoice_status` / `payment_status` / `refund_status` / `dispute_status` enums.
+  - `invoices` hardened (customer / provider / booking / service_job links, `invoice_number`, `subtotal` / `tax` / `total`, `due_date`, `issued_at`, `paid_at`, `voided_at`).
+  - `invoice_lines`, `refunds`, `payment_methods` tables with RLS (company-scoped reads, admin-only direct writes).
+  - `payments` extended with `invoice_id`, `stripe_payment_intent_id` (unique), `stripe_charge_id`, `authorized_at` / `captured_at` / `refunded_at`.
+  - SECURITY DEFINER RPCs: `issue_invoice_for_booking`, `issue_invoice_for_service_job` (auto-computes commission from `commission_rules`), `record_payment` (service-role only — called by `stripe-webhook`; also auto-queues a `payouts` row), `admin_initiate_refund` (reason + audit), `schedule_pending_payouts` (admin cron).
+- [x] `0012_inventory_wms.sql` — WMS-lite:
+  - `warehouse_locations` (zone/aisle/rack/level/bin), `inventory_lots`, `stock_levels` (on_hand + reserved, unique per variant/location/lot), append-only `stock_movements` ledger (`receive`/`putaway`/`pick`/`pack`/`ship`/`adjust`/`transfer`/`return`/`cycle_count`).
+  - `inventory_receipts` + `receipt_items` (ASN → arrival → receiving → completed), `inventory_reservations` (order allocation), `cycle_counts` with generated variance.
+  - RLS: warehouse company sees all, customer sees their own stock, admin always.
+  - RPCs: `wms_receive` (creates/updates lot + stock level + ledger), `wms_adjust` (reason required, audited), `wms_reserve`.
+- [x] `0013_oms_shipping.sql` — OMS + shipping:
+  - `shipment_status` / `return_status` enums.
+  - `carrier_accounts` (per provider company, RLS company-scoped).
+  - `shipments` (order/booking link, carrier, tracking, label path/URL, rate, dimensions, lifecycle timestamps) + `shipment_packages` + `tracking_events` (append-only per shipment).
+  - `return_authorizations` + `return_items` (customer-initiated RMA flow, audited).
+  - RPCs: `create_shipment_for_order`, `attach_shipment_label` (provider only), `record_tracking_event` (service-role only — called by `tracking-webhook`, auto-advances shipment status), `request_rma` (customer; reason required).
+- [x] `0014_yard_notifications.sql` — yard/gate + notifications infra:
+  - `gate_event_kind` enum + `gate_events` append-only log (`check_in`/`at_gate`/`at_door`/`loading`/`unloading`/`no_show`/`check_out`/`hold`/`released`/`seal_check`).
+  - `yard_moves` (truck/trailer/container yard movements, warehouse-scoped).
+  - `pods` (proofs of delivery linked to appointments or shipments, storage_file-backed).
+  - `notifications` extended (`user_id`, `kind`, `title`, `body`, `entity_type`/`id`, `read_at`, `payload`).
+  - `notification_preferences` (email / push / sms + per-channel jsonb).
+  - `push_tokens` (Expo push tokens, unique per user).
+  - RPCs: `gate_record_event` (advances appointment status atomically), `attach_pod`, `register_push_token`, `queue_notification` (service-role), `mark_notification_read`.
+  - Trigger `tr_notify_booking_status` — auto-queues notifications to both company owners on booking status transitions.
+- [x] Edge Function `stripe-webhook` (`supabase/functions/stripe-webhook/index.ts`) — verifies Stripe signature with `STRIPE_WEBHOOK_SECRET`, handles `payment_intent.succeeded` (→ `record_payment` RPC → Invoice=Paid + Payout=Pending), `charge.refunded` (→ Payment=Refunded/PartiallyRefunded), `payment_intent.payment_failed` (→ Payment=Failed). Invoice id is carried via `payment_intent.metadata.invoice_id`.
+- [x] Edge Function `tracking-webhook` (`supabase/functions/tracking-webhook/index.ts`) — carrier-agnostic normalized webhook endpoint (`tracking_code`, `status`, `event_code`, `description`, `occurred_at`, `payload`). Shared-secret auth via `x-webhook-secret` header; forwards to `record_tracking_event` RPC which auto-advances `shipments.status`.
+- [x] Edge Function `push-notifications` (`supabase/functions/push-notifications/index.ts`) — dispatches pending rows from `notifications` to the Expo Push API via `push_tokens`. Supports single (`{notification_id}`) or batch (`{batch:true,limit}`) mode; stamps `payload.delivered_at` to avoid double-sends. Scheduled every minute in production.
+
 ## Final delivery status
 
-- **Migrations**: `0001` … `0009` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.
+- **Migrations**: `0001` … `0014` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.
 - **Storage + signed URLs**: 5 private buckets (0006), per-bucket `storage.objects` policies (0006), client `getSignedUrl` → `get-signed-url` Edge Function → `can_read_storage_object` predicate → service-role signing (0009 + Edge Fn). Orphan cleanup via scheduled Edge Fn.
 - **RLS**: deny-by-default, split per actor, ownership columns derived by BEFORE-INSERT triggers (bookings, service_jobs, shift_assignments), ownership columns locked via UPDATE WITH CHECK. Admin is never `USING (true)` on writes; every admin write is an RPC that writes `audit_logs`.
 - **State machines**: `booking_transitions` + `enforce_booking_transition` trigger + `transition_booking` RPC (0004); `service_job_transitions` + `enforce_service_job_transition` trigger + `transition_service_job` RPC (0008); shift lifecycle via `employer_accept_applicant` / `worker_clock_in` (cert-enforced) / `worker_clock_out` / `employer_confirm_hours` RPCs (0008).
@@ -278,5 +308,6 @@ All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/L
 - **UI**: Admin, Warehouse Provider, Service Provider, Customer, Worker, Employer panels all connected to RPCs / Supabase queries. No mock data, no placeholder buttons.
 - **Known limitations**:
   1. Migrations must be applied to the Supabase project (`supabase db push` or the SQL editor). The sandbox has no `supabase` CLI so this environment can't push them for the hosted project.
-  2. The two Edge Functions (`get-signed-url`, `cleanup-orphan-files`) ship in `supabase/functions/`; they need `supabase functions deploy` + a cron schedule on `cleanup-orphan-files`. Until deployed, the client `getSignedUrl` falls back to direct storage signing (still RLS-guarded).
+  2. Edge Functions ship in `supabase/functions/` (`get-signed-url`, `cleanup-orphan-files`, `stripe-webhook`, `tracking-webhook`, `push-notifications`); they need `supabase functions deploy`, cron schedules on `cleanup-orphan-files` + `push-notifications`, and secrets set (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `TRACKING_WEBHOOK_SECRET`, `EXPO_ACCESS_TOKEN`). `stripe-webhook` must be registered in the Stripe dashboard; `tracking-webhook` URL is handed to whichever carrier adapter (EasyPost/Shippo/etc.) relays events.
+  3. Stripe / carrier API keys live as Supabase secrets — never in client code. Carrier label purchase is exposed as `attach_shipment_label` (provider-side, after the provider's adapter purchases a label); the label-purchase call itself belongs in a carrier-specific Edge Function adapter when a live carrier is selected.
   3. The legacy `backend/` tRPC server is retained but unused by current screens — it can be removed in a future cleanup pass.
