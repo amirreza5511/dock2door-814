@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Warehouse, BookOpen, PlusCircle, Users, Archive } from 'lucide-react-native';
+import { LayoutDashboard, Warehouse, BookOpen, PlusCircle, Users, Archive, Wallet } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 export default function WarehouseProviderLayout() {
@@ -19,6 +19,7 @@ export default function WarehouseProviderLayout() {
       <Tabs.Screen name="create-listing" options={{ title: 'New', tabBarIcon: ({ color }) => <PlusCircle size={22} color={color} /> }} />
       <Tabs.Screen name="staff" options={{ title: 'Staff', tabBarIcon: ({ color }) => <Users size={22} color={color} /> }} />
       <Tabs.Screen name="wms" options={{ title: 'WMS', tabBarIcon: ({ color }) => <Archive size={22} color={color} /> }} />
+      <Tabs.Screen name="stripe-connect" options={{ title: 'Payouts', tabBarIcon: ({ color }) => <Wallet size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
     </Tabs>
   );

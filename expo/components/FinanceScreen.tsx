@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BadgeDollarSign, CreditCard, FileText, Wallet, ExternalLink } from 'lucide-react-native';
+import { BadgeDollarSign, CreditCard, FileText, Wallet, ExternalLink, CreditCard as PayIcon, Linking as LinkIcon } from 'lucide-react-native';
+import { Linking } from 'react-native';
+import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -71,6 +73,27 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
   const renderInvoiceQuery = trpc.payments.renderInvoice.useQuery({ invoiceId: selectedId ?? '' }, { enabled: tab === 'invoices' && Boolean(selectedId) });
   const payoutStatusMutation = trpc.payments.updatePayoutStatus.useMutation();
   const invoiceStatusMutation = trpc.payments.updateInvoiceStatus.useMutation();
+  const [paying, setPaying] = useState<boolean>(false);
+
+  const payInvoice = async (invoiceId: string) => {
+    try {
+      setPaying(true);
+      const successUrl = Platform.OS === 'web' ? (window.location.origin + '/payment-success') : 'dock2door://payment-success';
+      const cancelUrl = Platform.OS === 'web' ? (window.location.origin + '/payment-cancel') : 'dock2door://payment-cancel';
+      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
+        body: { invoice_id: invoiceId, success_url: successUrl, cancel_url: cancelUrl },
+      });
+      if (error) throw new Error(error.message);
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error('Checkout URL not returned');
+      if (Platform.OS === 'web') window.open(url, '_blank');
+      else await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert('Unable to start payment', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const activeQuery = useMemo(() => {
     if (tab === 'payments') return paymentsQuery;
@@ -230,6 +253,14 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
                 <DetailLine label="Total" value={`$${Number(selectedInvoice.total_amount ?? 0).toFixed(2)} ${String(selectedInvoice.currency ?? 'CAD').toUpperCase()}`} />
                 <DetailLine label="Status" value={String(selectedInvoice.status ?? '—')} />
                 <View style={styles.actionRow}>
+                  {selectedInvoice.status !== 'Paid' && selectedInvoice.status !== 'Void' ? (
+                    <Button
+                      label="Pay invoice"
+                      onPress={() => void payInvoice(String(selectedInvoice.id))}
+                      loading={paying}
+                      icon={<PayIcon size={14} color={C.white} />}
+                    />
+                  ) : null}
                   <Button
                     label={Platform.OS === 'web' ? 'View / Print Invoice' : 'Invoice preview'}
                     variant="secondary"

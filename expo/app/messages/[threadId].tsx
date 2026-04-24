@@ -8,6 +8,7 @@ import AttachmentList, { type AttachmentItem } from '@/components/ui/AttachmentL
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 
 interface MessageRow {
@@ -44,7 +45,7 @@ export default function MessageThread() {
   const scrollRef = useRef<ScrollView | null>(null);
 
   const threadQuery = trpc.messaging.getThread.useQuery({ threadId: threadId ?? '' }, { enabled: Boolean(threadId) });
-  const messagesQuery = trpc.messaging.listMessages.useQuery({ threadId: threadId ?? '' }, { enabled: Boolean(threadId), refetchInterval: 15000 });
+  const messagesQuery = trpc.messaging.listMessages.useQuery({ threadId: threadId ?? '' }, { enabled: Boolean(threadId) });
   const sendMutation = trpc.messaging.sendMessage.useMutation({
     onSuccess: async () => {
       setText('');
@@ -108,6 +109,27 @@ export default function MessageThread() {
       void markReadMutation.mutateAsync({ threadId }).catch(() => undefined);
     }
   }, [threadId, markReadMutation]);
+
+  useEffect(() => {
+    if (!threadId) return;
+    console.log('[thread-realtime] subscribing', threadId);
+    const channel = supabase
+      .channel(`thread-messages-${threadId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'thread_messages', filter: `thread_id=eq.${threadId}` },
+        () => {
+          void utils.messaging.listMessages.invalidate({ threadId });
+          void utils.messaging.listThreads.invalidate();
+          void markReadMutation.mutateAsync({ threadId }).catch(() => undefined);
+        },
+      )
+      .subscribe();
+    return () => {
+      console.log('[thread-realtime] unsubscribing', threadId);
+      void supabase.removeChannel(channel);
+    };
+  }, [threadId, utils, markReadMutation]);
 
   useEffect(() => {
     if (messagesQuery.data && messagesQuery.data.length > 0) {
