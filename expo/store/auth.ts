@@ -21,6 +21,9 @@ interface AuthState {
   register: (data: RegisterInput) => Promise<{ success: boolean; error?: string }>;
   refreshSession: () => Promise<boolean>;
   updateUser: (updates: Partial<User>) => void;
+  sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  sendMagicLink: (email: string) => Promise<{ success: boolean; error?: string }>;
+  updatePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 export { getRoleRoute };
@@ -191,5 +194,57 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     const currentUser = get().user;
     if (!currentUser) return;
     set({ user: { ...currentUser, ...updates } });
+  },
+
+  sendPasswordReset: async (email) => {
+    try {
+      console.log('[Auth] sendPasswordReset', { email });
+      const redirectTo = typeof window !== 'undefined' && window.location
+        ? `${window.location.origin}/auth/update-password`
+        : undefined;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+      if (error) {
+        console.log('[Auth] sendPasswordReset error', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send reset email';
+      return { success: false, error: message };
+    }
+  },
+
+  sendMagicLink: async (email) => {
+    try {
+      console.log('[Auth] sendMagicLink', { email });
+      const emailRedirectTo = typeof window !== 'undefined' && window.location
+        ? `${window.location.origin}`
+        : undefined;
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { emailRedirectTo, shouldCreateUser: false },
+      });
+      if (error) {
+        console.log('[Auth] sendMagicLink error', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to send magic link';
+      return { success: false, error: message };
+    }
+  },
+
+  updatePassword: async (newPassword) => {
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update password';
+      return { success: false, error: message };
+    }
   },
 }));

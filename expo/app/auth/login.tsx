@@ -101,6 +101,14 @@ export default function Login() {
             size="lg"
           />
 
+          <TouchableOpacity
+            onPress={() => router.push('/auth/forgot-password' as any)}
+            style={styles.forgotRow}
+            testID="forgot-link"
+          >
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity onPress={() => router.push('/auth/signup' as any)} style={styles.switchRow}>
             <Text style={styles.switchText}>{'Don\'t have an account? '}</Text>
             <Text style={styles.switchLink}>Create one</Text>
@@ -147,6 +155,8 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: C.textSecondary },
   form: { gap: 16, marginBottom: 40 },
   error: { fontSize: 13, color: C.red, textAlign: 'center' },
+  forgotRow: { alignItems: 'center', marginTop: -4 },
+  forgotText: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 4 },
   switchText: { fontSize: 14, color: C.textSecondary },
   switchLink: { fontSize: 14, color: C.accent, fontWeight: '600' as const },
