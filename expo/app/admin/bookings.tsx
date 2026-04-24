@@ -88,21 +88,35 @@ export default function AdminBookingRoutingScreen() {
     } finally { setRouting(false); }
   };
 
+  const runForce = async (bookingId: string, next: 'Cancelled' | 'Completed', reason: string) => {
+    try {
+      const { error } = await supabase.rpc('admin_force_booking_status', { p_booking_id: bookingId, p_next_status: next, p_reason: reason });
+      if (error) throw error;
+      await bootstrap.refetch();
+      await utils.bookings.listMine.invalidate();
+      Alert.alert('Booking updated', `Status forced to ${next}. Audit log written.`);
+    } catch (err) { Alert.alert('Force failed', err instanceof Error ? err.message : 'Unknown error'); }
+  };
+
   const forceStatus = async (bookingId: string, next: 'Cancelled' | 'Completed') => {
-    Alert.prompt?.('Reason', `Admin reason for forcing booking to ${next}`, async (reason) => {
-      if (!reason) return;
-      try {
-        const { error } = await supabase.rpc('admin_force_booking_status', { p_booking_id: bookingId, p_next_status: next, p_reason: reason });
-        if (error) throw error;
-        await bootstrap.refetch();
-      } catch (err) { Alert.alert('Force failed', err instanceof Error ? err.message : 'Unknown error'); }
-    }) ?? (async () => {
-      try {
-        const { error } = await supabase.rpc('admin_force_booking_status', { p_booking_id: bookingId, p_next_status: next, p_reason: 'Admin broker override' });
-        if (error) throw error;
-        await bootstrap.refetch();
-      } catch (err) { Alert.alert('Force failed', err instanceof Error ? err.message : 'Unknown error'); }
-    })();
+    const confirmWith = (reason: string) => {
+      Alert.alert(
+        next === 'Cancelled' ? 'Force cancel?' : 'Force complete?',
+        `This writes an audit log entry and cannot be undone.\n\nReason: ${reason}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: `Force ${next}`, style: 'destructive', onPress: () => void runForce(bookingId, next, reason) },
+        ],
+      );
+    };
+    if (typeof Alert.prompt === 'function') {
+      Alert.prompt('Admin reason (required)', `Describe why this booking is being forced to ${next}.`, (reason) => {
+        if (!reason || !reason.trim()) { Alert.alert('Reason required'); return; }
+        confirmWith(reason.trim());
+      });
+    } else {
+      confirmWith('Admin broker override');
+    }
   };
 
   if (bootstrap.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading bookings" /></View>;

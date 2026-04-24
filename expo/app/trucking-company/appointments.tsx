@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, CalendarPlus, CircleDot, Clock, Filter, MapPin, Plus, Search, Truck, UserCheck, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
@@ -36,7 +37,7 @@ const INITIAL_ASSIGN: AssignForm = { driverId: '', driverName: '', truckPlate: '
 export default function DispatcherBoardScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
-  const dashboardQuery = trpc.operations.truckingDashboard.useQuery();
+  const dashboardQuery = trpc.operations.truckingDashboard.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
   const updateMutation = trpc.operations.checkInAppointment.useMutation({
     onSuccess: async () => { await utils.operations.truckingDashboard.invalidate(); },
   });
@@ -88,8 +89,14 @@ export default function DispatcherBoardScreen() {
   const visibleColumns = filter === 'All' ? COLUMNS : COLUMNS.filter((c) => c.key === filter);
 
   const advance = async (id: string, status: string) => {
-    try { await updateMutation.mutateAsync({ appointmentId: id, status }); }
-    catch (err) { Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown'); }
+    try {
+      if (Platform.OS !== 'web') { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
+      await updateMutation.mutateAsync({ appointmentId: id, status });
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
+    } catch (err) {
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
+      Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown');
+    }
   };
 
   const handleAssign = async () => {
@@ -112,12 +119,19 @@ export default function DispatcherBoardScreen() {
 
   const handleException = async () => {
     if (!exceptionId) return;
-    if (!exceptionReason.trim()) { Alert.alert('Reason required'); return; }
-    try {
-      await updateMutation.mutateAsync({ appointmentId: exceptionId, status: 'NoShow' });
-      setExceptionId(null);
-      setExceptionReason('');
-    } catch (err) { Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown'); }
+    if (!exceptionReason.trim()) { Alert.alert('Reason required', 'Describe why this appointment is a no-show or exception.'); return; }
+    const doIt = async () => {
+      try {
+        await updateMutation.mutateAsync({ appointmentId: exceptionId, status: 'NoShow' });
+        if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); }
+        setExceptionId(null);
+        setExceptionReason('');
+      } catch (err) { Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown'); }
+    };
+    Alert.alert('Flag No-Show?', 'This marks the appointment as NoShow and notifies operations. This cannot be auto-undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Flag No-Show', style: 'destructive', onPress: () => void doIt() },
+    ]);
   };
 
   const handleCreate = async () => {
@@ -251,8 +265,19 @@ export default function DispatcherBoardScreen() {
                         <TouchableOpacity
                           onPress={() => void advance(id, next)}
                           style={[styles.actionBtn, styles.actionPrimary]}
+                          testID={`advance-${id}`}
                         >
                           <Text style={styles.actionPrimaryText}>→ {next}</Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {col.key !== 'Unassigned' && driver && col.key !== 'Completed' && col.key !== 'Exception' ? (
+                        <TouchableOpacity
+                          onPress={() => { setAssignForm({ ...INITIAL_ASSIGN, driverName: driver, truckPlate: plate }); setAssignId(id); }}
+                          style={[styles.actionBtn, styles.actionGhost]}
+                          testID={`reassign-${id}`}
+                        >
+                          <UserCheck size={12} color={C.accent} />
                         </TouchableOpacity>
                       ) : null}
 

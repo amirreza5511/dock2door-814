@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Archive, CheckCircle2, ClipboardCheck, MapPin, Minus, Move, PackageOpen, Plus, Scan, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
@@ -49,9 +50,35 @@ export default function WmsOperationsScreen() {
   const [recvForm, setRecvForm] = useState({ step: 1, receiptId: '', variantId: '', locationId: '', quantity: '', lot: '', reference: '' });
   const [xferForm, setXferForm] = useState({ step: 1, variantId: '', fromLocation: '', toLocation: '', quantity: '' });
   const [countForm, setCountForm] = useState({ step: 1, variantId: '', locationId: '', countedQty: '', systemQty: '', reason: '' });
+  const [stockSearch, setStockSearch] = useState('');
 
   const locList = useMemo<LocationRow[]>(() => (locations.data ?? []) as LocationRow[], [locations.data]);
   const stockList = useMemo<StockRow[]>(() => (stock.data ?? []) as StockRow[], [stock.data]);
+  const filteredStock = useMemo(() => {
+    const s = stockSearch.trim().toLowerCase();
+    if (!s) return stockList;
+    return stockList.filter((r) => JSON.stringify(r).toLowerCase().includes(s));
+  }, [stockList, stockSearch]);
+
+  const manualAdjust = (variantId: string, locationId: string, delta: number) => {
+    Alert.alert(
+      delta > 0 ? 'Adjust +1?' : 'Adjust −1?',
+      'This writes a stock movement to the ledger. Use cycle count for multi-unit variances.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm',
+          style: delta < 0 ? 'destructive' : 'default',
+          onPress: () => {
+            if (Platform.OS !== 'web') { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }
+            void adjust.mutateAsync({ variantId, locationId, delta, reason: 'manual_adjust' }).catch((err) => {
+              Alert.alert('Adjust failed', err instanceof Error ? err.message : 'Unknown');
+            });
+          },
+        },
+      ],
+    );
+  };
   const receiptList = useMemo<ReceiptRow[]>(() => (receipts.data ?? []) as ReceiptRow[], [receipts.data]);
   const countList = useMemo<CycleCountRow[]>(() => (counts.data ?? []) as CycleCountRow[], [counts.data]);
 
@@ -313,9 +340,15 @@ export default function WmsOperationsScreen() {
         {activeQuery.isLoading ? <ScreenFeedback state="loading" title="Loading" /> : null}
 
         {tab === 'board' ? (
-          stockList.length === 0 ? (
-            <EmptyState icon={Archive} title="No stock yet" description="Receive inventory to build live stock levels." />
-          ) : stockList.map((s) => (
+          <>
+          <View style={styles.stockSearch}>
+            <Scan size={13} color={C.textMuted} />
+            <TextInput value={stockSearch} onChangeText={setStockSearch} placeholder="Search SKU, location, lot…" placeholderTextColor={C.textMuted} style={styles.stockSearchInput} />
+            {stockSearch ? <TouchableOpacity onPress={() => setStockSearch('')}><X size={13} color={C.textMuted} /></TouchableOpacity> : null}
+          </View>
+          {filteredStock.length === 0 ? (
+            <EmptyState icon={Archive} title={stockSearch ? 'No matches' : 'No stock yet'} description={stockSearch ? 'Try another SKU, location or lot.' : 'Receive inventory to build live stock levels.'} />
+          ) : filteredStock.map((s) => (
             <View key={s.id} style={styles.stockCard}>
               <View style={styles.stockTop}>
                 <Archive size={16} color={C.blue} />
@@ -328,12 +361,13 @@ export default function WmsOperationsScreen() {
               <View style={styles.stockBar}>
                 <Text style={styles.stockBarLabel}>On-hand {s.on_hand} · Reserved {s.reserved}</Text>
                 <View style={styles.adjustRow}>
-                  <TouchableOpacity onPress={() => void adjust.mutateAsync({ variantId: s.variant_id, locationId: s.location_id, delta: 1, reason: 'manual_adjust' })} style={styles.adjBtn}><Plus size={13} color={C.green} /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => void adjust.mutateAsync({ variantId: s.variant_id, locationId: s.location_id, delta: -1, reason: 'manual_adjust' })} style={styles.adjBtn}><Minus size={13} color={C.red} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => manualAdjust(s.variant_id, s.location_id, 1)} style={styles.adjBtn}><Plus size={13} color={C.green} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => manualAdjust(s.variant_id, s.location_id, -1)} style={styles.adjBtn}><Minus size={13} color={C.red} /></TouchableOpacity>
                 </View>
               </View>
             </View>
-          ))
+          ))}
+          </>
         ) : null}
 
         {tab === 'receive' ? (
@@ -457,6 +491,8 @@ const styles = StyleSheet.create({
   stockBarLabel: { fontSize: 11, color: C.textMuted },
   adjustRow: { flexDirection: 'row', gap: 6 },
   adjBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  stockSearch: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border, paddingHorizontal: 10, paddingVertical: 8 },
+  stockSearchInput: { flex: 1, color: C.text, fontSize: 13, padding: 0 },
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6, marginTop: 10 },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
   listTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },

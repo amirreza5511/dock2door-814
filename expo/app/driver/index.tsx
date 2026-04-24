@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Truck, X } from 'lucide-react-native';
@@ -33,7 +34,7 @@ export default function DriverHomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
-  const jobsQuery = trpc.operations.driverJobs.useQuery();
+  const jobsQuery = trpc.operations.driverJobs.useQuery(undefined, { refetchInterval: 20000, refetchOnWindowFocus: true });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
     onSuccess: async () => { await utils.operations.driverJobs.invalidate(); },
   });
@@ -59,17 +60,35 @@ export default function DriverHomeScreen() {
     return { active: active.sort(sortAsc), upcoming: upcoming.sort(sortAsc), done: done.sort(sortAsc).reverse() };
   }, [jobs]);
 
-  const advance = async (job: JobRow) => {
+  const doAdvance = async (job: JobRow) => {
     const next = NEXT_ACTION[job.status];
     if (!next) return;
     try {
+      if (Platform.OS !== 'web') { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }
       await statusMutation.mutateAsync({ appointmentId: job.id, status: next.status });
       const map: Record<string, string> = { CheckedIn: 'check_in', AtDoor: 'at_door', Loading: 'loading', Completed: 'check_out', Unloading: 'unloading', EnRoute: 'en_route' };
       const kind = map[next.status];
       if (kind) { try { await eventMutation.mutateAsync({ appointmentId: job.id, kind }); } catch { /* non-fatal */ } }
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
     } catch (err) {
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
       Alert.alert('Status update failed', err instanceof Error ? err.message : 'Unknown');
     }
+  };
+
+  const advance = async (job: JobRow) => {
+    const next = NEXT_ACTION[job.status];
+    if (!next) return;
+    if (next.status === 'Completed') {
+      const hasPod = Boolean(job.data?.podFileId);
+      const msg = hasPod ? 'Depart and mark this job complete?' : 'No POD captured yet. Depart and complete without POD?';
+      Alert.alert('Depart?', msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: hasPod ? 'Depart' : 'Depart anyway', style: hasPod ? 'default' : 'destructive', onPress: () => void doAdvance(job) },
+      ]);
+      return;
+    }
+    await doAdvance(job);
   };
 
   const reportIssue = async () => {

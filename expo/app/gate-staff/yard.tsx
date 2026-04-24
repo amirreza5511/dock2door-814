@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, CircleDot, Clock, DoorOpen, MoveRight, Pause, PlayCircle, Truck, X } from 'lucide-react-native';
@@ -27,9 +28,9 @@ export default function YardBoardScreen() {
   const utils = trpc.useUtils();
   const [tab, setTab] = useState<Tab>('board');
 
-  const panelQuery = trpc.operations.gatePanel.useQuery();
-  const eventsQuery = trpc.yard.listEvents.useQuery();
-  const movesQuery = trpc.yard.listMoves.useQuery();
+  const panelQuery = trpc.operations.gatePanel.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
+  const eventsQuery = trpc.yard.listEvents.useQuery(undefined, { refetchInterval: 30000 });
+  const movesQuery = trpc.yard.listMoves.useQuery(undefined, { refetchInterval: 30000 });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
     onSuccess: async () => {
       await utils.operations.gatePanel.invalidate();
@@ -89,11 +90,22 @@ export default function YardBoardScreen() {
     } catch (err) { Alert.alert('Unable to release', err instanceof Error ? err.message : 'Unknown'); }
   };
 
-  const complete = async (id: string) => {
+  const doComplete = async (id: string) => {
     try {
+      if (Platform.OS !== 'web') { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); }
       await statusMutation.mutateAsync({ appointmentId: id, status: 'Completed' });
       await recordMutation.mutateAsync({ appointmentId: id, kind: 'check_out', notes: 'Checked out' });
-    } catch (err) { Alert.alert('Unable to complete', err instanceof Error ? err.message : 'Unknown'); }
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
+    } catch (err) {
+      if (Platform.OS !== 'web') { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error); }
+      Alert.alert('Unable to complete', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
+  const complete = async (id: string) => {
+    Alert.alert('Check out?', 'Mark this appointment as completed and free the door.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Check out', onPress: () => void doComplete(id) },
+    ]);
   };
 
   if (panelQuery.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading yard" /></View>;
