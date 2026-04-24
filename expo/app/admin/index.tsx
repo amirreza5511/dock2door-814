@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -18,6 +18,10 @@ export default function AdminDashboard() {
   const logout = useAuthStore((s) => s.logout);
   const bootstrapQuery = useDockBootstrapData();
   const { companies, users, warehouseListings, serviceListings, shiftPosts, warehouseBookings, disputes, payments, workerCertifications } = bootstrapQuery.data;
+
+  useFocusEffect(useCallback(() => {
+    void bootstrapQuery.refetch();
+  }, [bootstrapQuery]));
 
   const stats = useMemo(() => ({
     pendingCompanies: companies.filter((c) => c.status === 'PendingApproval').length,
@@ -69,7 +73,12 @@ export default function AdminDashboard() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={bootstrapQuery.isFetching} onRefresh={() => void bootstrapQuery.refetch()} tintColor={C.accent} />}
+      >
         <ResponsiveContainer padded={false}>
         {/* Stats */}
         <View style={styles.statsGrid}>

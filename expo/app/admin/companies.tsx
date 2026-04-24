@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from 'expo-router';
 import { Building2, CheckCircle, XCircle, Edit } from 'lucide-react-native';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
@@ -32,7 +33,14 @@ export default function AdminCompanies() {
   });
   const { companies, warehouseListings, serviceListings } = bootstrapQuery.data;
 
-  const [filter, setFilter] = useState<CompanyStatus | 'All'>('All');
+  useFocusEffect(useCallback(() => {
+    void bootstrapQuery.refetch();
+  }, [bootstrapQuery]));
+
+  const initialFilter: CompanyStatus | 'All' = useMemo(() => (
+    companies.some((c) => c.status === 'PendingApproval') ? 'PendingApproval' : 'All'
+  ), [companies]);
+  const [filter, setFilter] = useState<CompanyStatus | 'All'>(initialFilter);
   const [selected, setSelected] = useState<Company | null>(null);
   const [detailModal, setDetailModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -118,7 +126,18 @@ export default function AdminCompanies() {
         ))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={bootstrapQuery.isFetching} onRefresh={() => void bootstrapQuery.refetch()} tintColor={C.accent} />}
+      >
+        {filtered.length === 0 && (
+          <View style={styles.emptyWrap}>
+            <Building2 size={28} color={C.textMuted} />
+            <Text style={styles.emptyTitle}>No companies{filter !== 'All' ? ` (${filter === 'PendingApproval' ? 'Pending' : filter})` : ''}</Text>
+            <Text style={styles.emptySub}>Pull down to refresh. If you just created a company and it isn&apos;t here, make sure you&apos;re logged in as an admin (user_roles.role = &apos;admin&apos;).</Text>
+          </View>
+        )}
         {filtered.map((c) => (
           <TouchableOpacity key={c.id} onPress={() => openDetail(c)} activeOpacity={0.85}>
             <Card style={styles.card}>
@@ -224,4 +243,7 @@ const styles = StyleSheet.create({
   editSectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginTop: 8 },
   formGap: { gap: 12 },
   actionBtns: { gap: 10 },
+  emptyWrap: { alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingTop: 48 },
+  emptyTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
+  emptySub: { fontSize: 12, color: C.textMuted, textAlign: 'center', lineHeight: 17 },
 });
