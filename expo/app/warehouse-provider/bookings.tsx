@@ -46,6 +46,9 @@ export default function WPBookings() {
   const [msgText, setMsgText] = useState('');
   const [reviewFor, setReviewFor] = useState<WarehouseBooking | null>(null);
 
+  const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
+  const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, myListingIds]);
+
   const completedBookingIds = useMemo(() => warehouseBookings.filter((b) => b.status === 'Completed' && myListingIds.includes(b.listingId)).map((b) => b.id), [warehouseBookings, myListingIds]);
   const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
     { contextKind: 'warehouse_booking', contextIds: completedBookingIds },
@@ -55,9 +58,6 @@ export default function WPBookings() {
     () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
     [myReviewsQuery.data],
   );
-
-  const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
-  const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, myListingIds]);
   const filtered = useMemo(() => filter === 'All' ? myBookings : myBookings.filter((b) => b.status === filter), [myBookings, filter]);
 
   const bookingMessages = useMemo(() => selected ? messages.filter((m) => m.referenceType === 'WarehouseBooking' && m.referenceId === selected.id) : [], [messages, selected]);
