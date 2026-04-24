@@ -36,12 +36,18 @@ export default function CreateListing() {
     }
     setSettingUp(true);
     try {
+      console.log('[create-listing] calling setup_my_company', { name, city: setupCity });
       const { data, error } = await supabase.rpc('setup_my_company', {
         p_name: name,
         p_city: setupCity.trim() || 'Vancouver',
         p_type: 'WarehouseProvider',
       });
-      if (error) throw error;
+      console.log('[create-listing] setup_my_company result', { data, error });
+      if (error) {
+        const anyErr = error as { message?: string; details?: string; hint?: string; code?: string };
+        const msg = anyErr?.message || anyErr?.details || anyErr?.hint || anyErr?.code || 'Database error';
+        throw new Error(msg);
+      }
       const newCompanyId = typeof data === 'string' ? data : null;
       await refreshCompanies();
       if (newCompanyId) {
@@ -50,7 +56,9 @@ export default function CreateListing() {
       Alert.alert('Company created', 'Your company is pending admin approval. You can start creating listings now.');
     } catch (e) {
       console.log('[create-listing] setup_my_company failed', e);
-      Alert.alert('Unable to create company', e instanceof Error ? e.message : 'Unknown error');
+      const anyErr = e as { message?: string; details?: string; hint?: string; code?: string };
+      const msg = (e instanceof Error && e.message) || anyErr?.message || anyErr?.details || anyErr?.hint || anyErr?.code || 'Unknown error';
+      Alert.alert('Unable to create company', msg);
     } finally {
       setSettingUp(false);
     }
