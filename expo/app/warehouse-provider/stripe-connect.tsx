@@ -62,6 +62,28 @@ export default function StripeConnectScreen() {
     onError: (err: Error) => Alert.alert('Unable to start onboarding', err.message),
   });
 
+  const dashboardMutation = useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error('No active company');
+      const { data, error } = await supabase.functions.invoke('stripe-connect-dashboard', {
+        body: { company_id: companyId },
+      });
+      if (error) throw new Error(error.message);
+      return data as { url: string; account_id: string };
+    },
+    onSuccess: async (res) => {
+      if (!res.url) return;
+      if (Platform.OS === 'web') window.open(res.url, '_blank');
+      else await Linking.openURL(res.url);
+    },
+    onError: async (err: Error) => {
+      if (err.message.toLowerCase().includes('onboarding_incomplete')) {
+        await companyQuery.refetch();
+      }
+      Alert.alert('Unable to open Stripe dashboard', err.message);
+    },
+  });
+
   const state = useMemo<'none' | 'pending' | 'ready'>(() => {
     const c = companyQuery.data;
     if (!c?.stripe_connect_account_id) return 'none';
@@ -106,15 +128,36 @@ export default function StripeConnectScreen() {
           ) : null}
 
           <View style={{ height: 12 }} />
-          <Button
-            label={state === 'none' ? 'Start Stripe onboarding' : state === 'pending' ? 'Continue onboarding' : 'Review Stripe account'}
-            icon={<ShieldCheck size={16} color={C.white} />}
-            onPress={() => onboardMutation.mutate()}
-            loading={onboardMutation.isPending}
-            fullWidth
-          />
+          {state === 'ready' ? (
+            <>
+              <Button
+                label="Open Stripe dashboard"
+                icon={<ExternalLink size={16} color={C.white} />}
+                onPress={() => dashboardMutation.mutate()}
+                loading={dashboardMutation.isPending}
+                fullWidth
+                testID="stripe-dashboard"
+              />
+              <Button
+                label="Refresh status"
+                variant="secondary"
+                icon={<ShieldCheck size={14} color={C.text} />}
+                onPress={() => onboardMutation.mutate()}
+                loading={onboardMutation.isPending}
+              />
+            </>
+          ) : (
+            <Button
+              label={state === 'none' ? 'Start Stripe onboarding' : 'Continue onboarding'}
+              icon={<ShieldCheck size={16} color={C.white} />}
+              onPress={() => onboardMutation.mutate()}
+              loading={onboardMutation.isPending}
+              fullWidth
+              testID="stripe-onboard"
+            />
+          )}
 
-          {lastUrl ? (
+          {lastUrl && state !== 'ready' ? (
             <Button
               label="Re-open onboarding link"
               icon={<ExternalLink size={14} color={C.text} />}
