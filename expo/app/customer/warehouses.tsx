@@ -172,7 +172,6 @@ export default function Warehouses() {
         {filtered.map((l) => {
           const TypeIcon = TYPE_ICONS[l.warehouseType];
           const typeColor = TYPE_COLORS[l.warehouseType];
-          const co = companies.find((c) => c.id === l.companyId);
           const myBookingsForThis = warehouseBookings.filter((b) => b.listingId === l.id && b.customerCompanyId === user?.companyId);
           return (
             <TouchableOpacity
@@ -198,7 +197,7 @@ export default function Warehouses() {
                   <MapPin size={13} color={C.textMuted} />
                   <Text style={styles.locationText}>{l.address}, {l.city}</Text>
                 </View>
-                {co && <Text style={styles.companyName}>{co.name}</Text>}
+                <Text style={styles.companyName}>Operated by Dock2Door</Text>
                 <View style={styles.cardStats}>
                   <View style={styles.cardStat}>
                     <Text style={styles.cardStatValue}>{l.availablePalletCapacity}</Text>
@@ -250,7 +249,7 @@ export default function Warehouses() {
                   <MapPin size={14} color={C.textMuted} />
                   <Text style={styles.locationText}>{listing.address}, {listing.city}</Text>
                 </View>
-                {listingCompany && <Text style={[styles.companyName, { marginTop: 4 }]}>{listingCompany.name}</Text>}
+                <Text style={[styles.companyName, { marginTop: 4 }]}>Operated by Dock2Door · Booking is broker-managed</Text>
 
                 <View style={styles.detailGrid}>
                   {[
@@ -262,6 +261,7 @@ export default function Warehouses() {
                     ['Outbound Fee', `$${listing.outboundHandlingFeePerPallet}/pallet`],
                     ['Hours', listing.receivingHours],
                     ['Access', listing.accessRestrictions || 'None'],
+                    ['Support', 'Contact Dock2Door'],
                   ].map(([label, val]) => (
                     <View key={label} style={styles.detailItem}>
                       <Text style={styles.detailLabel}>{label}</Text>

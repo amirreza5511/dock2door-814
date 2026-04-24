@@ -124,8 +124,7 @@ export default function CustomerBookings() {
   const getListingName = (listingId: string) => warehouseListings.find((l) => l.id === listingId)?.name ?? listingId;
   const getServiceName = (serviceId: string) => {
     const sl = serviceListings.find((l) => l.id === serviceId);
-    const co = companies.find((c) => c.id === sl?.companyId);
-    return co?.name ?? serviceId;
+    return sl?.name ?? `Dock2Door Service ${serviceId.slice(0, 6)}`;
   };
 
   if (bootstrapQuery.isLoading) {
