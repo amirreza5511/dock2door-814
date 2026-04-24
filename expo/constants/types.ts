@@ -36,6 +36,7 @@ export interface User {
   profileImage?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
+  isPlatformAdmin?: boolean;
 }
 
 export interface Company {

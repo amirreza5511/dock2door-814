@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -60,9 +60,20 @@ export default function WarehouseProviderDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <LogOut size={18} color={C.textMuted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {user?.isPlatformAdmin && (
+            <TouchableOpacity
+              onPress={() => router.push('/admin' as never)}
+              style={[styles.logoutBtn, { backgroundColor: C.red + '20', borderColor: C.red + '40' }]}
+              testID="open-admin-panel"
+            >
+              <ShieldCheck size={18} color={C.red} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>

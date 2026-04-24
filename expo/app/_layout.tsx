@@ -39,7 +39,7 @@ function AuthGuard() {
       }
     } else if (isPublic) {
       destination = getRoleRoute(user.role);
-    } else if (!SHARED_SEGMENTS.includes(root) && !canAccessSegment(user.role, root)) {
+    } else if (!SHARED_SEGMENTS.includes(root) && !canAccessSegment(user.role, root, Boolean(user.isPlatformAdmin))) {
       destination = getRoleRoute(user.role);
     }
 

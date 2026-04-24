@@ -48,7 +48,7 @@ export function getRoleRoute(role: UserRole): string {
   return ROLE_HOME_ROUTES[role] ?? '/';
 }
 
-export function canAccessSegment(role: UserRole, segment: string | undefined): boolean {
+export function canAccessSegment(role: UserRole, segment: string | undefined, isPlatformAdmin: boolean = false): boolean {
   if (!segment) {
     return true;
   }
@@ -59,6 +59,10 @@ export function canAccessSegment(role: UserRole, segment: string | undefined): b
   }
 
   if (role === 'SuperAdmin') {
+    return true;
+  }
+
+  if (isPlatformAdmin && segment === 'admin') {
     return true;
   }
 

@@ -45,6 +45,24 @@ function profileToUser(p: DbProfile): User {
   };
 }
 
+async function fetchIsPlatformAdmin(userId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .in('role', ['admin', 'super_admin']);
+    if (error) {
+      console.log('[Auth] fetchIsPlatformAdmin error', error.message);
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  } catch (e) {
+    console.log('[Auth] fetchIsPlatformAdmin failed', e);
+    return false;
+  }
+}
+
 async function fetchProfile(userId: string): Promise<User | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -60,7 +78,10 @@ async function fetchProfile(userId: string): Promise<User | null> {
     console.log('[Auth] no profile row found for user', userId);
     return null;
   }
-  return profileToUser(data as DbProfile);
+  const user = profileToUser(data as DbProfile);
+  user.isPlatformAdmin = await fetchIsPlatformAdmin(userId);
+  console.log('[Auth] fetched profile', { userId, role: user.role, isPlatformAdmin: user.isPlatformAdmin });
+  return user;
 }
 
 let authListenerSubscribed = false;
