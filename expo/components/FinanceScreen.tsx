@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BadgeDollarSign, CreditCard, FileText, Wallet, ExternalLink, CreditCard as PayIcon, Linking as LinkIcon } from 'lucide-react-native';
+import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, RefreshCw, Wallet } from 'lucide-react-native';
 import { Linking } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
@@ -74,6 +74,43 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
   const payoutStatusMutation = trpc.payments.updatePayoutStatus.useMutation();
   const invoiceStatusMutation = trpc.payments.updateInvoiceStatus.useMutation();
   const [paying, setPaying] = useState<boolean>(false);
+  const [openingDashboard, setOpeningDashboard] = useState<boolean>(false);
+
+  const openStripeDashboard = async () => {
+    try {
+      setOpeningDashboard(true);
+      const { data, error } = await supabase.functions.invoke('stripe-connect-dashboard', { body: {} });
+      if (error) {
+        const msg = error.message || 'Unable to open Stripe dashboard';
+        if (msg.includes('onboarding_incomplete')) {
+          Alert.alert('Onboarding incomplete', 'Finish Stripe Connect onboarding to access the Express dashboard.');
+        } else {
+          Alert.alert('Stripe dashboard', msg);
+        }
+        return;
+      }
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) { Alert.alert('Stripe dashboard', 'No dashboard link returned.'); return; }
+      if (Platform.OS === 'web') window.open(url, '_blank');
+      else await Linking.openURL(url);
+    } catch (err) {
+      Alert.alert('Unable to open Stripe dashboard', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setOpeningDashboard(false);
+    }
+  };
+
+  const retryPayout = async (id: string) => {
+    try {
+      await payoutStatusMutation.mutateAsync({ id, status: 'Processing' });
+      const { error } = await supabase.functions.invoke('process-payouts', { body: { payout_id: id } });
+      if (error) throw new Error(error.message);
+      await payoutsQuery.refetch();
+      Alert.alert('Payout retried', 'Stripe Connect transfer has been requeued.');
+    } catch (err) {
+      Alert.alert('Retry failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   const payInvoice = async (invoiceId: string) => {
     try {
@@ -282,16 +319,52 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
               <View style={styles.detailGroup}>
                 <DetailLine label="Payout ID" value={String(selectedPayout.id)} />
                 <DetailLine label="Company" value={String(selectedPayout.company_id ?? '—')} />
-                <DetailLine label="Amount" value={`$${Number(selectedPayout.amount ?? 0).toFixed(2)} ${String(selectedPayout.currency ?? 'CAD').toUpperCase()}`} />
+                <DetailLine label="Amount" value={`${Number(selectedPayout.amount ?? 0).toFixed(2)} ${String(selectedPayout.currency ?? 'CAD').toUpperCase()}`} />
                 <DetailLine label="Status" value={String(selectedPayout.status ?? '—')} />
-                {showAdmin ? (
-                  <View style={styles.actionRow}>
-                    <Button label="Mark Processing" variant="secondary" onPress={() => void updatePayoutStatus(String(selectedPayout.id), 'Processing')} loading={payoutStatusMutation.isPending} />
-                    <Button label="Mark Paid" onPress={() => void updatePayoutStatus(String(selectedPayout.id), 'Paid')} loading={payoutStatusMutation.isPending} />
+                {selectedPayout.status === 'Failed' ? (
+                  <View style={styles.failedBanner}>
+                    <AlertTriangle size={14} color={C.red} />
+                    <Text style={styles.failedText}>Payout failed. Check Stripe Connect status then retry.</Text>
                   </View>
                 ) : null}
+                <View style={styles.actionRow}>
+                  <Button
+                    label="Open Stripe Express dashboard"
+                    onPress={() => void openStripeDashboard()}
+                    loading={openingDashboard}
+                    icon={<ExternalLink size={14} color={C.white} />}
+                  />
+                  {selectedPayout.status === 'Failed' ? (
+                    <Button label="Retry payout" variant="secondary" icon={<RefreshCw size={14} color={C.accent} />} onPress={() => void retryPayout(String(selectedPayout.id))} loading={payoutStatusMutation.isPending} />
+                  ) : null}
+                  {showAdmin ? (
+                    <>
+                      <Button label="Mark Processing" variant="ghost" onPress={() => void updatePayoutStatus(String(selectedPayout.id), 'Processing')} loading={payoutStatusMutation.isPending} />
+                      <Button label="Mark Paid" variant="ghost" onPress={() => void updatePayoutStatus(String(selectedPayout.id), 'Paid')} loading={payoutStatusMutation.isPending} />
+                    </>
+                  ) : null}
+                </View>
               </View>
             ) : null}
+          </Card>
+        ) : null}
+
+        {showPayouts && tab === 'payouts' && !selectedId ? (
+          <Card elevated style={styles.ctaCard}>
+            <View style={styles.ctaRow}>
+              <View style={styles.ctaIcon}><BadgeDollarSign size={18} color={C.green} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.ctaTitle}>Stripe Express dashboard</Text>
+                <Text style={styles.ctaSub}>View balances, previous transfers, and bank details.</Text>
+              </View>
+            </View>
+            <Button
+              label="Open dashboard"
+              onPress={() => void openStripeDashboard()}
+              loading={openingDashboard}
+              icon={<ExternalLink size={14} color={C.white} />}
+              fullWidth
+            />
           </Card>
         ) : null}
       </ScrollView>
@@ -336,4 +409,11 @@ const styles = StyleSheet.create({
   detailKey: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const },
   detailVal: { fontSize: 13, color: C.text, flex: 1, textAlign: 'right' as const },
   actionRow: { flexDirection: 'row', gap: 10, marginTop: 14, flexWrap: 'wrap' },
+  failedBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.red + '15', borderRadius: 10, borderWidth: 1, borderColor: C.red + '40', padding: 10, marginTop: 10 },
+  failedText: { fontSize: 12, color: C.red, flex: 1 },
+  ctaCard: { gap: 12, marginTop: 4 },
+  ctaRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ctaIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
+  ctaTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  ctaSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
 });

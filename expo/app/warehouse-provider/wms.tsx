@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Modal, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { Alert, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, Plus, PackageOpen, ClipboardCheck, Archive, CheckCircle } from 'lucide-react-native';
-import Card from '@/components/ui/Card';
+import { Archive, CheckCircle2, ClipboardCheck, MapPin, Minus, Move, PackageOpen, Plus, Scan, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
@@ -11,162 +10,407 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 
-type Tab = 'locations' | 'stock' | 'receipts' | 'counts';
+type Tab = 'board' | 'receive' | 'transfer' | 'count' | 'locations';
 
 interface LocationRow { id: string; zone: string; aisle: string; rack: string; level: string; bin: string; label: string }
 interface StockRow {
   id: string; variant_id: string; location_id: string; on_hand: number; reserved: number;
-  product_variants?: { sku?: string; name?: string };
-  warehouse_locations?: { label?: string; zone?: string; bin?: string };
+  product_variants?: { sku?: string; name?: string } | null;
+  warehouse_locations?: { label?: string; zone?: string; bin?: string } | null;
 }
-interface ReceiptRow { id: string; reference?: string; status: string; created_at: string; supplier?: string }
-interface CycleCountRow { id: string; status: string; variance?: number; created_at: string }
+interface ReceiptRow { id: string; reference?: string | null; status: string; supplier?: string | null; created_at: string }
+interface CycleCountRow { id: string; status: string; variance?: number | null; created_at: string; location_id?: string; variant_id?: string; counted_qty?: number; system_qty?: number }
 
-export default function WmsScreen() {
+export default function WmsOperationsScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
-  const [tab, setTab] = useState<Tab>('locations');
+  const [tab, setTab] = useState<Tab>('board');
 
   const locations = trpc.wms.listLocations.useQuery();
-  const stock = trpc.wms.listStockLevels.useQuery(undefined, { enabled: tab === 'stock' });
-  const receipts = trpc.wms.listReceipts.useQuery(undefined, { enabled: tab === 'receipts' });
-  const counts = trpc.wms.listCycleCounts.useQuery(undefined, { enabled: tab === 'counts' });
+  const stock = trpc.wms.listStockLevels.useQuery();
+  const receipts = trpc.wms.listReceipts.useQuery();
+  const counts = trpc.wms.listCycleCounts.useQuery();
 
-  const createLocation = trpc.wms.createLocation.useMutation({
-    onSuccess: async () => { await utils.wms.listLocations.invalidate(); },
+  const createLocation = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
+  const receive = trpc.wms.receive.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.wms.listStockLevels.invalidate(), utils.wms.listReceipts.invalidate()]);
+    },
+  });
+  const adjust = trpc.wms.adjust.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.wms.listStockLevels.invalidate(), utils.wms.listCycleCounts.invalidate()]);
+    },
   });
 
-  const [showLocForm, setShowLocForm] = useState<boolean>(false);
-  const [lf, setLf] = useState({ zone: '', aisle: '', rack: '', level: '', bin: '', label: '' });
+  const [locForm, setLocForm] = useState({ zone: '', aisle: '', rack: '', level: '', bin: '', label: '' });
+  const [showLoc, setShowLoc] = useState(false);
+
+  const [recvForm, setRecvForm] = useState({ step: 1, receiptId: '', variantId: '', locationId: '', quantity: '', lot: '', reference: '' });
+  const [xferForm, setXferForm] = useState({ step: 1, variantId: '', fromLocation: '', toLocation: '', quantity: '' });
+  const [countForm, setCountForm] = useState({ step: 1, variantId: '', locationId: '', countedQty: '', systemQty: '', reason: '' });
 
   const locList = useMemo<LocationRow[]>(() => (locations.data ?? []) as LocationRow[], [locations.data]);
   const stockList = useMemo<StockRow[]>(() => (stock.data ?? []) as StockRow[], [stock.data]);
   const receiptList = useMemo<ReceiptRow[]>(() => (receipts.data ?? []) as ReceiptRow[], [receipts.data]);
   const countList = useMemo<CycleCountRow[]>(() => (counts.data ?? []) as CycleCountRow[], [counts.data]);
 
+  const totals = useMemo(() => {
+    const onHand = stockList.reduce((s, r) => s + Number(r.on_hand ?? 0), 0);
+    const reserved = stockList.reduce((s, r) => s + Number(r.reserved ?? 0), 0);
+    const open = receiptList.filter((r) => r.status !== 'Completed').length;
+    const variance = countList.filter((c) => Math.abs(Number(c.variance ?? 0)) > 0).length;
+    return { onHand, reserved, open, variance };
+  }, [stockList, receiptList, countList]);
+
   const submitLocation = async () => {
-    if (!lf.zone.trim() && !lf.label.trim()) {
-      Alert.alert('Missing info', 'Add at least a zone or label.');
+    if (!locForm.zone.trim() && !locForm.label.trim()) { Alert.alert('Zone or label required'); return; }
+    try {
+      await createLocation.mutateAsync(locForm);
+      setLocForm({ zone: '', aisle: '', rack: '', level: '', bin: '', label: '' });
+      setShowLoc(false);
+    } catch (err) { Alert.alert('Unable to create', err instanceof Error ? err.message : 'Unknown'); }
+  };
+
+  const submitReceive = async () => {
+    if (!recvForm.variantId.trim() || !recvForm.locationId.trim() || !recvForm.quantity.trim()) {
+      Alert.alert('Missing info', 'Variant, location, and quantity are required.');
       return;
     }
     try {
-      await createLocation.mutateAsync(lf);
-      setLf({ zone: '', aisle: '', rack: '', level: '', bin: '', label: '' });
-      setShowLocForm(false);
-    } catch (error) {
-      Alert.alert('Unable to create location', error instanceof Error ? error.message : 'Unknown error');
-    }
+      await receive.mutateAsync({
+        receiptId: recvForm.receiptId.trim() || undefined,
+        variantId: recvForm.variantId.trim(),
+        locationId: recvForm.locationId.trim(),
+        quantity: Number(recvForm.quantity) || 0,
+        lotCode: recvForm.lot.trim() || undefined,
+        reference: recvForm.reference.trim() || undefined,
+      });
+      Alert.alert('Received', 'Stock ledger updated.');
+      setRecvForm({ step: 1, receiptId: '', variantId: '', locationId: '', quantity: '', lot: '', reference: '' });
+    } catch (err) { Alert.alert('Receive failed', err instanceof Error ? err.message : 'Unknown'); }
   };
 
-  const activeQuery = tab === 'locations' ? locations : tab === 'stock' ? stock : tab === 'receipts' ? receipts : counts;
+  const submitTransfer = async () => {
+    const qty = Number(xferForm.quantity) || 0;
+    if (!xferForm.variantId.trim() || !xferForm.fromLocation.trim() || !xferForm.toLocation.trim() || qty <= 0) {
+      Alert.alert('Missing info', 'Variant, from, to and quantity are required.');
+      return;
+    }
+    try {
+      await adjust.mutateAsync({ variantId: xferForm.variantId.trim(), locationId: xferForm.fromLocation.trim(), delta: -qty, reason: `transfer_out:${xferForm.toLocation.trim()}` });
+      await adjust.mutateAsync({ variantId: xferForm.variantId.trim(), locationId: xferForm.toLocation.trim(), delta: qty, reason: `transfer_in:${xferForm.fromLocation.trim()}` });
+      Alert.alert('Transferred', `Moved ${qty} units.`);
+      setXferForm({ step: 1, variantId: '', fromLocation: '', toLocation: '', quantity: '' });
+    } catch (err) { Alert.alert('Transfer failed', err instanceof Error ? err.message : 'Unknown'); }
+  };
+
+  const submitCount = async () => {
+    const counted = Number(countForm.countedQty);
+    const system = Number(countForm.systemQty);
+    if (!countForm.variantId.trim() || !countForm.locationId.trim() || Number.isNaN(counted)) {
+      Alert.alert('Missing info'); return;
+    }
+    const delta = counted - system;
+    try {
+      if (delta !== 0) {
+        await adjust.mutateAsync({
+          variantId: countForm.variantId.trim(),
+          locationId: countForm.locationId.trim(),
+          delta,
+          reason: `cycle_count:${countForm.reason.trim() || 'variance'}`,
+        });
+      }
+      Alert.alert('Count logged', delta === 0 ? 'Inventory matches.' : `Adjusted by ${delta > 0 ? '+' : ''}${delta}.`);
+      setCountForm({ step: 1, variantId: '', locationId: '', countedQty: '', systemQty: '', reason: '' });
+    } catch (err) { Alert.alert('Unable to log count', err instanceof Error ? err.message : 'Unknown'); }
+  };
+
+  const renderReceiveWizard = () => (
+    <View style={styles.wizard}>
+      <View style={styles.stepRow}>
+        {[1, 2, 3].map((n) => (
+          <View key={n} style={[styles.step, recvForm.step >= n && styles.stepActive]}>
+            <Text style={[styles.stepNum, recvForm.step >= n && { color: C.white }]}>{n}</Text>
+          </View>
+        ))}
+      </View>
+      {recvForm.step === 1 ? (
+        <>
+          <Text style={styles.wizardTitle}>Step 1 · Choose receipt (optional)</Text>
+          <Text style={styles.wizardSub}>Scan or pick an ASN to auto-fill.</Text>
+          <Input label="Receipt ID (optional)" value={recvForm.receiptId} onChangeText={(v) => setRecvForm({ ...recvForm, receiptId: v })} placeholder="PO-1024" />
+          <Input label="Reference / Supplier" value={recvForm.reference} onChangeText={(v) => setRecvForm({ ...recvForm, reference: v })} placeholder="ASN or supplier code" />
+          {receiptList.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
+              {receiptList.slice(0, 10).map((r) => (
+                <TouchableOpacity key={r.id} onPress={() => setRecvForm({ ...recvForm, receiptId: r.id, reference: r.reference ?? '' })} style={styles.quickPick}>
+                  <Text style={styles.quickPickTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+                  <Text style={styles.quickPickMeta}>{r.supplier ?? '—'}</Text>
+                  <StatusBadge status={r.status} size="sm" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+          <Button label="Next" onPress={() => setRecvForm({ ...recvForm, step: 2 })} fullWidth />
+        </>
+      ) : recvForm.step === 2 ? (
+        <>
+          <Text style={styles.wizardTitle}>Step 2 · Scan SKU & lot</Text>
+          <Input label="Variant / SKU ID" value={recvForm.variantId} onChangeText={(v) => setRecvForm({ ...recvForm, variantId: v })} placeholder="variant_…" />
+          <Input label="Lot / batch code" value={recvForm.lot} onChangeText={(v) => setRecvForm({ ...recvForm, lot: v })} placeholder="LOT-2026-04" autoCapitalize="characters" />
+          <Input label="Quantity" value={recvForm.quantity} onChangeText={(v) => setRecvForm({ ...recvForm, quantity: v })} keyboardType="numeric" placeholder="48" />
+          <View style={styles.navRow}>
+            <Button label="Back" onPress={() => setRecvForm({ ...recvForm, step: 1 })} variant="secondary" />
+            <Button label="Next" onPress={() => setRecvForm({ ...recvForm, step: 3 })} />
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.wizardTitle}>Step 3 · Putaway location</Text>
+          <Input label="Location ID" value={recvForm.locationId} onChangeText={(v) => setRecvForm({ ...recvForm, locationId: v })} placeholder="location_…" />
+          {locList.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
+              {locList.slice(0, 12).map((l) => (
+                <TouchableOpacity key={l.id} onPress={() => setRecvForm({ ...recvForm, locationId: l.id })} style={[styles.quickPick, recvForm.locationId === l.id && styles.quickPickActive]}>
+                  <MapPin size={13} color={recvForm.locationId === l.id ? C.accent : C.textMuted} />
+                  <Text style={styles.quickPickTitle}>{l.label || `${l.zone}-${l.aisle}-${l.bin}`}</Text>
+                  <Text style={styles.quickPickMeta}>Zone {l.zone || '—'}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+          <View style={styles.navRow}>
+            <Button label="Back" onPress={() => setRecvForm({ ...recvForm, step: 2 })} variant="secondary" />
+            <Button label="Receive & putaway" onPress={() => void submitReceive()} loading={receive.isPending} icon={<CheckCircle2 size={15} color={C.white} />} />
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  const renderTransferWizard = () => (
+    <View style={styles.wizard}>
+      <View style={styles.stepRow}>
+        {[1, 2].map((n) => (
+          <View key={n} style={[styles.step, xferForm.step >= n && styles.stepActive]}>
+            <Text style={[styles.stepNum, xferForm.step >= n && { color: C.white }]}>{n}</Text>
+          </View>
+        ))}
+      </View>
+      {xferForm.step === 1 ? (
+        <>
+          <Text style={styles.wizardTitle}>Step 1 · What & from where?</Text>
+          <Input label="Variant / SKU ID" value={xferForm.variantId} onChangeText={(v) => setXferForm({ ...xferForm, variantId: v })} placeholder="variant_…" />
+          <Input label="From location" value={xferForm.fromLocation} onChangeText={(v) => setXferForm({ ...xferForm, fromLocation: v })} placeholder="location_…" />
+          <Input label="Quantity" value={xferForm.quantity} onChangeText={(v) => setXferForm({ ...xferForm, quantity: v })} keyboardType="numeric" />
+          <Button label="Next" onPress={() => setXferForm({ ...xferForm, step: 2 })} fullWidth />
+        </>
+      ) : (
+        <>
+          <Text style={styles.wizardTitle}>Step 2 · To where?</Text>
+          <Input label="Destination location" value={xferForm.toLocation} onChangeText={(v) => setXferForm({ ...xferForm, toLocation: v })} placeholder="location_…" />
+          {locList.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
+              {locList.slice(0, 12).map((l) => (
+                <TouchableOpacity key={l.id} onPress={() => setXferForm({ ...xferForm, toLocation: l.id })} style={[styles.quickPick, xferForm.toLocation === l.id && styles.quickPickActive]}>
+                  <MapPin size={13} color={xferForm.toLocation === l.id ? C.accent : C.textMuted} />
+                  <Text style={styles.quickPickTitle}>{l.label || `${l.zone}-${l.aisle}-${l.bin}`}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : null}
+          <View style={styles.navRow}>
+            <Button label="Back" onPress={() => setXferForm({ ...xferForm, step: 1 })} variant="secondary" />
+            <Button label="Transfer" onPress={() => void submitTransfer()} loading={adjust.isPending} icon={<Move size={15} color={C.white} />} />
+          </View>
+        </>
+      )}
+    </View>
+  );
+
+  const renderCountWizard = () => {
+    const diff = Number(countForm.countedQty) - Number(countForm.systemQty);
+    return (
+      <View style={styles.wizard}>
+        <View style={styles.stepRow}>
+          {[1, 2, 3].map((n) => (
+            <View key={n} style={[styles.step, countForm.step >= n && styles.stepActive]}>
+              <Text style={[styles.stepNum, countForm.step >= n && { color: C.white }]}>{n}</Text>
+            </View>
+          ))}
+        </View>
+        {countForm.step === 1 ? (
+          <>
+            <Text style={styles.wizardTitle}>Step 1 · Pick location to count</Text>
+            <Input label="Location ID" value={countForm.locationId} onChangeText={(v) => setCountForm({ ...countForm, locationId: v })} placeholder="location_…" />
+            <Input label="Variant / SKU" value={countForm.variantId} onChangeText={(v) => setCountForm({ ...countForm, variantId: v })} placeholder="variant_…" />
+            <Button label="Next" onPress={() => setCountForm({ ...countForm, step: 2 })} fullWidth />
+          </>
+        ) : countForm.step === 2 ? (
+          <>
+            <Text style={styles.wizardTitle}>Step 2 · Physical count</Text>
+            <Input label="System quantity" value={countForm.systemQty} onChangeText={(v) => setCountForm({ ...countForm, systemQty: v })} keyboardType="numeric" />
+            <Input label="Counted quantity" value={countForm.countedQty} onChangeText={(v) => setCountForm({ ...countForm, countedQty: v })} keyboardType="numeric" />
+            {countForm.countedQty && countForm.systemQty ? (
+              <View style={[styles.varianceBox, { backgroundColor: diff === 0 ? C.greenDim : C.red + '15', borderColor: diff === 0 ? C.green : C.red }]}>
+                <Text style={[styles.varianceLabel, { color: diff === 0 ? C.green : C.red }]}>{diff === 0 ? 'Match' : `Variance ${diff > 0 ? '+' : ''}${diff}`}</Text>
+              </View>
+            ) : null}
+            <View style={styles.navRow}>
+              <Button label="Back" onPress={() => setCountForm({ ...countForm, step: 1 })} variant="secondary" />
+              <Button label="Next" onPress={() => setCountForm({ ...countForm, step: 3 })} />
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={styles.wizardTitle}>Step 3 · Reason & submit</Text>
+            <Input label="Reason (required for variance)" value={countForm.reason} onChangeText={(v) => setCountForm({ ...countForm, reason: v })} placeholder="Damaged / miscount / shrink…" multiline numberOfLines={3} />
+            <View style={styles.navRow}>
+              <Button label="Back" onPress={() => setCountForm({ ...countForm, step: 2 })} variant="secondary" />
+              <Button label="Submit count" onPress={() => void submitCount()} loading={adjust.isPending} icon={<ClipboardCheck size={15} color={C.white} />} />
+            </View>
+          </>
+        )}
+      </View>
+    );
+  };
+
+  const activeQuery = tab === 'board' ? stock : tab === 'locations' ? locations : tab === 'receive' ? receipts : tab === 'count' ? counts : stock;
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
-      <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <View>
-          <Text style={styles.title}>Warehouse Ops</Text>
-          <Text style={styles.sub}>Locations · Stock · Receipts · Counts</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
+        <Text style={styles.title}>Warehouse Ops</Text>
+        <Text style={styles.subtitle}>Receiving · Putaway · Transfer · Cycle count</Text>
+        <View style={styles.statsRow}>
+          <View style={styles.stat}><Text style={styles.statValue}>{totals.onHand}</Text><Text style={styles.statLabel}>On hand</Text></View>
+          <View style={styles.stat}><Text style={styles.statValue}>{totals.reserved}</Text><Text style={styles.statLabel}>Reserved</Text></View>
+          <View style={styles.stat}><Text style={[styles.statValue, { color: totals.open > 0 ? C.accent : C.text }]}>{totals.open}</Text><Text style={styles.statLabel}>Open receipts</Text></View>
+          <View style={styles.stat}><Text style={[styles.statValue, { color: totals.variance > 0 ? C.red : C.green }]}>{totals.variance}</Text><Text style={styles.statLabel}>Variances</Text></View>
         </View>
-        {tab === 'locations' ? (
-          <TouchableOpacity onPress={() => setShowLocForm(true)} style={styles.addBtn} testID="wms-add-location">
-            <Plus size={18} color={C.white} />
-          </TouchableOpacity>
-        ) : null}
       </View>
 
-      <View style={styles.segmentRow}>
-        {(['locations', 'stock', 'receipts', 'counts'] as Tab[]).map((k) => (
-          <TouchableOpacity key={k} onPress={() => setTab(k)} style={[styles.segment, tab === k && styles.segmentActive]}>
-            <Text style={[styles.segmentText, tab === k && styles.segmentTextActive]}>{k[0].toUpperCase() + k.slice(1)}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
+        {([
+          ['board', 'Stock board', Archive],
+          ['receive', 'Receive', PackageOpen],
+          ['transfer', 'Transfer', Move],
+          ['count', 'Cycle count', ClipboardCheck],
+          ['locations', 'Locations', MapPin],
+        ] as const).map(([k, label, Icon]) => (
+          <TouchableOpacity key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
+            <Icon size={13} color={tab === k ? C.accent : C.textMuted} />
+            <Text style={[styles.tabText, tab === k && styles.tabTextActive]}>{label}</Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 120 }]}
         refreshControl={<RefreshControl refreshing={activeQuery.isFetching} onRefresh={() => void activeQuery.refetch()} tintColor={C.accent} />}
       >
         {activeQuery.isLoading ? <ScreenFeedback state="loading" title="Loading" /> : null}
 
-        {tab === 'locations' && locList.length === 0 && !activeQuery.isLoading ? (
-          <EmptyState icon={MapPin} title="No locations" description="Create your first bin location to start tracking stock." />
-        ) : null}
-        {tab === 'locations' && locList.map((l) => (
-          <Card key={l.id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={[styles.iconWrap, { backgroundColor: C.purpleDim }]}><MapPin size={15} color={C.purple} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{l.label || `${l.zone}-${l.aisle}-${l.rack}-${l.bin}`}</Text>
-                <Text style={styles.cardMeta}>Zone {l.zone || '—'} · Aisle {l.aisle || '—'} · Rack {l.rack || '—'} · Bin {l.bin || '—'}</Text>
+        {tab === 'board' ? (
+          stockList.length === 0 ? (
+            <EmptyState icon={Archive} title="No stock yet" description="Receive inventory to build live stock levels." />
+          ) : stockList.map((s) => (
+            <View key={s.id} style={styles.stockCard}>
+              <View style={styles.stockTop}>
+                <Archive size={16} color={C.blue} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.stockTitle}>{s.product_variants?.sku ?? '—'}</Text>
+                  <Text style={styles.stockMeta}>{s.product_variants?.name ?? ''} · {s.warehouse_locations?.label ?? `${s.warehouse_locations?.zone ?? ''} ${s.warehouse_locations?.bin ?? ''}`}</Text>
+                </View>
+                <Text style={styles.stockQty}>{Number(s.on_hand) - Number(s.reserved)}</Text>
+              </View>
+              <View style={styles.stockBar}>
+                <Text style={styles.stockBarLabel}>On-hand {s.on_hand} · Reserved {s.reserved}</Text>
+                <View style={styles.adjustRow}>
+                  <TouchableOpacity onPress={() => void adjust.mutateAsync({ variantId: s.variant_id, locationId: s.location_id, delta: 1, reason: 'manual_adjust' })} style={styles.adjBtn}><Plus size={13} color={C.green} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => void adjust.mutateAsync({ variantId: s.variant_id, locationId: s.location_id, delta: -1, reason: 'manual_adjust' })} style={styles.adjBtn}><Minus size={13} color={C.red} /></TouchableOpacity>
+                </View>
               </View>
             </View>
-          </Card>
-        ))}
+          ))
+        ) : null}
 
-        {tab === 'stock' && stockList.length === 0 && !activeQuery.isLoading ? (
-          <EmptyState icon={Archive} title="No stock" description="Receive inventory to build stock levels." />
-        ) : null}
-        {tab === 'stock' && stockList.map((s) => (
-          <Card key={s.id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={[styles.iconWrap, { backgroundColor: C.blueDim }]}><Archive size={15} color={C.blue} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{s.product_variants?.sku ?? '—'} · {s.product_variants?.name ?? ''}</Text>
-                <Text style={styles.cardMeta}>
-                  {s.warehouse_locations?.label ?? `${s.warehouse_locations?.zone ?? ''} ${s.warehouse_locations?.bin ?? ''}`} · on-hand {s.on_hand} · reserved {s.reserved}
-                </Text>
+        {tab === 'receive' ? (
+          <>
+            {renderReceiveWizard()}
+            <Text style={styles.sectionTitle}>Recent receipts</Text>
+            {receiptList.length === 0 ? <EmptyState icon={PackageOpen} title="No receipts" description="ASNs arrive here before receiving." /> : receiptList.slice(0, 20).map((r) => (
+              <View key={r.id} style={styles.listRow}>
+                <PackageOpen size={14} color={C.green} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+                  <Text style={styles.listMeta}>{r.supplier ?? '—'} · {new Date(r.created_at).toLocaleDateString()}</Text>
+                </View>
+                <StatusBadge status={r.status} size="sm" />
               </View>
-              <Text style={styles.qty}>{Number(s.on_hand) - Number(s.reserved)}</Text>
-            </View>
-          </Card>
-        ))}
+            ))}
+          </>
+        ) : null}
 
-        {tab === 'receipts' && receiptList.length === 0 && !activeQuery.isLoading ? (
-          <EmptyState icon={PackageOpen} title="No receipts" description="Incoming ASNs and receipts will appear here." />
-        ) : null}
-        {tab === 'receipts' && receiptList.map((r) => (
-          <Card key={r.id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={[styles.iconWrap, { backgroundColor: C.greenDim }]}><PackageOpen size={15} color={C.green} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{r.reference ?? `Receipt ${r.id.slice(0, 8)}`}</Text>
-                <Text style={styles.cardMeta}>{r.supplier ?? '—'} · {new Date(r.created_at).toLocaleDateString()}</Text>
-              </View>
-              <StatusBadge status={r.status} />
-            </View>
-          </Card>
-        ))}
+        {tab === 'transfer' ? renderTransferWizard() : null}
 
-        {tab === 'counts' && countList.length === 0 && !activeQuery.isLoading ? (
-          <EmptyState icon={ClipboardCheck} title="No cycle counts" description="Run periodic counts to verify inventory." />
-        ) : null}
-        {tab === 'counts' && countList.map((c) => (
-          <Card key={c.id} style={styles.card}>
-            <View style={styles.cardRow}>
-              <View style={[styles.iconWrap, { backgroundColor: C.yellowDim }]}><ClipboardCheck size={15} color={C.yellow} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>Count {c.id.slice(0, 8)}</Text>
-                <Text style={styles.cardMeta}>Variance {c.variance ?? 0} · {new Date(c.created_at).toLocaleDateString()}</Text>
+        {tab === 'count' ? (
+          <>
+            {renderCountWizard()}
+            <Text style={styles.sectionTitle}>Recent counts</Text>
+            {countList.length === 0 ? <EmptyState icon={ClipboardCheck} title="No cycle counts yet" description="Run recurring counts to catch shrink and miscounts." /> : countList.slice(0, 20).map((c) => (
+              <View key={c.id} style={styles.listRow}>
+                <ClipboardCheck size={14} color={Math.abs(Number(c.variance ?? 0)) > 0 ? C.red : C.green} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listTitle}>Count {c.id.slice(0, 8)}</Text>
+                  <Text style={styles.listMeta}>Variance {c.variance ?? 0} · {new Date(c.created_at).toLocaleDateString()}</Text>
+                </View>
+                <StatusBadge status={c.status} size="sm" />
               </View>
-              <StatusBadge status={c.status} />
+            ))}
+          </>
+        ) : null}
+
+        {tab === 'locations' ? (
+          <>
+            <View style={styles.navRow}>
+              <Text style={styles.sectionTitle}>Bin locations ({locList.length})</Text>
+              <Button label="+ New bin" size="sm" onPress={() => setShowLoc(true)} />
             </View>
-          </Card>
-        ))}
+            {locList.length === 0 ? (
+              <EmptyState icon={MapPin} title="No bins defined" description="Create bin locations to enable putaway, pick, and counts." />
+            ) : locList.map((l) => (
+              <View key={l.id} style={styles.listRow}>
+                <MapPin size={14} color={C.purple} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.listTitle}>{l.label || `${l.zone}-${l.aisle}-${l.rack}-${l.bin}`}</Text>
+                  <Text style={styles.listMeta}>Zone {l.zone || '—'} · Aisle {l.aisle || '—'} · Bin {l.bin || '—'}</Text>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
       </ScrollView>
 
-      <Modal visible={showLocForm} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLocForm(false)}>
-        <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
-          <View style={styles.modalHandle} />
+      <Modal visible={showLoc} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowLoc(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>New location</Text>
+            <TouchableOpacity onPress={() => setShowLoc(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
           <ScrollView contentContainerStyle={styles.modalBody}>
-            <Text style={styles.modalTitle}>New Location</Text>
-            <Input label="Label" value={lf.label} onChangeText={(v) => setLf({ ...lf, label: v })} placeholder="A-12-3-B" autoCapitalize="characters" />
-            <Input label="Zone" value={lf.zone} onChangeText={(v) => setLf({ ...lf, zone: v })} placeholder="A" autoCapitalize="characters" />
-            <Input label="Aisle" value={lf.aisle} onChangeText={(v) => setLf({ ...lf, aisle: v })} placeholder="12" />
-            <Input label="Rack" value={lf.rack} onChangeText={(v) => setLf({ ...lf, rack: v })} placeholder="3" />
-            <Input label="Level" value={lf.level} onChangeText={(v) => setLf({ ...lf, level: v })} placeholder="2" />
-            <Input label="Bin" value={lf.bin} onChangeText={(v) => setLf({ ...lf, bin: v })} placeholder="B" autoCapitalize="characters" />
-            <Button label="Create location" onPress={() => void submitLocation()} loading={createLocation.isPending} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
-            <Button label="Cancel" onPress={() => setShowLocForm(false)} variant="ghost" fullWidth />
+            <Input label="Label" value={locForm.label} onChangeText={(v) => setLocForm({ ...locForm, label: v })} placeholder="A-12-3-B" autoCapitalize="characters" />
+            <View style={styles.navRow}>
+              <Input label="Zone" value={locForm.zone} onChangeText={(v) => setLocForm({ ...locForm, zone: v })} placeholder="A" autoCapitalize="characters" containerStyle={{ flex: 1 }} />
+              <Input label="Aisle" value={locForm.aisle} onChangeText={(v) => setLocForm({ ...locForm, aisle: v })} placeholder="12" containerStyle={{ flex: 1 }} />
+            </View>
+            <View style={styles.navRow}>
+              <Input label="Rack" value={locForm.rack} onChangeText={(v) => setLocForm({ ...locForm, rack: v })} placeholder="3" containerStyle={{ flex: 1 }} />
+              <Input label="Level" value={locForm.level} onChangeText={(v) => setLocForm({ ...locForm, level: v })} placeholder="2" containerStyle={{ flex: 1 }} />
+              <Input label="Bin" value={locForm.bin} onChangeText={(v) => setLocForm({ ...locForm, bin: v })} placeholder="B" autoCapitalize="characters" containerStyle={{ flex: 1 }} />
+            </View>
+            <Button label="Create location" onPress={() => void submitLocation()} loading={createLocation.isPending} fullWidth size="lg" icon={<Scan size={15} color={C.white} />} />
           </ScrollView>
         </View>
       </Modal>
@@ -175,25 +419,51 @@ export default function WmsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
-  header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 14, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  root: { flex: 1 },
+  header: { paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border, gap: 8 },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text },
-  sub: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
-  addBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
-  segmentRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
-  segment: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border },
-  segmentActive: { backgroundColor: C.accentDim, borderColor: C.accent },
-  segmentText: { fontSize: 12, color: C.textSecondary, fontWeight: '700' as const },
-  segmentTextActive: { color: C.accent },
-  scroll: { padding: 16, gap: 10 },
-  card: { padding: 14 },
-  cardRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  iconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  cardTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
-  cardMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
-  qty: { fontSize: 18, fontWeight: '800' as const, color: C.green },
+  subtitle: { fontSize: 12, color: C.textSecondary },
+  statsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  stat: { flex: 1, backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border, padding: 10 },
+  statValue: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  statLabel: { fontSize: 10, color: C.textMuted, marginTop: 2, textTransform: 'uppercase' as const, letterSpacing: 0.4 },
+  tabRow: { gap: 6, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  tabActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  tabText: { fontSize: 11, color: C.textSecondary, fontWeight: '700' as const },
+  tabTextActive: { color: C.accent },
+  body: { padding: 16, gap: 10 },
+  wizard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 10 },
+  stepRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  step: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  stepActive: { backgroundColor: C.accent, borderColor: C.accent },
+  stepNum: { fontSize: 12, fontWeight: '800' as const, color: C.textMuted },
+  wizardTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  wizardSub: { fontSize: 12, color: C.textSecondary, marginTop: -4 },
+  hlist: { gap: 8, paddingVertical: 4 },
+  quickPick: { minWidth: 130, backgroundColor: C.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: C.border, padding: 10, gap: 4 },
+  quickPickActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  quickPickTitle: { fontSize: 12, fontWeight: '700' as const, color: C.text },
+  quickPickMeta: { fontSize: 10, color: C.textMuted },
+  navRow: { flexDirection: 'row', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
+  varianceBox: { borderRadius: 10, borderWidth: 1, padding: 12 },
+  varianceLabel: { fontSize: 14, fontWeight: '800' as const, textAlign: 'center' as const },
+  stockCard: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, gap: 8 },
+  stockTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  stockTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  stockMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  stockQty: { fontSize: 20, fontWeight: '800' as const, color: C.green },
+  stockBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 6, borderTopWidth: 1, borderTopColor: C.border },
+  stockBarLabel: { fontSize: 11, color: C.textMuted },
+  adjustRow: { flexDirection: 'row', gap: 6 },
+  adjBtn: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6, marginTop: 10 },
+  listRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
+  listTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  listMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
   modal: { flex: 1, backgroundColor: C.bg },
-  modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  closeBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   modalBody: { padding: 20, gap: 12 },
-  modalTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
 });
