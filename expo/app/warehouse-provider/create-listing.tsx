@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { CheckCircle } from 'lucide-react-native';
+import { CheckCircle, Building2 } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth';
 
 type WarehouseType = 'Dry' | 'Chill' | 'Frozen';
 type StorageTerm = 'Daily' | 'Weekly' | 'Monthly';
@@ -19,7 +21,41 @@ export default function CreateListing() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
-  const { activeCompany } = useActiveCompany();
+  const { activeCompany, memberships, isLoading: companyLoading, refresh: refreshCompanies, setActiveCompanyId } = useActiveCompany();
+  const user = useAuthStore((s) => s.user);
+
+  const [setupName, setSetupName] = useState<string>('');
+  const [setupCity, setSetupCity] = useState<string>('Vancouver');
+  const [settingUp, setSettingUp] = useState<boolean>(false);
+
+  const handleSetupCompany = async () => {
+    const name = setupName.trim();
+    if (!name) {
+      Alert.alert('Company name required', 'Please enter your company name to continue.');
+      return;
+    }
+    setSettingUp(true);
+    try {
+      const { data, error } = await supabase.rpc('setup_my_company', {
+        p_name: name,
+        p_city: setupCity.trim() || 'Vancouver',
+        p_type: 'WarehouseProvider',
+      });
+      if (error) throw error;
+      const newCompanyId = typeof data === 'string' ? data : null;
+      await refreshCompanies();
+      if (newCompanyId) {
+        await setActiveCompanyId(newCompanyId);
+      }
+      Alert.alert('Company created', 'Your company is pending admin approval. You can start creating listings now.');
+    } catch (e) {
+      console.log('[create-listing] setup_my_company failed', e);
+      Alert.alert('Unable to create company', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setSettingUp(false);
+    }
+  };
+
   const createMutation = trpc.warehouses.createListing.useMutation({
     onSuccess: async () => {
       await Promise.all([
@@ -51,7 +87,7 @@ export default function CreateListing() {
       return;
     }
     if (!activeCompany) {
-      Alert.alert('No active company', 'Select a company to act as before creating a listing.');
+      Alert.alert('No active company', 'Please set up your company first.');
       return;
     }
     try {
@@ -89,11 +125,67 @@ export default function CreateListing() {
     }
   };
 
+  if (companyLoading && !activeCompany) {
+    return (
+      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator color={C.accent} />
+      </View>
+    );
+  }
+
+  if (!activeCompany) {
+    const hasMemberships = memberships.length > 0;
+    return (
+      <View style={[styles.root, { backgroundColor: C.bg }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <Text style={styles.title}>New Listing</Text>
+          <Text style={styles.sub}>Set up your warehouse company first</Text>
+        </View>
+        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} keyboardShouldPersistTaps="handled">
+          <View style={styles.setupCard}>
+            <View style={styles.setupIconWrap}>
+              <Building2 size={28} color={C.accent} />
+            </View>
+            <Text style={styles.setupTitle}>{hasMemberships ? 'Select an active company' : 'Create your company'}</Text>
+            <Text style={styles.setupDesc}>
+              {hasMemberships
+                ? 'Pick a company from the switcher, then try again.'
+                : 'Your account has no warehouse company yet. Create one to start listing warehouse space on Dock2Door.'}
+            </Text>
+
+            {!hasMemberships && (
+              <View style={[styles.formGap, { width: '100%', marginTop: 8 }]}>
+                <Input
+                  label="Company Name *"
+                  value={setupName}
+                  onChangeText={setSetupName}
+                  placeholder={user?.name ? `${user.name}'s Warehouse` : 'Dock2Door Logistics Ltd.'}
+                  testID="setup-company-name"
+                />
+                <Input label="City" value={setupCity} onChangeText={setSetupCity} placeholder="Vancouver" testID="setup-company-city" />
+                <Button
+                  label={settingUp ? 'Creating…' : 'Create Company'}
+                  onPress={handleSetupCompany}
+                  loading={settingUp}
+                  fullWidth
+                  size="lg"
+                  icon={<Building2 size={16} color={C.white} />}
+                  testID="setup-company-submit"
+                />
+                <Text style={styles.hint}>Company is submitted for admin approval. You can still create draft listings immediately.</Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>New Listing</Text>
-        <Text style={styles.sub}>Create a warehouse space listing</Text>
+        <Text style={styles.sub}>Create a warehouse space listing · {activeCompany.companyName}</Text>
       </View>
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.section}>
@@ -196,4 +288,8 @@ const styles = StyleSheet.create({
   optionText: { fontSize: 14, color: C.textSecondary, fontWeight: '600' as const },
   optionTextActive: { color: C.accent },
   hint: { fontSize: 12, color: C.textMuted, textAlign: 'center', marginTop: 10 },
+  setupCard: { backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 24, alignItems: 'center', gap: 8 },
+  setupIconWrap: { width: 56, height: 56, borderRadius: 16, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  setupTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text, textAlign: 'center' },
+  setupDesc: { fontSize: 13, color: C.textSecondary, textAlign: 'center', lineHeight: 19, marginBottom: 8 },
 });
