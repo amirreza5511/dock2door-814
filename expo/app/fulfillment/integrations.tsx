@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshCon
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShoppingBag, Store, Plus, X, RefreshCw, AlertTriangle, CheckCircle2, Trash2, Link2, ArrowLeft } from 'lucide-react-native';
+import { ShoppingBag, Store, Plus, X, RefreshCw, AlertTriangle, CheckCircle2, Trash2, Link2, ArrowLeft, Send, Clock } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -25,7 +25,22 @@ interface ConnRow {
   created_at: string;
 }
 interface SyncLogRow { id: string; connection_id: string | null; kind: string; result: string; message: string | null; started_at: string; finished_at: string | null }
-interface ChannelOrderRow { id: string; kind: string; external_order_number: string | null; status: string; customer_name: string | null; total_amount: number | null; currency: string | null; ordered_at: string | null }
+interface ChannelOrderRow {
+  id: string;
+  kind: string;
+  external_order_number: string | null;
+  status: string;
+  customer_name: string | null;
+  total_amount: number | null;
+  currency: string | null;
+  ordered_at: string | null;
+  push_status: 'not_required' | 'pending' | 'synced' | 'failed' | null;
+  push_last_error: string | null;
+  push_attempts: number | null;
+  tracking_number: string | null;
+  tracking_carrier: string | null;
+  fulfillment_pushed_at: string | null;
+}
 interface SkuMapRow { id: string; channel_sku: string; internal_sku: string }
 
 export default function IntegrationsScreen() {
@@ -70,7 +85,7 @@ export default function IntegrationsScreen() {
     queryFn: async (): Promise<ChannelOrderRow[]> => {
       const { data, error } = await supabase
         .from('channel_orders')
-        .select('id, kind, external_order_number, status, customer_name, total_amount, currency, ordered_at')
+        .select('id, kind, external_order_number, status, customer_name, total_amount, currency, ordered_at, push_status, push_last_error, push_attempts, tracking_number, tracking_carrier, fulfillment_pushed_at')
         .eq('company_id', companyId)
         .order('ordered_at', { ascending: false })
         .limit(50);
@@ -172,6 +187,27 @@ export default function IntegrationsScreen() {
       void qc.invalidateQueries({ queryKey: ['channel-connections'] });
     },
     onError: (e) => Alert.alert('Disconnect failed', e instanceof Error ? e.message : 'Unknown'),
+  });
+
+  const retryPush = useMutation({
+    mutationFn: async (channelOrderId: string) => {
+      const { error: rpcErr } = await supabase.rpc('channel_retry_fulfillment_push', { p_channel_order_id: channelOrderId });
+      if (rpcErr) throw rpcErr;
+      const { data, error: fnErr } = await supabase.functions.invoke('channel-fulfillment-worker', {
+        body: { channelOrderId },
+        headers: { 'x-cron-secret': process.env.EXPO_PUBLIC_CHANNEL_FULFILLMENT_SECRET ?? '' },
+      });
+      if (fnErr) throw new Error(fnErr.message);
+      const err = (data as { error?: string })?.error;
+      if (err) throw new Error(err);
+      return data;
+    },
+    onSuccess: () => {
+      Alert.alert('Fulfillment push queued', 'The order will sync back to Shopify/Amazon shortly.');
+      void qc.invalidateQueries({ queryKey: ['channel-orders'] });
+      void qc.invalidateQueries({ queryKey: ['channel-logs'] });
+    },
+    onError: (e) => Alert.alert('Retry failed', e instanceof Error ? e.message : 'Unknown'),
   });
 
   const upsertMap = useMutation({
@@ -298,16 +334,47 @@ export default function IntegrationsScreen() {
         <Text style={styles.sectionTitle}>Channel orders ({(channelOrders.data ?? []).length})</Text>
         {(channelOrders.data ?? []).length === 0 ? (
           <EmptyState icon={ShoppingBag} title="No imported orders yet" />
-        ) : (channelOrders.data ?? []).slice(0, 30).map((o) => (
-          <View key={o.id} style={styles.orderRow}>
-            <View style={[styles.kindDot, { backgroundColor: o.kind === 'shopify' ? C.green : C.orange }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{o.external_order_number || o.id.slice(0, 8)}</Text>
-              <Text style={styles.rowMeta}>{o.customer_name ?? '—'} · {o.total_amount ?? 0} {o.currency ?? ''} · {o.ordered_at ? new Date(o.ordered_at).toLocaleString() : ''}</Text>
+        ) : (channelOrders.data ?? []).slice(0, 30).map((o) => {
+          const push = o.push_status ?? 'not_required';
+          const pushColor = push === 'synced' ? C.green : push === 'failed' ? C.red : push === 'pending' ? C.orange : C.textMuted;
+          const PushIcon = push === 'synced' ? CheckCircle2 : push === 'failed' ? AlertTriangle : push === 'pending' ? Clock : Send;
+          const canRetry = push === 'failed' || push === 'pending';
+          return (
+            <View key={o.id} style={styles.orderRow}>
+              <View style={[styles.kindDot, { backgroundColor: o.kind === 'shopify' ? C.green : C.orange }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.rowTitle}>{o.external_order_number || o.id.slice(0, 8)}</Text>
+                <Text style={styles.rowMeta}>{o.customer_name ?? '—'} · {o.total_amount ?? 0} {o.currency ?? ''} · {o.ordered_at ? new Date(o.ordered_at).toLocaleString() : ''}</Text>
+                <View style={styles.pushRow}>
+                  <PushIcon size={11} color={pushColor} />
+                  <Text style={[styles.pushText, { color: pushColor }]}>
+                    {push === 'synced' ? `Synced${o.fulfillment_pushed_at ? ` · ${new Date(o.fulfillment_pushed_at).toLocaleDateString()}` : ''}` :
+                     push === 'failed' ? `Failed${o.push_attempts ? ` (${o.push_attempts}x)` : ''}` :
+                     push === 'pending' ? 'Push pending' :
+                     'Awaiting shipment'}
+                  </Text>
+                  {o.tracking_number ? <Text style={styles.pushTracking} numberOfLines={1}>· {o.tracking_carrier ?? ''} {o.tracking_number}</Text> : null}
+                </View>
+                {push === 'failed' && o.push_last_error ? (
+                  <Text style={styles.pushErr} numberOfLines={2}>{o.push_last_error}</Text>
+                ) : null}
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                <StatusBadge status={o.status} size="sm" />
+                {canRetry ? (
+                  <Button
+                    label={push === 'failed' ? 'Retry' : 'Push'}
+                    size="sm"
+                    variant="secondary"
+                    onPress={() => retryPush.mutate(o.id)}
+                    loading={retryPush.isPending && retryPush.variables === o.id}
+                    icon={<Send size={11} color={C.text} />}
+                  />
+                ) : null}
+              </View>
             </View>
-            <StatusBadge status={o.status} size="sm" />
-          </View>
-        ))}
+          );
+        })}
 
         <Text style={styles.sectionTitle}>Recent sync logs</Text>
         {(logs.data ?? []).length === 0 ? (
@@ -327,7 +394,8 @@ export default function IntegrationsScreen() {
           <Text style={styles.helpText}>
             • Shopify: register a custom app and set SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_REDIRECT_URL, SHOPIFY_WEBHOOK_URL as Supabase secrets.{"\n"}
             • Amazon: enrol in Amazon SP-API developer programme, create LWA credentials, set AMAZON_LWA_CLIENT_ID + AMAZON_LWA_CLIENT_SECRET. Merchant must paste their refresh token after authorising your app.{"\n"}
-            • channel-sync-worker: schedule via Supabase cron with header x-cron-secret = CHANNEL_SYNC_SECRET.
+            • channel-sync-worker: schedule via Supabase cron with header x-cron-secret = CHANNEL_SYNC_SECRET.{"\n"}
+            • channel-fulfillment-worker: schedule every 1–5 min with header x-cron-secret = CHANNEL_FULFILLMENT_SECRET. Pushes tracking back to Shopify/Amazon when shipments are marked Shipped.
           </Text>
         </View>
       </ScrollView>
@@ -430,7 +498,11 @@ const styles = StyleSheet.create({
   mapText: { fontSize: 12, fontWeight: '700' as const, color: C.text, flex: 1 },
   mapTextInternal: { fontSize: 12, fontWeight: '700' as const, color: C.accent, flex: 1, textAlign: 'right' as const },
   mapArrow: { fontSize: 14, color: C.textMuted, fontWeight: '800' as const },
-  orderRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
+  orderRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
+  pushRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' as const },
+  pushText: { fontSize: 10, fontWeight: '700' as const },
+  pushTracking: { fontSize: 10, color: C.textMuted, flexShrink: 1 },
+  pushErr: { fontSize: 10, color: C.red, marginTop: 4 },
   kindDot: { width: 8, height: 8, borderRadius: 4 },
   rowTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
   rowMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
