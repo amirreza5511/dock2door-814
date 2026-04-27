@@ -57,6 +57,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       ],
     });
   }
+  if (role === "WarehouseProvider" || role === "Worker" || role === "Customer" || role === "Driver" || role === "GateStaff") {
+    // expose warehouse + fulfillment to provider only
+  }
   if (role === "WarehouseProvider") {
     sections.push({
       label: "Warehouse",
@@ -66,6 +69,14 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/warehouse/bookings", label: "Bookings", icon: ClipboardList },
         { href: "/warehouse/staff", label: "Staff", icon: Users },
         { href: "/warehouse/stations", label: "Stations", icon: Wrench },
+      ],
+    });
+    sections.push({
+      label: "Fulfillment",
+      items: [
+        { href: "/fulfillment/orders", label: "Orders", icon: ClipboardList },
+        { href: "/fulfillment/shipments", label: "Shipments", icon: Truck },
+        { href: "/fulfillment/integrations", label: "Integrations", icon: PackageSearch },
       ],
     });
   }
@@ -78,12 +89,35 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       ],
     });
   }
-  if (role === "TruckingCompany") {
+  if (role === "TruckingCompany" || role === "Driver") {
     sections.push({
       label: "Trucking",
       items: [
-        { href: "/trucking", label: "Dispatch", icon: Truck },
+        { href: "/trucking", label: "Job board", icon: Truck },
+        { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
+        { href: "/trucking/pod", label: "POD review", icon: ScrollText },
         { href: "/trucking/drivers", label: "Drivers", icon: Users },
+      ],
+    });
+  }
+  if (role === "Customer") {
+    sections.push({
+      label: "My account",
+      items: [
+        { href: "/customer", label: "Overview", icon: LayoutDashboard },
+        { href: "/customer/orders", label: "Orders", icon: ClipboardList },
+        { href: "/customer/tracking", label: "Tracking", icon: Truck },
+        { href: "/customer/invoices", label: "Invoices", icon: ScrollText },
+      ],
+    });
+  }
+  if (role === "Worker") {
+    sections.push({
+      label: "Work",
+      items: [
+        { href: "/worker", label: "Overview", icon: LayoutDashboard },
+        { href: "/worker/shifts", label: "Shifts", icon: ClipboardList },
+        { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
       ],
     });
   }
