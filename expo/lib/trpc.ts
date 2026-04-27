@@ -1226,11 +1226,31 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to load staff');
     return data ?? [];
   },
-  'company.addMember': async (input: { companyId: string; userId: string; role?: 'Owner' | 'Staff' }) => {
-    const { error } = await supabase.rpc('company_add_member', {
-      p_company_id: input.companyId, p_user_id: input.userId, p_role: input.role ?? 'Staff',
+  'company.addMember': async (input: { companyId: string; userId: string; role?: string; reason?: string }) => {
+    const role = input.role ?? 'Staff';
+    const { error: e2 } = await supabase.rpc('company_add_member_v2', {
+      p_company_id: input.companyId, p_user_id: input.userId, p_role: role, p_reason: input.reason ?? null,
     });
-    if (error) throwErr(error, 'Unable to add member');
+    if (e2) {
+      const { error } = await supabase.rpc('company_add_member', {
+        p_company_id: input.companyId, p_user_id: input.userId, p_role: role,
+      });
+      if (error) throwErr(error, 'Unable to add member');
+    }
+    return { success: true };
+  },
+  'company.updateMemberRole': async (input: { companyId: string; userId: string; role: string; reason?: string }) => {
+    const { error } = await supabase.rpc('company_update_member_role', {
+      p_company_id: input.companyId, p_user_id: input.userId, p_role: input.role, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update role');
+    return { success: true };
+  },
+  'company.setMemberStatus': async (input: { companyId: string; userId: string; status: 'Active' | 'Suspended' | 'Inactive'; reason?: string }) => {
+    const { error } = await supabase.rpc('company_set_member_status', {
+      p_company_id: input.companyId, p_user_id: input.userId, p_status: input.status, p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update status');
     return { success: true };
   },
   'company.removeMember': async (input: { companyId: string; userId: string; reason: string }) => {

@@ -7,23 +7,27 @@ import { useAuthStore } from '@/store/auth';
 
 const LAST_COMPANY_KEY = 'dock2door-last-active-company';
 
+import type { CompanyRole } from '@/lib/permissions';
+
 export interface Membership {
   companyId: string;
   companyName: string;
   companyType: string;
-  role: 'Owner' | 'Staff';
+  role: CompanyRole;
+  status?: string;
 }
 
 interface MembershipRow {
   company_id: string;
-  company_role: 'Owner' | 'Staff';
+  company_role: CompanyRole;
+  status: string;
   companies: { id: string; name: string; type: string } | null;
 }
 
 async function fetchMyMemberships(userId: string): Promise<Membership[]> {
   const { data, error } = await supabase
     .from('company_users')
-    .select('company_id, company_role, companies(id, name, type)')
+    .select('company_id, company_role, status, companies(id, name, type)')
     .eq('user_id', userId)
     .eq('status', 'Active')
     .returns<MembershipRow[]>();
@@ -38,6 +42,7 @@ async function fetchMyMemberships(userId: string): Promise<Membership[]> {
       companyName: r.companies.name,
       companyType: r.companies.type,
       role: r.company_role,
+      status: r.status,
     }));
 }
 
