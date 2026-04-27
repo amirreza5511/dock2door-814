@@ -305,9 +305,46 @@ All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/L
 - [x] `0016_message_notifs_stripe_dashboard.sql` — `tg_notify_thread_message()` + `tr_notify_thread_message` AFTER INSERT trigger on `thread_messages`: queues a `notifications` row (kind=`thread_message`) for every `thread_participants.user_id` except the sender, respecting `notification_preferences.push_enabled`; payload includes `thread_id`, `message_id`, `sender_user_id`, `sender_name`, `scope`. Bumps `chat_threads.updated_at` so thread lists re-sort. `push-notifications` dispatcher picks these up on its next cron tick and sends via Expo Push.
 - [x] Edge Function `stripe-connect-dashboard` (`supabase/functions/stripe-connect-dashboard/index.ts`) — Bearer-auth required; admin or company member only. Re-verifies onboarding status with `stripe.accounts.retrieve()` (syncs `stripe_connect_onboarded` if stale), then calls `stripe.accounts.createLoginLink()` to return a one-time Stripe Express dashboard URL. Returns `409 onboarding_incomplete` if the account is not yet fully onboarded.
 
+- [x] Per-station warehouse workstations (`expo/app/warehouse-provider/`):
+  - `stations.tsx` — launcher; gates each station by role permission (`can(role, ...)`), shows operator identity (name + role) per audit requirement.
+  - `station-receiving.tsx` — open ASNs, receive line wizard → `wms.receive` (writes ledger via `wms_receive` RPC), recent receipts history.
+  - `station-picking.tsx` — wave queue / in-progress; calls `fulfillment.pickOrder`.
+  - `station-packing.tsx` — picked → packed via `fulfillment.packOrder`; print/pack queue.
+  - `station-shipping.tsx` — packed → shipped via `fulfillment.shipOrder`; deep-links into rate-shop / manifest / shipments; shows recent labels with carrier + tracking.
+  - `station-inventory.tsx` — cycle count + transfer wizards on `wms.adjust` (writes movement ledger), variance alerts.
+  - `station-dock.tsx` — gate-event recorder calling `yard.recordEvent` (`check_in`/`at_gate`/`at_door`/`loading`/`unloading`/`seal_check`/`hold`/`released`/`no_show`/`check_out`), recent events + yard moves history.
+  - `_layout.tsx` — registers all six station routes (`href: null`) plus a top-level `Stations` tab pointing at the launcher.
+  - All stations enforce permissions on the client via `can(role, '...')` AND inherit RLS/RPC enforcement from migrations 0012 / 0013 / 0014 / 0018 server-side.
+
+- [x] `0020_sales_channels.sql` — multi-channel fulfillment (Shopify + Amazon):
+  - Enums: `sales_channel_kind` (`shopify`/`amazon`), `channel_connection_status`, `channel_order_status`, `channel_sync_kind`, `channel_sync_result`.
+  - Tables: `sales_channels`, `channel_connections` (per-company OAuth tokens; secrets RLS-locked to admin + service-role), `channel_products`, `sku_mappings`, `channel_orders`, `channel_order_items`, `channel_sync_logs`.
+  - RLS: members can read public columns / orders / logs / mappings; secret token columns + writes are admin-only at table level. Mutations flow through SECURITY DEFINER RPCs.
+  - RPCs: `channel_connection_upsert`, `channel_connection_disconnect`, `sku_mapping_upsert`, `channel_retry_sync` (member-callable), plus service-role-only `channel_ingest_order` and `channel_log_sync` (used by edge functions). All audited via `write_audit`.
+  - View: `channel_connections_public` (no secret columns) for client reads.
+
+- [x] Sales-channel Edge Functions (`supabase/functions/`):
+  - `_shared/channels.ts` — CORS, JSON helpers, service-role client, Bearer-JWT user resolution, `logSync` wrapper.
+  - `shopify-oauth-start` — Bearer-auth; upserts pending `channel_connections` row; returns the Shopify install URL (state encodes companyId + connId).
+  - `shopify-oauth-callback` — exchanges OAuth code for permanent token, persists token + scope on the connection, registers `orders/create`, `orders/updated`, `orders/cancelled`, `fulfillments/create`, `app/uninstalled` webhooks.
+  - `shopify-webhook` — verifies HMAC with `SHOPIFY_API_SECRET`, normalizes order payload, calls `channel_ingest_order`. Handles `app/uninstalled` by calling `channel_connection_disconnect`. Deploy `--no-verify-jwt`.
+  - `shopify-sync-orders` — Bearer-auth; manual/backfill pull of orders for a connection (`?status=any&updated_at_min=...`), writes via `channel_ingest_order`.
+  - `amazon-spapi-auth` — Bearer-auth; trades merchant LWA refresh token for an access token, persists both on the connection (status=active).
+  - `amazon-sync-orders` — refreshes LWA token if expired, calls SP-API `/orders/v0/orders` + `/orderItems`, writes via `channel_ingest_order`.
+  - `channel-sync-worker` — cron-secret-guarded (`x-cron-secret` = `CHANNEL_SYNC_SECRET`); iterates active connections and pulls recent orders. Designed for 5–15-minute cron schedule.
+
+- [x] `expo/app/fulfillment/integrations.tsx` — Connected Stores web/mobile screen:
+  - Lists Shopify + Amazon connections, status, last sync, last error.
+  - Connect Shopify modal → `shopify-oauth-start` → opens install URL in browser (`window.open` on web, `Linking.openURL` on native).
+  - Connect Amazon modal → `amazon-spapi-auth` (selling-partner id, marketplace id, LWA refresh token).
+  - Per-connection actions: `Sync now` (calls `shopify-sync-orders` / `amazon-sync-orders`), `Disconnect` (RPC `channel_connection_disconnect` with audit reason).
+  - SKU mappings list + add modal → `sku_mapping_upsert`. Channel orders list with kind / customer / total / ordered date. Recent sync log feed.
+  - In-screen help block calling out the exact Supabase secrets that must be set per channel.
+  - Registered in `app/fulfillment/_layout.tsx`.
+
 ## Final delivery status
 
-- **Migrations**: `0001` … `0014` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.
+- **Migrations**: `0001` … `0020` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.
 - **Storage + signed URLs**: 5 private buckets (0006), per-bucket `storage.objects` policies (0006), client `getSignedUrl` → `get-signed-url` Edge Function → `can_read_storage_object` predicate → service-role signing (0009 + Edge Fn). Orphan cleanup via scheduled Edge Fn.
 - **RLS**: deny-by-default, split per actor, ownership columns derived by BEFORE-INSERT triggers (bookings, service_jobs, shift_assignments), ownership columns locked via UPDATE WITH CHECK. Admin is never `USING (true)` on writes; every admin write is an RPC that writes `audit_logs`.
 - **State machines**: `booking_transitions` + `enforce_booking_transition` trigger + `transition_booking` RPC (0004); `service_job_transitions` + `enforce_service_job_transition` trigger + `transition_service_job` RPC (0008); shift lifecycle via `employer_accept_applicant` / `worker_clock_in` (cert-enforced) / `worker_clock_out` / `employer_confirm_hours` RPCs (0008).

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Warehouse, BookOpen, PlusCircle, Users, Archive, Wallet } from 'lucide-react-native';
+import { LayoutDashboard, Warehouse, BookOpen, PlusCircle, Users, Archive, Wallet, Layers } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import { can } from '@/lib/permissions';
@@ -26,11 +26,19 @@ export default function WarehouseProviderLayout() {
       <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} /> }} />
       <Tabs.Screen name="listings" options={{ title: 'Listings', tabBarIcon: ({ color }) => <Warehouse size={22} color={color} />, href: canListings ? undefined : null }} />
       <Tabs.Screen name="bookings" options={{ title: 'Bookings', tabBarIcon: ({ color }) => <BookOpen size={22} color={color} />, href: canBookings ? undefined : null }} />
+      <Tabs.Screen name="stations" options={{ title: 'Stations', tabBarIcon: ({ color }) => <Layers size={22} color={color} /> }} />
       <Tabs.Screen name="create-listing" options={{ title: 'New', tabBarIcon: ({ color }) => <PlusCircle size={22} color={color} />, href: canListings ? undefined : null }} />
       <Tabs.Screen name="staff" options={{ title: 'Staff', tabBarIcon: ({ color }) => <Users size={22} color={color} />, href: canStaff ? undefined : null }} />
       <Tabs.Screen name="wms" options={{ title: 'WMS', tabBarIcon: ({ color }) => <Archive size={22} color={color} />, href: canWms ? undefined : null }} />
       <Tabs.Screen name="stripe-connect" options={{ title: 'Payouts', tabBarIcon: ({ color }) => <Wallet size={22} color={color} />, href: canPayouts ? undefined : null }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
+      <Tabs.Screen name="carriers" options={{ href: null }} />
+      <Tabs.Screen name="station-receiving" options={{ href: null }} />
+      <Tabs.Screen name="station-picking" options={{ href: null }} />
+      <Tabs.Screen name="station-packing" options={{ href: null }} />
+      <Tabs.Screen name="station-shipping" options={{ href: null }} />
+      <Tabs.Screen name="station-inventory" options={{ href: null }} />
+      <Tabs.Screen name="station-dock" options={{ href: null }} />
     </Tabs>
   );
 }

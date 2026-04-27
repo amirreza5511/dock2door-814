@@ -9,6 +9,7 @@ export default function FulfillmentLayout() {
       <Stack.Screen name="returns" />
       <Stack.Screen name="rate-shop" />
       <Stack.Screen name="manifest" />
+      <Stack.Screen name="integrations" />
     </Stack>
   );
 }
