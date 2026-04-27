@@ -7,8 +7,8 @@ export const ROLE_HOME: Record<UserRole, string> = {
   Employer: "/employer",
   Worker: "/worker",
   TruckingCompany: "/trucking",
-  Driver: "/driver",
-  GateStaff: "/gate",
+  Driver: "/trucking",
+  GateStaff: "/warehouse/stations/dock",
   Admin: "/admin",
   SuperAdmin: "/super-admin",
 };

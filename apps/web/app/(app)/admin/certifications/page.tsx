@@ -69,7 +69,8 @@ export default function AdminCertificationsPage() {
       window.alert(error.message);
       return;
     }
-    const url = (data as { url?: string } | null)?.url;
+    const url = (data as { signedUrl?: string; url?: string } | null)?.signedUrl
+      ?? (data as { url?: string } | null)?.url;
     if (url) window.open(url, "_blank");
   };
 

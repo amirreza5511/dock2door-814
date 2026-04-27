@@ -22,7 +22,7 @@ export default function WarehouseStaffPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<string>("staff");
+  const [role, setRole] = useState<string>("viewer");
 
   const myCompaniesQuery = useQuery({
     queryKey: ["my_companies"],

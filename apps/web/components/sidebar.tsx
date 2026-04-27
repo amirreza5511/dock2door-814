@@ -52,7 +52,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "Super Admin",
       items: [
-        { href: "/super-admin/platform", label: "Platform Settings", icon: Settings },
+        { href: "/super-admin", label: "Overview", icon: Settings },
         { href: "/super-admin/roles", label: "Platform Roles", icon: ShieldCheck },
       ],
     });
@@ -85,7 +85,6 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Services",
       items: [
         { href: "/service-provider", label: "Jobs", icon: Briefcase },
-        { href: "/service-provider/services", label: "My Services", icon: PackageSearch },
       ],
     });
   }
@@ -96,7 +95,6 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/trucking", label: "Job board", icon: Truck },
         { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
         { href: "/trucking/pod", label: "POD review", icon: ScrollText },
-        { href: "/trucking/drivers", label: "Drivers", icon: Users },
       ],
     });
   }
@@ -126,7 +124,6 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Labour",
       items: [
         { href: "/employer", label: "Shifts", icon: ClipboardList },
-        { href: "/employer/applications", label: "Applications", icon: Users },
       ],
     });
   }

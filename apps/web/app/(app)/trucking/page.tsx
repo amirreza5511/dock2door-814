@@ -10,7 +10,8 @@ import { formatDate } from "@/lib/utils";
 interface ShipmentRow {
   id: string;
   status: string;
-  carrier: string | null;
+  carrier_code: string | null;
+  service_level: string | null;
   tracking_code: string | null;
   created_at: string;
 }
@@ -22,7 +23,7 @@ export default function TruckingDispatchPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shipments")
-        .select("id,status,carrier,tracking_code,created_at")
+        .select("id,status,carrier_code,service_level,tracking_code,created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -61,7 +62,7 @@ export default function TruckingDispatchPage() {
                     <TD>
                       <Badge>{s.status}</Badge>
                     </TD>
-                    <TD>{s.carrier ?? "—"}</TD>
+                    <TD>{`${s.carrier_code ?? "—"} ${s.service_level ?? ""}`}</TD>
                     <TD className="font-mono text-xs">{s.tracking_code ?? "—"}</TD>
                     <TD>{formatDate(s.created_at)}</TD>
                   </TR>
