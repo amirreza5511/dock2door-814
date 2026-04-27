@@ -1506,12 +1506,106 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to create shipment');
     return { id: data as string };
   },
-  'shipping.purchaseLabel': async (input: { shipmentId: string }) => {
+  'shipping.purchaseLabel': async (input: { shipmentId: string; rateQuoteId?: string; carrierAccountId?: string }) => {
     const { data, error } = await supabase.functions.invoke('purchase-shipping-label', {
-      body: { shipment_id: input.shipmentId },
+      body: { shipment_id: input.shipmentId, rate_quote_id: input.rateQuoteId, carrier_account_id: input.carrierAccountId },
     });
     if (error) throwErr(error, 'Unable to purchase label');
     return data as { tracking_code: string; label_url: string; carrier: string; rate: number; currency: string };
+  },
+  'shipping.rateShop': async (input: { shipmentId: string; carrierCodes?: string[] }) => {
+    const { data, error } = await supabase.functions.invoke('shipping-rate-shop', {
+      body: { shipment_id: input.shipmentId, carrier_codes: input.carrierCodes ?? [] },
+    });
+    if (error) throwErr(error, 'Unable to compare rates');
+    return data as { rates: AnyRecord[]; errors: { carrier: string; error: string }[]; attempted: number };
+  },
+  'shipping.listRateQuotes': async (input: { shipmentId: string }) => {
+    const { data, error } = await supabase.from('shipping_rate_quotes').select('*').eq('shipment_id', input.shipmentId).order('rate_amount', { ascending: true });
+    if (error) throwErr(error, 'Unable to load rate quotes');
+    return data ?? [];
+  },
+  'shipping.voidLabel': async (input: { shipmentId: string; reason?: string }) => {
+    const { data, error } = await supabase.functions.invoke('shipping-void-label', {
+      body: { shipment_id: input.shipmentId, reason: input.reason ?? '' },
+    });
+    if (error) throwErr(error, 'Unable to void label');
+    return data as { ok: boolean };
+  },
+  'shipping.createManifest': async (input: { companyId: string; carrierCode: string; carrierAccountId?: string; shipmentIds: string[] }) => {
+    const { data, error } = await supabase.functions.invoke('shipping-create-manifest', {
+      body: { company_id: input.companyId, carrier_code: input.carrierCode, carrier_account_id: input.carrierAccountId, shipment_ids: input.shipmentIds },
+    });
+    if (error) throwErr(error, 'Unable to create manifest');
+    return data as { manifest_id: string; manifest_number: string; manifest_url: string; failed_reason: string; attach_errors: string[] };
+  },
+  'shipping.listManifests': async (input: { companyId?: string } | undefined, ctx) => {
+    const q = supabase.from('shipping_manifests').select('*').order('created_at', { ascending: false });
+    const scoped = input?.companyId
+      ? q.eq('company_id', input.companyId)
+      : isAdmin(ctx.user.role)
+        ? q
+        : ctx.user.companyId ? q.eq('company_id', ctx.user.companyId) : q.eq('company_id', '00000000-0000-0000-0000-000000000000');
+    const { data, error } = await scoped;
+    if (error) throwErr(error, 'Unable to load manifests');
+    return data ?? [];
+  },
+  'shipping.trackPull': async (input: { shipmentId?: string; max?: number }) => {
+    const { data, error } = await supabase.functions.invoke('shipping-track-pull', {
+      body: { shipment_id: input.shipmentId, max: input.max ?? 25 },
+    });
+    if (error) throwErr(error, 'Unable to refresh tracking');
+    return data as { polled: number; recorded: number; errors: string[] };
+  },
+
+  // =========================================================================
+  // CARRIERS — multi-carrier accounts
+  // =========================================================================
+  'carriers.list': async (input: { scope?: 'platform' | 'company'; companyId?: string } | undefined, ctx) => {
+    const q = supabase.from('carrier_accounts').select('*').order('carrier_code');
+    if (input?.scope === 'platform') {
+      const { data, error } = await q.eq('scope', 'platform');
+      if (error) throwErr(error, 'Unable to load carriers');
+      return data ?? [];
+    }
+    const companyId = input?.companyId ?? ctx.user.companyId ?? '';
+    if (!companyId && !isAdmin(ctx.user.role)) return [];
+    const { data, error } = isAdmin(ctx.user.role) && !companyId
+      ? await q
+      : await q.eq('company_id', companyId).eq('scope', 'company');
+    if (error) throwErr(error, 'Unable to load carriers');
+    return data ?? [];
+  },
+  'carriers.upsert': async (input: { id?: string; companyId?: string | null; scope: 'platform' | 'company'; carrierCode: string; displayName?: string; accountNumber?: string; mode?: 'test' | 'live'; credentialsSecretRef?: string; data?: AnyRecord; isActive?: boolean }) => {
+    const { data, error } = await supabase.rpc('upsert_carrier_account', {
+      p_id: input.id ?? null,
+      p_company_id: input.scope === 'platform' ? null : (input.companyId ?? null),
+      p_scope: input.scope,
+      p_carrier_code: input.carrierCode.toUpperCase(),
+      p_display_name: input.displayName ?? '',
+      p_account_number: input.accountNumber ?? '',
+      p_mode: input.mode ?? 'test',
+      p_credentials_secret_ref: input.credentialsSecretRef ?? '',
+      p_data: input.data ?? {},
+      p_is_active: input.isActive ?? true,
+    });
+    if (error) throwErr(error, 'Unable to save carrier');
+    return { id: data as string };
+  },
+  'carriers.delete': async (input: { id: string }) => {
+    const { error } = await supabase.from('carrier_accounts').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete carrier');
+    return { ok: true };
+  },
+  'carriers.supported': async () => {
+    return [
+      { code: 'EASYPOST', name: 'EasyPost', implemented: true, mode: 'aggregator', requires: ['api_key'] },
+      { code: 'SHIPPO', name: 'Shippo', implemented: true, mode: 'aggregator', requires: ['api_key'] },
+      { code: 'CANADA_POST', name: 'Canada Post', implemented: true, mode: 'direct', requires: ['username', 'password', 'customer_number'] },
+      { code: 'UPS', name: 'UPS', implemented: true, mode: 'direct', requires: ['client_id', 'client_secret', 'account_number'] },
+      { code: 'DHL', name: 'DHL Express', implemented: true, mode: 'direct', requires: ['username', 'password', 'account_number'] },
+      { code: 'FEDEX', name: 'FedEx', implemented: true, mode: 'direct', requires: ['client_id', 'client_secret', 'account_number'] },
+    ];
   },
 
   // =========================================================================

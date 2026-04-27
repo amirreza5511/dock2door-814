@@ -7,6 +7,8 @@ export default function FulfillmentLayout() {
       <Stack.Screen name="[bookingId]" />
       <Stack.Screen name="shipments" />
       <Stack.Screen name="returns" />
+      <Stack.Screen name="rate-shop" />
+      <Stack.Screen name="manifest" />
     </Stack>
   );
 }

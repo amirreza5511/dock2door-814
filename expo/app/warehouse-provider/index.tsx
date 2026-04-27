@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -166,6 +166,32 @@ export default function WarehouseProviderDashboard() {
               <View>
                 <Text style={styles.createTitle}>Add New Listing</Text>
                 <Text style={styles.createDesc}>List your warehouse space</Text>
+              </View>
+            </View>
+          </Card>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Shipping</Text>
+          <Card onPress={() => router.push('/warehouse-provider/carriers' as any)} elevated>
+            <View style={styles.createRow}>
+              <View style={[styles.createIcon, { backgroundColor: C.purpleDim }]}>
+                <Truck size={22} color={C.purple} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.createTitle}>Carrier accounts</Text>
+                <Text style={styles.createDesc}>Connect Canada Post, UPS, DHL, FedEx, EasyPost, Shippo</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/fulfillment/manifest' as any)} elevated style={{ marginTop: 10 }}>
+            <View style={styles.createRow}>
+              <View style={[styles.createIcon, { backgroundColor: C.blueDim }]}>
+                <ClipboardList size={22} color={C.blue} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.createTitle}>End-of-day manifests</Text>
+                <Text style={styles.createDesc}>Close out shipments per carrier</Text>
               </View>
             </View>
           </Card>

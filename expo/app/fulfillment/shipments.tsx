@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Truck, ArrowLeft, Package, MapPin, Clock, ExternalLink, Tag } from 'lucide-react-native';
+import { Truck, ArrowLeft, Package, MapPin, Clock, ExternalLink, Tag, RefreshCcw, XCircle, ClipboardList } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -43,9 +43,14 @@ export default function ShipmentsScreen() {
   const listQuery = trpc.shipping.listShipments.useQuery();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const detailQuery = trpc.shipping.getShipment.useQuery({ id: selectedId ?? '' }, { enabled: Boolean(selectedId) });
-  const purchaseLabel = trpc.shipping.purchaseLabel.useMutation({
+  const voidLabel = trpc.shipping.voidLabel.useMutation({
     onSuccess: async () => {
       await utils.shipping.listShipments.invalidate();
+      if (selectedId) await utils.shipping.getShipment.invalidate({ id: selectedId });
+    },
+  });
+  const trackPull = trpc.shipping.trackPull.useMutation({
+    onSuccess: async () => {
       if (selectedId) await utils.shipping.getShipment.invalidate({ id: selectedId });
     },
   });
@@ -53,13 +58,16 @@ export default function ShipmentsScreen() {
   const shipments = useMemo<ShipmentRow[]>(() => (listQuery.data ?? []) as ShipmentRow[], [listQuery.data]);
   const detail = detailQuery.data as { shipment: ShipmentRow; events: TrackingEventRow[] } | undefined;
 
-  const handlePurchase = async (shipmentId: string) => {
-    try {
-      const res = await purchaseLabel.mutateAsync({ shipmentId }) as { tracking_code: string; label_url: string };
-      Alert.alert('Label purchased', `Tracking: ${res.tracking_code}`);
-    } catch (error) {
-      Alert.alert('Unable to purchase label', error instanceof Error ? error.message : 'Unknown error');
-    }
+  const handleVoid = async (shipmentId: string) => {
+    Alert.alert('Void label?', 'Refund/void the carrier label and mark this shipment as Voided.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Void', style: 'destructive', onPress: async () => {
+          try { await voidLabel.mutateAsync({ shipmentId, reason: 'manual_void' }); }
+          catch (e) { Alert.alert('Unable to void', e instanceof Error ? e.message : 'unknown'); }
+        },
+      },
+    ]);
   };
 
   if (listQuery.isLoading) return <View style={[styles.root, styles.centered]}><ScreenFeedback state="loading" title="Loading shipments" /></View>;
@@ -73,6 +81,9 @@ export default function ShipmentsScreen() {
           <Text style={styles.title}>Shipments</Text>
           <Text style={styles.sub}>{shipments.length} total</Text>
         </View>
+        <TouchableOpacity onPress={() => router.push('/fulfillment/manifest')} style={styles.backBtn} testID="open-manifests">
+          <ClipboardList size={18} color={C.text} />
+        </TouchableOpacity>
       </View>
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
@@ -98,17 +109,34 @@ export default function ShipmentsScreen() {
                   <Text style={styles.detailVal}>${Number(s.rate_amount ?? 0).toFixed(2)} {String(s.currency ?? 'CAD').toUpperCase()}</Text>
                 </View>
                 {s.label_url ? (
-                  <Button
-                    label="Open label PDF"
-                    variant="secondary"
-                    icon={<ExternalLink size={14} color={C.text} />}
-                    onPress={() => Platform.OS === 'web' ? window.open(String(s.label_url), '_blank') : void Linking.openURL(String(s.label_url))}
-                  />
+                  <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                    <Button
+                      label="Open label PDF"
+                      variant="secondary"
+                      icon={<ExternalLink size={14} color={C.text} />}
+                      onPress={() => Platform.OS === 'web' ? window.open(String(s.label_url), '_blank') : void Linking.openURL(String(s.label_url))}
+                    />
+                    <Button
+                      label="Refresh tracking"
+                      variant="secondary"
+                      icon={<RefreshCcw size={14} color={C.text} />}
+                      loading={trackPull.isPending}
+                      onPress={() => void trackPull.mutate({ shipmentId: s.id })}
+                    />
+                    {s.status !== 'Voided' && s.status !== 'Delivered' ? (
+                      <Button
+                        label="Void label"
+                        variant="danger"
+                        icon={<XCircle size={14} color={C.red} />}
+                        loading={voidLabel.isPending}
+                        onPress={() => void handleVoid(s.id)}
+                      />
+                    ) : null}
+                  </View>
                 ) : (
                   <Button
-                    label="Purchase label (EasyPost)"
-                    onPress={() => void handlePurchase(s.id)}
-                    loading={purchaseLabel.isPending}
+                    label="Compare rates & buy label"
+                    onPress={() => router.push({ pathname: '/fulfillment/rate-shop', params: { shipmentId: s.id } })}
                     icon={<Tag size={14} color={C.white} />}
                   />
                 )}
