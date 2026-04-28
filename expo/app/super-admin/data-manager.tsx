@@ -35,11 +35,21 @@ export default function SuperAdminDataManagerScreen() {
 
   const items: EntityItem[] = (listQuery.data ?? []) as EntityItem[];
 
-  const applyStatus = async (newStatus: string) => {
+  const resolveStatusValue = (intent: 'approve' | 'active' | 'suspend'): string => {
+    if (entity === 'companies') {
+      if (intent === 'approve' || intent === 'active') return 'Approved';
+      return 'Suspended';
+    }
+    if (intent === 'approve' || intent === 'active') return 'Active';
+    return 'Suspended';
+  };
+
+  const applyStatus = async (intent: 'approve' | 'active' | 'suspend') => {
     if (!selectedId) {
       Alert.alert('Select a record first');
       return;
     }
+    const newStatus = resolveStatusValue(intent);
     try {
       await updateStatusMutation.mutateAsync({ entity, id: selectedId, status: newStatus });
       setStatus(newStatus);
@@ -125,9 +135,9 @@ export default function SuperAdminDataManagerScreen() {
               </View>
             ) : null}
             <View style={styles.formGap}>
-              <Button label="Approve" onPress={() => void applyStatus('Approved')} loading={updateStatusMutation.isPending} testID="data-manager-approve" />
-              <Button label="Set Active" variant="secondary" onPress={() => void applyStatus('Active')} loading={updateStatusMutation.isPending} testID="data-manager-active" />
-              <Button label="Suspend" variant="danger" onPress={() => void applyStatus('Suspended')} loading={updateStatusMutation.isPending} testID="data-manager-suspend" />
+              <Button label="Approve" onPress={() => void applyStatus('approve')} loading={updateStatusMutation.isPending} testID="data-manager-approve" />
+              <Button label="Set Active" variant="secondary" onPress={() => void applyStatus('active')} loading={updateStatusMutation.isPending} testID="data-manager-active" />
+              <Button label="Suspend" variant="danger" onPress={() => void applyStatus('suspend')} loading={updateStatusMutation.isPending} testID="data-manager-suspend" />
             </View>
           </Card>
         ) : null}
