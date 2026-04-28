@@ -104,7 +104,7 @@ export default function AdminCompaniesPage() {
                         onAction={(action) => {
                           const reason = window.prompt(`Reason for ${action}?`);
                           if (!reason) return;
-                          const next = action === "approve" ? "Active" : action === "suspend" ? "Suspended" : "Active";
+                          const next = action === "approve" ? "Approved" : action === "suspend" ? "Suspended" : "Approved";
                           setStatus.mutate({ id: c.id, status: next, reason });
                         }}
                         disabled={setStatus.isPending}
@@ -130,7 +130,7 @@ function ActionButtons({
   onAction: (a: "approve" | "suspend" | "reinstate") => void;
   disabled: boolean;
 }) {
-  if (status === "Pending") {
+  if (status === "PendingApproval") {
     return (
       <Button size="sm" disabled={disabled} onClick={() => onAction("approve")}>
         Approve
@@ -153,9 +153,9 @@ function ActionButtons({
 
 function statusVariant(status: string): "success" | "warning" | "destructive" | "secondary" {
   switch (status) {
-    case "Active":
+    case "Approved":
       return "success";
-    case "Pending":
+    case "PendingApproval":
       return "warning";
     case "Suspended":
       return "destructive";
