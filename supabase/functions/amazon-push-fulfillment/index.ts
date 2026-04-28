@@ -1,9 +1,33 @@
 // Amazon SP-API outbound fulfillment push.
 // POST { channelOrderId } — calls confirmShipment on the merchant's Amazon
 // order with carrier + tracking. Refreshes the LWA access token if expired.
+// Single-file dashboard-deployable version (no _shared imports).
 // deno-lint-ignore-file no-explicit-any
 // @ts-nocheck
-import { corsHeaders, json, svc } from '../_shared/channels.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+
+const corsHeaders: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-shopify-hmac-sha256, x-shopify-shop-domain, x-shopify-topic',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
+
+function json(body: unknown, status = 200, extra: Record<string, string> = {}) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders, ...extra },
+  });
+}
+
+function svc() {
+  const url = Deno.env.get('SUPABASE_URL');
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) throw new Error('missing_supabase_service_env');
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
 
 async function refreshLwa(refreshToken: string) {
   const clientId = Deno.env.get('AMAZON_LWA_CLIENT_ID');
@@ -53,7 +77,10 @@ Deno.serve(async (req: Request) => {
     if (co.kind !== 'amazon') return json({ error: 'wrong_kind' }, 400);
     if (!co.tracking_number) {
       await sb.rpc('channel_mark_fulfillment_pushed', {
-        p_channel_order_id: co.id, p_success: false, p_external_fulfillment_id: null, p_error: 'missing_tracking_number',
+        p_channel_order_id: co.id,
+        p_success: false,
+        p_external_fulfillment_id: null,
+        p_error: 'missing_tracking_number',
       });
       return json({ error: 'missing_tracking_number' }, 400);
     }
@@ -70,20 +97,25 @@ Deno.serve(async (req: Request) => {
     if (!access || exp < Date.now() + 60_000) {
       const fresh = await refreshLwa(conn.refresh_token_enc as string);
       access = fresh.token;
-      await sb.from('channel_connections').update({
-        access_token_enc: access,
-        token_expires_at: new Date(Date.now() + (fresh.expiresIn - 60) * 1000).toISOString(),
-      }).eq('id', conn.id);
+      await sb
+        .from('channel_connections')
+        .update({
+          access_token_enc: access,
+          token_expires_at: new Date(Date.now() + (fresh.expiresIn - 60) * 1000).toISOString(),
+        })
+        .eq('id', conn.id);
     }
 
-    const marketplaceId = (conn.metadata as any)?.marketplaceId ?? Deno.env.get('AMAZON_DEFAULT_MARKETPLACE') ?? '';
+    const marketplaceId =
+      (conn.metadata as any)?.marketplaceId ?? Deno.env.get('AMAZON_DEFAULT_MARKETPLACE') ?? '';
     if (!marketplaceId) return json({ error: 'missing_marketplaceId' }, 400);
     const region = Deno.env.get('AMAZON_SPAPI_REGION') ?? 'https://sellingpartnerapi-na.amazon.com';
 
     // Fetch order items so we can mirror them in the shipment confirmation payload.
-    const itemsRes = await fetch(`${region}/orders/v0/orders/${encodeURIComponent(co.external_order_id)}/orderItems`, {
-      headers: { 'x-amz-access-token': access },
-    });
+    const itemsRes = await fetch(
+      `${region}/orders/v0/orders/${encodeURIComponent(co.external_order_id)}/orderItems`,
+      { headers: { 'x-amz-access-token': access } },
+    );
     const itemsJ = itemsRes.ok ? await itemsRes.json() : { payload: { OrderItems: [] } };
     const orderItems = (itemsJ.payload?.OrderItems ?? []).map((li: any) => ({
       orderItemId: li.OrderItemId,
@@ -92,7 +124,12 @@ Deno.serve(async (req: Request) => {
 
     if (orderItems.length === 0) {
       const msg = 'no_order_items';
-      await sb.rpc('channel_mark_fulfillment_pushed', { p_channel_order_id: co.id, p_success: false, p_external_fulfillment_id: null, p_error: msg });
+      await sb.rpc('channel_mark_fulfillment_pushed', {
+        p_channel_order_id: co.id,
+        p_success: false,
+        p_external_fulfillment_id: null,
+        p_error: msg,
+      });
       return json({ error: msg }, 400);
     }
 
@@ -118,12 +155,29 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify(payload),
     });
     const text = await res.text();
-    let parsed: any = null; try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
+    let parsed: any = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = { raw: text };
+    }
 
     if (!res.ok) {
       const msg = `spapi_confirm_${res.status}`;
-      await sb.rpc('channel_mark_fulfillment_pushed', { p_channel_order_id: co.id, p_success: false, p_external_fulfillment_id: null, p_error: msg });
-      await sb.rpc('channel_log_sync', { p_connection_id: conn.id, p_company_id: co.company_id, p_kind: 'fulfillment_push', p_result: 'error', p_message: msg, p_payload: parsed ?? {} });
+      await sb.rpc('channel_mark_fulfillment_pushed', {
+        p_channel_order_id: co.id,
+        p_success: false,
+        p_external_fulfillment_id: null,
+        p_error: msg,
+      });
+      await sb.rpc('channel_log_sync', {
+        p_connection_id: conn.id,
+        p_company_id: co.company_id,
+        p_kind: 'fulfillment_push',
+        p_result: 'error',
+        p_message: msg,
+        p_payload: parsed ?? {},
+      });
       return json({ error: msg, detail: parsed }, 502);
     }
 
@@ -134,13 +188,19 @@ Deno.serve(async (req: Request) => {
       p_error: null,
     });
     await sb.rpc('channel_log_sync', {
-      p_connection_id: conn.id, p_company_id: co.company_id, p_kind: 'fulfillment_push',
-      p_result: 'ok', p_message: `confirmShipment ok`,
+      p_connection_id: conn.id,
+      p_company_id: co.company_id,
+      p_kind: 'fulfillment_push',
+      p_result: 'ok',
+      p_message: `confirmShipment ok`,
       p_payload: { tracking: co.tracking_number, carrier: carrierCode },
     });
 
     return json({ ok: true });
   } catch (e) {
-    return json({ error: 'unexpected', detail: e instanceof Error ? e.message : String(e) }, 500);
+    return json(
+      { error: 'unexpected', detail: e instanceof Error ? e.message : String(e) },
+      500,
+    );
   }
 });
