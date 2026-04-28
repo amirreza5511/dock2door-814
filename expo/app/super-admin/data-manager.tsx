@@ -5,7 +5,6 @@ import { Database, Trash2 } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
-import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
@@ -36,13 +35,14 @@ export default function SuperAdminDataManagerScreen() {
 
   const items: EntityItem[] = (listQuery.data ?? []) as EntityItem[];
 
-  const applyStatus = async () => {
-    if (!selectedId || !status.trim()) {
-      Alert.alert('Select a record and enter a status');
+  const applyStatus = async (newStatus: string) => {
+    if (!selectedId) {
+      Alert.alert('Select a record first');
       return;
     }
     try {
-      await updateStatusMutation.mutateAsync({ entity, id: selectedId, status: status.trim() });
+      await updateStatusMutation.mutateAsync({ entity, id: selectedId, status: newStatus });
+      setStatus(newStatus);
       await Promise.all([utils.admin.listEntity.invalidate({ entity }), utils.admin.getEntityRecord.invalidate({ entity, id: selectedId })]);
     } catch (error) {
       Alert.alert('Unable to update status', error instanceof Error ? error.message : 'Unknown error');
@@ -116,12 +116,18 @@ export default function SuperAdminDataManagerScreen() {
 
         {selectedId ? (
           <Card elevated>
-            <Text style={styles.sectionTitle}>Record detail</Text>
+            <Text style={styles.sectionTitle}>Record actions</Text>
             {detailQuery.isLoading ? <ScreenFeedback state="loading" title="Loading record" /> : null}
-            {detailQuery.data ? <Text style={styles.detailText}>{JSON.stringify(detailQuery.data, null, 2)}</Text> : null}
+            {detailQuery.data ? (
+              <View style={styles.summaryBlock}>
+                <Text style={styles.summaryLabel}>Current status</Text>
+                <View style={{ marginTop: 6 }}><StatusBadge status={String(status || 'Unknown')} /></View>
+              </View>
+            ) : null}
             <View style={styles.formGap}>
-              <Input label="Status" value={status} onChangeText={setStatus} placeholder="Approved / Suspended / Active" testID="data-manager-status" />
-              <Button label="Update Status" onPress={() => void applyStatus()} loading={updateStatusMutation.isPending} />
+              <Button label="Approve" onPress={() => void applyStatus('Approved')} loading={updateStatusMutation.isPending} testID="data-manager-approve" />
+              <Button label="Set Active" variant="secondary" onPress={() => void applyStatus('Active')} loading={updateStatusMutation.isPending} testID="data-manager-active" />
+              <Button label="Suspend" variant="danger" onPress={() => void applyStatus('Suspended')} loading={updateStatusMutation.isPending} testID="data-manager-suspend" />
             </View>
           </Card>
         ) : null}
@@ -150,4 +156,6 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
   detailText: { marginTop: 12, color: C.textSecondary, fontSize: 12, lineHeight: 18 },
   formGap: { gap: 12, marginTop: 12 },
+  summaryBlock: { marginTop: 12 },
+  summaryLabel: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
 });
