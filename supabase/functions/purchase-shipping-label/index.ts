@@ -1,19 +1,239 @@
 // Supabase Edge Function — purchase-shipping-label (multi-carrier)
-// Purchases a real shipping label via the appropriate carrier adapter and
-// attaches it to a Dock2Door shipment.
+// Single-file, Dashboard-deployable. All `_shared/*` code is inlined below.
 //
 // Auth: Supabase JWT (provider company member or admin).
 // Body:
 //   { shipment_id: string, rate_quote_id?: string, carrier_account_id?: string }
-//   - rate_quote_id: id of a row in `shipping_rate_quotes` (preferred — cheapest matching quote is used otherwise)
-//   - carrier_account_id: optional explicit carrier account override
 //
 // deno-lint-ignore-file no-explicit-any
 // @ts-nocheck - Deno runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { getAdapter, resolveCredentials } from '../_shared/carriers/registry.ts';
-import type { NormalizedRate } from '../_shared/carriers/types.ts';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Inlined: _shared/carriers/types.ts
+// ─────────────────────────────────────────────────────────────────────────────
+type CarrierCode = 'EASYPOST' | 'SHIPPO' | 'CANADA_POST' | 'UPS' | 'DHL' | 'FEDEX';
+
+interface NormalizedAddress {
+  name?: string; company?: string; street1?: string; street2?: string;
+  city?: string; state?: string; zip?: string; country?: string;
+  phone?: string; email?: string;
+}
+interface ParcelDimensions {
+  length_cm: number; width_cm: number; height_cm: number; weight_kg: number;
+}
+interface RateRequest {
+  fromAddress: NormalizedAddress;
+  toAddress: NormalizedAddress;
+  parcel: ParcelDimensions;
+  serviceLevel?: string;
+  customsItems?: any[];
+}
+interface NormalizedRate {
+  carrier_code: CarrierCode;
+  service_level: string;
+  service_name: string;
+  rate_amount: number;
+  currency: string;
+  est_delivery_days?: number;
+  est_delivery_date?: string;
+  carrier_rate_id: string;
+  raw: any;
+}
+interface PurchaseLabelRequest {
+  rate: NormalizedRate;
+  fromAddress: NormalizedAddress;
+  toAddress: NormalizedAddress;
+  parcel: ParcelDimensions;
+  reference?: string;
+}
+interface PurchasedLabel {
+  carrier_code: CarrierCode;
+  tracking_code: string;
+  label_url: string;
+  label_format: string;
+  rate_amount: number;
+  currency: string;
+  carrier_shipment_id: string;
+  raw: any;
+}
+interface VoidLabelRequest { carrier_shipment_id: string; tracking_code: string; }
+interface CarrierCredentials {
+  api_key?: string; account_number?: string; username?: string; password?: string;
+  client_id?: string; client_secret?: string; meter_number?: string;
+  customer_number?: string; contract_id?: string; mode: 'test' | 'live';
+  data?: Record<string, unknown>;
+}
+interface CarrierAdapter {
+  code: CarrierCode;
+  displayName: string;
+  implemented: boolean;
+  rateShop(req: RateRequest, creds: CarrierCredentials): Promise<NormalizedRate[]>;
+  purchaseLabel(req: PurchaseLabelRequest, creds: CarrierCredentials): Promise<PurchasedLabel>;
+  voidLabel(req: VoidLabelRequest, creds: CarrierCredentials): Promise<{ ok: boolean; raw: any }>;
+}
+
+class CarrierNotImplementedError extends Error {
+  constructor(public code: CarrierCode, op: string) {
+    super(`carrier_${code.toLowerCase()}_${op}_not_implemented`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inlined: _shared/carriers/easypost.ts (live)
+// ─────────────────────────────────────────────────────────────────────────────
+const EP_BASE = 'https://api.easypost.com/v2';
+
+async function ep(path: string, key: string, init: RequestInit = {}): Promise<any> {
+  const r = await fetch(`${EP_BASE}${path}`, {
+    ...init,
+    headers: {
+      Authorization: 'Basic ' + btoa(`${key}:`),
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(json?.error?.message ?? `easypost_${r.status}`);
+  return json;
+}
+
+function parcelToEP(p: ParcelDimensions) {
+  return {
+    length: p.length_cm || 10,
+    width: p.width_cm || 10,
+    height: p.height_cm || 10,
+    weight: (p.weight_kg || 0.5) * 35.274, // kg → oz
+  };
+}
+
+const easypost: CarrierAdapter = {
+  code: 'EASYPOST',
+  displayName: 'EasyPost',
+  implemented: true,
+
+  async rateShop(req, creds) {
+    if (!creds.api_key) throw new Error('easypost_api_key_missing');
+    const epShipment = await ep('/shipments', creds.api_key, {
+      method: 'POST',
+      body: JSON.stringify({
+        shipment: {
+          to_address: req.toAddress,
+          from_address: req.fromAddress,
+          parcel: parcelToEP(req.parcel),
+          options: { label_format: 'PDF' },
+        },
+      }),
+    });
+    const rates: any[] = Array.isArray(epShipment.rates) ? epShipment.rates : [];
+    return rates.map((r) => ({
+      carrier_code: 'EASYPOST',
+      service_level: String(r.service ?? '').toUpperCase(),
+      service_name: `${r.carrier} ${r.service}`,
+      rate_amount: Number(r.rate ?? 0),
+      currency: String(r.currency ?? 'USD'),
+      est_delivery_days: r.delivery_days ?? r.est_delivery_days ?? undefined,
+      est_delivery_date: r.delivery_date ?? undefined,
+      carrier_rate_id: `${epShipment.id}:${r.id}`,
+      raw: { ep_shipment_id: epShipment.id, rate: r, carrier: r.carrier },
+    }));
+  },
+
+  async purchaseLabel(req, creds) {
+    if (!creds.api_key) throw new Error('easypost_api_key_missing');
+    const [epShipmentId, rateId] = String(req.rate.carrier_rate_id).split(':');
+    if (!epShipmentId || !rateId) throw new Error('invalid_rate_id');
+    const bought = await ep(`/shipments/${epShipmentId}/buy`, creds.api_key, {
+      method: 'POST',
+      body: JSON.stringify({ rate: { id: rateId } }),
+    });
+    return {
+      carrier_code: 'EASYPOST',
+      tracking_code: String(bought.tracking_code ?? ''),
+      label_url: String(bought.postage_label?.label_url ?? ''),
+      label_format: 'PDF',
+      rate_amount: Number(bought.selected_rate?.rate ?? 0),
+      currency: String(bought.selected_rate?.currency ?? 'USD'),
+      carrier_shipment_id: String(bought.id ?? ''),
+      raw: bought,
+    };
+  },
+
+  async voidLabel(req, creds) {
+    if (!creds.api_key) throw new Error('easypost_api_key_missing');
+    const r = await ep(`/shipments/${req.carrier_shipment_id}/refund`, creds.api_key, { method: 'POST' });
+    return { ok: true, raw: r };
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inlined: stub adapters for other carriers (not implemented)
+// ─────────────────────────────────────────────────────────────────────────────
+function makeStub(code: CarrierCode, displayName: string): CarrierAdapter {
+  return {
+    code, displayName, implemented: false,
+    rateShop: () => { throw new CarrierNotImplementedError(code, 'rate_shop'); },
+    purchaseLabel: () => { throw new CarrierNotImplementedError(code, 'purchase_label'); },
+    voidLabel: () => { throw new CarrierNotImplementedError(code, 'void_label'); },
+  };
+}
+const shippo = makeStub('SHIPPO', 'Shippo');
+const canadaPost = makeStub('CANADA_POST', 'Canada Post');
+const ups = makeStub('UPS', 'UPS');
+const dhl = makeStub('DHL', 'DHL');
+const fedex = makeStub('FEDEX', 'FedEx');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inlined: _shared/carriers/registry.ts
+// ─────────────────────────────────────────────────────────────────────────────
+const ADAPTERS: Record<CarrierCode, CarrierAdapter> = {
+  EASYPOST: easypost,
+  SHIPPO: shippo,
+  CANADA_POST: canadaPost,
+  UPS: ups,
+  DHL: dhl,
+  FEDEX: fedex,
+};
+
+function getAdapter(code: string): CarrierAdapter {
+  const u = String(code ?? '').toUpperCase() as CarrierCode;
+  const a = ADAPTERS[u];
+  if (!a) throw new Error(`carrier_${u}_unsupported`);
+  return a;
+}
+
+function resolveCredentials(
+  carrierCode: string,
+  account: { credentials_secret_ref?: string; mode?: string; data?: any; account_number?: string },
+): CarrierCredentials {
+  const ref = account.credentials_secret_ref ?? '';
+  const mode: 'test' | 'live' = (account.mode === 'live' ? 'live' : 'test');
+  const fallbackEnv = (() => {
+    switch (carrierCode.toUpperCase()) {
+      case 'EASYPOST': return 'EASYPOST_API_KEY';
+      case 'SHIPPO': return 'SHIPPO_API_KEY';
+      case 'CANADA_POST': return 'CANADA_POST_CREDENTIALS';
+      case 'UPS': return 'UPS_CREDENTIALS';
+      case 'DHL': return 'DHL_CREDENTIALS';
+      case 'FEDEX': return 'FEDEX_CREDENTIALS';
+      default: return '';
+    }
+  })();
+  const raw = (ref && Deno.env.get(ref)) || (fallbackEnv && Deno.env.get(fallbackEnv)) || '';
+  if (!raw) {
+    return { mode, account_number: account.account_number, data: account.data ?? {} };
+  }
+  try {
+    const obj = JSON.parse(raw);
+    return { mode, account_number: account.account_number, ...obj };
+  } catch {
+    return { api_key: raw, mode, account_number: account.account_number, data: account.data ?? {} };
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP handler
+// ─────────────────────────────────────────────────────────────────────────────
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
