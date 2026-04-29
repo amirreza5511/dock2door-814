@@ -9,7 +9,32 @@
 // deno-lint-ignore-file no-explicit-any
 // @ts-nocheck - Deno runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
-import { getAdapter, resolveCredentials } from '../_shared/carriers/registry.ts';
+// ===== Inlined carrier registry (was ../_shared/carriers/*) =====
+type CarrierCode = 'EASYPOST' | 'SHIPPO' | 'CANADA_POST' | 'UPS' | 'DHL' | 'FEDEX';
+interface ManifestRequest { shipmentTrackingCodes: string[]; shipDate?: string; }
+interface NormalizedManifest { manifest_number: string; manifest_url: string; raw: any; }
+interface CarrierCredentials { api_key?: string; account_number?: string; username?: string; password?: string; client_id?: string; client_secret?: string; meter_number?: string; customer_number?: string; contract_id?: string; mode: 'test'|'live'; data?: Record<string, unknown>; }
+interface CarrierAdapter { code: CarrierCode; displayName: string; implemented: boolean; rateShop(req: any, creds: CarrierCredentials): Promise<any[]>; purchaseLabel(req: any, creds: CarrierCredentials): Promise<any>; voidLabel(req: any, creds: CarrierCredentials): Promise<{ ok: boolean; raw: any }>; track?(trackingCode: string, creds: CarrierCredentials): Promise<any[]>; createManifest?(req: ManifestRequest, creds: CarrierCredentials): Promise<NormalizedManifest>; }
+
+const easypost: CarrierAdapter = { code: 'EASYPOST', displayName: 'EasyPost', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); } };
+const shippo: CarrierAdapter = { code: 'SHIPPO', displayName: 'Shippo', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); } };
+const canadaPost: CarrierAdapter = { code: 'CANADA_POST', displayName: 'Canada Post', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); }, async createManifest() { throw new Error('canada_post_manifest_requires_contract_setup'); } };
+const ups: CarrierAdapter = { code: 'UPS', displayName: 'UPS', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); } };
+const dhl: CarrierAdapter = { code: 'DHL', displayName: 'DHL Express', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); } };
+const fedex: CarrierAdapter = { code: 'FEDEX', displayName: 'FedEx', implemented: true, async rateShop() { return []; }, async purchaseLabel() { throw new Error('not_used'); }, async voidLabel() { throw new Error('not_used'); } };
+
+const ADAPTERS: Record<CarrierCode, CarrierAdapter> = { EASYPOST: easypost, SHIPPO: shippo, CANADA_POST: canadaPost, UPS: ups, DHL: dhl, FEDEX: fedex };
+function getAdapter(code: string): CarrierAdapter { const u = String(code ?? '').toUpperCase() as CarrierCode; const a = ADAPTERS[u]; if (!a) throw new Error(`carrier_${u}_unsupported`); return a; }
+function resolveCredentials(carrierCode: string, account: { credentials_secret_ref?: string; mode?: string; data?: any; account_number?: string }): CarrierCredentials {
+  const ref = account.credentials_secret_ref ?? '';
+  const mode: 'test' | 'live' = (account.mode === 'live' ? 'live' : 'test');
+  const fallbackEnv = (() => { switch (carrierCode.toUpperCase()) { case 'EASYPOST': return 'EASYPOST_API_KEY'; case 'SHIPPO': return 'SHIPPO_API_KEY'; case 'CANADA_POST': return 'CANADA_POST_CREDENTIALS'; case 'UPS': return 'UPS_CREDENTIALS'; case 'DHL': return 'DHL_CREDENTIALS'; case 'FEDEX': return 'FEDEX_CREDENTIALS'; default: return ''; } })();
+  const raw = (ref && Deno.env.get(ref)) || (fallbackEnv && Deno.env.get(fallbackEnv)) || '';
+  if (!raw) return { mode, account_number: account.account_number, data: account.data ?? {} };
+  try { const obj = JSON.parse(raw); return { mode, account_number: account.account_number, ...obj }; }
+  catch { return { api_key: raw, mode, account_number: account.account_number, data: account.data ?? {} }; }
+}
+// ===== End inlined carrier registry =====
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
