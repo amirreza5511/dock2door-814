@@ -2,8 +2,8 @@
   "version": 1,
   "config": {
     "env": {
-      "NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "dummy"
+      "NEXT_PUBLIC_SUPABASE_URL": "https://hyargzciywuqhlcaorwy.supabase.co",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz"
     },
     "webpack": null,
     "typescript": {

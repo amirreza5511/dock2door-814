@@ -1,12 +1,26 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export async function getServerSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error("Missing Supabase URL or anon key. Set NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY or EXPO_PUBLIC_SUPABASE_URL/EXPO_PUBLIC_SUPABASE_ANON_KEY.");
+const FALLBACK_SUPABASE_URL = "https://hyargzciywuqhlcaorwy.supabase.co";
+const FALLBACK_SUPABASE_ANON_KEY = "sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz";
+
+function isUsableSupabaseKey(value: string | undefined): value is string {
+  return Boolean(value && (value.startsWith("sb_publishable_") || value.startsWith("eyJ")));
+}
+
+function readPublicSupabaseConfig(): { url: string; key: string } {
+  const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (envUrl && isUsableSupabaseKey(envKey)) {
+    return { url: envUrl, key: envKey };
   }
+
+  return { url: FALLBACK_SUPABASE_URL, key: FALLBACK_SUPABASE_ANON_KEY };
+}
+
+export async function getServerSupabase() {
+  const { url, key } = readPublicSupabaseConfig();
   const cookieStore = await cookies();
   return createServerClient(url, key, {
     cookies: {
