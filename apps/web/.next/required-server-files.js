@@ -1,7 +1,10 @@
 self.__SERVER_FILES_MANIFEST={
   "version": 1,
   "config": {
-    "env": {},
+    "env": {
+      "NEXT_PUBLIC_SUPABASE_URL": "https://example.supabase.co",
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "dummy"
+    },
     "webpack": null,
     "typescript": {
       "ignoreBuildErrors": false
