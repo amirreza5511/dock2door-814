@@ -117,7 +117,7 @@ export default function HealthPage() {
             channel.unsubscribe();
             resolve({ ok: false, message: "timeout" });
           }, 5000);
-          channel.subscribe((status) => {
+          channel.subscribe((status: "SUBSCRIBED" | "TIMED_OUT" | "CLOSED" | "CHANNEL_ERROR") => {
             if (status === "SUBSCRIBED") {
               clearTimeout(t);
               channel.unsubscribe();
