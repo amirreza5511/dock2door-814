@@ -159,7 +159,11 @@ export default function WorkerProfile() {
   const uploadProfilePhotoMutation = useMutation({
     mutationFn: async () => {
       if (!user || !profile) throw new Error('Not authenticated');
-      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82 });
+      if (Platform.OS !== 'web') {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) throw new Error('Photo library permission denied. Enable it in Settings.');
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82, allowsEditing: true, aspect: [1, 1] });
       if (picked.canceled || !picked.assets?.[0]) return null;
       const asset = picked.assets[0];
       const photoId = `profile-${Date.now()}`;
@@ -177,6 +181,10 @@ export default function WorkerProfile() {
   const uploadWorkPhotoMutation = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('Not authenticated');
+      if (Platform.OS !== 'web') {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) throw new Error('Photo library permission denied. Enable it in Settings.');
+      }
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82 });
       if (picked.canceled || !picked.assets?.[0]) return null;
       const asset = picked.assets[0];
@@ -338,6 +346,16 @@ export default function WorkerProfile() {
                 </View>
               )}
               <StatusBadge status={profile.status} />
+            </View>
+            <View style={styles.profileActionRow}>
+              <TouchableOpacity onPress={() => uploadProfilePhotoMutation.mutate()} style={styles.profileActionBtn} disabled={uploadProfilePhotoMutation.isPending} testID="change-photo-btn">
+                <Camera size={13} color={C.accent} />
+                <Text style={styles.profileActionText}>{uploadProfilePhotoMutation.isPending ? 'Uploading…' : 'Change Photo'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setEditBio(profile.bio); setEditRate(String(profile.hourlyExpectation)); setEditCities(profile.coverageCities.join(', ')); setEditSkills(profile.skills); setEditing(true); }} style={styles.profileActionBtn}>
+                <Edit size={13} color={C.accent} />
+                <Text style={styles.profileActionText}>Edit Profile</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -599,6 +617,9 @@ const styles = StyleSheet.create({
   skillToggleActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   skillToggleText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   skillToggleTextActive: { color: C.accent },
+  profileActionRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+  profileActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
+  profileActionText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
   emptyProfileCard: { width: '88%', gap: 14 },
   noProfileTitle: { fontSize: 20, color: C.text, fontWeight: '800' as const, textAlign: 'center' },
   noProfileText: { fontSize: 14, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
