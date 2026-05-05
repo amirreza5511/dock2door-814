@@ -129,7 +129,7 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
             For security, API keys and OAuth secrets never live in the client. Set a Supabase Edge Function secret per carrier
             (e.g. `EASYPOST_API_KEY`, `SHIPPO_API_KEY`, `CANADA_POST_CREDENTIALS`, `UPS_CREDENTIALS`, `DHL_CREDENTIALS`, `FEDEX_CREDENTIALS`)
             and reference its name in the &quot;Secret env name&quot; field below. Direct carriers expect a JSON value such as
-            {`{"username":"...","password":"...","customer_number":"..."}`} or {`{"client_id":"...","client_secret":"..."}`}.
+            {`{"username":"...","password":"...","customer_number":"..."}`} or {`{"client_id":"...","client_secret":"..."}`}
           </Text>
         </Card>
 
