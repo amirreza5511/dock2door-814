@@ -3,6 +3,7 @@ import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } fr
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/auth';
 import { canAccessSegment, getRoleRoute } from '@/lib/access';
@@ -109,12 +110,14 @@ export default function RootLayout() {
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
       <QueryClientProvider client={queryClient}>
         <ActiveCompanyProvider>
-          <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
-            <StatusBar style="light" />
-            <RootLayoutNav />
-            <BootstrapController />
-            <AuthGuard />
-          </GestureHandlerRootView>
+          <SafeAreaProvider>
+            <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
+              <StatusBar style="light" />
+              <RootLayoutNav />
+              <BootstrapController />
+              <AuthGuard />
+            </GestureHandlerRootView>
+          </SafeAreaProvider>
         </ActiveCompanyProvider>
       </QueryClientProvider>
     </trpc.Provider>

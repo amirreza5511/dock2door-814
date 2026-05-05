@@ -1,13 +1,17 @@
 import { Tabs } from 'expo-router';
 import { LayoutDashboard, Building2, Users, Settings, AlertTriangle, ScrollText, Database, Receipt, Award, BellRing, Route, Activity, CalendarDays, Images } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
 export default function AdminLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 64 + Math.max(insets.bottom, 12);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: C.bgSecondary, borderTopColor: C.border, borderTopWidth: 1, height: 60, paddingBottom: 8 },
+        tabBarStyle: { backgroundColor: C.bgSecondary, borderTopColor: C.border, borderTopWidth: 1, height: tabBarHeight, paddingBottom: Math.max(insets.bottom, 12), paddingTop: 8 },
         tabBarActiveTintColor: C.red,
         tabBarInactiveTintColor: C.textMuted,
         tabBarLabelStyle: { fontSize: 10, fontWeight: '600' as const },

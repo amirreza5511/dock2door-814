@@ -1,8 +1,12 @@
 import { Tabs } from 'expo-router';
 import { LayoutDashboard, Warehouse, BookOpen, Package, ClipboardList, Receipt } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
 export default function CustomerLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 64 + Math.max(insets.bottom, 12);
+
   return (
     <Tabs
       screenOptions={{
@@ -11,8 +15,9 @@ export default function CustomerLayout() {
           backgroundColor: C.bgSecondary,
           borderTopColor: C.border,
           borderTopWidth: 1,
-          height: 60,
-          paddingBottom: 8,
+          height: tabBarHeight,
+          paddingBottom: Math.max(insets.bottom, 12),
+          paddingTop: 8,
         },
         tabBarActiveTintColor: C.accent,
         tabBarInactiveTintColor: C.textMuted,

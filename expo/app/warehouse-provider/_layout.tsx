@@ -1,10 +1,13 @@
 import { Tabs } from 'expo-router';
 import { LayoutDashboard, Warehouse, BookOpen, PlusCircle, Users, Archive, Wallet, Layers } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import { can } from '@/lib/permissions';
 
 export default function WarehouseProviderLayout() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 64 + Math.max(insets.bottom, 12);
   const { activeCompany } = useActiveCompany();
   const role = activeCompany?.role ?? null;
   const canListings = can(role, 'listings.manage');
@@ -17,7 +20,7 @@ export default function WarehouseProviderLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: C.bgSecondary, borderTopColor: C.border, borderTopWidth: 1, height: 60, paddingBottom: 8 },
+        tabBarStyle: { backgroundColor: C.bgSecondary, borderTopColor: C.border, borderTopWidth: 1, height: tabBarHeight, paddingBottom: Math.max(insets.bottom, 12), paddingTop: 8 },
         tabBarActiveTintColor: C.accent,
         tabBarInactiveTintColor: C.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' as const },
