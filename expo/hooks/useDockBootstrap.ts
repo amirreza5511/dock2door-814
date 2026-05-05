@@ -13,6 +13,7 @@ import type {
   WarehouseBooking,
   WarehouseListing,
   WorkerCertification,
+  WorkerProfile,
 } from '@/constants/types';
 
 interface BootstrapData {
@@ -26,6 +27,7 @@ interface BootstrapData {
   messages: Message[];
   disputes: Dispute[];
   shiftPosts: ShiftPost[];
+  workerProfiles: WorkerProfile[];
   workerCertifications: WorkerCertification[];
 }
 
@@ -40,6 +42,7 @@ const EMPTY_DATA: BootstrapData = {
   messages: [],
   disputes: [],
   shiftPosts: [],
+  workerProfiles: [],
   workerCertifications: [],
 };
 
@@ -216,6 +219,24 @@ function mapShiftPost(r: Row): ShiftPost {
   };
 }
 
+function mapWorkerProfile(r: Row): WorkerProfile & { profilePhotoPath?: string; avatarPath?: string } {
+  const data = (r.data && typeof r.data === 'object') ? r.data : {};
+  return {
+    id: r.id,
+    userId: r.user_id ?? r.owner_user_id,
+    displayName: r.display_name ?? r.full_name ?? data.displayName ?? data.fullName ?? 'Worker',
+    skills: Array.isArray(r.skills) ? r.skills : Array.isArray(data.skills) ? data.skills : [],
+    coverageCities: Array.isArray(r.coverage_cities) ? r.coverage_cities : Array.isArray(data.coverageCities) ? data.coverageCities : [],
+    hourlyExpectation: Number(r.hourly_expectation ?? data.hourlyExpectation ?? 0),
+    verified: Boolean(r.verified ?? data.verified),
+    status: r.status === 'Suspended' ? 'Suspended' : 'Active',
+    bio: r.bio ?? data.bio ?? '',
+    createdAt: r.created_at ?? new Date().toISOString(),
+    profilePhotoPath: r.profile_photo_path ?? data.profilePhotoPath ?? undefined,
+    avatarPath: r.avatar_path ?? data.avatarPath ?? undefined,
+  };
+}
+
 function mapWorkerCert(r: Row): WorkerCertification {
   return {
     id: r.id,
@@ -246,6 +267,7 @@ async function fetchBootstrap(): Promise<BootstrapData> {
     messagesRes,
     disputesRes,
     shiftsRes,
+    workerProfilesRes,
     certsRes,
   ] = await Promise.all([
     supabase.from('companies').select('*'),
@@ -258,6 +280,7 @@ async function fetchBootstrap(): Promise<BootstrapData> {
     supabase.from('messages').select('*'),
     supabase.from('disputes').select('*'),
     supabase.from('shift_posts').select('*'),
+    supabase.from('worker_profiles').select('*'),
     supabase.from('worker_certifications').select('*'),
   ]);
 
@@ -272,6 +295,7 @@ async function fetchBootstrap(): Promise<BootstrapData> {
     messagesRes.error ||
     disputesRes.error ||
     shiftsRes.error ||
+    workerProfilesRes.error ||
     certsRes.error;
 
   if (firstError) {
@@ -289,6 +313,7 @@ async function fetchBootstrap(): Promise<BootstrapData> {
     messages: (messagesRes.data ?? []).map(mapMessage),
     disputes: (disputesRes.data ?? []).map(mapDispute),
     shiftPosts: (shiftsRes.data ?? []).map(mapShiftPost),
+    workerProfiles: (workerProfilesRes.data ?? []).map(mapWorkerProfile),
     workerCertifications: (certsRes.data ?? []).map(mapWorkerCert),
   };
 }

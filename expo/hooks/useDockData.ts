@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '@/lib/trpc';
+import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import type {
   ApplicationStatus,
   AssignmentStatus,
@@ -158,7 +159,7 @@ const EMPTY_DATA: Omit<DockDataState, keyof DockDataState & ('isLoading' | 'isFe
 };
 
 function useBootstrapState() {
-  const query = trpc.dock.bootstrap.useQuery();
+  const query = useDockBootstrapData();
 
   return useMemo(() => {
     const payload = (query.data ?? {}) as Partial<typeof EMPTY_DATA>;
