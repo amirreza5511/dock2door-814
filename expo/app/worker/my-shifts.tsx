@@ -29,6 +29,9 @@ export default function WorkerMyShifts() {
   const [detailModal, setDetailModal] = useState(false);
   const [reviewFor, setReviewFor] = useState<ShiftAssignment | null>(null);
 
+  const myApps = useMemo(() => shiftApplications.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()), [shiftApplications, user]);
+  const myAssignments = useMemo(() => shiftAssignments.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftAssignments, user]);
+
   const completedAssignmentIds = useMemo(
     () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
     [myAssignments],
@@ -41,9 +44,6 @@ export default function WorkerMyShifts() {
     () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
     [myReviewsQuery.data],
   );
-
-  const myApps = useMemo(() => shiftApplications.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()), [shiftApplications, user]);
-  const myAssignments = useMemo(() => shiftAssignments.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftAssignments, user]);
 
   const getShift = (id: string) => shiftPosts.find((s) => s.id === id);
   const getTimeEntry = (assignmentId: string) => timeEntries.find((t) => t.assignmentId === assignmentId);
