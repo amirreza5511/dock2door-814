@@ -325,7 +325,7 @@ export default function WorkerProfile() {
           <TouchableOpacity style={styles.avatarWrap} onPress={() => uploadProfilePhotoMutation.mutate()}>
             {profilePhotoQuery.data ? (
               <Image source={{ uri: profilePhotoQuery.data }} style={styles.avatarImage} />
-            ) : <Text style={styles.avatarText}>{profile.displayName.charAt(0)}</Text>}
+            ) : <Text style={styles.avatarText}>{(profile.displayName ?? 'W').charAt(0) || 'W'}</Text>}
             <View style={styles.cameraBadge}><Camera size={12} color={C.white} /></View>
           </TouchableOpacity>
           <View style={styles.profileInfo}>
@@ -424,14 +424,14 @@ export default function WorkerProfile() {
           </View>
         </View>
 
-        {profile.bio && (
+        {profile.bio ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About Me</Text>
             <Card>
               <Text style={styles.bioText}>{profile.bio}</Text>
             </Card>
           </View>
-        )}
+        ) : null}
 
         <View style={styles.section}>
           <View style={styles.sectionRow}>
@@ -485,13 +485,13 @@ export default function WorkerProfile() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.certType}>{c.type} Certificate</Text>
                         <Text style={styles.certExpiry}>Expires: {c.expiry_date ?? '—'}</Text>
-                        {c.file_path ? (
+                        {c.file_path && c.file_path.length > 0 ? (
                           <View style={styles.fileRow}>
                             <FileText size={11} color={C.textMuted} />
                             <Text style={styles.certFile} numberOfLines={1}>{(c.file_path.split('/').pop() ?? c.file_path)}</Text>
                           </View>
                         ) : null}
-                        {c.status === 'Rejected' && c.notes ? (
+                        {c.status === 'Rejected' && c.notes && c.notes.length > 0 ? (
                           <Text style={styles.rejectNote}>Reason: {c.notes}</Text>
                         ) : null}
                       </View>
