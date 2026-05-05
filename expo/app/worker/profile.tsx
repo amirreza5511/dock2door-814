@@ -368,10 +368,36 @@ export default function WorkerProfile() {
             <TouchableOpacity onPress={() => uploadWorkPhotoMutation.mutate()} style={styles.addCertBtn}><Text style={styles.addCertText}>+ Upload</Text></TouchableOpacity>
           </View>
           <View style={styles.visibilityRow}>
-            {(['private','company','public'] as const).map((v) => <TouchableOpacity key={v} onPress={() => setPhotoVisibility(v)} style={[styles.visibilityChip, photoVisibility === v && styles.visibilityActive]}><Eye size={11} color={photoVisibility === v ? C.accent : C.textMuted} /><Text style={[styles.visibilityText, photoVisibility === v && styles.visibilityTextActive]}>{v}</Text></TouchableOpacity>)}
+            {(['private', 'company', 'public'] as const).map((v) => (
+              <TouchableOpacity
+                key={v}
+                onPress={() => setPhotoVisibility(v)}
+                style={[styles.visibilityChip, photoVisibility === v && styles.visibilityActive]}
+              >
+                <Eye size={11} color={photoVisibility === v ? C.accent : C.textMuted} />
+                <Text style={[styles.visibilityText, photoVisibility === v && styles.visibilityTextActive]}>{v}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-          {(photosQuery.data ?? []).length === 0 ? <Card><Text style={styles.noCertText}>No work photos uploaded yet.</Text></Card> : (
-            <View style={styles.photoGrid}>{(photosQuery.data ?? []).map((p) => <View key={p.id} style={styles.photoCell}>{p.signed_url ? <Image source={{ uri: p.signed_url }} style={styles.photoImage} /> : <View style={styles.photoPlaceholder}><Camera size={18} color={C.textMuted} /></View>}<Text style={styles.photoMeta}>{p.visibility} · {p.moderation_status}</Text></View>)}</View>
+          {(photosQuery.data ?? []).length === 0 ? (
+            <Card>
+              <Text style={styles.noCertText}>No work photos uploaded yet.</Text>
+            </Card>
+          ) : (
+            <View style={styles.photoGrid}>
+              {(photosQuery.data ?? []).map((p) => (
+                <View key={p.id} style={styles.photoCell}>
+                  {p.signed_url ? (
+                    <Image source={{ uri: p.signed_url }} style={styles.photoImage} />
+                  ) : (
+                    <View style={styles.photoPlaceholder}>
+                      <Camera size={18} color={C.textMuted} />
+                    </View>
+                  )}
+                  <Text style={styles.photoMeta}>{`${p.visibility} · ${p.moderation_status}`}</Text>
+                </View>
+              ))}
+            </View>
           )}
         </View>
 
