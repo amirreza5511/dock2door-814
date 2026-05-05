@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import C from '@/constants/colors';
 
 interface Props {
@@ -17,16 +17,23 @@ export default function Card({ children, onPress, style, elevated, noPad }: Prop
     noPad && styles.noPad,
     style,
   ];
+  const safeChildren = React.Children.map(children, (child) => {
+    if (typeof child === 'string' || typeof child === 'number') {
+      const value = String(child);
+      return value.trim().length > 0 ? <Text style={styles.inlineText}>{value}</Text> : null;
+    }
+    return child;
+  });
 
   if (onPress) {
     return (
       <TouchableOpacity testID="card" activeOpacity={0.8} onPress={onPress} style={cardStyle}>
-        {children}
+        {safeChildren}
       </TouchableOpacity>
     );
   }
 
-  return <View style={cardStyle}>{children}</View>;
+  return <View style={cardStyle}>{safeChildren}</View>;
 }
 
 const styles = StyleSheet.create({
@@ -48,5 +55,9 @@ const styles = StyleSheet.create({
   },
   noPad: {
     padding: 0,
+  },
+  inlineText: {
+    color: C.text,
+    fontSize: 14,
   },
 });
