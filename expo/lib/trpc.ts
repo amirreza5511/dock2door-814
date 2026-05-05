@@ -1168,9 +1168,39 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to create shift');
     return { id: data!.id };
   },
-  'shifts.setStatus': async (input: { id: string; status: string }) => {
-    const { error } = await supabase.from('shift_posts').update({ status: input.status }).eq('id', input.id);
+  'shifts.setStatus': async (input: { id: string; status: string; reason?: string }) => {
+    if (input.status === 'Cancelled') {
+      const { error } = await supabase.rpc('cancel_shift_with_reason', { p_shift_id: input.id, p_reason: input.reason ?? 'Cancelled by company' });
+      if (error) throwErr(error, 'Unable to cancel shift');
+    } else {
+      const { error } = await supabase.from('shift_posts').update({ status: input.status }).eq('id', input.id);
+      if (error) throwErr(error, 'Unable to update shift');
+    }
+    return { success: true };
+  },
+  'shifts.update': async (input: { id: string; title: string; date: string; startTime: string; endTime: string; workersNeeded: number; hourlyRate: number; requirements?: string; notes?: string; reason?: string }) => {
+    const { error } = await supabase.rpc('employer_update_shift', {
+      p_shift_id: input.id, p_title: input.title, p_date: input.date, p_start: input.startTime, p_end: input.endTime,
+      p_workers_needed: input.workersNeeded, p_hourly_rate: input.hourlyRate, p_requirements: input.requirements ?? '', p_notes: input.notes ?? '', p_reason: input.reason ?? '',
+    });
     if (error) throwErr(error, 'Unable to update shift');
+    return { success: true };
+  },
+  'shifts.adminAssign': async (input: { shiftId: string; workerUserId: string; rate?: number; replaceAssignmentId?: string; reason?: string }) => {
+    const { data, error } = await supabase.rpc('admin_assign_worker_to_shift', {
+      p_shift_id: input.shiftId, p_worker_user_id: input.workerUserId, p_rate: input.rate ?? null, p_replace_assignment_id: input.replaceAssignmentId ?? null, p_reason: input.reason ?? 'Admin assignment',
+    });
+    if (error) throwErr(error, 'Unable to assign worker');
+    return { assignmentId: data as string };
+  },
+  'shifts.markNoShow': async (input: { shiftId: string; workerUserId: string; reason: string }) => {
+    const { error } = await supabase.rpc('mark_shift_no_show', { p_shift_id: input.shiftId, p_worker_user_id: input.workerUserId, p_reason: input.reason });
+    if (error) throwErr(error, 'Unable to mark no-show');
+    return { success: true };
+  },
+  'shifts.adminApproveTimeEntry': async (input: { timeEntryId: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_approve_time_entry', { p_time_entry_id: input.timeEntryId, p_reason: input.reason ?? 'Approved for payroll' });
+    if (error) throwErr(error, 'Unable to approve time entry');
     return { success: true };
   },
   'shifts.apply': async (input: { shiftId: string }) => {
@@ -1440,6 +1470,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       targetKind: r.target_kind as string,
       rating: Number(r.rating ?? 0),
     }));
+  },
+
+  'workPhotos.adminModerate': async (input: { photoId: string; status: 'approved' | 'rejected'; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_moderate_work_photo', { p_photo_id: input.photoId, p_status: input.status, p_reason: input.reason ?? '' });
+    if (error) throwErr(error, 'Unable to moderate photo');
+    return { success: true };
   },
 
   // =========================================================================

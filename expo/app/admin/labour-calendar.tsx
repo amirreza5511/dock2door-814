@@ -3,11 +3,14 @@ import { View, Text, StyleSheet, Alert, TouchableOpacity, ScrollView } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import { AlertTriangle, Users, UserX } from 'lucide-react-native';
+import { AlertTriangle, Users, UserX, UserPlus, CheckCircle } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import CalendarView, { CalendarEvent } from '@/components/CalendarView';
 import Card from '@/components/ui/Card';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
+import { trpc } from '@/lib/trpc';
 
 interface ShiftRow {
   id: string;
@@ -38,7 +41,13 @@ interface ConflictRow {
 export default function AdminLabourCalendar() {
   const insets = useSafeAreaInsets();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'calendar' | 'conflicts'>('calendar');
+  const utils = trpc.useUtils();
+  const [tab, setTab] = useState<'calendar' | 'conflicts' | 'assign'>('calendar');
+  const [selectedShiftId, setSelectedShiftId] = useState('');
+  const [workerId, setWorkerId] = useState('');
+  const [assignReason, setAssignReason] = useState('Admin scheduling');
+  const [replaceAssignmentId, setReplaceAssignmentId] = useState('');
+  const [approveTimeEntryId, setApproveTimeEntryId] = useState('');
 
   const shiftsQ = useQuery({
     queryKey: ['admin-shifts-cal'],
@@ -103,6 +112,21 @@ export default function AdminLabourCalendar() {
     color: s.status === 'Filled' ? C.green : s.status === 'Cancelled' ? C.red : s.status === 'Posted' ? C.accent : C.blue,
   })), [shiftsQ.data]);
 
+  const assignMut = trpc.shifts.adminAssign.useMutation({
+    onSuccess: async () => {
+      await utils.dock.bootstrap.invalidate();
+      void qc.invalidateQueries({ queryKey: ['admin-shifts-cal'] });
+      void qc.invalidateQueries({ queryKey: ['admin-assignments-cal'] });
+      Alert.alert('Assigned', 'Worker was assigned and notified.');
+    },
+    onError: (err: Error) => Alert.alert('Assignment failed', err.message),
+  });
+
+  const payrollMut = trpc.shifts.adminApproveTimeEntry.useMutation({
+    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); Alert.alert('Payroll ready', 'Timesheet is invoice/payroll ready.'); },
+    onError: (err: Error) => Alert.alert('Approval failed', err.message),
+  });
+
   const noShowMut = useMutation({
     mutationFn: async ({ shiftId, workerId, reason }: { shiftId: string; workerId: string; reason: string }) => {
       const { error } = await supabase.rpc('mark_shift_no_show', {
@@ -130,17 +154,39 @@ export default function AdminLabourCalendar() {
             <AlertTriangle size={14} color={tab === 'conflicts' ? C.red : C.textSecondary} />
             <Text style={[styles.tabText, tab === 'conflicts' && styles.tabTextActive]}>Conflicts ({conflicts.length})</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => setTab('assign')} style={[styles.tab, tab === 'assign' && styles.tabActive]}>
+            <UserPlus size={14} color={tab === 'assign' ? C.accent : C.textSecondary} />
+            <Text style={[styles.tabText, tab === 'assign' && styles.tabTextActive]}>Assign</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {tab === 'calendar' ? (
+      {tab === 'assign' ? (
+        <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 80 }]}> 
+          <Card style={styles.assignCard}>
+            <Text style={styles.sectionTitle}>Assign / replace worker</Text>
+            <Input label="Shift ID" value={selectedShiftId} onChangeText={setSelectedShiftId} placeholder="Paste shift id" />
+            <Input label="Worker user ID" value={workerId} onChangeText={setWorkerId} placeholder="Paste worker user id" />
+            <Input label="Replace assignment ID (optional)" value={replaceAssignmentId} onChangeText={setReplaceAssignmentId} placeholder="Existing assignment id" />
+            <Input label="Reason" value={assignReason} onChangeText={setAssignReason} placeholder="Coverage / replacement / dispatch" />
+            <Button label={assignMut.isPending ? 'Assigning…' : 'Assign Worker'} onPress={() => assignMut.mutate({ shiftId: selectedShiftId, workerUserId: workerId, replaceAssignmentId: replaceAssignmentId || undefined, reason: assignReason })} disabled={!selectedShiftId || !workerId || assignMut.isPending} fullWidth icon={<UserPlus size={15} color={C.white} />} />
+          </Card>
+          <Card style={styles.assignCard}>
+            <Text style={styles.sectionTitle}>Final payroll approval</Text>
+            <Input label="Time entry ID" value={approveTimeEntryId} onChangeText={setApproveTimeEntryId} placeholder="Paste time_entries.id" />
+            <Button label={payrollMut.isPending ? 'Approving…' : 'Mark invoice/payroll ready'} onPress={() => payrollMut.mutate({ timeEntryId: approveTimeEntryId })} disabled={!approveTimeEntryId || payrollMut.isPending} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
+          </Card>
+          <Card><Text style={styles.empty}>Tip: tap a calendar event to copy its shift ID from the alert. Conflict checks run server-side before assignment.</Text></Card>
+        </ScrollView>
+      ) : tab === 'calendar' ? (
         <View style={styles.body}>
           <CalendarView
             events={events}
             initialMode="month"
             onSelectEvent={(e) => {
               const meta = e.subtitle ?? '';
-              Alert.alert(e.title, `${e.date} ${e.startTime}-${e.endTime}\n${meta}`);
+              setSelectedShiftId(e.id);
+              Alert.alert(e.title, `${e.date} ${e.startTime}-${e.endTime}\nShift ID: ${e.id}\n${meta}`);
             }}
           />
         </View>
@@ -187,6 +233,8 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
   tabTextActive: { color: C.accent },
   body: { padding: 16, gap: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text, marginBottom: 8 },
+  assignCard: { gap: 10 },
   empty: { color: C.textMuted, textAlign: 'center', fontSize: 13, fontStyle: 'italic' as const },
   conflictCard: { borderLeftWidth: 3, borderLeftColor: C.red, gap: 6 },
   conflictHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },

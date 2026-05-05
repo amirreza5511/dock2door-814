@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle } from 'lucide-react-native';
+import { CheckCircle, Upload } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
-import { useDockData } from '@/hooks/useDockData';
+import { trpc } from '@/lib/trpc';
+import * as DocumentPicker from 'expo-document-picker';
+import { supabase } from '@/lib/supabase';
+import { buildShiftAttachmentPath, uploadFileWithMetadata } from '@/lib/storage-files';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
@@ -14,7 +17,8 @@ const CATEGORIES: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach
 export default function CreateShift() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { addShiftPost } = useDockData();
+  const utils = trpc.useUtils();
+  const createShift = trpc.shifts.create.useMutation({ onSuccess: async () => { await utils.dock.bootstrap.invalidate(); } });
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<ShiftCategory>('General');
@@ -28,38 +32,35 @@ export default function CreateShift() {
   const [workersNeeded, setWorkersNeeded] = useState('1');
   const [requirements, setRequirements] = useState('');
   const [notes, setNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [attachments, setAttachments] = useState<DocumentPicker.DocumentPickerAsset[]>([]);
 
   const handleSubmit = () => {
     if (!title || !address || !city || !date || !startTime || !endTime || !hourlyRate) {
       Alert.alert('Missing Fields', 'Please fill all required fields');
       return;
     }
-    setSubmitting(true);
-    setTimeout(() => {
-      addShiftPost({
-        id: `sp${Date.now()}`,
-        employerCompanyId: user?.companyId ?? '',
-        title,
-        category,
-        locationAddress: address,
-        locationCity: city,
-        date,
-        startTime,
-        endTime,
-        hourlyRate: Number(hourlyRate),
-        flatRate: null,
-        minimumHours: Number(minHours),
-        workersNeeded: Number(workersNeeded),
-        requirements,
-        notes,
-        status: 'Posted',
-        createdAt: new Date().toISOString(),
-      });
-      setSubmitting(false);
-      Alert.alert('Shift Posted!', 'Workers can now apply to your shift.');
-      setTitle(''); setAddress(''); setCity(''); setDate(''); setStartTime(''); setEndTime(''); setHourlyRate(''); setRequirements(''); setNotes('');
-    }, 600);
+    createShift.mutate({ title, category, locationAddress: address, locationCity: city, date, startTime, endTime, hourlyRate: Number(hourlyRate), minimumHours: Number(minHours), workersNeeded: Number(workersNeeded), requirements, notes }, {
+      onSuccess: async (result: unknown) => {
+        const { id } = result as { id: string };
+        if (user?.companyId) {
+          for (const asset of attachments) {
+            const filename = asset.name ?? `shift-${Date.now()}`;
+            const path = buildShiftAttachmentPath(user.companyId, id, filename);
+            const blob = Platform.OS === 'web' && asset.file ? asset.file : await (await fetch(asset.uri)).blob();
+            await uploadFileWithMetadata({ bucket: 'shift-attachments', path, file: blob, contentType: asset.mimeType ?? 'application/octet-stream', entityType: 'shift_attachment', entityId: id, companyId: user.companyId });
+            await supabase.from('shift_attachments').insert({ shift_id: id, employer_company_id: user.companyId, file_path: path, caption: filename, uploaded_by: user.id });
+          }
+        }
+        Alert.alert('Shift Posted!', 'Workers can now apply to your shift.');
+        setTitle(''); setAddress(''); setCity(''); setDate(''); setStartTime(''); setEndTime(''); setHourlyRate(''); setRequirements(''); setNotes(''); setAttachments([]);
+      },
+      onError: (e: unknown) => Alert.alert('Unable to post shift', e instanceof Error ? e.message : 'Unknown error'),
+    });
+  };
+
+  const pickAttachments = async () => {
+    const picked = await DocumentPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true, type: ['image/*', 'application/pdf'] });
+    if (!picked.canceled) setAttachments(picked.assets ?? []);
   };
 
   return (
@@ -124,11 +125,12 @@ export default function CreateShift() {
           <View style={styles.formGap}>
             <Input label="Requirements" value={requirements} onChangeText={setRequirements} placeholder="Safety boots, hi-vis vest required" multiline numberOfLines={2} />
             <Input label="Additional Notes" value={notes} onChangeText={setNotes} multiline numberOfLines={3} placeholder="Job details, parking info, special instructions…" />
+            <Button label={attachments.length ? `${attachments.length} file(s) attached` : 'Attach job photos/instructions'} onPress={pickAttachments} variant="secondary" fullWidth icon={<Upload size={15} color={C.text} />} />
           </View>
         </View>
 
         <View style={styles.section}>
-          <Button label="Post Shift" onPress={handleSubmit} loading={submitting} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
+          <Button label="Post Shift" onPress={handleSubmit} loading={createShift.isPending} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
         </View>
       </ScrollView>
     </View>

@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
@@ -13,9 +14,11 @@ import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftCategory } from '@/constants/types';
 import { supabase } from '@/lib/supabase';
-import { buildCertPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
+import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
 
 const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
+
+interface WorkPhotoRow { id: string; file_path: string; caption: string | null; visibility: 'private' | 'company' | 'public'; moderation_status: 'pending' | 'approved' | 'rejected'; created_at: string; }
 
 interface CertRow {
   id: string;
@@ -28,6 +31,17 @@ interface CertRow {
   notes: string | null;
   reviewed_at: string | null;
   created_at: string;
+}
+
+async function listMyPhotos(userId: string): Promise<WorkPhotoRow[]> {
+  const { data, error } = await supabase
+    .from('work_photos')
+    .select('id,file_path,caption,visibility,moderation_status,created_at')
+    .eq('worker_user_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<WorkPhotoRow[]>();
+  if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 async function listMyCerts(userId: string): Promise<CertRow[]> {
@@ -49,6 +63,13 @@ export default function WorkerProfile() {
 
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
 
+  const photosQuery = useQuery({
+    queryKey: ['worker-work-photos', user?.id],
+    queryFn: () => (user ? listMyPhotos(user.id) : Promise.resolve([] as WorkPhotoRow[])),
+    enabled: Boolean(user),
+    staleTime: 15_000,
+  });
+
   const certsQuery = useQuery({
     queryKey: ['worker-certs', user?.id],
     queryFn: () => (user ? listMyCerts(user.id) : Promise.resolve([] as CertRow[])),
@@ -62,6 +83,7 @@ export default function WorkerProfile() {
   const [editCities, setEditCities] = useState((profile?.coverageCities ?? []).join(', '));
   const [editSkills, setEditSkills] = useState<ShiftCategory[]>(profile?.skills ?? []);
 
+  const [photoVisibility, setPhotoVisibility] = useState<'private' | 'company' | 'public'>('company');
   const [addingCert, setAddingCert] = useState(false);
   const [certType, setCertType] = useState<'Forklift' | 'HighReach'>('Forklift');
   const [certExpiry, setCertExpiry] = useState('');
@@ -81,6 +103,46 @@ export default function WorkerProfile() {
     setEditing(false);
     Alert.alert('Profile Updated!');
   };
+
+  const uploadProfilePhotoMutation = useMutation({
+    mutationFn: async () => {
+      if (!user || !profile) throw new Error('Not authenticated');
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82 });
+      if (picked.canceled || !picked.assets?.[0]) return null;
+      const asset = picked.assets[0];
+      const photoId = `profile-${Date.now()}`;
+      const path = buildWorkerPhotoPath(user.id, photoId, 'profile.jpg');
+      const blob = await (await fetch(asset.uri)).blob();
+      await uploadFileWithMetadata({ bucket: 'worker-photos', path, file: blob, contentType: asset.mimeType ?? 'image/jpeg', entityType: 'worker_profile_photo', entityId: profile.id, companyId: null });
+      const { error } = await supabase.from('worker_profiles').update({ profile_photo_path: path, avatar_path: path }).eq('id', profile.id);
+      if (error) throw new Error(error.message);
+      return path;
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: [['dock', 'bootstrap'], { type: 'query' }] }); Alert.alert('Profile photo updated'); },
+    onError: (err: unknown) => Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error'),
+  });
+
+  const uploadWorkPhotoMutation = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error('Not authenticated');
+      const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82 });
+      if (picked.canceled || !picked.assets?.[0]) return null;
+      const asset = picked.assets[0];
+      const { data: row, error: insertErr } = await supabase.from('work_photos').insert({ worker_user_id: user.id, file_path: 'pending', caption: '', visibility: photoVisibility, moderation_status: 'pending' }).select('id').single();
+      if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create photo');
+      const id = row.id as string;
+      const path = buildWorkerPhotoPath(user.id, id, `work-${Date.now()}.jpg`);
+      const blob = await (await fetch(asset.uri)).blob();
+      try {
+        await uploadFileWithMetadata({ bucket: 'worker-photos', path, file: blob, contentType: asset.mimeType ?? 'image/jpeg', entityType: 'work_photo', entityId: id, companyId: null });
+      } catch (err) { await supabase.from('work_photos').delete().eq('id', id); throw err; }
+      const { error } = await supabase.from('work_photos').update({ file_path: path }).eq('id', id);
+      if (error) throw new Error(error.message);
+      return id;
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['worker-work-photos', user?.id] }); Alert.alert('Photo submitted', 'Admin moderation is required before public/company display.'); },
+    onError: (err: unknown) => Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error'),
+  });
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
@@ -197,9 +259,12 @@ export default function WorkerProfile() {
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.profileCard}>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarText}>{profile.displayName.charAt(0)}</Text>
-          </View>
+          <TouchableOpacity style={styles.avatarWrap} onPress={() => uploadProfilePhotoMutation.mutate()}>
+            {((profile as { profilePhotoPath?: string; avatarPath?: string }).profilePhotoPath ?? (profile as { avatarPath?: string }).avatarPath) ? (
+              <Image source={{ uri: ((profile as { profilePhotoPath?: string; avatarPath?: string }).profilePhotoPath ?? (profile as { avatarPath?: string }).avatarPath) as string }} style={styles.avatarImage} />
+            ) : <Text style={styles.avatarText}>{profile.displayName.charAt(0)}</Text>}
+            <View style={styles.cameraBadge}><Camera size={12} color={C.white} /></View>
+          </TouchableOpacity>
           <View style={styles.profileInfo}>
             <Text style={styles.displayName}>{profile.displayName}</Text>
             <View style={styles.verifiedRow}>
@@ -233,6 +298,19 @@ export default function WorkerProfile() {
             </View>
           </View>
         </Card>
+
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Work Photos</Text>
+            <TouchableOpacity onPress={() => uploadWorkPhotoMutation.mutate()} style={styles.addCertBtn}><Text style={styles.addCertText}>+ Upload</Text></TouchableOpacity>
+          </View>
+          <View style={styles.visibilityRow}>
+            {(['private','company','public'] as const).map((v) => <TouchableOpacity key={v} onPress={() => setPhotoVisibility(v)} style={[styles.visibilityChip, photoVisibility === v && styles.visibilityActive]}><Eye size={11} color={photoVisibility === v ? C.accent : C.textMuted} /><Text style={[styles.visibilityText, photoVisibility === v && styles.visibilityTextActive]}>{v}</Text></TouchableOpacity>)}
+          </View>
+          {(photosQuery.data ?? []).length === 0 ? <Card><Text style={styles.noCertText}>No work photos uploaded yet.</Text></Card> : (
+            <View style={styles.photoGrid}>{(photosQuery.data ?? []).map((p) => <View key={p.id} style={styles.photoCell}><Image source={{ uri: p.file_path }} style={styles.photoImage} /><Text style={styles.photoMeta}>{p.visibility} · {p.moderation_status}</Text></View>)}</View>
+          )}
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Skills</Text>
@@ -375,6 +453,8 @@ const styles = StyleSheet.create({
   scroll: { padding: 20, gap: 0 },
   profileCard: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 16 },
   avatarWrap: { width: 72, height: 72, borderRadius: 36, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.accent },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 36 },
+  cameraBadge: { position: 'absolute', right: -2, bottom: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 28, fontWeight: '800' as const, color: C.accent },
   profileInfo: { flex: 1, gap: 6 },
   displayName: { fontSize: 22, fontWeight: '800' as const, color: C.text },
@@ -391,6 +471,15 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   sectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 10 },
   skillsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  visibilityRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  visibilityChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  visibilityActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  visibilityText: { fontSize: 11, color: C.textMuted, fontWeight: '700' as const, textTransform: 'capitalize' as const },
+  visibilityTextActive: { color: C.accent },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  photoCell: { width: '31.8%', aspectRatio: 0.86, backgroundColor: C.card, borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: C.border },
+  photoImage: { width: '100%', flex: 1 },
+  photoMeta: { fontSize: 9, color: C.textMuted, padding: 4, textTransform: 'capitalize' as const },
   skillChip: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: C.accentDim, borderRadius: 8 },
   skillText: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
   cityChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: C.blueDim, borderRadius: 8 },

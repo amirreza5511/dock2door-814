@@ -342,6 +342,19 @@ All core flows (Warehouse Provider, Worker Certifications, Service Jobs, Shift/L
   - In-screen help block calling out the exact Supabase secrets that must be set per channel.
   - Registered in `app/fulfillment/_layout.tsx`.
 
+- [x] `0024_labour_calendar_operations.sql` — Labour Calendar operational layer:
+  - Private buckets: `worker-photos`, `shift-attachments`.
+  - Worker profile photo fields + work-photo moderation status/rejection reason.
+  - `shift_attachments` for job photos/instructions.
+  - `time_entries` admin approval + `payroll_status` (`pending` → `company_approved` → `invoice_ready`).
+  - RPCs: `notify_shift_participants`, `employer_update_shift`, `cancel_shift_with_reason`, `admin_assign_worker_to_shift`, `admin_approve_time_entry`, `admin_moderate_work_photo`.
+- [x] Labour Calendar app layer completed into usable operations:
+  - `expo/app/worker/profile.tsx` — profile photo upload, work photo upload, private/company/public visibility, moderation status display, existing skills/certs/badges profile foundation retained.
+  - `expo/app/employer/create-shift.tsx` — real Supabase shift creation via `shifts.create`, plus private job photo/instruction attachments in `shift-attachments`.
+  - `expo/app/admin/labour-calendar.tsx` — admin assign/replace worker form, server-side conflict check via RPC, no-show support, final payroll approval.
+  - `expo/app/admin/work-photos.tsx` — admin approve/reject queue for worker work photos with rejection reason.
+  - `expo/lib/trpc.ts` + `expo/lib/storage-files.ts` — operational labour RPC shims and storage path builders.
+
 ## Final delivery status
 
 - **Migrations**: `0001` … `0020` in `supabase/migrations/` — all idempotent (`create … if not exists`, `do $ … exception when duplicate_object $`, `on conflict do nothing`, `drop policy if exists` before `create policy`). Applying them in order from a clean or partially-migrated database is safe.

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 
-export type Bucket = 'certifications' | 'warehouse-docs' | 'booking-docs' | 'invoices' | 'attachments';
+export type Bucket = 'certifications' | 'warehouse-docs' | 'booking-docs' | 'invoices' | 'attachments' | 'worker-photos' | 'shift-attachments';
 
 export interface UploadArgs {
   bucket: Bucket;
@@ -34,6 +34,14 @@ export function buildWarehouseDocPath(companyId: string, listingId: string, file
 
 export function buildBookingDocPath(bookingId: string, uploaderCompanyId: string, filename: string): string {
   return `${bookingId}/${uploaderCompanyId}/${sanitize(filename)}`;
+}
+
+export function buildWorkerPhotoPath(workerUserId: string, photoId: string, filename: string): string {
+  return `${workerUserId}/${photoId}/${sanitize(filename)}`;
+}
+
+export function buildShiftAttachmentPath(companyId: string, shiftId: string, filename: string): string {
+  return `${companyId}/${shiftId}/${sanitize(filename)}`;
 }
 
 export async function uploadFileWithMetadata(args: UploadArgs): Promise<UploadedFileMeta> {
