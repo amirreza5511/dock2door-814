@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Search, CalendarCheck, UserCircle } from 'lucide-react-native';
+import { LayoutDashboard, Search, CalendarCheck, UserCircle, CalendarDays } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 export default function WorkerLayout() {
@@ -16,7 +16,9 @@ export default function WorkerLayout() {
       <Tabs.Screen name="index" options={{ title: 'Dashboard', tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} /> }} />
       <Tabs.Screen name="browse" options={{ title: 'Find Shifts', tabBarIcon: ({ color }) => <Search size={22} color={color} /> }} />
       <Tabs.Screen name="my-shifts" options={{ title: 'My Shifts', tabBarIcon: ({ color }) => <CalendarCheck size={22} color={color} /> }} />
+      <Tabs.Screen name="availability" options={{ title: 'Availability', tabBarIcon: ({ color }) => <CalendarDays size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color }) => <UserCircle size={22} color={color} /> }} />
+      <Tabs.Screen name="[id]" options={{ href: null }} />
     </Tabs>
   );
 }

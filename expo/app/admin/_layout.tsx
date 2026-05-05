@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Building2, Users, Settings, AlertTriangle, ScrollText, Database, Receipt, Award, BellRing, Route, Activity } from 'lucide-react-native';
+import { LayoutDashboard, Building2, Users, Settings, AlertTriangle, ScrollText, Database, Receipt, Award, BellRing, Route, Activity, CalendarDays } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 export default function AdminLayout() {
@@ -18,6 +18,7 @@ export default function AdminLayout() {
       <Tabs.Screen name="users" options={{ title: 'Users', tabBarIcon: ({ color }) => <Users size={22} color={color} /> }} />
       <Tabs.Screen name="certifications" options={{ title: 'Certs', tabBarIcon: ({ color }) => <Award size={22} color={color} /> }} />
       <Tabs.Screen name="bookings" options={{ title: 'Routing', tabBarIcon: ({ color }) => <Route size={22} color={color} /> }} />
+      <Tabs.Screen name="labour-calendar" options={{ title: 'Labour', tabBarIcon: ({ color }) => <CalendarDays size={22} color={color} /> }} />
       <Tabs.Screen name="disputes" options={{ title: 'Disputes', tabBarIcon: ({ color }) => <AlertTriangle size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ title: 'Billing', tabBarIcon: ({ color }) => <Receipt size={22} color={color} /> }} />
       <Tabs.Screen name="entities" options={{ title: 'Entities', tabBarIcon: ({ color }) => <Database size={22} color={color} /> }} />
