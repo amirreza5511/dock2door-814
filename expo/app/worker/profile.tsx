@@ -34,6 +34,22 @@ interface EditableWorkerProfile {
   avatarPath?: string;
 }
 
+interface ExtendedFields {
+  tagline: string;
+  phone: string;
+  languages: string[];
+  experience_years: number;
+  transportation: string;
+  emergency_contact_name: string;
+  emergency_contact_phone: string;
+  references_text: string;
+  work_history: string;
+  education: string;
+  preferred_shift: string;
+  linkedin_url: string;
+  website_url: string;
+}
+
 interface CertRow {
   id: string;
   worker_user_id: string;
@@ -100,12 +116,40 @@ export default function WorkerProfile() {
     staleTime: 15_000,
   });
 
+  const extendedQuery = useQuery({
+    queryKey: ['worker-profile-extended', user?.id],
+    enabled: Boolean(user),
+    queryFn: async (): Promise<ExtendedFields | null> => {
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('worker_profiles')
+        .select('tagline,phone,languages,experience_years,transportation,emergency_contact_name,emergency_contact_phone,references_text,work_history,education,preferred_shift,linkedin_url,website_url')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (error) return null;
+      return (data ?? null) as ExtendedFields | null;
+    },
+  });
+
   const [editing, setEditing] = useState(false);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [editBio, setEditBio] = useState(profile?.bio ?? '');
   const [editRate, setEditRate] = useState(String(profile?.hourlyExpectation ?? ''));
   const [editCities, setEditCities] = useState((profile?.coverageCities ?? []).join(', '));
   const [editSkills, setEditSkills] = useState<ShiftCategory[]>(profile?.skills ?? []);
+  const [editTagline, setEditTagline] = useState<string>('');
+  const [editPhone, setEditPhone] = useState<string>('');
+  const [editLanguages, setEditLanguages] = useState<string>('');
+  const [editExperience, setEditExperience] = useState<string>('');
+  const [editTransport, setEditTransport] = useState<string>('');
+  const [editEmergencyName, setEditEmergencyName] = useState<string>('');
+  const [editEmergencyPhone, setEditEmergencyPhone] = useState<string>('');
+  const [editReferences, setEditReferences] = useState<string>('');
+  const [editWorkHistory, setEditWorkHistory] = useState<string>('');
+  const [editEducation, setEditEducation] = useState<string>('');
+  const [editPreferredShift, setEditPreferredShift] = useState<string>('');
+  const [editLinkedin, setEditLinkedin] = useState<string>('');
+  const [editWebsite, setEditWebsite] = useState<string>('');
 
   const [photoVisibility, setPhotoVisibility] = useState<'private' | 'company' | 'public'>('company');
   const [addingCert, setAddingCert] = useState(false);
@@ -116,15 +160,64 @@ export default function WorkerProfile() {
     setEditSkills((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
   };
 
+  const openEdit = () => {
+    setEditBio(profile?.bio ?? '');
+    setEditRate(String(profile?.hourlyExpectation ?? ''));
+    setEditCities((profile?.coverageCities ?? []).join(', '));
+    setEditSkills(profile?.skills ?? []);
+    const ex = extendedQuery.data;
+    setEditTagline(ex?.tagline ?? '');
+    setEditPhone(ex?.phone ?? '');
+    setEditLanguages((ex?.languages ?? []).join(', '));
+    setEditExperience(String(ex?.experience_years ?? ''));
+    setEditTransport(ex?.transportation ?? '');
+    setEditEmergencyName(ex?.emergency_contact_name ?? '');
+    setEditEmergencyPhone(ex?.emergency_contact_phone ?? '');
+    setEditReferences(ex?.references_text ?? '');
+    setEditWorkHistory(ex?.work_history ?? '');
+    setEditEducation(ex?.education ?? '');
+    setEditPreferredShift(ex?.preferred_shift ?? '');
+    setEditLinkedin(ex?.linkedin_url ?? '');
+    setEditWebsite(ex?.website_url ?? '');
+    setEditing(true);
+  };
+
   const saveProfile = async () => {
     if (!profile) return;
     try {
-      await updateWorkerProfile(profile.id, {
-        bio: editBio,
-        hourlyExpectation: Number(editRate) || 0,
-        coverageCities: editCities.split(',').map((s) => s.trim()).filter(Boolean),
-        skills: editSkills,
+      const cities = editCities.split(',').map((s) => s.trim()).filter(Boolean);
+      const langs = editLanguages.split(',').map((s) => s.trim()).filter(Boolean);
+      // Try the consolidated RPC first (handles all extended fields).
+      const { error: rpcErr } = await supabase.rpc('update_my_worker_profile', {
+        p_bio: editBio,
+        p_skills: editSkills,
+        p_coverage_cities: cities,
+        p_hourly_expectation: Number(editRate) || 0,
+        p_tagline: editTagline,
+        p_phone: editPhone,
+        p_languages: langs,
+        p_experience_years: Number(editExperience) || 0,
+        p_transportation: editTransport,
+        p_emergency_contact_name: editEmergencyName,
+        p_emergency_contact_phone: editEmergencyPhone,
+        p_references_text: editReferences,
+        p_work_history: editWorkHistory,
+        p_education: editEducation,
+        p_preferred_shift: editPreferredShift,
+        p_linkedin_url: editLinkedin,
+        p_website_url: editWebsite,
       });
+      if (rpcErr) {
+        // Fallback to legacy update if RPC isn't deployed yet.
+        await updateWorkerProfile(profile.id, {
+          bio: editBio,
+          hourlyExpectation: Number(editRate) || 0,
+          coverageCities: cities,
+          skills: editSkills,
+        });
+      }
+      await queryClient.invalidateQueries({ queryKey: ['worker-profile-extended', user?.id] });
+      await refetch();
       setEditing(false);
       Alert.alert('Profile updated', 'Your worker resume is saved.');
     } catch (err) {
@@ -136,16 +229,21 @@ export default function WorkerProfile() {
     if (!user) return;
     setCreatingProfile(true);
     try {
-      const { error } = await supabase.from('worker_profiles').insert({
-        user_id: user.id,
-        display_name: user.name || user.email.split('@')[0] || 'Worker',
-        skills: [],
-        coverage_cities: [],
-        hourly_expectation: 0,
-        bio: '',
-        status: 'Active',
-      });
-      if (error) throw new Error(error.message);
+      const displayName = user.name || user.email.split('@')[0] || 'Worker';
+      const { error } = await supabase.rpc('ensure_my_worker_profile', { p_display_name: displayName });
+      if (error) {
+        // Fallback: direct insert if RPC isn't deployed yet
+        const { error: insertErr } = await supabase.from('worker_profiles').insert({
+          user_id: user.id,
+          display_name: displayName,
+          skills: [],
+          coverage_cities: [],
+          hourly_expectation: 0,
+          bio: '',
+          status: 'Active',
+        });
+        if (insertErr) throw new Error(insertErr.message);
+      }
       await refetch();
       setEditing(true);
       Alert.alert('Profile created', 'Add your photo, skills, resume details, and certificates now.');
@@ -322,7 +420,7 @@ export default function WorkerProfile() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Profile</Text>
-        <TouchableOpacity onPress={() => { setEditBio(profile.bio); setEditRate(String(profile.hourlyExpectation)); setEditCities(profile.coverageCities.join(', ')); setEditSkills(profile.skills); setEditing(true); }} style={styles.editBtn} testID="edit-profile-btn">
+        <TouchableOpacity onPress={openEdit} style={styles.editBtn} testID="edit-profile-btn">
           <Edit size={16} color={C.textSecondary} />
           <Text style={styles.editBtnText}>Edit</Text>
         </TouchableOpacity>
@@ -352,7 +450,7 @@ export default function WorkerProfile() {
                 <Camera size={13} color={C.accent} />
                 <Text style={styles.profileActionText}>{uploadProfilePhotoMutation.isPending ? 'Uploading…' : 'Change Photo'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setEditBio(profile.bio); setEditRate(String(profile.hourlyExpectation)); setEditCities(profile.coverageCities.join(', ')); setEditSkills(profile.skills); setEditing(true); }} style={styles.profileActionBtn}>
+              <TouchableOpacity onPress={openEdit} style={styles.profileActionBtn}>
                 <Edit size={13} color={C.accent} />
                 <Text style={styles.profileActionText}>Edit Profile</Text>
               </TouchableOpacity>
@@ -527,9 +625,22 @@ export default function WorkerProfile() {
             <Card elevated>
               <Text style={styles.sectionTitle}>Edit Profile</Text>
               <View style={styles.formGap}>
+                <Input label="Headline / Tagline" value={editTagline} onChangeText={setEditTagline} placeholder="Forklift operator · 5 yrs · Vancouver" />
                 <Input label="About Me" value={editBio} onChangeText={setEditBio} multiline numberOfLines={3} />
+                <Input label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="+1 604 555 0100" />
                 <Input label="Hourly Rate Expectation ($)" value={editRate} onChangeText={setEditRate} keyboardType="numeric" />
+                <Input label="Years of Experience" value={editExperience} onChangeText={setEditExperience} keyboardType="numeric" placeholder="3" />
                 <Input label="Coverage Cities (comma separated)" value={editCities} onChangeText={setEditCities} placeholder="Vancouver, Richmond, Delta" />
+                <Input label="Languages (comma separated)" value={editLanguages} onChangeText={setEditLanguages} placeholder="English, Punjabi" />
+                <Input label="Transportation" value={editTransport} onChangeText={setEditTransport} placeholder="Own vehicle / Transit" />
+                <Input label="Preferred Shift" value={editPreferredShift} onChangeText={setEditPreferredShift} placeholder="Day / Night / Swing" />
+                <Input label="Work History" value={editWorkHistory} onChangeText={setEditWorkHistory} multiline numberOfLines={4} placeholder="Most recent jobs, dates, employers" />
+                <Input label="Education" value={editEducation} onChangeText={setEditEducation} multiline numberOfLines={2} />
+                <Input label="References" value={editReferences} onChangeText={setEditReferences} multiline numberOfLines={2} placeholder="Name, role, company, phone" />
+                <Input label="Emergency Contact Name" value={editEmergencyName} onChangeText={setEditEmergencyName} />
+                <Input label="Emergency Contact Phone" value={editEmergencyPhone} onChangeText={setEditEmergencyPhone} keyboardType="phone-pad" />
+                <Input label="LinkedIn URL" value={editLinkedin} onChangeText={setEditLinkedin} autoCapitalize="none" />
+                <Input label="Website / Portfolio URL" value={editWebsite} onChangeText={setEditWebsite} autoCapitalize="none" />
                 <View>
                   <Text style={styles.skillsLabel}>Skills</Text>
                   <View style={styles.skillsRow}>
