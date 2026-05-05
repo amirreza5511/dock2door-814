@@ -18,7 +18,21 @@ import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetada
 
 const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
 
-interface WorkPhotoRow { id: string; file_path: string; caption: string | null; visibility: 'private' | 'company' | 'public'; moderation_status: 'pending' | 'approved' | 'rejected'; created_at: string; }
+interface WorkPhotoRow { id: string; file_path: string; signed_url?: string; caption: string | null; visibility: 'private' | 'company' | 'public'; moderation_status: 'pending' | 'approved' | 'rejected'; created_at: string; }
+
+interface EditableWorkerProfile {
+  id: string;
+  userId: string;
+  displayName: string;
+  skills: ShiftCategory[];
+  coverageCities: string[];
+  hourlyExpectation: number;
+  verified: boolean;
+  status: 'Active' | 'Suspended';
+  bio: string;
+  profilePhotoPath?: string;
+  avatarPath?: string;
+}
 
 interface CertRow {
   id: string;
@@ -41,7 +55,16 @@ async function listMyPhotos(userId: string): Promise<WorkPhotoRow[]> {
     .order('created_at', { ascending: false })
     .returns<WorkPhotoRow[]>();
   if (error) throw new Error(error.message);
-  return data ?? [];
+  const rows = data ?? [];
+  return Promise.all(rows.map(async (row) => {
+    if (!row.file_path || row.file_path === 'pending') return row;
+    try {
+      const signedUrl = await getSignedUrl('worker-photos', row.file_path, 120);
+      return { ...row, signed_url: signedUrl };
+    } catch {
+      return row;
+    }
+  }));
 }
 
 async function listMyCerts(userId: string): Promise<CertRow[]> {
@@ -58,10 +81,10 @@ async function listMyCerts(userId: string): Promise<CertRow[]> {
 export default function WorkerProfile() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { workerProfiles, updateWorkerProfile } = useDockData();
+  const { workerProfiles, updateWorkerProfile, refetch } = useDockData();
   const queryClient = useQueryClient();
 
-  const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
+  const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id) as EditableWorkerProfile | undefined, [workerProfiles, user]);
 
   const photosQuery = useQuery({
     queryKey: ['worker-work-photos', user?.id],
@@ -78,6 +101,7 @@ export default function WorkerProfile() {
   });
 
   const [editing, setEditing] = useState(false);
+  const [creatingProfile, setCreatingProfile] = useState(false);
   const [editBio, setEditBio] = useState(profile?.bio ?? '');
   const [editRate, setEditRate] = useState(String(profile?.hourlyExpectation ?? ''));
   const [editCities, setEditCities] = useState((profile?.coverageCities ?? []).join(', '));
@@ -92,16 +116,44 @@ export default function WorkerProfile() {
     setEditSkills((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
   };
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     if (!profile) return;
-    updateWorkerProfile(profile.id, {
-      bio: editBio,
-      hourlyExpectation: Number(editRate),
-      coverageCities: editCities.split(',').map((s) => s.trim()).filter(Boolean),
-      skills: editSkills,
-    });
-    setEditing(false);
-    Alert.alert('Profile Updated!');
+    try {
+      await updateWorkerProfile(profile.id, {
+        bio: editBio,
+        hourlyExpectation: Number(editRate) || 0,
+        coverageCities: editCities.split(',').map((s) => s.trim()).filter(Boolean),
+        skills: editSkills,
+      });
+      setEditing(false);
+      Alert.alert('Profile updated', 'Your worker resume is saved.');
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unable to save profile');
+    }
+  };
+
+  const createProfile = async () => {
+    if (!user) return;
+    setCreatingProfile(true);
+    try {
+      const { error } = await supabase.from('worker_profiles').insert({
+        user_id: user.id,
+        display_name: user.name || user.email.split('@')[0] || 'Worker',
+        skills: [],
+        coverage_cities: [],
+        hourly_expectation: 0,
+        bio: '',
+        status: 'Active',
+      });
+      if (error) throw new Error(error.message);
+      await refetch();
+      setEditing(true);
+      Alert.alert('Profile created', 'Add your photo, skills, resume details, and certificates now.');
+    } catch (err) {
+      Alert.alert('Create failed', err instanceof Error ? err.message : 'Unable to create worker profile');
+    } finally {
+      setCreatingProfile(false);
+    }
   };
 
   const uploadProfilePhotoMutation = useMutation({
@@ -118,7 +170,7 @@ export default function WorkerProfile() {
       if (error) throw new Error(error.message);
       return path;
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: [['dock', 'bootstrap'], { type: 'query' }] }); Alert.alert('Profile photo updated'); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: [['dock', 'bootstrap'], { type: 'query' }] }); await queryClient.invalidateQueries({ queryKey: ['worker-profile-photo', user?.id] }); Alert.alert('Profile photo updated'); },
     onError: (err: unknown) => Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error'),
   });
 
@@ -238,11 +290,22 @@ export default function WorkerProfile() {
   };
 
   const myCerts = certsQuery.data ?? [];
+  const profilePhotoPath = profile?.profilePhotoPath ?? profile?.avatarPath ?? '';
+  const profilePhotoQuery = useQuery({
+    queryKey: ['worker-profile-photo', user?.id, profilePhotoPath],
+    queryFn: () => profilePhotoPath ? getSignedUrl('worker-photos', profilePhotoPath, 120) : Promise.resolve(''),
+    enabled: Boolean(profilePhotoPath),
+    staleTime: 60_000,
+  });
 
   if (!profile) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={styles.noProfileText}>No worker profile found. Contact support.</Text>
+        <Card style={styles.emptyProfileCard}>
+          <Text style={styles.noProfileTitle}>Create your worker profile</Text>
+          <Text style={styles.noProfileText}>Build your resume-style profile with a photo, bio, skills, certificates, work photos, and availability so companies can hire you.</Text>
+          <Button label={creatingProfile ? 'Creating…' : 'Create My Profile'} onPress={createProfile} disabled={creatingProfile || !user} fullWidth icon={<Edit size={15} color={C.white} />} />
+        </Card>
       </View>
     );
   }
@@ -260,8 +323,8 @@ export default function WorkerProfile() {
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.profileCard}>
           <TouchableOpacity style={styles.avatarWrap} onPress={() => uploadProfilePhotoMutation.mutate()}>
-            {((profile as { profilePhotoPath?: string; avatarPath?: string }).profilePhotoPath ?? (profile as { avatarPath?: string }).avatarPath) ? (
-              <Image source={{ uri: ((profile as { profilePhotoPath?: string; avatarPath?: string }).profilePhotoPath ?? (profile as { avatarPath?: string }).avatarPath) as string }} style={styles.avatarImage} />
+            {profilePhotoQuery.data ? (
+              <Image source={{ uri: profilePhotoQuery.data }} style={styles.avatarImage} />
             ) : <Text style={styles.avatarText}>{profile.displayName.charAt(0)}</Text>}
             <View style={styles.cameraBadge}><Camera size={12} color={C.white} /></View>
           </TouchableOpacity>
@@ -308,7 +371,7 @@ export default function WorkerProfile() {
             {(['private','company','public'] as const).map((v) => <TouchableOpacity key={v} onPress={() => setPhotoVisibility(v)} style={[styles.visibilityChip, photoVisibility === v && styles.visibilityActive]}><Eye size={11} color={photoVisibility === v ? C.accent : C.textMuted} /><Text style={[styles.visibilityText, photoVisibility === v && styles.visibilityTextActive]}>{v}</Text></TouchableOpacity>)}
           </View>
           {(photosQuery.data ?? []).length === 0 ? <Card><Text style={styles.noCertText}>No work photos uploaded yet.</Text></Card> : (
-            <View style={styles.photoGrid}>{(photosQuery.data ?? []).map((p) => <View key={p.id} style={styles.photoCell}><Image source={{ uri: p.file_path }} style={styles.photoImage} /><Text style={styles.photoMeta}>{p.visibility} · {p.moderation_status}</Text></View>)}</View>
+            <View style={styles.photoGrid}>{(photosQuery.data ?? []).map((p) => <View key={p.id} style={styles.photoCell}>{p.signed_url ? <Image source={{ uri: p.signed_url }} style={styles.photoImage} /> : <View style={styles.photoPlaceholder}><Camera size={18} color={C.textMuted} /></View>}<Text style={styles.photoMeta}>{p.visibility} · {p.moderation_status}</Text></View>)}</View>
           )}
         </View>
 
@@ -510,5 +573,8 @@ const styles = StyleSheet.create({
   skillToggleActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   skillToggleText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   skillToggleTextActive: { color: C.accent },
-  noProfileText: { fontSize: 16, color: C.textSecondary },
+  emptyProfileCard: { width: '88%', gap: 14 },
+  noProfileTitle: { fontSize: 20, color: C.text, fontWeight: '800' as const, textAlign: 'center' },
+  noProfileText: { fontSize: 14, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
+  photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });
