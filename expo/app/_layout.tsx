@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
+import { KeyboardAvoidingView, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -15,6 +16,51 @@ void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 const PUBLIC_SEGMENTS = ['', 'auth', '+not-found'];
+
+type ReactCreateElement = typeof React.createElement;
+type ReactRuntimeWithGuard = typeof React & { __dock2doorTextNodeGuard?: boolean };
+
+const installTextNodeGuard = () => {
+  const reactRuntime = React as ReactRuntimeWithGuard;
+  if (reactRuntime.__dock2doorTextNodeGuard) {
+    return;
+  }
+
+  const unsafeNativeContainers = new Set<unknown>([
+    View,
+    ScrollView,
+    TouchableOpacity,
+    Pressable,
+    KeyboardAvoidingView,
+    GestureHandlerRootView,
+  ]);
+  const originalCreateElement: ReactCreateElement = React.createElement.bind(React);
+
+  React.createElement = ((type: Parameters<ReactCreateElement>[0], props: Parameters<ReactCreateElement>[1], ...children: React.ReactNode[]) => {
+    if (!unsafeNativeContainers.has(type)) {
+      return originalCreateElement(type, props, ...children);
+    }
+
+    const safeChildren = children.map((child, index) => {
+      if (typeof child !== 'string' && typeof child !== 'number') {
+        return child;
+      }
+
+      const value = String(child);
+      if (value.trim().length === 0) {
+        return null;
+      }
+
+      return originalCreateElement(Text, { key: `safe-text-${index}` }, value);
+    });
+
+    return originalCreateElement(type, props, ...safeChildren);
+  }) as ReactCreateElement;
+
+  reactRuntime.__dock2doorTextNodeGuard = true;
+};
+
+installTextNodeGuard();
 const SHARED_SEGMENTS = ['fulfillment', 'messages', 'notifications', 'reviews'];
 
 function AuthGuard() {
