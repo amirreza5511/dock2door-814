@@ -9,11 +9,10 @@ import { formatDate } from "@/lib/utils";
 
 interface ListingRow {
   id: string;
-  title: string;
+  name: string;
   status: string;
-  price_per_pallet: number | null;
+  storage_rate_per_pallet: number | null;
   city: string | null;
-  state: string | null;
   created_at: string;
 }
 
@@ -24,7 +23,7 @@ export default function WarehouseListingsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("warehouse_listings")
-        .select("id, title, status, price_per_pallet, city, state, created_at")
+        .select("id, name, status, storage_rate_per_pallet, city, created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -59,15 +58,12 @@ export default function WarehouseListingsPage() {
               <TBody>
                 {(q.data ?? []).map((r) => (
                   <TR key={r.id}>
-                    <TD className="font-medium">{r.title}</TD>
-                    <TD>
-                      {r.city ?? "—"}
-                      {r.state ? `, ${r.state}` : ""}
-                    </TD>
+                    <TD className="font-medium">{r.name}</TD>
+                    <TD>{r.city ?? "—"}</TD>
                     <TD>
                       <Badge variant={r.status === "Active" ? "success" : "warning"}>{r.status}</Badge>
                     </TD>
-                    <TD>{r.price_per_pallet != null ? `$${Number(r.price_per_pallet).toFixed(2)}` : "—"}</TD>
+                    <TD>{r.storage_rate_per_pallet != null ? `${Number(r.storage_rate_per_pallet).toFixed(2)}` : "—"}</TD>
                     <TD>{formatDate(r.created_at)}</TD>
                   </TR>
                 ))}

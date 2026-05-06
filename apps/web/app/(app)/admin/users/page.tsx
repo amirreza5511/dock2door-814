@@ -37,9 +37,9 @@ export default function AdminUsersPage() {
   const setStatus = useMutation({
     mutationFn: async (input: { user_id: string; status: string; reason: string }) => {
       const { error } = await supabase.rpc("admin_set_user_status", {
-        target_user_id: input.user_id,
-        new_status: input.status,
-        reason: input.reason,
+        p_user_id: input.user_id,
+        p_status: input.status,
+        p_reason: input.reason,
       });
       if (error) throw error;
     },

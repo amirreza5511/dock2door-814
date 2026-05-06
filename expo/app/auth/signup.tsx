@@ -12,6 +12,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import type { UserRole } from '@/constants/types';
+import { COMPANY_REQUIRED_ROLES, getRoleRoute } from '@/lib/access';
 
 const ROLES: { role: UserRole; label: string; desc: string }[] = [
   { role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
@@ -52,6 +53,12 @@ export default function Signup() {
       const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim() });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
+      } else {
+        if (COMPANY_REQUIRED_ROLES.includes(selectedRole)) {
+          router.replace('/onboarding/company-setup' as never);
+        } else {
+          router.replace(getRoleRoute(selectedRole) as never);
+        }
       }
     } finally {
       setLoading(false);

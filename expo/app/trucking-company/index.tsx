@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CalendarClock, CreditCard, LogOut, MessagesSquare, Truck, Users } from 'lucide-react-native';
+import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -50,9 +51,12 @@ export default function TruckingCompanyDashboard() {
           <Text style={styles.eyebrow}>Trucking Company</Text>
           <Text style={styles.title}>{user?.name}</Text>
         </View>
-        <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="trucking-logout-btn">
-          <LogOut size={18} color={C.textMuted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <CompanySwitcher />
+          <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="trucking-logout-btn">
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>

@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { CalendarDays, Users, Clock, CheckCircle, LogOut } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
+import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
@@ -39,9 +40,12 @@ export default function EmployerDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <LogOut size={18} color={C.textMuted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <CompanySwitcher />
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>

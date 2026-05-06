@@ -153,10 +153,10 @@ async function getBootstrapData(user: SessionUser) {
       : [];
 
   const users = admin
-    ? await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM users ORDER BY created_at DESC`, [])
+    ? await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM profiles ORDER BY created_at DESC`, [])
     : companyId
-      ? await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM users WHERE company_id = $1 ORDER BY created_at DESC`, [companyId])
-      : await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM users WHERE id = $1`, [userId]);
+      ? await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM profiles WHERE company_id = $1 ORDER BY created_at DESC`, [companyId])
+      : await queryRows<UserRow>(`SELECT id, email, name, role, company_id, status, email_verified, two_factor_enabled, profile_image, last_login_at, created_at FROM profiles WHERE id = $1`, [userId]);
 
   const warehouseListings = admin
     ? await fetchEntities(`SELECT * FROM warehouse_listings ORDER BY created_at DESC`, [])
@@ -462,7 +462,7 @@ export const dockRouter = createTRPCRouter({
     requireAdmin(ctx.user);
     await withTransaction(async (client) => {
       await client.query(
-        `UPDATE users SET name = COALESCE($1, name), status = COALESCE($2, status), role = COALESCE($3::user_role, role), profile_image = COALESCE($4, profile_image), updated_at = NOW() WHERE id = $5`,
+        `UPDATE profiles SET name = COALESCE($1, name), status = COALESCE($2, status), role = COALESCE($3::user_role, role), profile_image = COALESCE($4, profile_image), updated_at = NOW() WHERE id = $5`,
         [input.payload.name ?? null, input.payload.status ?? null, input.payload.role ?? null, input.payload.profileImage ?? null, input.id],
       );
       return null;

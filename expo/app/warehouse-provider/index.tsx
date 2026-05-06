@@ -11,6 +11,7 @@ import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
+import CompanySwitcher from '@/components/ui/CompanySwitcher';
 
 export default function WarehouseProviderDashboard() {
   const insets = useSafeAreaInsets();
@@ -60,7 +61,8 @@ export default function WarehouseProviderDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <CompanySwitcher />
           {user?.isPlatformAdmin && (
             <TouchableOpacity
               onPress={() => router.push('/admin' as never)}

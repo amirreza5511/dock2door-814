@@ -85,7 +85,7 @@ export default function AdminDashboard() {
           {[
             { label: 'Pending Approvals', value: stats.pendingCompanies + stats.pendingListings + stats.pendingCerts, icon: Clock, color: C.yellow, hl: true },
             { label: 'Open Disputes', value: stats.openDisputes, icon: AlertTriangle, color: C.red, hl: stats.openDisputes > 0 },
-            { label: 'GMV (Paid)', value: `${stats.totalRevenue.toFixed(0)}`, icon: DollarSign, color: C.green },
+            { label: 'GMV (Paid)', value: `${stats.totalRevenue.toFixed(2)} CAD`, icon: DollarSign, color: C.green },
             { label: 'Active Companies', value: stats.totalCompanies, icon: Building2, color: C.blue },
           ].map((s) => (
             <View key={s.label} style={[styles.statCard, s.hl && styles.statHl]}>
@@ -96,6 +96,37 @@ export default function AdminDashboard() {
               <Text style={styles.statLabel}>{s.label}</Text>
             </View>
           ))}
+        </View>
+
+        {/* Needs attention */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Needs attention</Text>
+          <View style={styles.attentionRow}>
+            <TouchableOpacity
+              onPress={() => router.push('/admin/certifications' as any)}
+              style={styles.attentionCard}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.attentionValue}>{stats.pendingCerts}</Text>
+              <Text style={styles.attentionLabel}>Pending certs</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/admin/disputes' as any)}
+              style={[styles.attentionCard, stats.openDisputes > 0 && styles.attentionCardAlert]}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.attentionValue}>{stats.openDisputes}</Text>
+              <Text style={styles.attentionLabel}>Open disputes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/admin/entities' as any)}
+              style={styles.attentionCard}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.attentionValue}>{stats.pendingListings}</Text>
+              <Text style={styles.attentionLabel}>Pending listings</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Pending Companies */}
@@ -246,4 +277,9 @@ const styles = StyleSheet.create({
   navCard: { width: '47%', backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 16, gap: 10 },
   navIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   navLabel: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  attentionRow: { flexDirection: 'row', gap: 10 },
+  attentionCard: { flex: 1, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, alignItems: 'center', gap: 4 },
+  attentionCardAlert: { borderColor: C.red + '60', backgroundColor: C.redDim },
+  attentionValue: { fontSize: 24, fontWeight: '800' as const, color: C.text, letterSpacing: -0.5 },
+  attentionLabel: { fontSize: 11, color: C.textSecondary, textAlign: 'center' },
 });

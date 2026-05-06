@@ -12,10 +12,12 @@ interface ShiftRow {
   id: string;
   title: string;
   status: string;
-  start_at: string | null;
-  end_at: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
   hourly_rate: number | null;
-  required_certification: string | null;
+  requirements: string | null;
+  workers_needed: number | null;
   created_at: string;
 }
 
@@ -26,8 +28,8 @@ export default function EmployerShiftsPage() {
     queryKey: ["employer", "shifts"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("shifts")
-        .select("id,title,status,start_at,end_at,hourly_rate,required_certification,created_at")
+        .from("shift_posts")
+        .select("id,title,status,date,start_time,end_time,hourly_rate,requirements,workers_needed,created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -35,12 +37,12 @@ export default function EmployerShiftsPage() {
     },
   });
 
-  const setStatus = useMutation({
-    mutationFn: async (input: { id: string; status: string }) => {
-      const { error } = await supabase.rpc("employer_set_shift_status", {
-        p_shift_id: input.id,
-        p_status: input.status,
-      });
+  const closeShift = useMutation({
+    mutationFn: async (input: { id: string }) => {
+      const { error } = await supabase
+        .from("shift_posts")
+        .update({ status: "Closed" })
+        .eq("id", input.id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["employer", "shifts"] }),
@@ -67,7 +69,7 @@ export default function EmployerShiftsPage() {
                   <TH>Status</TH>
                   <TH>Window</TH>
                   <TH>Rate</TH>
-                  <TH>Cert</TH>
+                  <TH>Requirements</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
               </THead>
@@ -79,17 +81,17 @@ export default function EmployerShiftsPage() {
                       <Badge>{s.status}</Badge>
                     </TD>
                     <TD className="text-xs text-muted-foreground">
-                      {formatDate(s.start_at)} → {formatDate(s.end_at)}
+                      {s.date ?? "—"} {s.start_time ?? ""} → {s.end_time ?? ""}
                     </TD>
-                    <TD>{s.hourly_rate != null ? `$${Number(s.hourly_rate).toFixed(2)}/hr` : "—"}</TD>
-                    <TD>{s.required_certification ?? "—"}</TD>
+                    <TD>{s.hourly_rate != null ? `${Number(s.hourly_rate).toFixed(2)}/hr` : "—"}</TD>
+                    <TD>{s.requirements ?? "—"}</TD>
                     <TD className="space-x-2 text-right">
                       {s.status !== "Closed" && (
                         <Button
                           size="sm"
                           variant="secondary"
-                          disabled={setStatus.isPending}
-                          onClick={() => setStatus.mutate({ id: s.id, status: "Closed" })}
+                          disabled={closeShift.isPending}
+                          onClick={() => closeShift.mutate({ id: s.id })}
                         >
                           Close
                         </Button>

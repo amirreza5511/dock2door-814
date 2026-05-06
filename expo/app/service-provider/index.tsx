@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Wrench, DollarSign, Clock, CheckCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
+import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -57,7 +58,10 @@ export default function ServiceProviderDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Wrench size={18} color={C.textMuted} /></TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <CompanySwitcher />
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Wrench size={18} color={C.textMuted} /></TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>

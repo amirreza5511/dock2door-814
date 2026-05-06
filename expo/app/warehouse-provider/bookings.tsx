@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, XCircle, ArrowRightLeft, Package, Star } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -35,8 +35,16 @@ export default function WPBookings() {
   const declineMutation = trpc.bookings.decline.useMutation({ onSuccess: invalidate });
   const counterMutation = trpc.bookings.submitCounterOffer.useMutation({ onSuccess: invalidate });
   const completeMutation = trpc.bookings.complete.useMutation({ onSuccess: invalidate });
-  const createRecordMutation = trpc.dock.createRecord.useMutation({ onSuccess: invalidate });
-  const { warehouseListings, warehouseBookings, messages, companies } = bootstrapQuery.data;
+
+  const createThreadMutation = trpc.messaging.createThread.useMutation();
+  const messagesQuery = trpc.messaging.listMessages.useQuery(
+    { threadId: threadId ?? '' },
+    { enabled: !!threadId },
+  );
+  const sendMsgMutation = trpc.messaging.sendMessage.useMutation({
+    onSuccess: () => void utils.messaging.listMessages.invalidate({ threadId: threadId ?? '' }),
+  });
+  const { warehouseListings, warehouseBookings, companies } = bootstrapQuery.data;
 
   const [filter, setFilter] = useState<BookingStatus | 'All'>('All');
   const [selected, setSelected] = useState<WarehouseBooking | null>(null);
@@ -44,6 +52,8 @@ export default function WPBookings() {
   const [counterPrice, setCounterPrice] = useState('');
   const [responseNotes, setResponseNotes] = useState('');
   const [msgText, setMsgText] = useState('');
+  const [activeTab, setActiveTab] = useState<'details' | 'docs' | 'messages'>('details');
+  const [threadId, setThreadId] = useState<string | null>(null);
   const [reviewFor, setReviewFor] = useState<WarehouseBooking | null>(null);
 
   const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
@@ -59,8 +69,6 @@ export default function WPBookings() {
     [myReviewsQuery.data],
   );
   const filtered = useMemo(() => filter === 'All' ? myBookings : myBookings.filter((b) => b.status === filter), [myBookings, filter]);
-
-  const bookingMessages = useMemo(() => selected ? messages.filter((m) => m.referenceType === 'WarehouseBooking' && m.referenceId === selected.id) : [], [messages, selected]);
 
   const getListingName = (id: string) => warehouseListings.find((l) => l.id === id)?.name ?? id;
   const getCustomerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? companyId;
@@ -130,10 +138,32 @@ export default function WPBookings() {
     });
   };
 
+  // Reset tab + thread whenever a different booking is opened
+  useEffect(() => {
+    setActiveTab('details');
+    setThreadId(null);
+    setMsgText('');
+  }, [selected?.id]);
+
+  // Create a thread the first time the messages tab is opened for a booking
+  useEffect(() => {
+    if (activeTab !== 'messages' || !selected || threadId || createThreadMutation.isPending) return;
+    void createThreadMutation
+      .mutateAsync({ bookingId: selected.id, scope: 'Booking' })
+      .then((res) => setThreadId(res.id))
+      .catch(() => {});
+  }, [activeTab, selected?.id, threadId]);
+
   const openDetail = (b: WarehouseBooking) => {
     setSelected(b);
     setResponseNotes(b.providerResponseNotes);
     setDetailModal(true);
+  };
+
+  const handleSendMsg = () => {
+    if (!msgText.trim() || !threadId) return;
+    sendMsgMutation.mutate({ threadId, body: msgText.trim() });
+    setMsgText('');
   };
 
   if (bootstrapQuery.isLoading) {
@@ -201,7 +231,7 @@ export default function WPBookings() {
         <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHandle} />
           {selected && (
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View style={styles.modalBody}>
                 <View style={styles.modalTitleRow}>
                   <Text style={styles.modalTitle}>{getListingName(selected.listingId)}</Text>
@@ -209,91 +239,160 @@ export default function WPBookings() {
                 </View>
                 <Text style={styles.customerLabel}>{getCustomerName(selected.customerCompanyId)}</Text>
 
-                <View style={styles.detailGrid}>
-                  {[
-                    ['Pallets', `${selected.palletsRequested}`],
-                    ['Start', selected.startDate],
-                    ['End', selected.endDate],
-                    ['Handling', selected.handlingRequired ? 'Yes' : 'No'],
-                    ['Proposed', `$${selected.proposedPrice.toLocaleString()}`],
-                    ['Counter', selected.counterOfferPrice ? `$${selected.counterOfferPrice.toLocaleString()}` : '—'],
-                    ['Final', selected.finalPrice ? `$${selected.finalPrice.toLocaleString()}` : '—'],
-                    ['Payment', selected.paymentStatus],
-                  ].map(([l, v]) => (
-                    <View key={l} style={styles.detailItem}>
-                      <Text style={styles.detailLabel}>{l}</Text>
-                      <Text style={styles.detailValue}>{v}</Text>
-                    </View>
+                {/* Tab switcher */}
+                <View style={styles.tabRow}>
+                  {(['details', 'docs', 'messages'] as const).map((t) => (
+                    <TouchableOpacity
+                      key={t}
+                      onPress={() => setActiveTab(t)}
+                      style={[styles.tabBtn, activeTab === t && styles.tabBtnActive]}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[styles.tabBtnText, activeTab === t && styles.tabBtnTextActive]}>
+                        {t.charAt(0).toUpperCase() + t.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
 
-                {selected.customerNotes ? (
-                  <View style={styles.notesBox}>
-                    <Text style={styles.notesLabel}>Customer Notes</Text>
-                    <Text style={styles.notesText}>{selected.customerNotes}</Text>
-                  </View>
-                ) : null}
+                {/* Details tab */}
+                {activeTab === 'details' && (
+                  <>
+                    <View style={styles.detailGrid}>
+                      {[
+                        ['Pallets', `${selected.palletsRequested}`],
+                        ['Start', selected.startDate],
+                        ['End', selected.endDate],
+                        ['Handling', selected.handlingRequired ? 'Yes' : 'No'],
+                        ['Proposed', `${selected.proposedPrice.toLocaleString()}`],
+                        ['Counter', selected.counterOfferPrice ? `${selected.counterOfferPrice.toLocaleString()}` : '—'],
+                        ['Final', selected.finalPrice ? `${selected.finalPrice.toLocaleString()}` : '—'],
+                        ['Payment', selected.paymentStatus],
+                      ].map(([l, v]) => (
+                        <View key={l} style={styles.detailItem}>
+                          <Text style={styles.detailLabel}>{l}</Text>
+                          <Text style={styles.detailValue}>{v}</Text>
+                        </View>
+                      ))}
+                    </View>
 
-                {selected.status === 'Requested' && (
-                  <View style={styles.responseSection}>
-                    <Text style={styles.responseSectionTitle}>Respond to Request</Text>
-                    <Input label="Response Notes (optional)" value={responseNotes} onChangeText={setResponseNotes} multiline numberOfLines={3} placeholder="Add notes for the customer…" />
-                    <View style={styles.responseBtns}>
-                      <Button label="Accept" onPress={() => handleAccept(selected)} icon={<CheckCircle size={15} color={C.white} />} size="sm" />
-                      <Button label="Decline" onPress={() => handleDecline(selected)} variant="danger" icon={<XCircle size={15} color={C.red} />} size="sm" />
-                    </View>
-                    <View style={styles.counterSection}>
-                      <Input label="Counter Offer Price ($)" value={counterPrice} onChangeText={setCounterPrice} keyboardType="numeric" placeholder="e.g. 1800" />
-                      <Button label="Send Counter Offer" onPress={() => handleCounterOffer(selected)} variant="outline" fullWidth icon={<ArrowRightLeft size={15} color={C.accent} />} />
-                    </View>
-                  </View>
+                    {selected.customerNotes ? (
+                      <View style={styles.notesBox}>
+                        <Text style={styles.notesLabel}>Customer Notes</Text>
+                        <Text style={styles.notesText}>{selected.customerNotes}</Text>
+                      </View>
+                    ) : null}
+
+                    {selected.status === 'Requested' && (
+                      <View style={styles.responseSection}>
+                        <Text style={styles.responseSectionTitle}>Respond to Request</Text>
+                        <Input label="Response Notes (optional)" value={responseNotes} onChangeText={setResponseNotes} multiline numberOfLines={3} placeholder="Add notes for the customer…" />
+                        <View style={styles.responseBtns}>
+                          <Button label="Accept" onPress={() => handleAccept(selected)} icon={<CheckCircle size={15} color={C.white} />} size="sm" />
+                          <Button label="Decline" onPress={() => handleDecline(selected)} variant="danger" icon={<XCircle size={15} color={C.red} />} size="sm" />
+                        </View>
+                        <View style={styles.counterSection}>
+                          <Input label="Counter Offer Price ($)" value={counterPrice} onChangeText={setCounterPrice} keyboardType="numeric" placeholder="e.g. 1800" />
+                          <Button label="Send Counter Offer" onPress={() => handleCounterOffer(selected)} variant="outline" fullWidth icon={<ArrowRightLeft size={15} color={C.accent} />} />
+                        </View>
+                      </View>
+                    )}
+
+                    {selected.status === 'Confirmed' && (
+                      <Button label="Mark as Completed" onPress={() => handleComplete(selected)} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
+                    )}
+
+                    {selected.status === 'Completed' && !reviewedBookingIds.has(selected.id) && (
+                      <Button
+                        label="Rate Customer"
+                        onPress={() => { setDetailModal(false); setReviewFor(selected); }}
+                        variant="outline"
+                        fullWidth
+                        icon={<Star size={15} color={C.accent} />}
+                      />
+                    )}
+                    {selected.status === 'Completed' && reviewedBookingIds.has(selected.id) && (
+                      <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this customer</Text>
+                    )}
+
+                    {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selected.status) && (
+                      <Button
+                        label="Open Fulfillment"
+                        onPress={() => { setDetailModal(false); router.push(`/fulfillment/${selected.id}` as never); }}
+                        variant="outline"
+                        fullWidth
+                        icon={<Package size={15} color={C.accent} />}
+                      />
+                    )}
+                  </>
                 )}
 
-                {selected.status === 'Confirmed' && (
-                  <Button label="Mark as Completed" onPress={() => handleComplete(selected)} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
-                )}
-
-                {selected.status === 'Completed' && !reviewedBookingIds.has(selected.id) && (
-                  <Button
-                    label="Rate Customer"
-                    onPress={() => { setDetailModal(false); setReviewFor(selected); }}
-                    variant="outline"
-                    fullWidth
-                    icon={<Star size={15} color={C.accent} />}
+                {/* Docs tab */}
+                {activeTab === 'docs' && (
+                  <BookingDocs
+                    bookingId={selected.id}
+                    uploaderCompanyId={activeCompany?.companyId ?? ''}
                   />
                 )}
-                {selected.status === 'Completed' && reviewedBookingIds.has(selected.id) && (
-                  <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this customer</Text>
+
+                {/* Messages tab */}
+                {activeTab === 'messages' && (
+                  <View style={styles.msgTabWrap}>
+                    {!threadId && (
+                      <View style={styles.msgLoading}>
+                        <Text style={styles.msgLoadingText}>
+                          {createThreadMutation.isPending ? 'Opening thread…' : 'Loading…'}
+                        </Text>
+                      </View>
+                    )}
+                    {threadId && (
+                      <>
+                        <ScrollView
+                          style={styles.msgScrollInner}
+                          showsVerticalScrollIndicator={false}
+                          contentContainerStyle={{ gap: 8 }}
+                        >
+                          {(messagesQuery.data ?? []).map((m) => {
+                            const isMine = (m as { sender_user_id?: string }).sender_user_id === user?.id;
+                            const body = (m as { body?: string }).body ?? '';
+                            const ts = (m as { created_at?: string }).created_at ?? '';
+                            return (
+                              <View
+                                key={(m as { id: string }).id}
+                                style={[styles.msgBubble, isMine && styles.msgBubbleMine]}
+                              >
+                                <Text style={styles.msgText}>{body}</Text>
+                                <Text style={styles.msgTime}>{ts.replace('T', ' ').slice(0, 16)}</Text>
+                              </View>
+                            );
+                          })}
+                          {(messagesQuery.data ?? []).length === 0 && (
+                            <Text style={styles.msgEmpty}>No messages yet. Start the conversation.</Text>
+                          )}
+                        </ScrollView>
+                        <View style={styles.msgInputRow}>
+                          <TextInput
+                            style={styles.msgInput}
+                            value={msgText}
+                            onChangeText={setMsgText}
+                            placeholder="Message…"
+                            placeholderTextColor={C.textMuted}
+                            returnKeyType="send"
+                            onSubmitEditing={handleSendMsg}
+                          />
+                          <TouchableOpacity
+                            onPress={handleSendMsg}
+                            style={[styles.msgSendBtn, (!msgText.trim() || sendMsgMutation.isPending) && styles.msgSendBtnDisabled]}
+                            disabled={!msgText.trim() || sendMsgMutation.isPending}
+                          >
+                            <Text style={styles.msgSendText}>Send</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    )}
+                  </View>
                 )}
 
-                {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selected.status) && (
-                  <Button
-                    label="Open Fulfillment"
-                    onPress={() => { setDetailModal(false); router.push(`/fulfillment/${selected.id}` as never); }}
-                    variant="outline"
-                    fullWidth
-                    icon={<Package size={15} color={C.accent} />}
-                  />
-                )}
-
-                {activeCompanyId && (
-                  <BookingDocs bookingId={selected.id} uploaderCompanyId={activeCompanyId} />
-                )}
-
-                {/* Messages */}
-                <Text style={styles.msgTitle}>Messages</Text>
-                <View style={styles.msgList}>
-                  {bookingMessages.map((m) => (
-                    <View key={m.id} style={[styles.msgBubble, m.senderUserId === user?.id && styles.msgBubbleMine]}>
-                      <Text style={styles.msgText}>{m.text}</Text>
-                      <Text style={styles.msgTime}>{m.createdAt.replace('T', ' ').slice(0, 16)}</Text>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.msgRow}>
-                  <View style={{ flex: 1 }}><Input value={msgText} onChangeText={setMsgText} placeholder="Message…" /></View>
-                  <Button label="Send" onPress={sendMsg} size="sm" disabled={!msgText.trim()} />
-                </View>
                 <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
               </View>
             </ScrollView>
@@ -357,11 +456,23 @@ const styles = StyleSheet.create({
   responseSectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   responseBtns: { flexDirection: 'row', gap: 10 },
   counterSection: { gap: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.border },
-  msgTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
-  msgList: { gap: 8 },
+  tabRow: { flexDirection: 'row', backgroundColor: C.bgSecondary, borderRadius: 10, padding: 3, gap: 3, marginBottom: 4 },
+  tabBtn: { flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center' },
+  tabBtnActive: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  tabBtnText: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary },
+  tabBtnTextActive: { color: C.text },
+  msgTabWrap: { gap: 10 },
+  msgLoading: { paddingVertical: 40, alignItems: 'center' },
+  msgLoadingText: { fontSize: 13, color: C.textSecondary },
+  msgScrollInner: { maxHeight: 260 },
   msgBubble: { backgroundColor: C.card, borderRadius: 12, padding: 10, alignSelf: 'flex-start', maxWidth: '80%', borderWidth: 1, borderColor: C.border },
   msgBubbleMine: { alignSelf: 'flex-end', backgroundColor: C.accentDim, borderColor: C.accent + '40' },
   msgText: { fontSize: 13, color: C.text },
   msgTime: { fontSize: 10, color: C.textMuted, marginTop: 4, textAlign: 'right' },
-  msgRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  msgEmpty: { fontSize: 13, color: C.textSecondary, textAlign: 'center', paddingVertical: 20 },
+  msgInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, borderTopColor: C.border, paddingTop: 10 },
+  msgInput: { flex: 1, backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, color: C.text },
+  msgSendBtn: { backgroundColor: C.accent, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8 },
+  msgSendBtnDisabled: { opacity: 0.4 },
+  msgSendText: { fontSize: 13, fontWeight: '700' as const, color: C.white },
 });

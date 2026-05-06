@@ -8,14 +8,22 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatDate } from "@/lib/utils";
 
+interface ShiftPostRef {
+  id: string;
+  title: string | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  hourly_rate: number | null;
+}
+
 interface Assignment {
   id: string;
   shift_id: string;
   status: string;
   worker_user_id: string;
-  employer_company_id: string;
   assigned_at: string | null;
-  shifts: { id: string; title: string | null; starts_at: string | null; ends_at: string | null; pay_rate: number | null } | { id: string; title: string | null; starts_at: string | null; ends_at: string | null; pay_rate: number | null }[] | null;
+  shift_posts: ShiftPostRef | ShiftPostRef[] | null;
 }
 
 interface FlatAssignment {
@@ -23,9 +31,10 @@ interface FlatAssignment {
   shift_id: string;
   status: string;
   title: string;
-  starts_at: string | null;
-  ends_at: string | null;
-  pay_rate: number | null;
+  date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  hourly_rate: number | null;
   assigned_at: string | null;
 }
 
@@ -40,7 +49,7 @@ export default function WorkerShiftsPage() {
       if (!u.user) return [];
       const { data, error } = await supabase
         .from("shift_assignments")
-        .select("id,shift_id,status,worker_user_id,employer_company_id,assigned_at,shifts!inner(id,title,starts_at,ends_at,pay_rate)")
+        .select("id,shift_id,status,worker_user_id,assigned_at,shift_posts!inner(id,title,date,start_time,end_time,hourly_rate)")
         .eq("worker_user_id", u.user.id)
         .order("assigned_at", { ascending: false })
         .limit(200);
@@ -50,15 +59,16 @@ export default function WorkerShiftsPage() {
   });
 
   const flat: FlatAssignment[] = (assignments.data ?? []).map((a) => {
-    const s = Array.isArray(a.shifts) ? a.shifts[0] : a.shifts;
+    const s = Array.isArray(a.shift_posts) ? a.shift_posts[0] : a.shift_posts;
     return {
       id: a.id,
       shift_id: a.shift_id,
       status: a.status,
       title: s?.title ?? "Untitled shift",
-      starts_at: s?.starts_at ?? null,
-      ends_at: s?.ends_at ?? null,
-      pay_rate: s?.pay_rate ?? null,
+      date: s?.date ?? null,
+      start_time: s?.start_time ?? null,
+      end_time: s?.end_time ?? null,
+      hourly_rate: s?.hourly_rate ?? null,
       assigned_at: a.assigned_at,
     };
   });
@@ -81,8 +91,8 @@ export default function WorkerShiftsPage() {
 
   const cols: Column<FlatAssignment>[] = [
     { key: "title", header: "Shift", render: (a) => <span className="font-medium">{a.title}</span> },
-    { key: "when", header: "When", render: (a) => `${a.starts_at ? formatDate(a.starts_at) : "—"} → ${a.ends_at ? formatDate(a.ends_at) : "—"}`, sortable: true, sortValue: (a) => a.starts_at },
-    { key: "rate", header: "Pay rate", render: (a) => a.pay_rate ? `$${Number(a.pay_rate).toFixed(2)}` : "—" },
+    { key: "when", header: "When", render: (a) => `${a.date ?? "—"} ${a.start_time ?? ""} → ${a.end_time ?? ""}`.trim(), sortable: true, sortValue: (a) => a.date },
+    { key: "rate", header: "Pay rate", render: (a) => a.hourly_rate ? `${Number(a.hourly_rate).toFixed(2)}/hr` : "—" },
     { key: "status", header: "Status", render: (a) => <Badge variant={a.status === "completed" ? "success" : a.status === "in_progress" ? "default" : "warning"}>{a.status}</Badge>, sortable: true, sortValue: (a) => a.status },
     { key: "actions", header: "", className: "text-right", render: (a) => (
       <div className="flex justify-end gap-2">
