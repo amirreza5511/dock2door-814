@@ -18,6 +18,29 @@ import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetada
 
 const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
 
+async function assetToBlob(asset: ImagePicker.ImagePickerAsset): Promise<Blob> {
+  // Prefer the File object the web picker hands us — avoids fetching a blob:/data: URI which
+  // can throw "TypeError: Failed to fetch" under strict CSP or after the URL is revoked.
+  if (Platform.OS === 'web') {
+    const maybeFile = (asset as unknown as { file?: File }).file;
+    if (maybeFile) return maybeFile;
+  }
+  if (asset.base64 && asset.base64.length > 0) {
+    const mime = asset.mimeType ?? 'image/jpeg';
+    const byteString = typeof atob === 'function' ? atob(asset.base64) : Buffer.from(asset.base64, 'base64').toString('binary');
+    const buf = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i += 1) buf[i] = byteString.charCodeAt(i);
+    return new Blob([buf], { type: mime });
+  }
+  try {
+    const res = await fetch(asset.uri);
+    return await res.blob();
+  } catch (err) {
+    console.log('[profile] assetToBlob fetch failed', err);
+    throw new Error('Could not read selected image. Please try a different photo.');
+  }
+}
+
 interface WorkPhotoRow { id: string; file_path: string; signed_url?: string; caption: string | null; visibility: 'private' | 'company' | 'public'; moderation_status: 'pending' | 'approved' | 'rejected'; created_at: string; }
 
 interface EditableWorkerProfile {
@@ -266,7 +289,7 @@ export default function WorkerProfile() {
       const asset = picked.assets[0];
       const photoId = `profile-${Date.now()}`;
       const path = buildWorkerPhotoPath(user.id, photoId, 'profile.jpg');
-      const blob = await (await fetch(asset.uri)).blob();
+      const blob = await assetToBlob(asset);
       await uploadFileWithMetadata({ bucket: 'worker-photos', path, file: blob, contentType: asset.mimeType ?? 'image/jpeg', entityType: 'worker_profile_photo', entityId: profile.id, companyId: null });
       const { error } = await supabase.from('worker_profiles').update({ profile_photo_path: path, avatar_path: path }).eq('id', profile.id);
       if (error) throw new Error(error.message);
@@ -286,11 +309,11 @@ export default function WorkerProfile() {
       const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.82 });
       if (picked.canceled || !picked.assets?.[0]) return null;
       const asset = picked.assets[0];
+      const blob = await assetToBlob(asset);
       const { data: row, error: insertErr } = await supabase.from('work_photos').insert({ worker_user_id: user.id, file_path: 'pending', caption: '', visibility: photoVisibility, moderation_status: 'pending' }).select('id').single();
       if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create photo');
       const id = row.id as string;
       const path = buildWorkerPhotoPath(user.id, id, `work-${Date.now()}.jpg`);
-      const blob = await (await fetch(asset.uri)).blob();
       try {
         await uploadFileWithMetadata({ bucket: 'worker-photos', path, file: blob, contentType: asset.mimeType ?? 'image/jpeg', entityType: 'work_photo', entityId: id, companyId: null });
       } catch (err) { await supabase.from('work_photos').delete().eq('id', id); throw err; }
