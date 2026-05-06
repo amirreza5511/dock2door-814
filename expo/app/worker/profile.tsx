@@ -254,19 +254,7 @@ export default function WorkerProfile() {
     try {
       const displayName = user.name || user.email.split('@')[0] || 'Worker';
       const { error } = await supabase.rpc('ensure_my_worker_profile', { p_display_name: displayName });
-      if (error) {
-        // Fallback: direct insert if RPC isn't deployed yet
-        const { error: insertErr } = await supabase.from('worker_profiles').insert({
-          user_id: user.id,
-          display_name: displayName,
-          skills: [],
-          coverage_cities: [],
-          hourly_expectation: 0,
-          bio: '',
-          status: 'Active',
-        });
-        if (insertErr) throw new Error(insertErr.message);
-      }
+      if (error) throw new Error(error.message);
       await refetch();
       setEditing(true);
       Alert.alert('Profile created', 'Add your photo, skills, resume details, and certificates now.');
