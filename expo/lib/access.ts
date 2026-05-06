@@ -42,6 +42,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   'gate-staff': ['GateStaff'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],
+  fulfillment: ['WarehouseProvider', 'Customer', 'Admin', 'SuperAdmin'],
 };
 
 export function getRoleRoute(role: UserRole): string {

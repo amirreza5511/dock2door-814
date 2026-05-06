@@ -42,9 +42,9 @@ export default function AdminCompaniesPage() {
   const setStatus = useMutation({
     mutationFn: async (input: { id: string; status: string; reason: string }) => {
       const { error } = await supabase.rpc("admin_set_company_status", {
-        company_id: input.id,
-        new_status: input.status,
-        reason: input.reason,
+        p_company_id: input.id,
+        p_status: input.status,
+        p_reason: input.reason,
       });
       if (error) throw error;
     },

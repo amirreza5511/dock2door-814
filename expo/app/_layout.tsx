@@ -61,7 +61,7 @@ const installTextNodeGuard = () => {
 };
 
 installTextNodeGuard();
-const SHARED_SEGMENTS = ['fulfillment', 'messages', 'notifications', 'reviews'];
+const SHARED_SEGMENTS = ['messages', 'notifications', 'reviews'];
 
 function AuthGuard() {
   const { user, isHydrated } = useAuthStore();
@@ -153,8 +153,8 @@ function BootstrapController() {
 
 export default function RootLayout() {
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <ActiveCompanyProvider>
           <SafeAreaProvider>
             <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
@@ -165,7 +165,7 @@ export default function RootLayout() {
             </GestureHandlerRootView>
           </SafeAreaProvider>
         </ActiveCompanyProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+      </trpc.Provider>
+    </QueryClientProvider>
   );
 }
