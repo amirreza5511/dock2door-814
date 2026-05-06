@@ -241,6 +241,7 @@ grant execute on function public.update_my_worker_profile(
 -- =============================================================
 -- 7) set_my_availability — SECURITY DEFINER (upsert via RPC)
 -- =============================================================
+drop function if exists public.set_my_availability(date, text, text, availability_kind, text, shift_category, text);
 create or replace function public.set_my_availability(
   p_date               date,
   p_start              text,
