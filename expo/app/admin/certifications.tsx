@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, Pla
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Award, CheckCircle, XCircle, FileText, Filter } from 'lucide-react-native';
+import { ArrowLeft, Award, CheckCircle, XCircle, FileText, Filter, Eye, EyeOff } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -68,6 +68,37 @@ export default function AdminCertifications() {
   const [selected, setSelected] = useState<CertRow | null>(null);
   const [rejectReason, setRejectReason] = useState<string>('');
   const [approveNote, setApproveNote] = useState<string>('');
+  const [revealedFields, setRevealedFields] = useState<Set<string>>(new Set());
+
+  const toggleReveal = (field: string) => {
+    setRevealedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(field)) { next.delete(field); } else { next.add(field); }
+      return next;
+    });
+  };
+
+  const workerPrivateQuery = useQuery({
+    queryKey: ['admin-worker-private', selected?.worker_user_id],
+    enabled: Boolean(selected?.worker_user_id),
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('worker_private_info')
+        .select('date_of_birth,gender,work_permit_status,sin_number,bank_institution_number,bank_transit_number,bank_account_number,bank_account_holder_name')
+        .eq('user_id', selected!.worker_user_id)
+        .maybeSingle();
+      return data as {
+        date_of_birth: string | null;
+        gender: string | null;
+        work_permit_status: string | null;
+        sin_number: string | null;
+        bank_institution_number: string | null;
+        bank_transit_number: string | null;
+        bank_account_number: string | null;
+        bank_account_holder_name: string | null;
+      } | null;
+    },
+  });
 
   const certsQuery = useQuery({
     queryKey: ['admin-certs'],
@@ -276,6 +307,46 @@ export default function AdminCertifications() {
                 </View>
               ) : null}
 
+              {/* Worker Private Info */}
+              <View style={styles.privateSection}>
+                <Text style={styles.privateSectionTitle}>Worker Private Info</Text>
+                {workerPrivateQuery.isLoading ? (
+                  <Text style={styles.privateEmpty}>Loading…</Text>
+                ) : workerPrivateQuery.data == null ? (
+                  <Text style={styles.privateEmpty}>Worker has not submitted private information yet.</Text>
+                ) : (() => {
+                  const p = workerPrivateQuery.data;
+                  const SENSITIVE = ['sin_number', 'bank_institution_number', 'bank_transit_number', 'bank_account_number'] as const;
+                  const rows: { key: string; label: string; value: string | null; sensitive: boolean }[] = [
+                    { key: 'date_of_birth', label: 'Date of Birth', value: p.date_of_birth, sensitive: false },
+                    { key: 'gender', label: 'Gender', value: p.gender, sensitive: false },
+                    { key: 'work_permit_status', label: 'Work Permit Status', value: p.work_permit_status, sensitive: false },
+                    { key: 'sin_number', label: 'SIN', value: p.sin_number, sensitive: true },
+                    { key: 'bank_institution_number', label: 'Bank Institution #', value: p.bank_institution_number, sensitive: true },
+                    { key: 'bank_transit_number', label: 'Transit #', value: p.bank_transit_number, sensitive: true },
+                    { key: 'bank_account_number', label: 'Account #', value: p.bank_account_number, sensitive: true },
+                    { key: 'bank_account_holder_name', label: 'Account Holder', value: p.bank_account_holder_name, sensitive: false },
+                  ];
+                  return rows.map((r) => (
+                    <View key={r.key} style={styles.privateRow}>
+                      <Text style={styles.privateLabel}>{r.label}</Text>
+                      <View style={styles.privateValueRow}>
+                        <Text style={styles.privateValue}>
+                          {r.value == null ? '—' : (r.sensitive && !revealedFields.has(r.key) ? '••••••••' : r.value)}
+                        </Text>
+                        {r.sensitive && r.value != null && (
+                          <TouchableOpacity onPress={() => toggleReveal(r.key)} style={styles.eyeBtn}>
+                            {revealedFields.has(r.key)
+                              ? <EyeOff size={14} color={C.textMuted} />
+                              : <Eye size={14} color={C.textMuted} />}
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ));
+                })()}
+              </View>
+
               <Button label="Close" onPress={() => setSelected(null)} variant="ghost" fullWidth />
             </ScrollView>
           ) : null}
@@ -316,5 +387,13 @@ const styles = StyleSheet.create({
   actionSection: { gap: 10, marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.border },
   sectionLabel: { fontSize: 13, fontWeight: '700' as const, color: C.text },
   textInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14 },
-  textArea: { minHeight: 70, textAlignVertical: 'top' },
+  textArea: { minHeight: 70, textAlignVertical: 'top' as const },
+  privateSection: { marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.border, gap: 8 },
+  privateSectionTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text, marginBottom: 4 },
+  privateEmpty: { fontSize: 13, color: C.textMuted, fontStyle: 'italic' as const },
+  privateRow: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border },
+  privateLabel: { fontSize: 12, color: C.textMuted, flex: 1 },
+  privateValueRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  privateValue: { fontSize: 13, color: C.text, fontWeight: '600' as const },
+  eyeBtn: { padding: 4 },
 });

@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,17 @@ import { supabase } from '@/lib/supabase';
 import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
 
 const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
+
+type CertType = 'Forklift' | 'HighReach' | 'DriversLicence' | 'CriminalRecordCheck';
+const CERT_TYPES: { value: CertType; label: string }[] = [
+  { value: 'Forklift', label: 'Forklift Cert' },
+  { value: 'HighReach', label: 'High Reach Cert' },
+  { value: 'DriversLicence', label: "Driver's Licence" },
+  { value: 'CriminalRecordCheck', label: 'Criminal Record Check' },
+];
+
+const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'] as const;
+const WORK_PERMIT_OPTIONS = ['Citizen', 'PR', 'Open Work Permit', 'Employer-Specific Work Permit', 'Student Work Permit', 'Other'] as const;
 
 async function assetToBlob(asset: ImagePicker.ImagePickerAsset): Promise<Blob> {
   // Prefer the File object the web picker hands us — avoids fetching a blob:/data: URI which
@@ -139,6 +150,69 @@ export default function WorkerProfile() {
     staleTime: 15_000,
   });
 
+  const privateQuery = useQuery({
+    queryKey: ['worker-private-info', user?.id],
+    enabled: Boolean(user),
+    queryFn: async () => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from('worker_private_info')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      return data as {
+        date_of_birth: string | null;
+        gender: string | null;
+        work_permit_status: string | null;
+        sin_number: string | null;
+        bank_institution_number: string | null;
+        bank_transit_number: string | null;
+        bank_account_number: string | null;
+        bank_account_holder_name: string | null;
+      } | null;
+    },
+  });
+
+  useEffect(() => {
+    if (privateQuery.data) {
+      const d = privateQuery.data;
+      setDob(d.date_of_birth ?? '');
+      setGender(d.gender ?? '');
+      setWorkPermit(d.work_permit_status ?? '');
+      setSin(d.sin_number ?? '');
+      setBankInstitution(d.bank_institution_number ?? '');
+      setBankTransit(d.bank_transit_number ?? '');
+      setBankAccount(d.bank_account_number ?? '');
+      setBankHolder(d.bank_account_holder_name ?? '');
+    }
+  }, [privateQuery.data]);
+
+  const savePrivateInfo = async () => {
+    if (!user) return;
+    setSavingPrivate(true);
+    try {
+      const { error } = await supabase.from('worker_private_info').upsert({
+        user_id: user.id,
+        date_of_birth: dob || null,
+        gender: gender || null,
+        work_permit_status: workPermit || null,
+        sin_number: sin || null,
+        bank_institution_number: bankInstitution || null,
+        bank_transit_number: bankTransit || null,
+        bank_account_number: bankAccount || null,
+        bank_account_holder_name: bankHolder || null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw new Error(error.message);
+      await queryClient.invalidateQueries({ queryKey: ['worker-private-info', user.id] });
+      Alert.alert('Saved', 'Your private information has been updated.');
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unable to save private info');
+    } finally {
+      setSavingPrivate(false);
+    }
+  };
+
   const extendedQuery = useQuery({
     queryKey: ['worker-profile-extended', user?.id],
     enabled: Boolean(user),
@@ -176,8 +250,20 @@ export default function WorkerProfile() {
 
   const [photoVisibility, setPhotoVisibility] = useState<'private' | 'company' | 'public'>('company');
   const [addingCert, setAddingCert] = useState(false);
-  const [certType, setCertType] = useState<'Forklift' | 'HighReach'>('Forklift');
+  const [certType, setCertType] = useState<CertType>('Forklift');
   const [certExpiry, setCertExpiry] = useState('');
+
+  // Private info state
+  const [privateExpanded, setPrivateExpanded] = useState(false);
+  const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('');
+  const [workPermit, setWorkPermit] = useState('');
+  const [sin, setSin] = useState('');
+  const [bankInstitution, setBankInstitution] = useState('');
+  const [bankTransit, setBankTransit] = useState('');
+  const [bankAccount, setBankAccount] = useState('');
+  const [bankHolder, setBankHolder] = useState('');
+  const [savingPrivate, setSavingPrivate] = useState(false);
 
   const toggleSkill = (s: ShiftCategory) => {
     setEditSkills((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
@@ -572,9 +658,9 @@ export default function WorkerProfile() {
             <Card elevated style={styles.addCertForm}>
               <Text style={styles.formTitle}>New Certification</Text>
               <View style={styles.certTypeRow}>
-                {(['Forklift', 'HighReach'] as const).map((t) => (
-                  <TouchableOpacity key={t} onPress={() => setCertType(t)} style={[styles.certTypeChip, certType === t && styles.certTypeChipActive]}>
-                    <Text style={[styles.certTypeText, certType === t && styles.certTypeTextActive]}>{t}</Text>
+                {CERT_TYPES.map((t) => (
+                  <TouchableOpacity key={t.value} onPress={() => setCertType(t.value)} style={[styles.certTypeChip, certType === t.value && styles.certTypeChipActive]}>
+                    <Text style={[styles.certTypeText, certType === t.value && styles.certTypeTextActive]}>{t.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -628,6 +714,62 @@ export default function WorkerProfile() {
                 </Card>
               );
             })
+          )}
+        </View>
+
+        {/* Private Information Section */}
+        <View style={styles.section}>
+          <TouchableOpacity onPress={() => setPrivateExpanded((v) => !v)} style={styles.privateHeader}>
+            <View style={styles.privateHeaderLeft}>
+              <Lock size={15} color={C.textSecondary} />
+              <Text style={styles.sectionTitle}>Private Information</Text>
+            </View>
+            {privateExpanded ? <ChevronUp size={18} color={C.textMuted} /> : <ChevronDown size={18} color={C.textMuted} />}
+          </TouchableOpacity>
+          {privateExpanded && (
+            <Card elevated style={styles.formGap}>
+              <Text style={styles.privacyNotice}>This information is encrypted and only visible to you and platform admins.</Text>
+
+              <Input label="Date of Birth" value={dob} onChangeText={setDob} placeholder="YYYY-MM-DD" />
+
+              <View>
+                <Text style={styles.skillsLabel}>Gender</Text>
+                <View style={styles.certTypeRow}>
+                  {GENDER_OPTIONS.map((g) => (
+                    <TouchableOpacity key={g} onPress={() => setGender(gender === g ? '' : g)} style={[styles.certTypeChip, gender === g && styles.certTypeChipActive]}>
+                      <Text style={[styles.certTypeText, gender === g && styles.certTypeTextActive]}>{g}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View>
+                <Text style={styles.skillsLabel}>Work Permit / Immigration Status</Text>
+                <View style={styles.certTypeRow}>
+                  {WORK_PERMIT_OPTIONS.map((p) => (
+                    <TouchableOpacity key={p} onPress={() => setWorkPermit(workPermit === p ? '' : p)} style={[styles.certTypeChip, workPermit === p && styles.certTypeChipActive]}>
+                      <Text style={[styles.certTypeText, workPermit === p && styles.certTypeTextActive]}>{p}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <Input label="SIN Number" value={sin} onChangeText={setSin} placeholder="XXX-XXX-XXX" secureTextEntry />
+
+              <Text style={styles.skillsLabel}>Bank Info (for direct deposit)</Text>
+              <Input label="Institution Number (3 digits)" value={bankInstitution} onChangeText={setBankInstitution} keyboardType="numeric" placeholder="001" />
+              <Input label="Transit Number (5 digits)" value={bankTransit} onChangeText={setBankTransit} keyboardType="numeric" placeholder="00001" />
+              <Input label="Account Number" value={bankAccount} onChangeText={setBankAccount} keyboardType="numeric" placeholder="1234567" />
+              <Input label="Account Holder Name" value={bankHolder} onChangeText={setBankHolder} placeholder="Full name on account" />
+
+              <Button
+                label={savingPrivate ? 'Saving…' : 'Save Private Info'}
+                onPress={savePrivateInfo}
+                disabled={savingPrivate}
+                fullWidth
+                icon={<Lock size={15} color={C.white} />}
+              />
+            </Card>
           )}
         </View>
 
@@ -746,4 +888,7 @@ const styles = StyleSheet.create({
   noProfileTitle: { fontSize: 20, color: C.text, fontWeight: '800' as const, textAlign: 'center' },
   noProfileText: { fontSize: 14, color: C.textSecondary, textAlign: 'center', lineHeight: 20 },
   photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  privateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  privateHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  privacyNotice: { fontSize: 12, color: C.textMuted, lineHeight: 18, backgroundColor: C.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: C.border },
 });
