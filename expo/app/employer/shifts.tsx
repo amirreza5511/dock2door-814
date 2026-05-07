@@ -33,6 +33,10 @@ export default function EmployerShifts() {
   const [confirmNotes, setConfirmNotes] = useState('');
   const [reviewFor, setReviewFor] = useState<{ assignmentId: string; workerUserId: string; workerName: string } | null>(null);
 
+  // myShifts must be declared BEFORE myAssignmentIds (which depends on it)
+  const myShifts = useMemo(() => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftPosts, user]);
+  const filtered = useMemo(() => filter === 'All' ? myShifts : myShifts.filter((s) => s.status === filter), [myShifts, filter]);
+
   const myAssignmentIds = useMemo(
     () => shiftAssignments
       .filter((a) => myShifts.some((s) => s.id === a.shiftId))
@@ -48,9 +52,6 @@ export default function EmployerShifts() {
     () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
     [myReviewsQuery.data],
   );
-
-  const myShifts = useMemo(() => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftPosts, user]);
-  const filtered = useMemo(() => filter === 'All' ? myShifts : myShifts.filter((s) => s.status === filter), [myShifts, filter]);
 
   const getApplicants = (shiftId: string) => shiftApplications.filter((a) => a.shiftId === shiftId && a.status === 'Applied');
   const getAssignments = (shiftId: string) => shiftAssignments.filter((a) => a.shiftId === shiftId);

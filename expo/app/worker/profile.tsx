@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, Star } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,6 +53,8 @@ async function assetToBlob(asset: ImagePicker.ImagePickerAsset): Promise<Blob> {
 }
 
 interface WorkPhotoRow { id: string; file_path: string; signed_url?: string; caption: string | null; visibility: 'private' | 'company' | 'public'; moderation_status: 'pending' | 'approved' | 'rejected'; created_at: string; }
+
+interface ReviewRow { id: string; rating: number; comment: string | null; created_at: string; }
 
 interface EditableWorkerProfile {
   id: string;
@@ -149,6 +151,27 @@ export default function WorkerProfile() {
     enabled: Boolean(user),
     staleTime: 15_000,
   });
+
+  const reviewsQuery = useQuery({
+    queryKey: ['worker-my-reviews', user?.id],
+    enabled: Boolean(user),
+    queryFn: async (): Promise<ReviewRow[]> => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('reviews')
+        .select('id,rating,comment,created_at')
+        .eq('reviewee_user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      return (data ?? []) as ReviewRow[];
+    },
+  });
+
+  const avgRating = useMemo(() => {
+    const list = reviewsQuery.data ?? [];
+    if (list.length === 0) return 0;
+    return list.reduce((s, r) => s + r.rating, 0) / list.length;
+  }, [reviewsQuery.data]);
 
   const privateQuery = useQuery({
     queryKey: ['worker-private-info', user?.id],
@@ -646,6 +669,38 @@ export default function WorkerProfile() {
           </View>
         ) : null}
 
+        {/* My Ratings section */}
+        <View style={styles.section}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>My Ratings</Text>
+            {(reviewsQuery.data ?? []).length > 0 && (
+              <View style={styles.avgRatingRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Star key={n} size={13} color={n <= Math.round(avgRating) ? C.yellow : C.border} fill={n <= Math.round(avgRating) ? C.yellow : 'transparent'} />
+                ))}
+                <Text style={styles.avgRatingText}>{avgRating.toFixed(1)} ({(reviewsQuery.data ?? []).length})</Text>
+              </View>
+            )}
+          </View>
+          {reviewsQuery.isLoading ? (
+            <Text style={styles.noCertText}>Loading reviews…</Text>
+          ) : (reviewsQuery.data ?? []).length === 0 ? (
+            <Card><Text style={styles.noCertText}>No reviews yet. Complete shifts to earn ratings from employers.</Text></Card>
+          ) : (
+            (reviewsQuery.data ?? []).map((r) => (
+              <Card key={r.id} style={styles.reviewCard}>
+                <View style={styles.reviewStars}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} size={14} color={n <= r.rating ? C.yellow : C.border} fill={n <= r.rating ? C.yellow : 'transparent'} />
+                  ))}
+                  <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                </View>
+                {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
+              </Card>
+            ))
+          )}
+        </View>
+
         <View style={styles.section}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Certifications</Text>
@@ -869,7 +924,7 @@ const styles = StyleSheet.create({
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   certFile: { fontSize: 11, color: C.textMuted, flex: 1 },
   rejectNote: { fontSize: 12, color: C.red, marginTop: 4 },
-  certTypeRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  certTypeRow: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' as const },
   certTypeChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   certTypeChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   certTypeText: { fontSize: 14, color: C.textSecondary, fontWeight: '600' as const },
@@ -891,4 +946,10 @@ const styles = StyleSheet.create({
   privateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   privateHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   privacyNotice: { fontSize: 12, color: C.textMuted, lineHeight: 18, backgroundColor: C.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: C.border },
+  avgRatingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3 },
+  avgRatingText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const, marginLeft: 4 },
+  reviewCard: { marginBottom: 8 },
+  reviewStars: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, marginBottom: 4 },
+  reviewDate: { fontSize: 11, color: C.textMuted, marginLeft: 6 },
+  reviewComment: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
 });
