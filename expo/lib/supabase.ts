@@ -1,9 +1,27 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
-const SUPABASE_ANON_KEY = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+const extra = (Constants.expoConfig?.extra ?? {}) as { supabaseUrl?: string; supabaseAnonKey?: string };
+
+const SUPABASE_URL = (
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  extra.supabaseUrl ||
+  ''
+).trim();
+const SUPABASE_ANON_KEY = (
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  extra.supabaseAnonKey ||
+  ''
+).trim();
+
+console.log('[supabase env check]', {
+  hasUrl: !!SUPABASE_URL,
+  hasAnonKey: !!SUPABASE_ANON_KEY,
+  urlPrefix: SUPABASE_URL?.slice(0, 30),
+  source: process.env.EXPO_PUBLIC_SUPABASE_URL ? 'process.env' : extra.supabaseUrl ? 'app.json extra' : 'none',
+});
 
 if (!SUPABASE_URL) {
   console.error('[supabase] EXPO_PUBLIC_SUPABASE_URL is not set — all Supabase requests will fail. Set this env var and restart the app.');
