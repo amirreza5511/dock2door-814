@@ -1,9 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, RefreshCw, Scale, Undo2, Wallet, Download } from 'lucide-react-native';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { Linking } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
@@ -175,12 +173,7 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
         a.click();
         URL.revokeObjectURL(url);
       } else {
-        const dir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
-        const path = dir + filename;
-        await (FileSystem as unknown as { writeAsStringAsync: (p: string, c: string) => Promise<void> }).writeAsStringAsync(path, csv);
-        const can = await Sharing.isAvailableAsync();
-        if (can) await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
-        else Alert.alert('Saved', `CSV saved to ${path}`);
+        await Share.share({ message: csv, title: filename });
       }
     } catch (err) {
       Alert.alert('Export failed', err instanceof Error ? err.message : 'Unknown error');
