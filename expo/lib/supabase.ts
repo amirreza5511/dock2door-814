@@ -16,13 +16,6 @@ const SUPABASE_ANON_KEY = (
   ''
 ).trim();
 
-console.log('[supabase env check]', {
-  hasUrl: !!SUPABASE_URL,
-  hasAnonKey: !!SUPABASE_ANON_KEY,
-  urlPrefix: SUPABASE_URL?.slice(0, 30),
-  source: process.env.EXPO_PUBLIC_SUPABASE_URL ? 'process.env' : extra.supabaseUrl ? 'app.json extra' : 'none',
-});
-
 if (!SUPABASE_URL) {
   console.error('[supabase] EXPO_PUBLIC_SUPABASE_URL is not set — all Supabase requests will fail. Set this env var and restart the app.');
 }
