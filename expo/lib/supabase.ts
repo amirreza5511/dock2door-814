@@ -3,7 +3,14 @@ import { createClient } from '@supabase/supabase-js';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-const extra = (Constants.expoConfig?.extra ?? {}) as { supabaseUrl?: string; supabaseAnonKey?: string };
+type Extra = { supabaseUrl?: string; supabaseAnonKey?: string };
+
+const extra: Extra =
+  (Constants.expoConfig?.extra as Extra | undefined) ??
+  ((Constants as unknown as { manifest2?: { extra?: { expoClient?: { extra?: Extra } } } })
+    .manifest2?.extra?.expoClient?.extra as Extra | undefined) ??
+  ((Constants as unknown as { manifest?: { extra?: Extra } }).manifest?.extra as Extra | undefined) ??
+  {};
 
 const SUPABASE_URL = (
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
@@ -17,10 +24,10 @@ const SUPABASE_ANON_KEY = (
 ).trim();
 
 if (!SUPABASE_URL) {
-  console.error('[supabase] EXPO_PUBLIC_SUPABASE_URL is not set — all Supabase requests will fail. Set this env var and restart the app.');
+  console.warn('[supabase] SUPABASE_URL not resolved from env or app.json extra.');
 }
 if (!SUPABASE_ANON_KEY) {
-  console.error('[supabase] EXPO_PUBLIC_SUPABASE_ANON_KEY is not set — all Supabase requests will fail. Set this env var and restart the app.');
+  console.warn('[supabase] SUPABASE_ANON_KEY not resolved from env or app.json extra.');
 }
 
 // Export so callers can detect misconfiguration without making a request.
