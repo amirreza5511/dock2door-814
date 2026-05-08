@@ -2,19 +2,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
-const FALLBACK_URL = 'https://hyargzciywuqhlcaorwy.supabase.co';
-const FALLBACK_KEY = 'sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz';
+const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
+const SUPABASE_ANON_KEY = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL && process.env.EXPO_PUBLIC_SUPABASE_URL.length > 0
-  ? process.env.EXPO_PUBLIC_SUPABASE_URL
-  : FALLBACK_URL;
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY && process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY.length > 0
-  ? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
-  : FALLBACK_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn('[supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY');
+if (!SUPABASE_URL) {
+  console.error('[supabase] EXPO_PUBLIC_SUPABASE_URL is not set — all Supabase requests will fail. Set this env var and restart the app.');
 }
+if (!SUPABASE_ANON_KEY) {
+  console.error('[supabase] EXPO_PUBLIC_SUPABASE_ANON_KEY is not set — all Supabase requests will fail. Set this env var and restart the app.');
+}
+
+// Export so callers can detect misconfiguration without making a request.
+export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+export const CONFIGURED_SUPABASE_URL = SUPABASE_URL;
 
 const webStorage = {
   getItem: (key: string) => {
@@ -38,7 +38,12 @@ const webStorage = {
   },
 };
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+// Provide safe placeholder values so createClient doesn't throw on missing env vars.
+// All requests will still fail at network level, but the app won't hard-crash on init.
+const safeUrl = SUPABASE_URL || 'https://placeholder.supabase.co';
+const safeKey = SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder';
+
+export const supabase = createClient(safeUrl, safeKey, {
   auth: {
     storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
     autoRefreshToken: true,
@@ -47,7 +52,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   },
 });
 
-console.log('[supabase] initialized', { url: SUPABASE_URL, hasKey: Boolean(SUPABASE_ANON_KEY) });
+console.log('[supabase] initialized', { url: SUPABASE_URL || '(not set)', hasKey: Boolean(SUPABASE_ANON_KEY), configured: isSupabaseConfigured });
 
 export type DbProfile = {
   id: string;

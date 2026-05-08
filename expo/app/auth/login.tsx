@@ -6,11 +6,21 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, WifiOff } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
+
+function isConnectionError(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes('unable to connect') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network') ||
+    lower.includes('temporarily unavailable')
+  );
+}
 
 export default function Login() {
   const router = useRouter();
@@ -91,7 +101,19 @@ export default function Login() {
             testID="input-password"
           />
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? (
+            isConnectionError(error) ? (
+              <View style={styles.connectionErrorBox}>
+                <WifiOff size={18} color={C.yellow} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.connectionErrorTitle}>Server Unreachable</Text>
+                  <Text style={styles.connectionErrorBody}>{error}</Text>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.error}>{error}</Text>
+            )
+          ) : null}
 
           <Button
             label="Sign In"
@@ -155,6 +177,14 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: C.textSecondary },
   form: { gap: 16, marginBottom: 40 },
   error: { fontSize: 13, color: C.red, textAlign: 'center' },
+  connectionErrorBox: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+    backgroundColor: '#2A1F00', borderRadius: 10,
+    borderWidth: 1, borderColor: '#5C4A00',
+    padding: 12,
+  },
+  connectionErrorTitle: { fontSize: 13, fontWeight: '700' as const, color: C.yellow, marginBottom: 3 },
+  connectionErrorBody: { fontSize: 12, color: '#C8A830', lineHeight: 17 },
   forgotRow: { alignItems: 'center', marginTop: -4 },
   forgotText: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
   switchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 4 },

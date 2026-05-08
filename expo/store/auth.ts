@@ -3,6 +3,23 @@ import type { User, UserRole } from '@/constants/types';
 import { getRoleRoute } from '@/lib/access';
 import { supabase, type DbProfile } from '@/lib/supabase';
 
+/** Translate low-level network errors into user-readable messages. */
+function friendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err ?? '');
+  const lower = msg.toLowerCase();
+  if (
+    lower.includes('failed to fetch') ||
+    lower.includes('network request failed') ||
+    lower.includes('fetch failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('econnrefused') ||
+    lower.includes('connection refused')
+  ) {
+    return 'Unable to connect to the server. Please check your internet connection, or the service may be temporarily unavailable.';
+  }
+  return msg || 'An unexpected error occurred';
+}
+
 interface RegisterInput {
   name: string;
   email: string;
@@ -155,9 +172,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       set({ user });
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = friendlyError(error);
       console.log('[Auth] login failed', message);
-      return { success: false, error: message || 'Login failed' };
+      return { success: false, error: message };
     }
   },
 
@@ -205,7 +222,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         error: 'Please verify your email before signing in.',
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Registration failed';
+      const message = friendlyError(error);
       console.log('[Auth] register failed', message);
       return { success: false, error: message };
     }
@@ -232,7 +249,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send reset email';
+      const message = friendlyError(error);
       return { success: false, error: message };
     }
   },
@@ -253,7 +270,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send magic link';
+      const message = friendlyError(error);
       return { success: false, error: message };
     }
   },
@@ -264,7 +281,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       if (error) return { success: false, error: error.message };
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update password';
+      const message = friendlyError(error);
       return { success: false, error: message };
     }
   },
