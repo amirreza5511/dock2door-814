@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Truck, X } from 'lucide-react-native';
+import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, Truck, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -41,6 +42,52 @@ export default function DriverHomeScreen() {
   const eventMutation = trpc.yard.recordEvent.useMutation();
   const [issueFor, setIssueFor] = useState<string | null>(null);
   const [issueText, setIssueText] = useState('');
+  const [sharingLocation, setSharingLocation] = useState<boolean>(false);
+  const [lastFix, setLastFix] = useState<{ lat: number; lng: number; at: number } | null>(null);
+  const watchRef = React.useRef<Location.LocationSubscription | null>(null);
+
+  const stopShareLocation = React.useCallback(() => {
+    try { watchRef.current?.remove(); } catch {}
+    watchRef.current = null;
+    setSharingLocation(false);
+  }, []);
+
+  const toggleShareLocation = async () => {
+    if (sharingLocation) { stopShareLocation(); return; }
+    try {
+      if (Platform.OS === 'web') {
+        Alert.alert('Not supported', 'Live GPS sharing is available on iOS and Android only.');
+        return;
+      }
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Enable Location to share your live position with dispatch.');
+        return;
+      }
+      const sub = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, distanceInterval: 50, timeInterval: 15000 },
+        (loc) => {
+          const fix = { lat: loc.coords.latitude, lng: loc.coords.longitude, at: Date.now() };
+          setLastFix(fix);
+          const active = partitioned.active[0];
+          if (active) {
+            void eventMutation.mutateAsync({
+              appointmentId: active.id,
+              kind: 'en_route',
+              meta: { lat: fix.lat, lng: fix.lng, accuracy: loc.coords.accuracy ?? null },
+            }).catch(() => {});
+          }
+        },
+      );
+      watchRef.current = sub;
+      setSharingLocation(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      Alert.alert('Unable to start GPS', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
+
+  React.useEffect(() => () => stopShareLocation(), [stopShareLocation]);
 
   const jobs = useMemo<JobRow[]>(() => (jobsQuery.data ?? []) as JobRow[], [jobsQuery.data]);
 
@@ -168,8 +215,29 @@ export default function DriverHomeScreen() {
         refreshControl={<RefreshControl refreshing={jobsQuery.isFetching} onRefresh={() => void jobsQuery.refetch()} tintColor={C.accent} />}
       >
         <View style={styles.hero}>
-          <Text style={styles.greeting}>Today</Text>
-          <Text style={styles.heroTitle}>{partitioned.active.length + partitioned.upcoming.length} jobs assigned</Text>
+          <View style={styles.heroTopRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greeting}>Today</Text>
+              <Text style={styles.heroTitle}>{partitioned.active.length + partitioned.upcoming.length} jobs assigned</Text>
+            </View>
+            <TouchableOpacity
+              testID="share-location-toggle"
+              onPress={() => void toggleShareLocation()}
+              style={[styles.gpsBtn, sharingLocation && styles.gpsBtnActive]}
+              accessibilityRole="button"
+              accessibilityLabel={sharingLocation ? 'Stop sharing location' : 'Share location'}
+            >
+              <Radio size={14} color={sharingLocation ? C.white : C.accent} />
+              <Text style={[styles.gpsBtnText, sharingLocation && { color: C.white }]}>
+                {sharingLocation ? 'Sharing GPS' : 'Share Location'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {sharingLocation && lastFix ? (
+            <Text style={styles.gpsMeta}>
+              Last fix {new Date(lastFix.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {lastFix.lat.toFixed(4)}, {lastFix.lng.toFixed(4)}
+            </Text>
+          ) : null}
           <View style={styles.heroStats}>
             <View style={styles.heroStat}><Text style={styles.heroStatValue}>{partitioned.active.length}</Text><Text style={styles.heroStatLabel}>Active</Text></View>
             <View style={styles.heroStat}><Text style={styles.heroStatValue}>{partitioned.upcoming.length}</Text><Text style={styles.heroStatLabel}>Upcoming</Text></View>
@@ -232,6 +300,11 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center', padding: 20 },
   scroll: { paddingHorizontal: 16, gap: 14 },
   hero: { backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.border, padding: 18, gap: 6 },
+  heroTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  gpsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: C.accent, backgroundColor: 'transparent' },
+  gpsBtnActive: { backgroundColor: C.accent, borderColor: C.accent },
+  gpsBtnText: { fontSize: 12, fontWeight: '700' as const, color: C.accent },
+  gpsMeta: { fontSize: 11, color: C.textMuted, marginTop: 4 },
   greeting: { fontSize: 12, color: C.textMuted, fontWeight: '700' as const, letterSpacing: 1, textTransform: 'uppercase' as const },
   heroTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   heroStats: { flexDirection: 'row', gap: 10, marginTop: 10 },

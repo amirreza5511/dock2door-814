@@ -116,7 +116,17 @@ export default function GatePanelScreen() {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load gate panel" onRetry={() => void panelQuery.refetch()} /></View>;
   }
 
-  const appointments = panelQuery.data ?? [];
+  const allAppointments = panelQuery.data ?? [];
+  const appointments = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return allAppointments;
+    return allAppointments.filter((it) => {
+      const hay = [it.driver_name, it.truck_plate, it.trailer_number, it.reference_number, it.appointment_type, it.dock_door]
+        .map((v) => (v == null ? '' : String(v).toLowerCase()))
+        .join(' ');
+      return hay.includes(q);
+    });
+  })();
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>

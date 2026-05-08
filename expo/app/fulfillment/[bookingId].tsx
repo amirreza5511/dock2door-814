@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Package, ClipboardList, Plus, CheckCircle, Truck, Box, Archive } from 'lucide-react-native';
+import { AlertOctagon, ArrowLeft, Package, ClipboardList, Plus, CheckCircle, Truck, Box, Archive } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
@@ -290,7 +290,13 @@ export default function FulfillmentScreen() {
                 const items = (orderItemsByOrder.get(order.id) as typeof data.orderItems | undefined) ?? [];
                 const shipment = shipmentByOrder.get(order.id) as typeof data.shipments[number] | undefined;
                 return (
-                  <Card key={order.id} style={styles.orderCard}>
+                  <Card key={order.id} style={[styles.orderCard, order.status === 'Exception' && styles.orderCardException]}>
+                    {order.status === 'Exception' ? (
+                      <View style={styles.exceptionBanner} testID={`exception-${order.id}`}>
+                        <AlertOctagon size={16} color={C.red} />
+                        <Text style={styles.exceptionText}>Exception flagged — review notes and resolve before shipping.</Text>
+                      </View>
+                    ) : null}
                     <View style={styles.orderTop}>
                       <View style={[styles.iconWrap, { backgroundColor: C.accentDim }]}>
                         <Box size={16} color={C.accent} />
@@ -306,12 +312,21 @@ export default function FulfillmentScreen() {
                     {order.notes ? <Text style={styles.orderNotes}>{order.notes}</Text> : null}
 
                     <View style={styles.itemList}>
-                      {items.map((it) => (
-                        <View key={it.id} style={styles.itemLine}>
-                          <Text style={styles.itemSkuSmall}>{it.sku}</Text>
-                          <Text style={styles.itemQty}>x {it.quantity}</Text>
-                        </View>
-                      ))}
+                      {items.map((it) => {
+                        const itAny = it as { id: string; sku: string; quantity: number; picked_at?: string | null; packed_at?: string | null };
+                        const picked = Boolean(itAny.picked_at) || ['Picked', 'Packed', 'Shipped', 'Completed'].includes(order.status);
+                        const packed = Boolean(itAny.packed_at) || ['Packed', 'Shipped', 'Completed'].includes(order.status);
+                        return (
+                          <View key={itAny.id} style={styles.itemLine} testID={`item-line-${itAny.id}`}>
+                            <View style={styles.itemDots}>
+                              <View style={[styles.itemDot, { backgroundColor: picked ? C.green : C.border }]} accessibilityLabel={picked ? 'picked' : 'not picked'} />
+                              <View style={[styles.itemDot, { backgroundColor: packed ? C.blue : C.border }]} accessibilityLabel={packed ? 'packed' : 'not packed'} />
+                            </View>
+                            <Text style={styles.itemSkuSmall}>{itAny.sku}</Text>
+                            <Text style={styles.itemQty}>x {itAny.quantity}</Text>
+                          </View>
+                        );
+                      })}
                     </View>
 
                     <View style={styles.timeline}>
@@ -415,6 +430,11 @@ const styles = StyleSheet.create({
   selectRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: C.border },
   selectInputWrap: { width: 90 },
   orderCard: { padding: 14, gap: 10 },
+  orderCardException: { borderColor: C.red + '60', backgroundColor: C.red + '08' },
+  exceptionBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.red + '15', borderColor: C.red + '40', borderWidth: 1, borderRadius: 10, padding: 10 },
+  exceptionText: { flex: 1, fontSize: 12, color: C.red, fontWeight: '700' as const },
+  itemDots: { flexDirection: 'row', alignItems: 'center', gap: 4, width: 28 },
+  itemDot: { width: 8, height: 8, borderRadius: 4 },
   orderTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   orderRef: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   orderMeta: { fontSize: 11, color: C.textSecondary, marginTop: 2 },

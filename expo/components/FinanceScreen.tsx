@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, RefreshCw, Wallet } from 'lucide-react-native';
+import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, RefreshCw, Scale, Undo2, Wallet, Download } from 'lucide-react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { Linking } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
@@ -75,6 +77,115 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
   const invoiceStatusMutation = trpc.payments.updateInvoiceStatus.useMutation();
   const [paying, setPaying] = useState<boolean>(false);
   const [openingDashboard, setOpeningDashboard] = useState<boolean>(false);
+  const [refunding, setRefunding] = useState<boolean>(false);
+
+  const refundPayment = async (paymentId: string, maxAmount: number) => {
+    if (Platform.OS === 'web') {
+      const reason = window.prompt('Refund reason (required):');
+      if (!reason || !reason.trim()) return;
+      const amountStr = window.prompt(`Refund amount (max ${maxAmount.toFixed(2)}). Leave blank for full refund:`, '');
+      const amount = amountStr ? Number(amountStr) : undefined;
+      await doRefund(paymentId, reason.trim(), amount);
+      return;
+    }
+    Alert.prompt?.(
+      'Refund payment',
+      `Reason for refund (max ${maxAmount.toFixed(2)}):`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Refund full', onPress: (reason?: string) => reason ? void doRefund(paymentId, reason) : Alert.alert('Reason required') },
+      ],
+      'plain-text',
+    ) ?? Alert.alert('Refund', 'Refunds must be initiated from the web admin panel on this device.');
+  };
+
+  const doRefund = async (paymentId: string, reason: string, amount?: number) => {
+    try {
+      setRefunding(true);
+      const { data, error } = await supabase.functions.invoke('create-refund', {
+        body: { payment_id: paymentId, reason, ...(amount ? { amount } : {}) },
+      });
+      if (error) throw new Error(error.message);
+      const result = data as { refund_id?: string; stripe_error?: string | null };
+      await paymentsQuery.refetch();
+      if (result?.stripe_error) {
+        Alert.alert('Refund recorded', `Recorded in Dock2Door, but Stripe returned: ${result.stripe_error}`);
+      } else {
+        Alert.alert('Refund initiated', 'The refund has been queued and will reconcile via Stripe webhook.');
+      }
+    } catch (err) {
+      Alert.alert('Refund failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setRefunding(false);
+    }
+  };
+
+  const exportCsv = async () => {
+    const rowsForTab: Array<Record<string, string | number>> = (() => {
+      if (tab === 'payments') {
+        return ((paymentsQuery.data ?? []) as PaymentItem[]).map((p) => ({
+          id: p.id,
+          booking_id: p.booking_id ?? '',
+          gross: Number(p.gross_amount ?? 0),
+          commission: Number(p.commission_amount ?? 0),
+          net: Number(p.net_amount ?? 0),
+          currency: p.currency ?? '',
+          status: p.status ?? '',
+          stripe_intent: p.stripe_payment_intent_id ?? '',
+          created_at: p.created_at ?? '',
+        }));
+      }
+      if (tab === 'invoices') {
+        return ((invoicesQuery.data ?? []) as InvoiceItem[]).map((i) => ({
+          id: i.id,
+          invoice_number: i.invoice_number ?? '',
+          payment_id: i.payment_id ?? '',
+          subtotal: Number(i.subtotal_amount ?? 0),
+          commission: Number(i.commission_amount ?? 0),
+          total: Number(i.total_amount ?? 0),
+          currency: i.currency ?? '',
+          status: i.status ?? '',
+          created_at: i.created_at ?? '',
+        }));
+      }
+      return ((payoutsQuery.data ?? []) as PayoutItem[]).map((p) => ({
+        id: p.id,
+        company_id: p.company_id ?? '',
+        amount: Number(p.amount ?? 0),
+        currency: p.currency ?? '',
+        status: p.status ?? '',
+        created_at: p.created_at ?? '',
+      }));
+    })();
+    if (rowsForTab.length === 0) { Alert.alert('Nothing to export', `No ${tab} rows in the current view.`); return; }
+    const headers = Object.keys(rowsForTab[0]);
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [headers.join(','), ...rowsForTab.map((r) => headers.map((h) => escape(r[h])).join(','))].join('\n');
+    const filename = `dock2door-${tab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    try {
+      if (Platform.OS === 'web') {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } else {
+        const dir = (FileSystem as unknown as { cacheDirectory?: string }).cacheDirectory ?? '';
+        const path = dir + filename;
+        await (FileSystem as unknown as { writeAsStringAsync: (p: string, c: string) => Promise<void> }).writeAsStringAsync(path, csv);
+        const can = await Sharing.isAvailableAsync();
+        if (can) await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: filename });
+        else Alert.alert('Saved', `CSV saved to ${path}`);
+      }
+    } catch (err) {
+      Alert.alert('Export failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   const openStripeDashboard = async () => {
     try {
@@ -151,7 +262,11 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
     const paid = payments.filter((p) => p.status === 'Paid').reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
     const outstanding = invoices.filter((i) => i.status !== 'Paid' && i.status !== 'Void').reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
     const pendingPayouts = payouts.filter((p) => p.status !== 'Paid').reduce((s, p) => s + Number(p.amount ?? 0), 0);
-    return { paid, outstanding, pendingPayouts };
+    const refunded = payments.filter((p) => p.status === 'Refunded' || p.status === 'PartiallyRefunded').reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+    const invoiced = invoices.reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+    const collected = invoices.filter((i) => i.status === 'Paid').reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
+    const reconDelta = paid - collected;
+    return { paid, outstanding, pendingPayouts, refunded, invoiced, collected, reconDelta };
   }, [paymentsQuery.data, invoicesQuery.data, payoutsQuery.data]);
 
   const updatePayoutStatus = async (id: string, status: 'Processing' | 'Paid') => {
@@ -226,12 +341,34 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
           )}
         </View>
 
+        <Card elevated style={styles.reconCard} testID="reconciliation-summary">
+          <View style={styles.reconHeader}>
+            <Scale size={16} color={C.accent} />
+            <Text style={styles.reconTitle}>Reconciliation</Text>
+            <View style={[styles.reconBadge, { backgroundColor: Math.abs(totals.reconDelta) < 0.01 ? C.greenDim : C.yellowDim }]}>
+              <Text style={[styles.reconBadgeText, { color: Math.abs(totals.reconDelta) < 0.01 ? C.green : C.yellow }]}>
+                {Math.abs(totals.reconDelta) < 0.01 ? 'In balance' : `Δ ${totals.reconDelta.toFixed(2)}`}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.reconGrid}>
+            <View style={styles.reconCell}><Text style={styles.reconLabel}>Invoiced</Text><Text style={styles.reconValue}>${totals.invoiced.toFixed(2)}</Text></View>
+            <View style={styles.reconCell}><Text style={styles.reconLabel}>Collected</Text><Text style={styles.reconValue}>${totals.collected.toFixed(2)}</Text></View>
+            <View style={styles.reconCell}><Text style={styles.reconLabel}>Payments</Text><Text style={styles.reconValue}>${totals.paid.toFixed(2)}</Text></View>
+            <View style={styles.reconCell}><Text style={styles.reconLabel}>Refunded</Text><Text style={[styles.reconValue, { color: C.red }]}>${totals.refunded.toFixed(2)}</Text></View>
+          </View>
+        </Card>
+
         <View style={styles.segmentRow}>
           {tabs.map(([key, label]) => (
             <TouchableOpacity key={key} activeOpacity={0.8} onPress={() => { setTab(key); setSelectedId(null); }} style={[styles.segment, tab === key && styles.segmentActive]} testID={`segment-${key}`}>
               <Text style={[styles.segmentText, tab === key && styles.segmentTextActive]}>{label}</Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity onPress={() => void exportCsv()} style={styles.csvBtn} testID="export-csv" accessibilityRole="button" accessibilityLabel={`Export ${tab} as CSV`}>
+            <Download size={14} color={C.accent} />
+            <Text style={styles.csvBtnText}>CSV</Text>
+          </TouchableOpacity>
         </View>
 
         {currentItems.length === 0 ? (
@@ -278,6 +415,18 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
                 <DetailLine label="Net" value={`$${Number(selectedPayment.net_amount ?? 0).toFixed(2)}`} />
                 <DetailLine label="Status" value={String(selectedPayment.status ?? '—')} />
                 <DetailLine label="Stripe Intent" value={String(selectedPayment.stripe_payment_intent_id ?? '—')} />
+                {showAdmin && selectedPayment.status !== 'Refunded' ? (
+                  <View style={styles.actionRow}>
+                    <Button
+                      label="Refund payment"
+                      variant="danger"
+                      icon={<Undo2 size={14} color={C.red} />}
+                      loading={refunding}
+                      onPress={() => void refundPayment(String(selectedPayment.id), Number(selectedPayment.gross_amount ?? 0))}
+                      testID="refund-payment"
+                    />
+                  </View>
+                ) : null}
               </View>
             ) : null}
 
@@ -416,4 +565,15 @@ const styles = StyleSheet.create({
   ctaIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
   ctaTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
   ctaSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  reconCard: { gap: 10, marginTop: 4 },
+  reconHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  reconTitle: { flex: 1, fontSize: 14, fontWeight: '800' as const, color: C.text },
+  reconBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
+  reconBadgeText: { fontSize: 11, fontWeight: '800' as const, letterSpacing: 0.3 },
+  reconGrid: { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 8 },
+  reconCell: { flexBasis: '48%', backgroundColor: C.bgSecondary, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: C.border },
+  reconLabel: { fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 4 },
+  reconValue: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, marginLeft: 'auto' },
+  csvBtnText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
 });

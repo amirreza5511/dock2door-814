@@ -2,7 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Modal, Alert, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Undo2, ArrowLeft, Plus, FileText } from 'lucide-react-native';
+import { Undo2, ArrowLeft, Plus, FileText, PackageCheck, Trash2, Inbox } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
+import { useQueryClient } from '@tanstack/react-query';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -36,8 +38,22 @@ export default function ReturnsScreen() {
   const [showForm, setShowForm] = useState<boolean>(false);
   const [orderId, setOrderId] = useState<string>('');
   const [reason, setReason] = useState<string>('');
+  const [tab, setTab] = useState<'list' | 'receive'>('list');
+  const qc = useQueryClient();
+  const updateRmaStatus = async (rmaId: string, nextStatus: string, action: 'restock' | 'dispose') => {
+    try {
+      const { error } = await supabase.from('return_authorizations').update({ status: nextStatus }).eq('id', rmaId);
+      if (error) throw error;
+      await utils.returns.list.invalidate();
+      await qc.invalidateQueries({ queryKey: ['returns'] });
+      Alert.alert('Updated', action === 'restock' ? 'Items marked for restock.' : 'Items marked for disposal.');
+    } catch (err) {
+      Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
 
   const rmas = useMemo<ReturnRow[]>(() => (listQuery.data ?? []) as ReturnRow[], [listQuery.data]);
+  const incoming = useMemo<ReturnRow[]>(() => rmas.filter((r) => ['Pending', 'InTransit', 'Approved'].includes(r.status)), [rmas]);
   const availableOrders = useMemo<OrderRow[]>(() => ((orders.data as { orders?: OrderRow[] })?.orders ?? []).filter((o) => true) as OrderRow[], [orders.data]);
 
   const onSubmit = async () => {
@@ -68,25 +84,74 @@ export default function ReturnsScreen() {
         </View>
         <TouchableOpacity onPress={() => setShowForm(true)} style={styles.addBtn}><Plus size={18} color={C.white} /></TouchableOpacity>
       </View>
+
+      <View style={styles.tabs}>
+        <TouchableOpacity onPress={() => setTab('list')} style={[styles.tab, tab === 'list' && styles.tabActive]} testID="returns-tab-list">
+          <FileText size={14} color={tab === 'list' ? C.accent : C.textMuted} />
+          <Text style={[styles.tabText, tab === 'list' && styles.tabTextActive]}>All ({rmas.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setTab('receive')} style={[styles.tab, tab === 'receive' && styles.tabActive]} testID="returns-tab-receive">
+          <Inbox size={14} color={tab === 'receive' ? C.accent : C.textMuted} />
+          <Text style={[styles.tabText, tab === 'receive' && styles.tabTextActive]}>Receive ({incoming.length})</Text>
+        </TouchableOpacity>
+      </View>
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={<RefreshControl refreshing={listQuery.isFetching} onRefresh={() => void listQuery.refetch()} tintColor={C.accent} />}
       >
-        {rmas.length === 0 ? (
-          <EmptyState icon={Undo2} title="No returns" description="Request a return from a completed order." />
-        ) : rmas.map((r) => (
-          <Card key={r.id} style={styles.card}>
-            <View style={styles.cardTop}>
-              <View style={[styles.iconWrap, { backgroundColor: C.yellowDim }]}><FileText size={15} color={C.yellow} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{r.rma_number || `RMA ${r.id.slice(0, 8)}`}</Text>
-                <Text style={styles.cardMeta}>Order {r.order_id.slice(0, 8)} · {new Date(r.created_at).toLocaleDateString()}</Text>
-                {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
+        {tab === 'list' ? (
+          rmas.length === 0 ? (
+            <EmptyState icon={Undo2} title="No returns" description="Request a return from a completed order." />
+          ) : rmas.map((r) => (
+            <Card key={r.id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <View style={[styles.iconWrap, { backgroundColor: C.yellowDim }]}><FileText size={15} color={C.yellow} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{r.rma_number || `RMA ${r.id.slice(0, 8)}`}</Text>
+                  <Text style={styles.cardMeta}>Order {r.order_id.slice(0, 8)} · {new Date(r.created_at).toLocaleDateString()}</Text>
+                  {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
+                </View>
+                <StatusBadge status={r.status} />
               </View>
-              <StatusBadge status={r.status} />
-            </View>
-          </Card>
-        ))}
+            </Card>
+          ))
+        ) : (
+          incoming.length === 0 ? (
+            <EmptyState icon={Inbox} title="Nothing to receive" description="Pending and in-transit RMAs awaiting receipt will appear here." />
+          ) : incoming.map((r) => (
+            <Card key={r.id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <View style={[styles.iconWrap, { backgroundColor: C.blueDim }]}><Inbox size={15} color={C.blue} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardTitle}>{r.rma_number || `RMA ${r.id.slice(0, 8)}`}</Text>
+                  <Text style={styles.cardMeta}>Order {r.order_id.slice(0, 8)} · {new Date(r.created_at).toLocaleDateString()}</Text>
+                  {r.reason ? <Text style={styles.reason}>{r.reason}</Text> : null}
+                </View>
+                <StatusBadge status={r.status} />
+              </View>
+              <View style={styles.receiveActions}>
+                <Button
+                  label="Restock"
+                  size="sm"
+                  onPress={() => void updateRmaStatus(r.id, 'Restocked', 'restock')}
+                  icon={<PackageCheck size={14} color={C.white} />}
+                  testID={`restock-${r.id}`}
+                />
+                <Button
+                  label="Dispose"
+                  size="sm"
+                  variant="danger"
+                  onPress={() => Alert.alert('Dispose items?', 'Mark these items as discarded? This cannot be undone.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Dispose', style: 'destructive', onPress: () => void updateRmaStatus(r.id, 'Disposed', 'dispose') },
+                  ])}
+                  icon={<Trash2 size={14} color={C.red} />}
+                  testID={`dispose-${r.id}`}
+                />
+              </View>
+            </Card>
+          ))
+        )}
       </ScrollView>
 
       <Modal visible={showForm} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowForm(false)}>
@@ -136,4 +201,10 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   chipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
   chipTextActive: { color: C.accent, fontWeight: '700' as const },
+  tabs: { flexDirection: 'row', backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabActive: { borderBottomColor: C.accent },
+  tabText: { fontSize: 13, color: C.textMuted, fontWeight: '600' as const },
+  tabTextActive: { color: C.accent },
+  receiveActions: { flexDirection: 'row', gap: 8, marginTop: 10, paddingLeft: 42 },
 });

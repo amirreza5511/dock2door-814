@@ -3,13 +3,16 @@ import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, T
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Calendar, CircleDot, Clock, DoorOpen, MoveRight, Pause, PlayCircle, Truck, X } from 'lucide-react-native';
+import { ArrowLeft, Calendar, CircleDot, Clock, DoorOpen, Grid3x3, MoveRight, Pause, PlayCircle, Truck, X } from 'lucide-react-native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 
 type Appt = {
   id: string; status: string; dock_door?: string | null; truck_plate?: string | null; driver_name?: string | null;
@@ -20,7 +23,28 @@ type YardMove = { id: string; kind?: string; from_location?: string; to_location
 
 const DOORS = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8'];
 
-type Tab = 'board' | 'queue' | 'events' | 'moves';
+type Tab = 'board' | 'slots' | 'queue' | 'events' | 'moves';
+
+interface YardSlot {
+  id: string;
+  company_id: string;
+  code: string;
+  zone: string;
+  position: number;
+  status: 'free' | 'reserved' | 'occupied' | 'blocked';
+  current_truck_plate: string | null;
+  current_trailer_number: string | null;
+  current_appointment_id: string | null;
+  driver_user_id: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+const SLOT_ZONES: Array<{ zone: string; positions: number[] }> = [
+  { zone: 'A', positions: [1, 2, 3, 4, 5] },
+  { zone: 'B', positions: [1, 2, 3, 4, 5] },
+  { zone: 'C', positions: [1, 2, 3, 4, 5] },
+];
 
 export default function YardBoardScreen() {
   const insets = useSafeAreaInsets();
@@ -31,6 +55,43 @@ export default function YardBoardScreen() {
   const panelQuery = trpc.operations.gatePanel.useQuery(undefined, { refetchInterval: 15000, refetchOnWindowFocus: true });
   const eventsQuery = trpc.yard.listEvents.useQuery(undefined, { refetchInterval: 30000 });
   const movesQuery = trpc.yard.listMoves.useQuery(undefined, { refetchInterval: 30000 });
+  const { activeCompanyId } = useActiveCompany();
+  const companyId = activeCompanyId;
+  const qc = useQueryClient();
+
+  const slotsQuery = useQuery({
+    queryKey: ['yard-slots', companyId],
+    queryFn: async () => {
+      if (!companyId) return [] as YardSlot[];
+      const { data, error } = await supabase
+        .from('yard_slots')
+        .select('*')
+        .eq('company_id', companyId)
+        .order('zone')
+        .order('position');
+      if (error) throw error;
+      return (data ?? []) as YardSlot[];
+    },
+    enabled: Boolean(companyId),
+    refetchInterval: 20000,
+  });
+
+  const seedSlotsMutation = useMutation({
+    mutationFn: async () => {
+      if (!companyId) throw new Error('No active company');
+      const { error } = await supabase.rpc('yard_slots_seed_default', { p_company_id: companyId });
+      if (error) throw error;
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['yard-slots', companyId] }); },
+  });
+
+  const releaseSlotMutation = useMutation({
+    mutationFn: async (slotId: string) => {
+      const { error } = await supabase.rpc('yard_slot_release', { p_slot_id: slotId });
+      if (error) throw error;
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['yard-slots', companyId] }); },
+  });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
     onSuccess: async () => {
       await utils.operations.gatePanel.invalidate();
@@ -126,10 +187,10 @@ export default function YardBoardScreen() {
       </View>
 
       <View style={styles.tabRow}>
-        {(['board', 'queue', 'events', 'moves'] as Tab[]).map((k) => (
+        {(['board', 'slots', 'queue', 'events', 'moves'] as Tab[]).map((k) => (
           <TouchableOpacity key={k} onPress={() => setTab(k)} style={[styles.tab, tab === k && styles.tabActive]}>
             <Text style={[styles.tabText, tab === k && styles.tabTextActive]}>
-              {k === 'board' ? 'Dock board' : k === 'queue' ? `Queue (${queue.length})` : k === 'events' ? 'Events' : 'Moves'}
+              {k === 'board' ? 'Dock board' : k === 'slots' ? `Slots (${slotsQuery.data?.length ?? 0})` : k === 'queue' ? `Queue (${queue.length})` : k === 'events' ? 'Events' : 'Moves'}
             </Text>
           </TouchableOpacity>
         ))}
@@ -214,6 +275,62 @@ export default function YardBoardScreen() {
               </>
             ) : null}
           </>
+        ) : null}
+
+        {tab === 'slots' ? (
+          (() => {
+            const slots = slotsQuery.data ?? [];
+            const byCode = new Map<string, YardSlot>(slots.map((s) => [s.code, s]));
+            const hasAny = slots.length > 0;
+            return (
+              <>
+                <View style={styles.slotsHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.slotsTitle}>Yard Slots</Text>
+                    <Text style={styles.slotsSub}>15 slots: A1–A5, B1–B5, C1–C5</Text>
+                  </View>
+                  {!hasAny ? (
+                    <Button label="Seed slots" size="sm" onPress={() => void seedSlotsMutation.mutateAsync().catch((e: unknown) => Alert.alert('Seed failed', e instanceof Error ? e.message : 'Unknown'))} loading={seedSlotsMutation.isPending} />
+                  ) : null}
+                </View>
+                {SLOT_ZONES.map(({ zone, positions }) => (
+                  <View key={zone} style={styles.zoneRow}>
+                    <Text style={styles.zoneLabel}>{zone}</Text>
+                    <View style={styles.zoneCells}>
+                      {positions.map((pos) => {
+                        const code = `${zone}${pos}`;
+                        const slot = byCode.get(code);
+                        const status = slot?.status ?? 'free';
+                        const color = status === 'free' ? C.green : status === 'occupied' ? C.accent : status === 'reserved' ? C.yellow : C.red;
+                        return (
+                          <TouchableOpacity
+                            key={code}
+                            disabled={!slot || status === 'free'}
+                            onPress={() => slot && Alert.alert(`Slot ${code}`, slot.current_truck_plate ? `Truck: ${slot.current_truck_plate}\nTrailer: ${slot.current_trailer_number ?? '—'}\nStatus: ${status}` : `Status: ${status}`, [
+                              { text: 'Close', style: 'cancel' },
+                              ...(status !== 'free' ? [{ text: 'Release slot', style: 'destructive' as const, onPress: () => void releaseSlotMutation.mutateAsync(slot.id).catch((e: unknown) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')) }] : []),
+                            ])}
+                            style={[styles.slotCell, { borderColor: color + '80', backgroundColor: status === 'free' ? C.card : color + '15' }]}
+                            testID={`yard-slot-${code}`}
+                          >
+                            <Text style={[styles.slotCode, { color }]}>{code}</Text>
+                            {slot?.current_truck_plate ? <Text style={styles.slotPlate} numberOfLines={1}>{slot.current_truck_plate}</Text> : null}
+                            <View style={[styles.slotDot, { backgroundColor: color }]} />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+                {!hasAny ? (
+                  <View style={styles.empty}>
+                    <Grid3x3 size={32} color={C.textMuted} />
+                    <Text style={styles.emptyText}>No slots yet. Tap “Seed slots” to create the standard A/B/C × 1–5 grid.</Text>
+                  </View>
+                ) : null}
+              </>
+            );
+          })()
         ) : null}
 
         {tab === 'queue' ? (
@@ -366,4 +483,14 @@ const styles = StyleSheet.create({
   doorPickBusy: { opacity: 0.5 },
   doorPickText: { fontSize: 16, fontWeight: '800' as const, color: C.text },
   doorPickHint: { fontSize: 9, color: C.textMuted },
+  slotsHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 },
+  slotsTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  slotsSub: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  zoneRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  zoneLabel: { width: 24, fontSize: 18, fontWeight: '800' as const, color: C.textSecondary, textAlign: 'center' as const },
+  zoneCells: { flex: 1, flexDirection: 'row', gap: 6 },
+  slotCell: { flex: 1, aspectRatio: 0.95, borderWidth: 2, borderRadius: 12, padding: 6, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  slotCode: { fontSize: 14, fontWeight: '800' as const },
+  slotPlate: { fontSize: 9, color: C.textSecondary, fontWeight: '700' as const },
+  slotDot: { width: 6, height: 6, borderRadius: 3, position: 'absolute' as const, top: 6, right: 6 },
 });

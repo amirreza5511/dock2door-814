@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, CheckCircle, Shield } from 'lucide-react-native';
+import { AlertTriangle, ArrowUpRight, CheckCircle, Scale, Shield, Users } from 'lucide-react-native';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -23,7 +23,7 @@ export default function AdminDisputes() {
       await utils.dock.bootstrap.invalidate();
     },
   });
-  const { disputes, users } = bootstrapQuery.data;
+  const { disputes, users, bookings, jobs } = bootstrapQuery.data as { disputes: Dispute[]; users: { id: string; name?: string; email?: string; companyId?: string }[]; bookings?: { id: string; customerCompanyId?: string; warehouseCompanyId?: string }[]; jobs?: { id: string; customerCompanyId?: string; providerCompanyId?: string }[] };
 
   const [filter, setFilter] = useState<DisputeStatus | 'All'>('All');
   const [selected, setSelected] = useState<Dispute | null>(null);
@@ -34,6 +34,56 @@ export default function AdminDisputes() {
   const filtered = useMemo(() => (filter === 'All' ? disputes : disputes.filter((d) => d.status === filter)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [disputes, filter]);
 
   const getUserName = (uid: string) => users.find((u) => u.id === uid)?.name ?? uid;
+
+  const getParties = (d: Dispute): { customer: string; provider: string } => {
+    const ref = String(d.referenceType ?? '').toLowerCase();
+    if (ref.includes('booking') && bookings) {
+      const b = bookings.find((x) => x.id === d.referenceId);
+      const customer = users.find((u) => u.companyId === b?.customerCompanyId);
+      const provider = users.find((u) => u.companyId === b?.warehouseCompanyId);
+      return { customer: customer?.name ?? b?.customerCompanyId ?? '—', provider: provider?.name ?? b?.warehouseCompanyId ?? '—' };
+    }
+    if (ref.includes('job') && jobs) {
+      const j = jobs.find((x) => x.id === d.referenceId);
+      const customer = users.find((u) => u.companyId === j?.customerCompanyId);
+      const provider = users.find((u) => u.companyId === j?.providerCompanyId);
+      return { customer: customer?.name ?? j?.customerCompanyId ?? '—', provider: provider?.name ?? j?.providerCompanyId ?? '—' };
+    }
+    return { customer: getUserName(d.openedByUserId), provider: '—' };
+  };
+
+  const ruleFor = (side: 'customer' | 'provider') => {
+    if (!selected) return;
+    if (!adminNotes.trim()) { Alert.alert('Notes required', 'Please add admin notes before resolving'); return; }
+    const next: DisputeOutcome = side === 'customer' ? 'Refund' : 'Denied';
+    void updateRecordMutation.mutateAsync({
+      table: 'disputes',
+      id: selected.id,
+      payload: { status: 'Resolved', outcome: next, adminNotes },
+    }).then(() => {
+      setDetailModal(false);
+      setAdminNotes('');
+      Alert.alert('Resolved', `Ruled in favour of ${side === 'customer' ? 'customer (refund)' : 'provider (denied)'}.`);
+    }).catch((error: unknown) => {
+      Alert.alert('Unable to resolve dispute', error instanceof Error ? error.message : 'Unknown error');
+    });
+  };
+
+  const escalate = () => {
+    if (!selected) return;
+    if (!adminNotes.trim()) { Alert.alert('Notes required', 'Please describe why this dispute is being escalated.'); return; }
+    void updateRecordMutation.mutateAsync({
+      table: 'disputes',
+      id: selected.id,
+      payload: { status: 'UnderReview', adminNotes: `[ESCALATED] ${adminNotes}` },
+    }).then(() => {
+      setDetailModal(false);
+      setAdminNotes('');
+      Alert.alert('Escalated', 'Dispute escalated for senior review.');
+    }).catch((error: unknown) => {
+      Alert.alert('Unable to escalate', error instanceof Error ? error.message : 'Unknown error');
+    });
+  };
 
   const handleReview = (d: Dispute) => {
     void updateRecordMutation.mutateAsync({ table: 'disputes', id: d.id, payload: { status: 'UnderReview' } }).then(() => {
@@ -157,7 +207,70 @@ export default function AdminDisputes() {
                   <Text style={styles.descText}>{selected.description}</Text>
                 </View>
 
+                {(() => {
+                  const parties = getParties(selected);
+                  return (
+                    <View style={styles.partiesBox} testID="dispute-parties">
+                      <View style={styles.partiesHeader}>
+                        <Users size={14} color={C.accent} />
+                        <Text style={styles.partiesTitle}>Parties</Text>
+                      </View>
+                      <View style={styles.partiesGrid}>
+                        <View style={styles.partyCell}>
+                          <Text style={styles.partyLabel}>Customer</Text>
+                          <Text style={styles.partyValue} numberOfLines={1}>{parties.customer}</Text>
+                        </View>
+                        <View style={styles.partyCell}>
+                          <Text style={styles.partyLabel}>Provider</Text>
+                          <Text style={styles.partyValue} numberOfLines={1}>{parties.provider}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  );
+                })()}
+
                 {selected.status !== 'Resolved' && (
+                  <View style={styles.resolveSection}>
+                    <Text style={styles.resolveSectionTitle}>Resolve Dispute</Text>
+
+                    <Input
+                      label="Admin Resolution Notes *"
+                      value={adminNotes}
+                      onChangeText={setAdminNotes}
+                      multiline
+                      numberOfLines={4}
+                      placeholder="Describe the resolution and reasoning…"
+                    />
+
+                    <View style={styles.ruleRow}>
+                      <Button
+                        label="Rule for Customer"
+                        onPress={() => ruleFor('customer')}
+                        size="md"
+                        icon={<Scale size={14} color={C.white} />}
+                        testID="rule-for-customer"
+                      />
+                      <Button
+                        label="Rule for Provider"
+                        onPress={() => ruleFor('provider')}
+                        size="md"
+                        variant="secondary"
+                        icon={<Scale size={14} color={C.accent} />}
+                        testID="rule-for-provider"
+                      />
+                      <Button
+                        label="Escalate"
+                        onPress={escalate}
+                        size="md"
+                        variant="danger"
+                        icon={<ArrowUpRight size={14} color={C.red} />}
+                        testID="escalate-dispute"
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {false && selected.status !== 'Resolved' && (
                   <View style={styles.resolveSection}>
                     <Text style={styles.resolveSectionTitle}>Resolve Dispute</Text>
 
@@ -265,4 +378,12 @@ const styles = StyleSheet.create({
   resolvedTitle: { fontSize: 14, fontWeight: '700' as const, color: C.green },
   resolvedText: { fontSize: 13, color: C.text, lineHeight: 20 },
   resolvedOutcome: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  partiesBox: { backgroundColor: C.bgSecondary, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: C.border, gap: 10 },
+  partiesHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  partiesTitle: { fontSize: 13, fontWeight: '800' as const, color: C.text, letterSpacing: 0.3 },
+  partiesGrid: { flexDirection: 'row', gap: 10 },
+  partyCell: { flex: 1, backgroundColor: C.card, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: C.border },
+  partyLabel: { fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 4 },
+  partyValue: { fontSize: 13, color: C.text, fontWeight: '700' as const },
+  ruleRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as const },
 });
