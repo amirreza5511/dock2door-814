@@ -52,18 +52,18 @@ export async function getCurrentSessionContext() {
   if (!user) return { user: null, role: null, isAdmin: false };
 
   const [profileRes, roleRes] = await Promise.all([
-    supabase.from("profiles").select("user_id, full_name, avatar_url, phone, role").eq("user_id", user.id).maybeSingle(),
+    supabase.from("profiles").select("id, email, name, role, company_id, status, profile_image, created_at").eq("id", user.id).maybeSingle(),
     supabase.from("user_roles").select("role").eq("user_id", user.id),
   ]);
 
   const profileRole = (profileRes.data as { role?: string | null } | null)?.role ?? null;
   const platformRoles = (roleRes.data ?? []).map((r: { role: string }) => r.role);
-  const isAdmin = platformRoles.includes("admin") || platformRoles.includes("super_admin");
-  const isSuperAdmin = platformRoles.includes("super_admin");
+  const isAdmin = platformRoles.includes("admin") || profileRole === "Admin" || profileRole === "SuperAdmin";
+  const isSuperAdmin = platformRoles.includes("super_admin") || profileRole === "SuperAdmin";
 
   let role = profileRole;
   if (isSuperAdmin) role = "SuperAdmin";
-  else if (isAdmin && !role) role = "Admin";
+  else if (isAdmin && (!role || role === "Admin")) role = "Admin";
 
   return { user, role, isAdmin, isSuperAdmin, profile: profileRes.data };
 }

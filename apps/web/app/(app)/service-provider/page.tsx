@@ -1,123 +1,294 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import Link from "next/link";
 
-interface JobRow {
+interface ServiceJob {
   id: string;
+  service_id: string;
   status: string;
-  service_id: string | null;
-  customer_company_id: string;
-  provider_company_id: string;
-  scheduled_date: string | null;
-  total_amount: number | null;
+  location_city: string | null;
+  location_address: string | null;
+  date_time_start: string | null;
+  duration_hours: number | null;
+  total_price: number | null;
+  payment_status: string;
+  notes: string | null;
+  check_in_ts: string | null;
+  check_out_ts: string | null;
+  customer_confirmed: boolean;
   created_at: string;
+  service_category?: string | null;
+  customer_company?: string | null;
 }
 
-const NEXT: Record<string, { label: string; next: string; reasonRequired?: boolean }[]> = {
-  Requested: [
-    { label: "Accept", next: "Accepted" },
-    { label: "Decline", next: "Declined", reasonRequired: true },
-  ],
-  Accepted: [{ label: "Check in", next: "InProgress" }],
-  InProgress: [{ label: "Complete", next: "Completed" }],
+const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "destructive" | "default"> = {
+  Completed: "success",
+  InProgress: "success",
+  Scheduled: "warning",
+  Accepted: "warning",
+  Requested: "secondary",
+  Cancelled: "destructive",
 };
 
-export default function ServiceProviderJobsPage() {
+const CAT_LABEL: Record<string, string> = {
+  Labour: "General Labour",
+  Forklift: "Forklift Op.",
+  PalletRework: "Pallet Rework",
+  Devanning: "Devanning",
+  LocalTruck: "Local Truck",
+  IndustrialCleaning: "Industrial Cleaning",
+};
+
+export default function ServiceProviderPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const [selected, setSelected] = useState<ServiceJob | null>(null);
 
-  const jobsQuery = useQuery({
-    queryKey: ["sp", "jobs"],
+  const jobsQ = useQuery({
+    queryKey: ["service-provider", "jobs"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("service_jobs")
-        .select("id,status,service_id,customer_company_id,provider_company_id,scheduled_date,total_amount,created_at")
-        .order("created_at", { ascending: false })
+        .select(`id, service_id, status, location_city, location_address, date_time_start, duration_hours,
+          total_price, payment_status, notes, check_in_ts, check_out_ts, customer_confirmed, created_at,
+          service_listings!inner(category, companies!inner(name))`)
+        .order("date_time_start", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return (data ?? []) as JobRow[];
+      return (data ?? []).map((j: any) => ({
+        ...j,
+        service_category: j.service_listings?.category ?? null,
+        customer_company: j.service_listings?.companies?.name ?? null,
+      })) as ServiceJob[];
     },
   });
 
   const transition = useMutation({
-    mutationFn: async (input: { id: string; next: string; reason?: string }) => {
+    mutationFn: async ({ id, status, reason }: { id: string; status: string; reason?: string }) => {
       const { error } = await supabase.rpc("transition_service_job", {
-        p_job_id: input.id,
-        p_next_status: input.next,
-        p_reason: input.reason ?? null,
+        p_job_id: id,
+        p_new_status: status,
+        p_reason: reason ?? "",
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["sp", "jobs"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["service-provider", "jobs"] });
+      setSelected(null);
+    },
   });
 
+  const stats = {
+    pending: (jobsQ.data ?? []).filter((j) => j.status === "Requested").length,
+    active: (jobsQ.data ?? []).filter((j) => ["Accepted","Scheduled","InProgress"].includes(j.status)).length,
+    completed: (jobsQ.data ?? []).filter((j) => j.status === "Completed").length,
+    revenue: (jobsQ.data ?? []).filter((j) => j.payment_status === "Paid").reduce((s, j) => s + Number(j.total_price ?? 0), 0),
+  };
+
+  const cols: Column<ServiceJob>[] = [
+    {
+      key: "service",
+      header: "Service",
+      render: (j) => (
+        <div>
+          <div className="font-medium">{CAT_LABEL[j.service_category ?? ""] ?? j.service_category ?? "—"}</div>
+          <div className="text-xs text-muted-foreground">{j.customer_company ?? "—"}</div>
+        </div>
+      ),
+      sortable: true,
+      sortValue: (j) => j.customer_company,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (j) => <Badge variant={STATUS_VARIANT[j.status] ?? "secondary"}>{j.status}</Badge>,
+      sortable: true,
+      sortValue: (j) => j.status,
+    },
+    {
+      key: "when",
+      header: "Scheduled",
+      render: (j) => j.date_time_start
+        ? new Date(j.date_time_start).toLocaleString("en-CA", { dateStyle: "short", timeStyle: "short" })
+        : "—",
+      sortable: true,
+      sortValue: (j) => j.date_time_start,
+    },
+    {
+      key: "location",
+      header: "Location",
+      render: (j) => j.location_city ?? "—",
+    },
+    {
+      key: "duration",
+      header: "Hours",
+      render: (j) => j.duration_hours ?? "—",
+    },
+    {
+      key: "price",
+      header: "Total",
+      render: (j) => j.total_price != null ? `$${Number(j.total_price).toFixed(2)}` : "—",
+    },
+    {
+      key: "created",
+      header: "Requested",
+      render: (j) => <span className="text-xs text-muted-foreground">{formatDate(j.created_at)}</span>,
+      sortable: true,
+      sortValue: (j) => j.created_at,
+    },
+    {
+      key: "actions",
+      header: "",
+      className: "text-right",
+      render: (j) => <Button size="sm" variant="outline" onClick={() => setSelected(j)}>Manage</Button>,
+    },
+  ];
+
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Service jobs</h1>
-        <p className="text-sm text-muted-foreground">Accept, decline, check-in, and complete service jobs.</p>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Service jobs</h1>
+          <p className="text-sm text-muted-foreground">Manage incoming service requests and active jobs.</p>
+        </div>
+        <Link href="/service-provider/listings">
+          <Button variant="outline">Manage listings</Button>
+        </Link>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        {[
+          { label: "Pending requests", value: stats.pending },
+          { label: "Active jobs", value: stats.active },
+          { label: "Completed", value: stats.completed },
+          { label: "Revenue collected", value: `$${stats.revenue.toFixed(2)}` },
+        ].map((s) => (
+          <Card key={s.label}>
+            <CardHeader className="pb-2">
+              <CardDescription>{s.label}</CardDescription>
+              <CardTitle className="text-3xl">{s.value}</CardTitle>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Jobs</CardTitle>
-          <CardDescription>{jobsQuery.data?.length ?? 0} jobs</CardDescription>
+          <CardTitle>All jobs</CardTitle>
+          <CardDescription>{jobsQ.data?.length ?? 0} total</CardDescription>
         </CardHeader>
         <CardContent>
-          {jobsQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (jobsQuery.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">No jobs yet.</p>
-          ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Job</TH>
-                  <TH>Status</TH>
-                  <TH>Scheduled</TH>
-                  <TH>Total</TH>
-                  <TH>Created</TH>
-                  <TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {(jobsQuery.data ?? []).map((j) => (
-                  <TR key={j.id}>
-                    <TD className="font-mono text-xs">{j.id.slice(0, 8)}</TD>
-                    <TD>
-                      <Badge>{j.status}</Badge>
-                    </TD>
-                    <TD>{j.scheduled_date ?? "—"}</TD>
-                    <TD>{j.total_amount != null ? `$${Number(j.total_amount).toFixed(2)}` : "—"}</TD>
-                    <TD>{formatDate(j.created_at)}</TD>
-                    <TD className="space-x-2 text-right">
-                      {(NEXT[j.status] ?? []).map((t) => (
-                        <Button
-                          key={t.label}
-                          size="sm"
-                          disabled={transition.isPending}
-                          onClick={() => {
-                            const reason = t.reasonRequired ? window.prompt("Reason?") ?? undefined : undefined;
-                            if (t.reasonRequired && !reason) return;
-                            transition.mutate({ id: j.id, next: t.next, reason });
-                          }}
-                        >
-                          {t.label}
-                        </Button>
-                      ))}
-                    </TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          )}
+          <DataTable
+            rows={jobsQ.data ?? []}
+            columns={cols}
+            rowKey={(j) => j.id}
+            isLoading={jobsQ.isLoading}
+            error={jobsQ.error as Error | null}
+            searchPlaceholder="Search customer or service…"
+            filters={[
+              { value: "pending", label: "Pending", predicate: (j) => j.status === "Requested" },
+              { value: "active", label: "Active", predicate: (j) => ["Accepted","Scheduled","InProgress"].includes(j.status) },
+              { value: "completed", label: "Completed", predicate: (j) => j.status === "Completed" },
+              { value: "cancelled", label: "Cancelled", predicate: (j) => j.status === "Cancelled" },
+            ]}
+            emptyMessage="No jobs yet."
+          />
         </CardContent>
       </Card>
+
+      {/* Job management modal */}
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelected(null)}>
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">{CAT_LABEL[selected.service_category ?? ""] ?? selected.service_category}</h2>
+                <p className="text-sm text-muted-foreground">{selected.customer_company} · {selected.location_city}</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>✕</Button>
+            </div>
+
+            {transition.error && (
+              <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                {(transition.error as Error).message}
+              </div>
+            )}
+
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Status</div>
+                  <Badge variant={STATUS_VARIANT[selected.status] ?? "secondary"}>{selected.status}</Badge>
+                </div>
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Payment</div>
+                  <Badge variant={selected.payment_status === "Paid" ? "success" : "secondary"}>{selected.payment_status}</Badge>
+                </div>
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Scheduled</div>
+                  <div>{selected.date_time_start ? new Date(selected.date_time_start).toLocaleString("en-CA") : "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Duration</div>
+                  <div>{selected.duration_hours ?? "—"} hours</div>
+                </div>
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Total</div>
+                  <div className="font-medium">{selected.total_price != null ? `$${Number(selected.total_price).toFixed(2)}` : "—"}</div>
+                </div>
+                {selected.check_in_ts && (
+                  <div>
+                    <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Checked in</div>
+                    <div>{new Date(selected.check_in_ts).toLocaleTimeString()}</div>
+                  </div>
+                )}
+              </div>
+
+              {selected.notes && (
+                <div>
+                  <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Notes</div>
+                  <p>{selected.notes}</p>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-2 border-t">
+                {selected.status === "Requested" && (
+                  <>
+                    <Button className="flex-1" disabled={transition.isPending}
+                      onClick={() => transition.mutate({ id: selected.id, status: "Accepted" })}>Accept</Button>
+                    <Button variant="destructive" className="flex-1" disabled={transition.isPending}
+                      onClick={() => {
+                        const reason = window.prompt("Reason for declining?");
+                        if (!reason) return;
+                        transition.mutate({ id: selected.id, status: "Cancelled", reason });
+                      }}>Decline</Button>
+                  </>
+                )}
+                {selected.status === "Accepted" && (
+                  <Button className="flex-1" disabled={transition.isPending}
+                    onClick={() => transition.mutate({ id: selected.id, status: "Scheduled" })}>Mark Scheduled</Button>
+                )}
+                {selected.status === "Scheduled" && (
+                  <Button className="flex-1" disabled={transition.isPending}
+                    onClick={() => transition.mutate({ id: selected.id, status: "InProgress" })}>Check in / Start</Button>
+                )}
+                {selected.status === "InProgress" && (
+                  <Button className="flex-1" disabled={transition.isPending}
+                    onClick={() => transition.mutate({ id: selected.id, status: "Completed" })}>Mark Completed</Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

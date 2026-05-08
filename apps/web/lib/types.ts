@@ -18,10 +18,14 @@ export type CompanyType =
   | "TruckingCompany";
 
 export interface Profile {
-  user_id: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  phone: string | null;
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole | null;
+  company_id: string | null;
+  status: string | null;
+  profile_image: string | null;
+  created_at: string | null;
 }
 
 export interface CompanyMembership {

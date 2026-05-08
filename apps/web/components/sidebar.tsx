@@ -16,6 +16,16 @@ import {
   ScrollText,
   Settings,
   Activity,
+  Calendar,
+  MessageSquare,
+  Bell,
+  Star,
+  AlertTriangle,
+  Search,
+  Package,
+  DollarSign,
+  UserSearch,
+  Plus,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -36,6 +46,16 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     { label: "Overview", items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard }] },
   ];
 
+  // Global pages available to all logged-in users
+  sections.push({
+    label: "Platform",
+    items: [
+      { href: "/messages", label: "Messages", icon: MessageSquare },
+      { href: "/notifications", label: "Notifications", icon: Bell },
+      { href: "/reviews", label: "Reviews", icon: Star },
+    ],
+  });
+
   if (isAdmin || role === "Admin" || role === "SuperAdmin") {
     sections.push({
       label: "Administration",
@@ -43,23 +63,24 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/admin/companies", label: "Companies", icon: Building2 },
         { href: "/admin/users", label: "Users", icon: Users },
         { href: "/admin/certifications", label: "Certifications", icon: ShieldCheck },
-        { href: "/admin/audit", label: "Audit Logs", icon: ScrollText },
-        { href: "/admin/health", label: "System Health", icon: Activity },
+        { href: "/admin/disputes", label: "Disputes", icon: AlertTriangle },
+        { href: "/admin/platform-settings", label: "Platform settings", icon: Settings },
+        { href: "/admin/audit", label: "Audit logs", icon: ScrollText },
+        { href: "/admin/health", label: "System health", icon: Activity },
       ],
     });
   }
+
   if (role === "SuperAdmin") {
     sections.push({
       label: "Super Admin",
       items: [
         { href: "/super-admin", label: "Overview", icon: Settings },
-        { href: "/super-admin/roles", label: "Platform Roles", icon: ShieldCheck },
+        { href: "/super-admin/roles", label: "Platform roles", icon: ShieldCheck },
       ],
     });
   }
-  if (role === "WarehouseProvider" || role === "Worker" || role === "Customer" || role === "Driver" || role === "GateStaff") {
-    // expose warehouse + fulfillment to provider only
-  }
+
   if (role === "WarehouseProvider") {
     sections.push({
       label: "Warehouse",
@@ -80,53 +101,76 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       ],
     });
   }
+
   if (role === "ServiceProvider") {
     sections.push({
       label: "Services",
       items: [
         { href: "/service-provider", label: "Jobs", icon: Briefcase },
+        { href: "/service-provider/listings", label: "My listings", icon: ClipboardList },
+        { href: "/service-provider/create-listing", label: "New listing", icon: Plus },
       ],
     });
   }
+
   if (role === "TruckingCompany" || role === "Driver") {
     sections.push({
       label: "Trucking",
       items: [
         { href: "/trucking", label: "Job board", icon: Truck },
+        { href: "/trucking/fleet", label: "Fleet", icon: Truck },
         { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
+        { href: "/trucking/appointments", label: "Dock appointments", icon: Calendar },
         { href: "/trucking/pod", label: "POD review", icon: ScrollText },
+        { href: "/trucking/finance", label: "Finance", icon: DollarSign },
       ],
     });
   }
+
   if (role === "Customer") {
     sections.push({
-      label: "My account",
+      label: "Warehousing",
       items: [
-        { href: "/customer", label: "Overview", icon: LayoutDashboard },
+        { href: "/customer/warehouses", label: "Find warehouses", icon: Search },
+        { href: "/customer/bookings", label: "My bookings", icon: ClipboardList },
+        { href: "/customer/inventory", label: "Inventory", icon: Package },
+      ],
+    });
+    sections.push({
+      label: "Services & orders",
+      items: [
+        { href: "/customer/services", label: "Services", icon: Briefcase },
         { href: "/customer/orders", label: "Orders", icon: ClipboardList },
+        { href: "/customer/invoices", label: "Invoices", icon: DollarSign },
         { href: "/customer/tracking", label: "Tracking", icon: Truck },
-        { href: "/customer/invoices", label: "Invoices", icon: ScrollText },
       ],
     });
   }
+
   if (role === "Worker") {
     sections.push({
       label: "Work",
       items: [
         { href: "/worker", label: "Overview", icon: LayoutDashboard },
-        { href: "/worker/shifts", label: "Shifts", icon: ClipboardList },
+        { href: "/worker/browse-shifts", label: "Browse shifts", icon: Search },
+        { href: "/worker/shifts", label: "My shifts", icon: ClipboardList },
         { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
       ],
     });
   }
+
   if (role === "Employer") {
     sections.push({
       label: "Labour",
       items: [
-        { href: "/employer", label: "Shifts", icon: ClipboardList },
+        { href: "/employer", label: "Shifts & applications", icon: ClipboardList },
+        { href: "/employer/create-shift", label: "Post shift", icon: Plus },
+        { href: "/employer/browse-workers", label: "Browse workers", icon: UserSearch },
+        { href: "/employer/calendar", label: "Labour calendar", icon: Calendar },
       ],
     });
   }
+
   return sections;
 }
 
@@ -137,7 +181,7 @@ export function Sidebar({ role, isAdmin }: { role: UserRole | null; isAdmin: boo
     <aside className="hidden w-64 shrink-0 border-r bg-card md:flex md:flex-col">
       <div className="flex h-14 items-center border-b px-5">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground">D2</span>
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold">D2</span>
           Dock2Door
         </Link>
       </div>
@@ -157,10 +201,12 @@ export function Sidebar({ role, isAdmin }: { role: UserRole | null; isAdmin: boo
                       href={item.href}
                       className={cn(
                         "flex items-center gap-2 rounded-md px-2.5 py-2 text-sm transition-colors",
-                        active ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                        active
+                          ? "bg-accent text-accent-foreground font-medium"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
                       )}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-4 w-4 shrink-0" />
                       {item.label}
                     </Link>
                   </li>
