@@ -23,6 +23,7 @@ export default function WorkerLayout() {
       <Tabs.Screen name="availability" options={{ title: 'Availability', tabBarIcon: ({ color }) => <CalendarDays size={22} color={color} /> }} />
       <Tabs.Screen name="profile" options={{ title: 'Profile', tabBarIcon: ({ color }) => <UserCircle size={22} color={color} /> }} />
       <Tabs.Screen name="[id]" options={{ href: null }} />
+      <Tabs.Screen name="public-profile" options={{ href: null }} />
     </Tabs>
   );
 }
