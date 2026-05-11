@@ -62,10 +62,12 @@ export default function AdminUsersPage() {
   });
 
   const grantRole = useMutation({
-    mutationFn: async (input: { user_id: string; role: string }) => {
+    mutationFn: async (input: { user_id: string; role: string; reason: string }) => {
+      // admin_grant_role requires p_reason (enforced by require_reason() inside the RPC)
       const { error } = await supabase.rpc("admin_grant_role", {
         p_user_id: input.user_id,
         p_role: input.role,
+        p_reason: input.reason,
       });
       if (error) throw error;
     },
@@ -97,7 +99,7 @@ export default function AdminUsersPage() {
       header: "Company",
       render: (u) => <span className="text-sm">{u.company_name ?? "—"}</span>,
       sortable: true,
-      sortValue: (u) => u.company_name,
+      sortValue: (u) => u.company_name ?? null,
     },
     {
       key: "status",
@@ -142,9 +144,11 @@ export default function AdminUsersPage() {
               variant="outline"
               disabled={grantRole.isPending}
               onClick={() => {
-                const confirm = window.confirm(`Grant admin role to ${u.name || u.email}?`);
-                if (!confirm) return;
-                grantRole.mutate({ user_id: u.id, role: "admin" });
+                const reason = window.prompt(
+                  `Reason for granting admin role to ${u.name || u.email}?`
+                );
+                if (!reason?.trim()) return;
+                grantRole.mutate({ user_id: u.id, role: "admin", reason: reason.trim() });
               }}
             >
               Make Admin

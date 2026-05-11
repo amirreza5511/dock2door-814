@@ -922,10 +922,16 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   'admin.archiveEntity': async (input: { entity: string; id: string }) => {
     const table = input.entity === 'users' ? 'profiles' : input.entity === 'message_threads' ? 'chat_threads' : input.entity;
-    // try soft-delete via archived_at, fallback to status = 'Archived'
-    let { error } = await supabase.from(table).update({ archived_at: new Date().toISOString() }).eq('id', input.id);
-    if (error) {
-      await supabase.from(table).update({ status: 'Archived' }).eq('id', input.id);
+    if (table === 'profiles') {
+      // profiles has no archived_at column — use status = 'Inactive' (active_status enum)
+      await supabase.from('profiles').update({ status: 'Inactive' }).eq('id', input.id);
+    } else {
+      // other tables support soft-delete via archived_at; fall back to status update if the
+      // column doesn't exist (e.g. chat_threads has no archived_at).
+      const { error } = await supabase.from(table).update({ archived_at: new Date().toISOString() }).eq('id', input.id);
+      if (error) {
+        await supabase.from(table).update({ status: 'Inactive' }).eq('id', input.id);
+      }
     }
     return { success: true };
   },
