@@ -29,19 +29,27 @@ const fromManifest = (
   (Constants as unknown as { manifest?: { extra?: Extra } }).manifest?.extra as Extra | undefined
 ) ?? {};
 
+// Hard-coded fallback — safe because the anon key is intentionally public
+// (already in app.json extra and Rork env vars; identical value).
+const HARDCODED_URL = 'https://hyargzciywuqhlcaorwy.supabase.co';
+const HARDCODED_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' +
+  'eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh5YXJnemNpeXd1cWhsY2Fvcnd5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY3NDkzOTUsImV4cCI6MjA5MjMyNTM5NX0.' +
+  'UkDNFFDL9dmNj_C4RrFaQU0YcMRoag9EAr1QSIZuvsk';
+
 const SUPABASE_URL =
   fromEnv.supabaseUrl ||
   fromExpoConfig.supabaseUrl ||
   fromManifest2.supabaseUrl ||
   fromManifest.supabaseUrl ||
-  '';
+  HARDCODED_URL;
 
 const SUPABASE_ANON_KEY =
   fromEnv.supabaseAnonKey ||
   fromExpoConfig.supabaseAnonKey ||
   fromManifest2.supabaseAnonKey ||
   fromManifest.supabaseAnonKey ||
-  '';
+  HARDCODED_KEY;
 
 const urlSource = fromEnv.supabaseUrl
   ? 'process.env'
@@ -75,17 +83,9 @@ console.log('[supabase] config resolution', {
   keyPrefix: SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.slice(0, 20) + '...' : '(empty)',
 });
 
-if (!SUPABASE_URL) {
-  console.error(
-    '[supabase] CRITICAL: URL resolved to empty string. ' +
-    'Set EXPO_PUBLIC_SUPABASE_URL in Rork Environment Variables and rebuild.',
-  );
-}
-if (!SUPABASE_ANON_KEY) {
-  console.error(
-    '[supabase] CRITICAL: ANON KEY resolved to empty string. ' +
-    'Set EXPO_PUBLIC_SUPABASE_ANON_KEY in Rork Environment Variables and rebuild.',
-  );
+// These will never be empty now — hardcoded fallback guarantees a value.
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('[supabase] CRITICAL: config unexpectedly empty even after hardcoded fallback.');
 }
 
 // Export so callers can detect misconfiguration without making a request.
@@ -119,12 +119,8 @@ const webStorage = {
   },
 };
 
-// Provide safe placeholder values so createClient doesn't throw on missing
-// env vars. All requests will still fail at network level if truly empty.
-const safeUrl = SUPABASE_URL || 'https://placeholder.supabase.co';
-const safeKey =
-  SUPABASE_ANON_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder';
+const safeUrl = SUPABASE_URL;
+const safeKey = SUPABASE_ANON_KEY;
 
 export const supabase = createClient(safeUrl, safeKey, {
   auth: {
