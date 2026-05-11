@@ -1,37 +1,26 @@
-import app from '@/backend/hono';
+/**
+ * Legacy API route stub.
+ *
+ * The Hono/tRPC backend has been replaced with direct Supabase calls.
+ * This file exists only to satisfy Expo Router's file-system routing; it
+ * returns 404 for every request so no server traffic accidentally hits it.
+ *
+ * Do NOT import anything from @/backend here — those packages (hono, pg,
+ * stripe, etc.) are Node-only and will crash the Metro bundler if included
+ * in the client bundle.
+ */
 
-async function handler(request: Request): Promise<Response> {
-  const incomingUrl = new URL(request.url);
-  const rewrittenUrl = new URL(incomingUrl.toString());
-  if (rewrittenUrl.pathname.startsWith('/api/')) {
-    rewrittenUrl.pathname = rewrittenUrl.pathname.slice('/api'.length);
-  } else if (rewrittenUrl.pathname === '/api') {
-    rewrittenUrl.pathname = '/';
-  }
-
-  console.log('[API Route]', request.method, incomingUrl.pathname, '->', rewrittenUrl.pathname);
-
-  const forwarded = new Request(rewrittenUrl.toString(), {
-    method: request.method,
-    headers: request.headers,
-    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.clone().arrayBuffer(),
+function notFound(): Response {
+  return new Response(JSON.stringify({ error: 'Not found' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json' },
   });
-
-  try {
-    return await app.fetch(forwarded);
-  } catch (error) {
-    console.log('[API Route] error', error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } },
-    );
-  }
 }
 
-export const GET = handler;
-export const POST = handler;
-export const PUT = handler;
-export const PATCH = handler;
-export const DELETE = handler;
-export const OPTIONS = handler;
-export const HEAD = handler;
+export const GET = notFound;
+export const POST = notFound;
+export const PUT = notFound;
+export const PATCH = notFound;
+export const DELETE = notFound;
+export const OPTIONS = notFound;
+export const HEAD = notFound;
