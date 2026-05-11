@@ -56,7 +56,7 @@ export default function BrowseWorkersPage() {
       const { data, error } = await supabase
         .from("worker_certifications")
         .select("worker_user_id, type, expiry_date")
-        .eq("admin_approved", true);
+        .eq("status", "Approved");
       if (error) throw error;
       return (data ?? []) as CertRow[];
     },

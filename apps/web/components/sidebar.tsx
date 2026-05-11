@@ -26,6 +26,15 @@ import {
   DollarSign,
   UserSearch,
   Plus,
+  Image,
+  BarChart3,
+  Shield,
+  Database,
+  CreditCard,
+  FileText,
+  RotateCcw,
+  Tag,
+  Boxes,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -63,6 +72,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/admin/companies", label: "Companies", icon: Building2 },
         { href: "/admin/users", label: "Users", icon: Users },
         { href: "/admin/certifications", label: "Certifications", icon: ShieldCheck },
+        { href: "/admin/work-photos", label: "Work photos", icon: Image },
+        { href: "/admin/labour-calendar", label: "Labour calendar", icon: Calendar },
         { href: "/admin/disputes", label: "Disputes", icon: AlertTriangle },
         { href: "/admin/platform-settings", label: "Platform settings", icon: Settings },
         { href: "/admin/audit", label: "Audit logs", icon: ScrollText },
@@ -77,6 +88,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/super-admin", label: "Overview", icon: Settings },
         { href: "/super-admin/roles", label: "Platform roles", icon: ShieldCheck },
+        { href: "/super-admin/analytics", label: "Analytics", icon: BarChart3 },
+        { href: "/super-admin/controls", label: "Controls", icon: Shield },
+        { href: "/super-admin/data-manager", label: "Data manager", icon: Database },
       ],
     });
   }
@@ -88,8 +102,11 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/warehouse", label: "Operations", icon: Warehouse },
         { href: "/warehouse/listings", label: "Listings", icon: PackageSearch },
         { href: "/warehouse/bookings", label: "Bookings", icon: ClipboardList },
+        { href: "/warehouse/wms", label: "WMS overview", icon: Boxes },
         { href: "/warehouse/staff", label: "Staff", icon: Users },
         { href: "/warehouse/stations", label: "Stations", icon: Wrench },
+        { href: "/warehouse/carriers", label: "Carriers", icon: Truck },
+        { href: "/warehouse/billing", label: "Billing & payouts", icon: CreditCard },
       ],
     });
     sections.push({
@@ -97,6 +114,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/fulfillment/orders", label: "Orders", icon: ClipboardList },
         { href: "/fulfillment/shipments", label: "Shipments", icon: Truck },
+        { href: "/fulfillment/manifest", label: "Manifest", icon: FileText },
+        { href: "/fulfillment/returns", label: "Returns (RMA)", icon: RotateCcw },
+        { href: "/fulfillment/rate-shop", label: "Rate shop", icon: Tag },
         { href: "/fulfillment/integrations", label: "Integrations", icon: PackageSearch },
       ],
     });
