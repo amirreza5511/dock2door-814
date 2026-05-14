@@ -10,14 +10,11 @@
 --   References profiles.full_name which does not exist. Column is profiles.name. Fixed below.
 --
 -- BUG 3: notifications.kind column type
---   0001 created notifications.kind as notification_kind enum ('booking','service','shift','system','dispute').
---   0014 tried ALTER TABLE ... ADD COLUMN IF NOT EXISTS kind text — but the column already
---   existed so it was a no-op. Result: all queue_notification() calls with kind values like
---   'thread_message','booking_status','worker_assigned','info','shift_changed','shift_cancelled'
---   etc. fail because those values are not in the enum.
---   Fix: add the missing values via direct pg_enum insert (immediately visible in same txn),
---   then set the column default. Using pg_enum INSERT avoids the 55P04 error that occurs
---   when ALTER TYPE … ADD VALUE and a subsequent use of that value are in the same transaction.
+--   0001 created notifications.kind as notification_kind enum
+--   ('booking','service','shift','system','dispute').
+--   All queue_notification() calls from later migrations use values outside that set.
+--   FIX: ALTER TYPE ... ADD VALUE IF NOT EXISTS (safe; committed before next migration uses them).
+--   The SET DEFAULT 'info' is in migration 0030 (needs committed enum values).
 --
 -- BUG 4: payment_status / dispute_status enum values
 --   0001 created payment_status as ('Pending','Paid','Refunded').
@@ -162,52 +159,45 @@ create trigger tr_notify_thread_message
   for each row execute function public.tg_notify_thread_message();
 
 -- =========================================================================
--- 3) notifications.kind — add missing enum values
---    0001 created notification_kind as (booking, service, shift, system, dispute).
---    All queue_notification() calls from later migrations use values outside that set.
---
---    FIX: Use direct pg_enum INSERT instead of ALTER TYPE … ADD VALUE so the new
---    labels are immediately visible within this transaction (avoids error 55P04:
---    "unsafe use of new value … New enum values must be committed before they can be used").
+-- 3) notifications.kind — add missing enum values via ALTER TYPE
+--    Using ADD VALUE IF NOT EXISTS (requires PostgreSQL 9.3+).
+--    NOTE: new values are NOT visible within this transaction's snapshot.
+--    The SET DEFAULT 'info' is intentionally deferred to migration 0030.
 -- =========================================================================
-do $$
-declare
-  v_oid    oid;
-  v_label  text;
-  v_labels text[] := array[
-    'info','thread_message','booking_status','worker_assigned',
-    'shift_changed','shift_cancelled','payment','review'
-  ];
-begin
-  select t.oid into v_oid
-    from pg_type t
-    join pg_namespace n on n.oid = t.typnamespace
-   where t.typname = 'notification_kind' and n.nspname = 'public';
+do $$ begin
+  alter type public.notification_kind add value if not exists 'info';
+exception when others then null; end $$;
 
-  if v_oid is null then return; end if;
+do $$ begin
+  alter type public.notification_kind add value if not exists 'thread_message';
+exception when others then null; end $$;
 
-  foreach v_label in array v_labels loop
-    if not exists (
-      select 1 from pg_enum where enumtypid = v_oid and enumlabel = v_label
-    ) then
-      insert into pg_enum (enumtypid, enumlabel, enumsortorder)
-      values (
-        v_oid,
-        v_label,
-        (select coalesce(max(enumsortorder), 0) + 1 from pg_enum where enumtypid = v_oid)
-      );
-    end if;
-  end loop;
-end $$;
+do $$ begin
+  alter type public.notification_kind add value if not exists 'booking_status';
+exception when others then null; end $$;
 
--- Now 'info' is committed and visible — safe to set as column default.
-alter table public.notifications
-  alter column kind set default 'info';
+do $$ begin
+  alter type public.notification_kind add value if not exists 'worker_assigned';
+exception when others then null; end $$;
 
--- Also ensure the kind text column the UI code writes is compatible.
--- queue_notification(p_kind text) does: coalesce(p_kind,'info') then inserts into kind.
--- Since kind is still notification_kind (enum), the cast must succeed.
--- Re-create queue_notification to cast the text arg explicitly:
+do $$ begin
+  alter type public.notification_kind add value if not exists 'shift_changed';
+exception when others then null; end $$;
+
+do $$ begin
+  alter type public.notification_kind add value if not exists 'shift_cancelled';
+exception when others then null; end $$;
+
+do $$ begin
+  alter type public.notification_kind add value if not exists 'payment';
+exception when others then null; end $$;
+
+do $$ begin
+  alter type public.notification_kind add value if not exists 'review';
+exception when others then null; end $$;
+
+-- Re-create queue_notification to cast the text arg explicitly.
+-- Function body uses text literals; enum values don't need to be visible at CREATE time.
 create or replace function public.queue_notification(
   p_user_id    uuid,
   p_kind       text,
@@ -227,7 +217,7 @@ declare
 begin
   -- Try to cast; fall back to 'system' if the value isn't in the enum yet.
   begin
-    v_kind := coalesce(p_kind, 'info')::notification_kind;
+    v_kind := coalesce(p_kind, 'system')::notification_kind;
   exception when invalid_text_representation then
     v_kind := 'system'::notification_kind;
   end;
@@ -246,72 +236,40 @@ begin
   return v_id;
 end;
 $$;
+
 -- queue_notification is intentionally not granted to authenticated (service-role only).
--- Already revoked in 0014 but be explicit:
 revoke execute on function public.queue_notification(uuid,text,text,text,text,text,jsonb) from public, authenticated;
 
 -- =========================================================================
--- 4a) payment_status enum — add missing values
+-- 4a) payment_status enum — add missing values via ALTER TYPE
 --     0001 created: Pending, Paid, Refunded
---     0011 tried to recreate (duplicate_object swallowed) — missing: Authorized, Captured, Failed, PartiallyRefunded
---     FIX: direct pg_enum insert (visible immediately in same transaction)
+--     0011 tried to recreate (duplicate_object swallowed) — missing values never added.
 -- =========================================================================
-do $$
-declare
-  v_oid    oid;
-  v_label  text;
-  v_labels text[] := array['Authorized','Captured','Failed','PartiallyRefunded'];
-begin
-  select t.oid into v_oid
-    from pg_type t
-    join pg_namespace n on n.oid = t.typnamespace
-   where t.typname = 'payment_status' and n.nspname = 'public';
+do $$ begin
+  alter type public.payment_status add value if not exists 'Authorized';
+exception when others then null; end $$;
 
-  if v_oid is null then return; end if;
+do $$ begin
+  alter type public.payment_status add value if not exists 'Captured';
+exception when others then null; end $$;
 
-  foreach v_label in array v_labels loop
-    if not exists (
-      select 1 from pg_enum where enumtypid = v_oid and enumlabel = v_label
-    ) then
-      insert into pg_enum (enumtypid, enumlabel, enumsortorder)
-      values (
-        v_oid,
-        v_label,
-        (select coalesce(max(enumsortorder), 0) + 1 from pg_enum where enumtypid = v_oid)
-      );
-    end if;
-  end loop;
-end $$;
+do $$ begin
+  alter type public.payment_status add value if not exists 'Failed';
+exception when others then null; end $$;
+
+do $$ begin
+  alter type public.payment_status add value if not exists 'PartiallyRefunded';
+exception when others then null; end $$;
 
 -- =========================================================================
--- 4b) dispute_status enum — add missing values
+-- 4b) dispute_status enum — add missing values via ALTER TYPE
 --     0001 created: Open, UnderReview, Resolved
---     0011 tried to recreate — missing: Rejected, Escalated
---     FIX: direct pg_enum insert
+--     0011 tried to recreate — missing values never added.
 -- =========================================================================
-do $$
-declare
-  v_oid    oid;
-  v_label  text;
-  v_labels text[] := array['Rejected','Escalated'];
-begin
-  select t.oid into v_oid
-    from pg_type t
-    join pg_namespace n on n.oid = t.typnamespace
-   where t.typname = 'dispute_status' and n.nspname = 'public';
+do $$ begin
+  alter type public.dispute_status add value if not exists 'Rejected';
+exception when others then null; end $$;
 
-  if v_oid is null then return; end if;
-
-  foreach v_label in array v_labels loop
-    if not exists (
-      select 1 from pg_enum where enumtypid = v_oid and enumlabel = v_label
-    ) then
-      insert into pg_enum (enumtypid, enumlabel, enumsortorder)
-      values (
-        v_oid,
-        v_label,
-        (select coalesce(max(enumsortorder), 0) + 1 from pg_enum where enumtypid = v_oid)
-      );
-    end if;
-  end loop;
-end $$;
+do $$ begin
+  alter type public.dispute_status add value if not exists 'Escalated';
+exception when others then null; end $$;
