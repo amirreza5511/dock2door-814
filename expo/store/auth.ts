@@ -110,8 +110,25 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   bootstrap: async () => {
     console.log('[Auth] bootstrap');
     try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const session = sessionData.session;
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+
+      // Stale / revoked refresh token — sign out silently and send to login.
+      if (sessionError) {
+        const msg = sessionError.message?.toLowerCase() ?? '';
+        if (
+          msg.includes('refresh token not found') ||
+          msg.includes('invalid refresh token') ||
+          msg.includes('token has expired') ||
+          msg.includes('jwt expired')
+        ) {
+          console.log('[Auth] stale session detected, clearing:', sessionError.message);
+          await supabase.auth.signOut();
+          set({ user: null, isHydrated: true });
+          return;
+        }
+      }
+
+      const session = sessionData?.session;
 
       if (session?.user) {
         const user = await fetchProfile(session.user.id);
@@ -128,11 +145,29 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             set({ user: null });
             return;
           }
+          if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            const user = await fetchProfile(newSession.user.id);
+            set({ user });
+            return;
+          }
+          // For other events (USER_UPDATED etc.) update if we have a session
           const user = await fetchProfile(newSession.user.id);
           set({ user });
         });
       }
     } catch (error) {
+      const msg = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        msg.includes('refresh token not found') ||
+        msg.includes('invalid refresh token') ||
+        msg.includes('token has expired') ||
+        msg.includes('jwt expired')
+      ) {
+        console.log('[Auth] stale session caught in catch, clearing');
+        try { await supabase.auth.signOut(); } catch {}
+        set({ user: null, isHydrated: true });
+        return;
+      }
       console.log('[Auth] bootstrap failed', error);
       set({ user: null, isHydrated: true });
     }
