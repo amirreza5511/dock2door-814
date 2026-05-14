@@ -95,18 +95,11 @@ export default function MessagesPage() {
   const send = useMutation({
     mutationFn: async () => {
       if (!selectedThread || !body.trim()) return;
-      const { error } = await supabase.rpc("messaging_send_message", {
-        p_thread_id: selectedThread.id,
-        p_body: body.trim(),
+      const { error } = await supabase.from("thread_messages").insert({
+        thread_id: selectedThread.id,
+        body: body.trim(),
       });
-      if (error) {
-        // Fallback: direct insert
-        const { error: e2 } = await supabase.from("thread_messages").insert({
-          thread_id: selectedThread.id,
-          body: body.trim(),
-        });
-        if (e2) throw e2;
-      }
+      if (error) throw error;
     },
     onSuccess: () => {
       setBody("");

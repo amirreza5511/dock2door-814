@@ -243,16 +243,34 @@ export default function AdminDisputesPage() {
                 />
               </div>
 
-              <div className="flex gap-2 pt-2 border-t">
-                {selected.status !== "UnderReview" && (
-                  <Button variant="secondary" className="flex-1" disabled={setStatus.isPending}
-                    onClick={() => setStatus.mutate({ id: selected.id, status: "UnderReview", notes: adminNotes })}>
-                    Mark under review
+              <div className="space-y-2 pt-2 border-t">
+                <div className="flex gap-2">
+                  {selected.status !== "UnderReview" && (
+                    <Button variant="secondary" className="flex-1" disabled={setStatus.isPending}
+                      onClick={() => setStatus.mutate({ id: selected.id, status: "UnderReview", notes: adminNotes })}>
+                      Under review
+                    </Button>
+                  )}
+                  {selected.status !== "Escalated" && (
+                    <Button variant="outline" className="flex-1 border-amber-400 text-amber-700 hover:bg-amber-50" disabled={setStatus.isPending}
+                      onClick={() => setStatus.mutate({ id: selected.id, status: "Escalated", notes: adminNotes })}>
+                      ↑ Escalate
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" className="flex-1 border-blue-400 text-blue-700 hover:bg-blue-50" disabled={setStatus.isPending}
+                    onClick={() => setStatus.mutate({ id: selected.id, status: "Resolved", outcome: "Refund", notes: adminNotes ? adminNotes : "Rule in favour of customer" })}>
+                    Rule for Customer
                   </Button>
-                )}
-                <Button className="flex-1" disabled={setStatus.isPending || !adminNotes}
+                  <Button variant="outline" className="flex-1 border-violet-400 text-violet-700 hover:bg-violet-50" disabled={setStatus.isPending}
+                    onClick={() => setStatus.mutate({ id: selected.id, status: "Resolved", outcome: "Denied", notes: adminNotes ? adminNotes : "Rule in favour of provider" })}>
+                    Rule for Provider
+                  </Button>
+                </div>
+                <Button className="w-full" disabled={setStatus.isPending || !adminNotes}
                   onClick={() => setStatus.mutate({ id: selected.id, status: "Resolved", outcome: selectedOutcome, notes: adminNotes })}>
-                  {setStatus.isPending ? "Resolving…" : "Resolve dispute"}
+                  {setStatus.isPending ? "Resolving…" : "Resolve with selected outcome"}
                 </Button>
               </div>
             </div>

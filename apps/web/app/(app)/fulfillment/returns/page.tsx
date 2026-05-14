@@ -64,7 +64,7 @@ export default function FulfillmentReturnsPage() {
     queryKey: ["fulfillment", "returns", "orders"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("orders")
+        .from("fulfillment_orders")
         .select("id,reference_code")
         .limit(200);
       if (error) throw error;

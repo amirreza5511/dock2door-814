@@ -102,7 +102,7 @@ export default function FulfillmentRateShopPage() {
   const purchaseMut = useMutation({
     mutationFn: async ({ shipmentId, rateQuoteId }: { shipmentId: string; rateQuoteId: string }) => {
       const { data, error } = await supabase.functions.invoke("purchase-shipping-label", {
-        body: { shipmentId, rateQuoteId },
+        body: { shipment_id: shipmentId, rate_quote_id: rateQuoteId },
       });
       if (error) throw error;
       return data as { tracking_code: string; label_url: string };

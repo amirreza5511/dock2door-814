@@ -76,7 +76,7 @@ export default function SuperAdminAnalyticsPage() {
         supabase.from("worker_certifications").select("*", { count: "exact", head: true }).eq("status", "Pending"),
         supabase.from("shift_posts").select("*", { count: "exact", head: true }).eq("status", "Posted"),
         supabase.from("shipments").select("*", { count: "exact", head: true }),
-        supabase.from("orders").select("*", { count: "exact", head: true }),
+        supabase.from("fulfillment_orders").select("*", { count: "exact", head: true }),
       ]);
 
       const totalRevenue = (revenueData ?? []).reduce((s: number, i: { total: number | null }) => s + (i.total ?? 0), 0);
