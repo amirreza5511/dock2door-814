@@ -141,6 +141,16 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         authListenerSubscribed = true;
         supabase.auth.onAuthStateChange(async (event, newSession) => {
           console.log('[Auth] onAuthStateChange', event);
+
+          // TOKEN_REFRESH_FAILED = stale/revoked refresh token stored in AsyncStorage.
+          // Sign out silently so the user lands on the login screen cleanly.
+          if ((event as string) === 'TOKEN_REFRESH_FAILED') {
+            console.log('[Auth] TOKEN_REFRESH_FAILED — clearing stale session');
+            try { await supabase.auth.signOut(); } catch {}
+            set({ user: null });
+            return;
+          }
+
           if (event === 'SIGNED_OUT' || !newSession?.user) {
             set({ user: null });
             return;
