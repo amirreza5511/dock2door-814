@@ -29,34 +29,39 @@ where p.role in ('Admin', 'SuperAdmin')
 on conflict (user_id, role) do nothing;
 
 -- =========================================================================
--- 2) Trigger function: sync profiles.role → user_roles on UPDATE
+-- 2) Trigger function: sync profiles.role → user_roles on INSERT or UPDATE
 --    When role is set to Admin/SuperAdmin → ensure user_roles row exists
 --    When role is changed away from Admin/SuperAdmin → remove user_roles row
+--    Also handles INSERT so a new profile with role Admin/SuperAdmin is synced immediately
 -- =========================================================================
 create or replace function public.sync_admin_role_from_profile()
 returns trigger language plpgsql security definer
 set search_path = public
-as $$
+as $
 begin
-  -- Gained admin/superadmin status
+  -- Gained admin/superadmin status (covers INSERT with role already set, and UPDATE that promotes)
   if NEW.role in ('Admin', 'SuperAdmin') then
     insert into public.user_roles (user_id, role)
     values (NEW.id, 'admin')
     on conflict (user_id, role) do nothing;
 
-  -- Lost admin/superadmin status (was Admin/SuperAdmin, now is not)
-  elsif OLD.role in ('Admin', 'SuperAdmin') and NEW.role not in ('Admin', 'SuperAdmin') then
+  -- Lost admin/superadmin status (UPDATE only: was Admin/SuperAdmin, now is not)
+  -- On INSERT, OLD is null, so TG_OP guard is required
+  elsif TG_OP = 'UPDATE'
+    and OLD.role in ('Admin', 'SuperAdmin')
+    and NEW.role not in ('Admin', 'SuperAdmin')
+  then
     delete from public.user_roles
     where user_id = NEW.id and role = 'admin';
   end if;
 
   return NEW;
 end;
-$$;
+$;
 
 drop trigger if exists trg_sync_admin_role on public.profiles;
 create trigger trg_sync_admin_role
-  after update of role on public.profiles
+  after insert or update of role on public.profiles
   for each row
   execute function public.sync_admin_role_from_profile();
 

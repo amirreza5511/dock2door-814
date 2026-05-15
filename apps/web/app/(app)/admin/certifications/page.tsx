@@ -43,7 +43,7 @@ export default function AdminCertificationsPage() {
 
   const approve = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc("admin_approve_certification", { cert_id: id });
+      const { error } = await supabase.rpc("admin_approve_certification", { p_cert_id: id });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "certifications"] }),
@@ -52,8 +52,8 @@ export default function AdminCertificationsPage() {
   const reject = useMutation({
     mutationFn: async (input: { id: string; reason: string }) => {
       const { error } = await supabase.rpc("admin_reject_certification", {
-        cert_id: input.id,
-        reason: input.reason,
+        p_cert_id: input.id,
+        p_reason: input.reason,
       });
       if (error) throw error;
     },
