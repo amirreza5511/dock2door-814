@@ -8,7 +8,7 @@ import {
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
-import { useDockData } from '@/hooks/useDockData';
+
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -100,7 +100,6 @@ function elapsedText(startTs: string, now: number): string {
 export default function WorkerMyShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftPosts, companies } = useDockData();
   const queryClient = useQueryClient();
 
   const utils = trpc.useUtils();
@@ -138,7 +137,7 @@ export default function WorkerMyShifts() {
     onError: (e: Error) => Alert.alert('Unable to withdraw', e.message),
   });
 
-  // Direct Supabase queries
+  // ── Direct Supabase queries ──────────────────────────────────────
   const assignmentsQ = useQuery({
     queryKey: ['myshifts-assignments', user?.id],
     queryFn: async (): Promise<AssignmentRow[]> => {
@@ -187,6 +186,58 @@ export default function WorkerMyShifts() {
   });
   const myTimeEntries = timeEntriesQ.data ?? [];
 
+  // Fetch shift posts for all assignment shift IDs
+  const allShiftIds = useMemo(
+    () => [...new Set(myAssignments.map((a) => a.shift_id))],
+    [myAssignments],
+  );
+
+  const shiftPostsQ = useQuery({
+    queryKey: ['myshifts-shiftposts', allShiftIds],
+    queryFn: async () => {
+      if (allShiftIds.length === 0) return [];
+      const { data } = await supabase
+        .from('shift_posts')
+        .select('id,title,employer_company_id,location_address,location_city,date,start_time,end_time,hourly_rate,flat_rate')
+        .in('id', allShiftIds);
+      return (data ?? []) as {
+        id: string;
+        title: string;
+        employer_company_id: string;
+        location_address: string;
+        location_city: string;
+        date: string;
+        start_time: string;
+        end_time: string;
+        hourly_rate: number | null;
+        flat_rate: number | null;
+      }[];
+    },
+    enabled: allShiftIds.length > 0,
+    staleTime: 60_000,
+  });
+  const shiftPostRows = shiftPostsQ.data ?? [];
+
+  // Fetch companies for all employer_company_ids
+  const allCompanyIds = useMemo(
+    () => [...new Set(shiftPostRows.map((s) => s.employer_company_id).filter(Boolean))],
+    [shiftPostRows],
+  );
+  const companiesQ = useQuery({
+    queryKey: ['myshifts-companies', allCompanyIds],
+    queryFn: async () => {
+      if (allCompanyIds.length === 0) return [];
+      const { data } = await supabase
+        .from('companies')
+        .select('id,name')
+        .in('id', allCompanyIds);
+      return (data ?? []) as { id: string; name: string }[];
+    },
+    enabled: allCompanyIds.length > 0,
+    staleTime: 60_000,
+  });
+  const companyRows = companiesQ.data ?? [];
+
   // Review tracking
   const completedIds = useMemo(
     () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
@@ -201,9 +252,9 @@ export default function WorkerMyShifts() {
     [myReviewsQ.data],
   );
 
-  const getShift = (shiftId: string) => shiftPosts.find((s) => s.id === shiftId);
+  const getShift = (shiftId: string) => shiftPostRows.find((s) => s.id === shiftId);
   const getTE = (assignmentId: string) => myTimeEntries.find((t) => t.assignment_id === assignmentId);
-  const getEmpName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? 'Employer';
+  const getEmpName = (companyId: string) => companyRows.find((c) => c.id === companyId)?.name ?? 'Employer';
 
   // Partitioned data
   const activeAssignments = useMemo(
@@ -211,8 +262,8 @@ export default function WorkerMyShifts() {
       .sort((a, b) => {
         const sa = getShift(a.shift_id);
         const sb = getShift(b.shift_id);
-        return new Date((sa?.date ?? '') + 'T' + (sa?.startTime ?? '')).getTime() -
-          new Date((sb?.date ?? '') + 'T' + (sb?.startTime ?? '')).getTime();
+        return new Date((sa?.date ?? '') + 'T' + (sa?.start_time ?? '')).getTime() -
+          new Date((sb?.date ?? '') + 'T' + (sb?.start_time ?? '')).getTime();
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [myAssignments, shiftPosts],
@@ -295,8 +346,8 @@ export default function WorkerMyShifts() {
                       <View style={styles.activePill}>
                         <Text style={styles.activePillText}>⚡ IN PROGRESS</Text>
                       </View>
-                      <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
-                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                      <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
                       {te?.start_timestamp && (
                         <View style={styles.timerCard}>
                           <Clock size={16} color={C.accent} />
@@ -317,8 +368,8 @@ export default function WorkerMyShifts() {
                     <>
                       <View style={styles.cardTop}>
                         <View style={{ flex: 1 }}>
-                          <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
-                          {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                          <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                          {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
                         </View>
                         <StatusBadge status={ass.status} />
                       </View>
@@ -327,13 +378,13 @@ export default function WorkerMyShifts() {
                           <View style={styles.metaRow}>
                             <Clock size={12} color={C.textMuted} />
                             <Text style={styles.meta}>
-                              {countdownText(shift.date, shift.startTime, now)}
+                              {countdownText(shift.date, shift.start_time, now)}
                             </Text>
                           </View>
                           <View style={styles.metaRow}>
                             <MapPin size={12} color={C.textMuted} />
                             <Text style={styles.meta} numberOfLines={1}>
-                              {shift.locationAddress}, {shift.locationCity}
+                              {shift.location_address}, {shift.location_city}
                             </Text>
                           </View>
                           <View style={styles.metaRow}>
@@ -343,7 +394,7 @@ export default function WorkerMyShifts() {
                         </>
                       )}
                       <Button
-                        label={isToday(shift?.date ?? '') ? 'Clock In' : `Available on ${formatDate(shift?.date ?? '')}`}
+                        label={isToday(shift?.date ?? '') ? 'Clock In' : `Available ${formatDate(shift?.date ?? '')}`}
                         onPress={() => clockInM.mutate({ assignmentId: ass.id })}
                         loading={clockInM.isPending}
                         disabled={!isToday(shift?.date ?? '')}
@@ -372,20 +423,20 @@ export default function WorkerMyShifts() {
                 <Card key={app.id} style={styles.card}>
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.shiftTitle}>{shift?.title ?? app.shift_id}</Text>
-                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                      <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
                       {shift && (
                         <View style={styles.metaRow}>
                           <Clock size={12} color={C.textMuted} />
                           <Text style={styles.meta}>
-                            {formatDate(shift.date)} · {fmtTime(shift.startTime)} – {fmtTime(shift.endTime)}
+                            {formatDate(shift.date)} · {fmtTime(shift.start_time)} – {fmtTime(shift.end_time)}
                           </Text>
                         </View>
                       )}
                       {shift && (
                         <View style={styles.metaRow}>
                           <DollarSign size={12} color={C.textMuted} />
-                          <Text style={styles.meta}>${shift.hourlyRate ?? shift.flatRate}/hr</Text>
+                          <Text style={styles.meta}>${shift.hourly_rate ?? shift.flat_rate}/hr</Text>
                         </View>
                       )}
                     </View>
@@ -454,8 +505,8 @@ export default function WorkerMyShifts() {
                 <Card key={ass.id} style={styles.card}>
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
-                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                      <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
                       {shift && (
                         <Text style={styles.meta}>{formatDate(shift.date)}</Text>
                       )}
@@ -555,7 +606,7 @@ export default function WorkerMyShifts() {
         contextKind="shift_assignment"
         contextId={reviewFor?.id ?? ''}
         targetKind="company"
-        targetCompanyId={reviewFor ? getShift(reviewFor.shift_id)?.employerCompanyId ?? null : null}
+        targetCompanyId={reviewFor ? getShift(reviewFor.shift_id)?.employer_company_id ?? null : null}
       />
     </View>
   );
