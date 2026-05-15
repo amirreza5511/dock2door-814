@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as FileSystem from 'expo-file-system';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User } from 'lucide-react-native';
@@ -32,6 +33,24 @@ type GovtIdType = typeof GOVT_ID_TYPES[number];
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'] as const;
 const WORK_PERMIT_OPTIONS = ['Citizen', 'PR', 'Open Work Permit', 'Employer-Specific Work Permit', 'Student Work Permit', 'Other'] as const;
 const PROVINCE_OPTIONS = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'] as const;
+
+/** Read a local file URI (from DocumentPicker) as a Blob without using fetch(). */
+async function readLocalFileAsBlob(uri: string, mimeType: string): Promise<Blob> {
+  try {
+    // expo-file-system reliably reads file:// URIs on both iOS and Android
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    const byteString = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+    const buf = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i += 1) buf[i] = byteString.charCodeAt(i);
+    return new Blob([buf], { type: mimeType });
+  } catch (fsErr) {
+    // Last resort: try fetch (works on web)
+    const res = await fetch(uri);
+    return await res.blob();
+  }
+}
 
 async function assetToBlob(asset: ImagePicker.ImagePickerAsset): Promise<Blob> {
   if (Platform.OS === 'web') {
@@ -491,8 +510,7 @@ export default function WorkerProfile() {
       if (Platform.OS === 'web' && asset.file) {
         body = asset.file;
       } else {
-        const res = await fetch(asset.uri);
-        body = await res.blob();
+        body = await readLocalFileAsBlob(asset.uri, mime);
       }
       try {
         await uploadFileWithMetadata({ bucket: 'certifications', path, file: body, contentType: mime, entityType: 'worker_certification', entityId: certId, companyId: null });
@@ -541,8 +559,7 @@ export default function WorkerProfile() {
       if (Platform.OS === 'web' && asset.file) {
         body = asset.file;
       } else {
-        const res = await fetch(asset.uri);
-        body = await res.blob();
+        body = await readLocalFileAsBlob(asset.uri, mime);
       }
       try {
         await uploadFileWithMetadata({ bucket: 'certifications', path, file: body, contentType: mime, entityType: 'worker_govt_id', entityId: certId, companyId: null });
