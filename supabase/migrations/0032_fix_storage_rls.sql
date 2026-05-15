@@ -15,7 +15,9 @@
 -- 1) storage.objects RLS — worker-photos
 --    Path format: {worker_user_id}/{photo_id}/{filename}
 -- =========================================================================
-do $$
+do $
+declare
+  r record;
 begin
   for r in (
     select policyname from pg_policies
@@ -24,7 +26,7 @@ begin
   ) loop
     execute format('drop policy %I on storage.objects', r.policyname);
   end loop;
-end $$;
+end $;
 
 -- INSERT: the worker uploads under their own user-id prefix
 create policy "d2d_wphotos_insert" on storage.objects for insert to authenticated
@@ -56,7 +58,9 @@ create policy "d2d_wphotos_delete" on storage.objects for delete to authenticate
 -- 2) storage.objects RLS — shift-attachments
 --    Path format: {employer_company_id}/{shift_id}/{filename}
 -- =========================================================================
-do $$
+do $
+declare
+  r record;
 begin
   for r in (
     select policyname from pg_policies
@@ -65,7 +69,7 @@ begin
   ) loop
     execute format('drop policy %I on storage.objects', r.policyname);
   end loop;
-end $$;
+end $;
 
 -- INSERT: employer company member uploads under their company prefix
 create policy "d2d_sattach_insert" on storage.objects for insert to authenticated
