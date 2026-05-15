@@ -266,7 +266,7 @@ export default function WorkerMyShifts() {
           new Date((sb?.date ?? '') + 'T' + (sb?.start_time ?? '')).getTime();
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [myAssignments, shiftPosts],
+    [myAssignments, shiftPostRows],
   );
 
   const historyAssignments = useMemo(
