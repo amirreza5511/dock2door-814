@@ -1,11 +1,11 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { MapPin, Clock, Search, ChevronRight, AlertCircle, Zap, Navigation, DollarSign } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
-import { useDockData } from '@/hooks/useDockData';
+import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
@@ -89,7 +89,8 @@ export default function WorkerDashboard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
-  const { shiftPosts, companies, workerProfiles } = useDockData();
+  const bootstrapQuery = useDockBootstrapData();
+  const { shiftPosts, companies, workerProfiles } = bootstrapQuery.data;
 
   const utils = trpc.useUtils();
 
@@ -230,6 +231,14 @@ export default function WorkerDashboard() {
   const hasActions = actions.pendingApps > 0 || actions.needReview > 0 || actions.toDispute > 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  if (bootstrapQuery.isLoading) {
+    return (
+      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={C.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>

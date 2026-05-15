@@ -1,29 +1,91 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CalendarDays, Users, Clock, CheckCircle, LogOut } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
-import { useDockData } from '@/hooks/useDockData';
+import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import { supabase } from '@/lib/supabase';
+
+interface EmpAppRow { shift_id: string; status: string; }
+interface EmpAssRow { id: string; shift_id: string; status: string; }
+interface EmpTERow { assignment_id: string; end_timestamp: string | null; employer_confirmed_hours: number | null; }
 
 export default function EmployerDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { shiftPosts, shiftApplications, shiftAssignments, timeEntries, companies } = useDockData();
+
+  const bootstrapQuery = useDockBootstrapData();
+  const { shiftPosts, companies } = bootstrapQuery.data;
+
+  const myShifts = useMemo(
+    () => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [shiftPosts, user],
+  );
+  const myShiftIds = useMemo(() => myShifts.map((s) => s.id), [myShifts]);
+
+  const appsQ = useQuery({
+    queryKey: ['emp-dash-apps', user?.companyId],
+    queryFn: async (): Promise<EmpAppRow[]> => {
+      if (myShiftIds.length === 0) return [];
+      const { data } = await supabase
+        .from('shift_applications')
+        .select('shift_id,status')
+        .in('shift_id', myShiftIds);
+      return (data ?? []) as EmpAppRow[];
+    },
+    enabled: myShiftIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  const assignsQ = useQuery({
+    queryKey: ['emp-dash-assigns', user?.companyId],
+    queryFn: async (): Promise<EmpAssRow[]> => {
+      if (myShiftIds.length === 0) return [];
+      const { data } = await supabase
+        .from('shift_assignments')
+        .select('id,shift_id,status')
+        .in('shift_id', myShiftIds);
+      return (data ?? []) as EmpAssRow[];
+    },
+    enabled: myShiftIds.length > 0,
+    staleTime: 30_000,
+  });
+
+  const myAssignments = assignsQ.data ?? [];
+
+  const teQ = useQuery({
+    queryKey: ['emp-dash-te', user?.companyId, myAssignments.map((a) => a.id).join(',')],
+    queryFn: async (): Promise<EmpTERow[]> => {
+      const ids = myAssignments.map((a) => a.id);
+      if (ids.length === 0) return [];
+      const { data } = await supabase
+        .from('time_entries')
+        .select('assignment_id,end_timestamp,employer_confirmed_hours')
+        .in('assignment_id', ids);
+      return (data ?? []) as EmpTERow[];
+    },
+    enabled: myAssignments.length > 0,
+    staleTime: 30_000,
+  });
+
+  const allApps = appsQ.data ?? [];
+  const allTEs = teQ.data ?? [];
 
   const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
-  const myShifts = useMemo(() => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftPosts, user]);
-  const myShiftIds = useMemo(() => myShifts.map((s) => s.id), [myShifts]);
-  const myApplications = useMemo(() => shiftApplications.filter((a) => myShiftIds.includes(a.shiftId)), [shiftApplications, myShiftIds]);
-  const myAssignments = useMemo(() => shiftAssignments.filter((a) => myShiftIds.includes(a.shiftId)), [shiftAssignments, myShiftIds]);
-  const pendingTimeConfirmations = useMemo(() => timeEntries.filter((t) => myAssignments.some((a) => a.id === t.assignmentId) && t.endTimestamp && !t.employerConfirmedHours), [timeEntries, myAssignments]);
+  const myApplications = useMemo(() => allApps.filter((a) => myShiftIds.includes(a.shift_id)), [allApps, myShiftIds]);
+  const pendingTimeConfirmations = useMemo(
+    () => allTEs.filter((t) => myAssignments.some((a) => a.id === t.assignment_id) && t.end_timestamp && !t.employer_confirmed_hours),
+    [allTEs, myAssignments],
+  );
 
   const stats = useMemo(() => ({
     activeShifts: myShifts.filter((s) => ['Posted', 'InProgress'].includes(s.status)).length,
@@ -84,7 +146,7 @@ export default function EmployerDashboard() {
           {myShifts.length === 0 ? (
             <Card><Text style={styles.emptyText}>No shifts posted yet.</Text></Card>
           ) : myShifts.slice(0, 5).map((s) => {
-            const apps = myApplications.filter((a) => a.shiftId === s.id && a.status === 'Applied').length;
+            const apps = myApplications.filter((a) => a.shift_id === s.id && a.status === 'Applied').length;
             return (
               <Card key={s.id} style={styles.shiftCard}>
                 <View style={styles.shiftTop}>

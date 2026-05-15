@@ -198,7 +198,7 @@ export default function BrowseWorkers() {
               ) : null}
 
               <TouchableOpacity
-                onPress={() => router.push({ pathname: '/worker/public-profile', params: { workerId: w.user_id } })}
+                onPress={() => router.push({ pathname: '/worker/[id]' as any, params: { id: w.user_id } })}
                 style={styles.viewBtn}
                 activeOpacity={0.8}
               >

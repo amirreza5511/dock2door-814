@@ -1,11 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Users, CheckCircle, XCircle, Clock, Star, ChevronDown, ChevronUp,
-  Award, User, AlertTriangle,
+  Award, User, AlertTriangle, AlertCircle,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -30,6 +30,9 @@ interface AssignmentRow {
   confirmed_rate: number;
   status: string;
   created_at: string;
+  worker_confirmed: boolean | null;
+  worker_confirmed_at: string | null;
+  cancellation_reason: string | null;
 }
 
 interface AppRow {
@@ -92,6 +95,9 @@ export default function EmployerShifts() {
   const [editingHours, setEditingHours] = useState(false);
   const [reviewFor, setReviewFor] = useState<{ assignmentId: string; workerUserId: string; workerName: string } | null>(null);
   const [expandedApplicantId, setExpandedApplicantId] = useState<string | null>(null);
+  const [noShowFor, setNoShowFor] = useState<AssignmentRow | null>(null);
+  const [noShowReason, setNoShowReason] = useState('');
+  const [noShowLoading, setNoShowLoading] = useState(false);
 
   const myShifts = useMemo(
     () => shiftPosts
@@ -113,7 +119,7 @@ export default function EmployerShifts() {
       if (shiftIds.length === 0) return [];
       const { data } = await supabase
         .from('shift_assignments')
-        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at')
+        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at,worker_confirmed,worker_confirmed_at,cancellation_reason')
         .in('shift_id', shiftIds);
       return (data ?? []) as AssignmentRow[];
     },
@@ -188,6 +194,43 @@ export default function EmployerShifts() {
     const revs = workerReviews.filter((r) => r.reviewee_user_id === userId);
     if (revs.length === 0) return { avg: 0, count: 0 };
     return { avg: revs.reduce((s, r) => s + r.rating, 0) / revs.length, count: revs.length };
+  };
+
+  const isShiftPast = (shiftId: string): boolean => {
+    const shift = shiftPosts.find((s) => s.id === shiftId);
+    if (!shift) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return new Date(shift.date + 'T00:00:00') < today;
+  };
+
+  const isWithin48h = (shiftId: string): boolean => {
+    const shift = shiftPosts.find((s) => s.id === shiftId);
+    if (!shift) return false;
+    const shiftStart = new Date(`${shift.date}T${shift.startTime}`).getTime();
+    const now = Date.now();
+    return shiftStart - now < 48 * 3_600_000 && shiftStart > now;
+  };
+
+  const handleNoShow = async () => {
+    if (!noShowFor) return;
+    setNoShowLoading(true);
+    try {
+      const { error } = await supabase.rpc('mark_shift_no_show', {
+        p_shift_id: noShowFor.shift_id,
+        p_worker_user_id: noShowFor.worker_user_id,
+        p_reason: noShowReason.trim() || 'No-show recorded by employer',
+      });
+      if (error) throw new Error(error.message);
+      setNoShowFor(null);
+      setNoShowReason('');
+      await invalidate();
+      Alert.alert('Recorded', 'Worker has been marked as no-show.');
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to mark no-show');
+    } finally {
+      setNoShowLoading(false);
+    }
   };
 
   const getWorkerReliability = (userId: string): { total: number; noShows: number } => {
@@ -472,12 +515,36 @@ export default function EmployerShifts() {
                               )}
                           </View>
 
-                          {/* Awaiting worker confirmation badge */}
-                          {ass.status === 'Scheduled' && (
+                          {/* Worker confirmation status */}
+                          {ass.worker_confirmed === true && (
+                            <View style={[styles.awaitingBadge, { backgroundColor: C.greenDim, borderColor: C.green + '40' }]}>
+                              <CheckCircle size={12} color={C.green} />
+                              <Text style={[styles.awaitingText, { color: C.green }]}>✓ Worker confirmed attendance</Text>
+                            </View>
+                          )}
+                          {ass.worker_confirmed === false && (
+                            <View style={[styles.awaitingBadge, { backgroundColor: C.redDim, borderColor: C.red + '40' }]}>
+                              <AlertCircle size={12} color={C.red} />
+                              <Text style={[styles.awaitingText, { color: C.red }]} numberOfLines={2}>
+                                ✗ Worker cancelled{ass.cancellation_reason ? `: ${ass.cancellation_reason}` : ''}
+                              </Text>
+                            </View>
+                          )}
+                          {ass.worker_confirmed === null && ass.status === 'Scheduled' && isWithin48h(ass.shift_id) && (
                             <View style={styles.awaitingBadge}>
                               <Clock size={12} color={C.yellow} />
-                              <Text style={styles.awaitingText}>Awaiting worker confirmation</Text>
+                              <Text style={styles.awaitingText}>⏳ Awaiting worker confirmation</Text>
                             </View>
+                          )}
+                          {/* No-show button for past scheduled assignments */}
+                          {ass.status === 'Scheduled' && isShiftPast(ass.shift_id) && (
+                            <TouchableOpacity
+                              onPress={() => { setNoShowFor(ass); setNoShowReason(''); }}
+                              style={styles.noShowBtn}
+                            >
+                              <AlertCircle size={13} color={C.red} />
+                              <Text style={styles.noShowBtnText}>Mark No-Show</Text>
+                            </TouchableOpacity>
                           )}
 
                           {/* Time entry + confirmation */}
@@ -518,6 +585,30 @@ export default function EmployerShifts() {
                                     placeholder={String(preFilledHours)}
                                     label="Hours worked"
                                   />
+                                  {/* OT warning (BC Employment Standards) */}
+                                  {Number(confirmHours) > 0 && (() => {
+                                    const h = Number(confirmHours);
+                                    const rate = ass.confirmed_rate;
+                                    const reg = Math.min(h, 8);
+                                    const ot = h > 8 ? Math.min(h - 8, 4) : 0;
+                                    const dbl = h > 12 ? h - 12 : 0;
+                                    const total = (reg * rate) + (ot * rate * 1.5) + (dbl * rate * 2);
+                                    if (h <= 8) return (
+                                      <Text style={styles.otRegular}>Regular time: ${total.toFixed(2)}</Text>
+                                    );
+                                    if (h <= 12) return (
+                                      <View style={styles.warnRow}>
+                                        <AlertTriangle size={13} color={C.yellow} />
+                                        <Text style={styles.warnText}>⚠️ Overtime applies (BC law): {reg}h regular + {ot}h at 1.5× = ${total.toFixed(2)} total</Text>
+                                      </View>
+                                    );
+                                    return (
+                                      <View style={[styles.warnRow, { backgroundColor: C.redDim, borderColor: C.red + '40' }]}>
+                                        <AlertTriangle size={13} color={C.red} />
+                                        <Text style={[styles.warnText, { color: C.red }]}>⚠️ Double time: 8h regular + 4h at 1.5× + {dbl.toFixed(1)}h at 2× = ${total.toFixed(2)} total</Text>
+                                      </View>
+                                    );
+                                  })()}
                                   {Number(confirmHours) > 0 && clockHours && Math.abs(clockHours - Number(confirmHours)) > 1 && (
                                     <View style={styles.warnRow}>
                                       <AlertTriangle size={13} color={C.yellow} />
@@ -546,6 +637,9 @@ export default function EmployerShifts() {
                             </View>
                           )}
 
+                          {te && te.end_timestamp && !te.employer_confirmed_hours && (
+                            <Text style={styles.bcNotice}>BC Employment Standards minimum wage: $17.40/hr. Overtime applies after 8 hours.</Text>
+                          )}
                           {te?.employer_confirmed_hours != null && (
                             <View style={styles.confirmedBox}>
                               <CheckCircle size={14} color={C.green} />
@@ -578,6 +672,44 @@ export default function EmployerShifts() {
               </View>
             </ScrollView>
           )}
+        </View>
+      </Modal>
+
+      {/* No-Show Modal */}
+      <Modal visible={!!noShowFor} animationType="slide" presentationStyle="formSheet">
+        <View style={[styles.modal, { paddingBottom: 40, paddingHorizontal: 20, paddingTop: 20, gap: 14 }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.noShowModalTitle}>Mark Worker No-Show</Text>
+          <Text style={styles.noShowModalSub}>
+            This will mark {noShowFor ? getWorkerName(noShowFor.worker_user_id) : ''} as no-show for this shift,
+            cancel the assignment, and add a no-show risk badge to their profile.
+          </Text>
+          <TextInput
+            value={noShowReason}
+            onChangeText={setNoShowReason}
+            placeholder="Reason (optional)…"
+            placeholderTextColor={C.textMuted}
+            style={styles.noShowInput}
+            multiline
+            numberOfLines={3}
+          />
+          <View style={{ gap: 10 }}>
+            <Button
+              label={noShowLoading ? 'Recording…' : 'Confirm No-Show'}
+              onPress={handleNoShow}
+              loading={noShowLoading}
+              variant="danger"
+              fullWidth
+              size="lg"
+              icon={<AlertCircle size={15} color={C.white} />}
+            />
+            <Button
+              label="Cancel"
+              onPress={() => { setNoShowFor(null); setNoShowReason(''); }}
+              variant="ghost"
+              fullWidth
+            />
+          </View>
         </View>
       </Modal>
 
@@ -676,4 +808,11 @@ const styles = StyleSheet.create({
   actionBtns: { gap: 10 },
   rateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   rateBtnText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+  noShowBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: C.redDim, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: C.red + '40' },
+  noShowBtnText: { fontSize: 12, color: C.red, fontWeight: '700' as const },
+  otRegular: { fontSize: 12, color: C.textSecondary },
+  bcNotice: { fontSize: 11, color: C.textMuted, fontStyle: 'italic' as const, paddingTop: 4 },
+  noShowModalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  noShowModalSub: { fontSize: 13, color: C.textSecondary, lineHeight: 20 },
+  noShowInput: { backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border, padding: 12, color: C.text, fontSize: 14, minHeight: 80, textAlignVertical: 'top' as const },
 });

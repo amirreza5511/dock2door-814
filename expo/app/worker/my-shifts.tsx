@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon,
@@ -17,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
 
-type ViewTab = 'Active' | 'Applications' | 'History';
+type ViewTab = 'Active' | 'Applications' | 'History' | 'Earnings';
 
 interface AssignmentRow {
   id: string;
@@ -26,6 +27,7 @@ interface AssignmentRow {
   confirmed_rate: number;
   status: string;
   created_at: string;
+  worker_confirmed: boolean | null;
 }
 
 interface TimeEntryRow {
@@ -101,6 +103,7 @@ export default function WorkerMyShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const utils = trpc.useUtils();
   const [tab, setTab] = useState<ViewTab>('Active');
@@ -144,7 +147,7 @@ export default function WorkerMyShifts() {
       if (!user?.id) return [];
       const { data } = await supabase
         .from('shift_assignments')
-        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at')
+        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at,worker_confirmed')
         .eq('worker_user_id', user.id);
       return (data ?? []) as AssignmentRow[];
     },
@@ -256,6 +259,27 @@ export default function WorkerMyShifts() {
   const getTE = (assignmentId: string) => myTimeEntries.find((t) => t.assignment_id === assignmentId);
   const getEmpName = (companyId: string) => companyRows.find((c) => c.id === companyId)?.name ?? 'Employer';
 
+  // Earnings tab data
+  const confirmedEntries = useMemo(
+    () => myTimeEntries.filter((te) => te.employer_confirmed_hours !== null),
+    [myTimeEntries],
+  );
+  const pendingEntries = useMemo(
+    () => myTimeEntries.filter((te) => te.end_timestamp !== null && te.employer_confirmed_hours === null),
+    [myTimeEntries],
+  );
+  const earningsSummary = useMemo(() => {
+    let totalHours = 0;
+    let totalEarnings = 0;
+    for (const te of confirmedEntries) {
+      const ass = myAssignments.find((a) => a.id === te.assignment_id);
+      if (!ass) continue;
+      totalHours += te.employer_confirmed_hours ?? 0;
+      totalEarnings += (te.employer_confirmed_hours ?? 0) * ass.confirmed_rate;
+    }
+    return { totalHours, totalEarnings, pendingCount: pendingEntries.length };
+  }, [confirmedEntries, pendingEntries, myAssignments]);
+
   // Partitioned data
   const activeAssignments = useMemo(
     () => myAssignments.filter((a) => ['Scheduled', 'InProgress'].includes(a.status))
@@ -308,7 +332,7 @@ export default function WorkerMyShifts() {
     return Math.abs(clock - te.employer_confirmed_hours) > 0.5;
   };
 
-  const TABS: ViewTab[] = ['Active', 'Applications', 'History'];
+  const TABS: ViewTab[] = ['Active', 'Applications', 'History', 'Earnings'];
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -393,6 +417,21 @@ export default function WorkerMyShifts() {
                           </View>
                         </>
                       )}
+                      {ass.worker_confirmed === null && shift && (() => {
+                        const shiftStart = new Date(`${shift.date}T${shift.start_time}`).getTime();
+                        const hoursUntil = (shiftStart - Date.now()) / 3_600_000;
+                        if (hoursUntil < 0 || hoursUntil > 48) return null;
+                        return (
+                          <TouchableOpacity
+                            onPress={() => router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: ass.id } })}
+                            style={styles.confirmBanner}
+                          >
+                            <AlertTriangle size={14} color={C.yellow} />
+                            <Text style={styles.confirmBannerText}>Shift soon — please confirm attendance</Text>
+                            <Text style={styles.confirmBannerAction}>Confirm →</Text>
+                          </TouchableOpacity>
+                        );
+                      })()}
                       <Button
                         label={isToday(shift?.date ?? '') ? 'Clock In' : `Available ${formatDate(shift?.date ?? '')}`}
                         onPress={() => clockInM.mutate({ assignmentId: ass.id })}
@@ -485,6 +524,102 @@ export default function WorkerMyShifts() {
               );
             })
           )
+        )}
+
+        {/* ─── Earnings Tab ─── */}
+        {tab === 'Earnings' && (
+          <>
+            {/* Summary Card */}
+            <Card style={styles.earningsSummaryCard}>
+              <Text style={styles.earningsSummaryLabel}>TOTAL EARNINGS SUMMARY</Text>
+              <View style={styles.earningsSummaryRow}>
+                <View style={styles.earningsStat}>
+                  <Text style={styles.earningsStatVal}>{earningsSummary.totalHours.toFixed(1)}</Text>
+                  <Text style={styles.earningsStatLbl}>Confirmed Hours</Text>
+                </View>
+                <View style={[styles.earningsStat, styles.earningsStatMid]}>
+                  <Text style={[styles.earningsStatVal, { color: C.green }]}>${earningsSummary.totalEarnings.toFixed(0)}</Text>
+                  <Text style={styles.earningsStatLbl}>Est. Earnings</Text>
+                </View>
+                <View style={styles.earningsStat}>
+                  <Text style={[styles.earningsStatVal, { color: earningsSummary.pendingCount > 0 ? C.yellow : C.textMuted }]}>
+                    {earningsSummary.pendingCount}
+                  </Text>
+                  <Text style={styles.earningsStatLbl}>Pending</Text>
+                </View>
+              </View>
+            </Card>
+
+            {/* Payment Notice */}
+            <Card style={styles.paymentNotice}>
+              <Text style={styles.paymentNoticeText}>
+                Confirmed hours are processed for payment weekly. Funds are deposited to your bank account on file via direct deposit. Allow 3–5 business days after confirmation.
+              </Text>
+            </Card>
+
+            {confirmedEntries.length > 0 && (
+              <Text style={styles.earningsSectionLabel}>CONFIRMED EARNINGS</Text>
+            )}
+            {confirmedEntries.map((te) => {
+              const ass = myAssignments.find((a) => a.id === te.assignment_id);
+              const shift = ass ? getShift(ass.shift_id) : null;
+              const hours = te.employer_confirmed_hours ?? 0;
+              const rate = ass?.confirmed_rate ?? 0;
+              const amount = hours * rate;
+              return (
+                <Card key={te.id} style={[styles.card, { gap: 6 }]}>
+                  <View style={styles.cardTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
+                      {shift && <Text style={styles.meta}>{formatDate(shift.date)}</Text>}
+                    </View>
+                    <View style={styles.earningsAmtBlock}>
+                      <Text style={styles.earningsAmt}>${amount.toFixed(2)}</Text>
+                      <View style={styles.earningsStatusBadge}>
+                        <Text style={styles.earningsStatusText}>Processing</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={styles.earningsHours}>{hours}h confirmed · ${rate}/hr</Text>
+                </Card>
+              );
+            })}
+
+            {pendingEntries.length > 0 && (
+              <Text style={[styles.earningsSectionLabel, { marginTop: 8 }]}>AWAITING CONFIRMATION</Text>
+            )}
+            {pendingEntries.map((te) => {
+              const ass = myAssignments.find((a) => a.id === te.assignment_id);
+              const shift = ass ? getShift(ass.shift_id) : null;
+              const clockH = te.start_timestamp && te.end_timestamp
+                ? (new Date(te.end_timestamp).getTime() - new Date(te.start_timestamp).getTime()) / 3_600_000
+                : null;
+              const showDispute = clockH && te.employer_confirmed_hours !== null && Math.abs(clockH - (te.employer_confirmed_hours ?? 0)) > 0.5;
+              return (
+                <Card key={te.id} style={[styles.card, { gap: 6 }]}>
+                  <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
+                  {shift && <Text style={styles.employer}>{getEmpName(shift.employer_company_id)}</Text>}
+                  <Text style={styles.earningsPending}>
+                    Clocked {clockH ? clockH.toFixed(1) : '?'}h — awaiting employer confirmation
+                  </Text>
+                  {showDispute && ass && (
+                    <TouchableOpacity onPress={() => setDisputeFor(ass)} style={styles.disputeBtn}>
+                      <AlertTriangle size={12} color={C.yellow} />
+                      <Text style={styles.disputeBtnText}>Dispute</Text>
+                    </TouchableOpacity>
+                  )}
+                </Card>
+              );
+            })}
+
+            {confirmedEntries.length === 0 && pendingEntries.length === 0 && (
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>No earnings yet</Text>
+                <Text style={styles.emptySub}>Complete shifts to see earnings here</Text>
+              </View>
+            )}
+          </>
         )}
 
         {/* ─── History Tab ─── */}
@@ -686,6 +821,27 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60, gap: 6 },
   emptyText: { fontSize: 15, color: C.textSecondary, fontWeight: '600' as const },
   emptySub: { fontSize: 13, color: C.textMuted },
+  // Confirmation banner
+  confirmBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.yellowDim, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.yellow + '40' },
+  confirmBannerText: { flex: 1, fontSize: 13, color: C.yellow, fontWeight: '600' as const },
+  confirmBannerAction: { fontSize: 13, color: C.yellow, fontWeight: '700' as const },
+  // Earnings tab
+  earningsSummaryCard: { marginBottom: 0 },
+  earningsSummaryLabel: { fontSize: 10, fontWeight: '700' as const, color: C.textMuted, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 12 },
+  earningsSummaryRow: { flexDirection: 'row' },
+  earningsStat: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 4 },
+  earningsStatMid: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.border },
+  earningsStatVal: { fontSize: 22, fontWeight: '800' as const, color: C.text },
+  earningsStatLbl: { fontSize: 11, color: C.textSecondary, textAlign: 'center' as const },
+  paymentNotice: { backgroundColor: C.bgSecondary },
+  paymentNoticeText: { fontSize: 12, color: C.textMuted, lineHeight: 18 },
+  earningsSectionLabel: { fontSize: 10, fontWeight: '700' as const, color: C.textMuted, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 8, marginTop: 4 },
+  earningsAmtBlock: { alignItems: 'flex-end', gap: 4 },
+  earningsAmt: { fontSize: 16, fontWeight: '800' as const, color: C.green },
+  earningsStatusBadge: { backgroundColor: C.yellowDim, borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  earningsStatusText: { fontSize: 10, color: C.yellow, fontWeight: '700' as const },
+  earningsHours: { fontSize: 12, color: C.textMuted },
+  earningsPending: { fontSize: 13, color: C.yellow },
   // Modal
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
