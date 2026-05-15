@@ -15,7 +15,7 @@
 -- 1) storage.objects RLS — worker-photos
 --    Path format: {worker_user_id}/{photo_id}/{filename}
 -- =========================================================================
-do $
+do $$
 declare
   r record;
 begin
@@ -26,7 +26,7 @@ begin
   ) loop
     execute format('drop policy %I on storage.objects', r.policyname);
   end loop;
-end $;
+end $$;
 
 -- INSERT: the worker uploads under their own user-id prefix
 create policy "d2d_wphotos_insert" on storage.objects for insert to authenticated
@@ -58,7 +58,7 @@ create policy "d2d_wphotos_delete" on storage.objects for delete to authenticate
 -- 2) storage.objects RLS — shift-attachments
 --    Path format: {employer_company_id}/{shift_id}/{filename}
 -- =========================================================================
-do $
+do $$
 declare
   r record;
 begin
@@ -69,7 +69,7 @@ begin
   ) loop
     execute format('drop policy %I on storage.objects', r.policyname);
   end loop;
-end $;
+end $$;
 
 -- INSERT: employer company member uploads under their company prefix
 create policy "d2d_sattach_insert" on storage.objects for insert to authenticated
@@ -139,21 +139,20 @@ begin
   v_seg := string_to_array(p_path, '/');
   if coalesce(array_length(v_seg, 1), 0) < 1 then return false; end if;
 
-  -- ── certifications/{worker_user_id}/... ──────────────────────────────
+  -- certifications/{worker_user_id}/...
   if p_bucket = 'certifications' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     return v_first = auth.uid() or public.can_employer_see_worker(v_first);
 
-  -- ── worker-photos/{worker_user_id}/... ───────────────────────────────
+  -- worker-photos/{worker_user_id}/...
   elsif p_bucket = 'worker-photos' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     return v_first = auth.uid() or public.can_employer_see_worker(v_first);
 
-  -- ── shift-attachments/{company_id}/{shift_id}/... ────────────────────
+  -- shift-attachments/{company_id}/{shift_id}/...
   elsif p_bucket = 'shift-attachments' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     if public.is_member_of(v_first) then return true; end if;
-    -- Worker assigned to that shift can also read
     if coalesce(array_length(v_seg, 1), 0) >= 2 then
       begin v_second := v_seg[2]::uuid; exception when others then return false; end;
       return exists (
@@ -165,12 +164,12 @@ begin
     end if;
     return false;
 
-  -- ── warehouse-docs/{company_id}/... ──────────────────────────────────
+  -- warehouse-docs/{company_id}/...
   elsif p_bucket = 'warehouse-docs' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     return public.is_member_of(v_first);
 
-  -- ── booking-docs/{booking_id}/... ────────────────────────────────────
+  -- booking-docs/{booking_id}/...
   elsif p_bucket = 'booking-docs' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     return exists (
@@ -180,12 +179,12 @@ begin
            or public.is_member_of(b.warehouse_company_id))
     );
 
-  -- ── invoices/{company_id}/... ────────────────────────────────────────
+  -- invoices/{company_id}/...
   elsif p_bucket = 'invoices' then
     begin v_first := v_seg[1]::uuid; exception when others then return false; end;
     return public.is_member_of(v_first);
 
-  -- ── attachments/{entity_type}/{entity_id}/... ────────────────────────
+  -- attachments/{entity_type}/{entity_id}/...
   elsif p_bucket = 'attachments' then
     return exists (
       select 1 from public.storage_files f
