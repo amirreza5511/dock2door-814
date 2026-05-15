@@ -598,6 +598,38 @@ export default function WorkerProfile() {
           </View>
         </Card>
 
+        {/* Change 1 — Profile completion indicator */}
+        {(() => {
+          const hasPhoto = Boolean((profile as any).profilePhotoPath ?? (profile as any).avatarPath);
+          const hasBio = (profile.bio?.length ?? 0) > 20;
+          const hasSkills = profile.skills.length > 0;
+          const hasCities = profile.coverageCities.length > 0;
+          const hasApprovedCert = myCerts.some((c) => c.status === 'Approved');
+          const hasBank = Boolean(privateQuery.data?.bank_account_number && privateQuery.data?.bank_institution_number);
+          const pct = (hasPhoto ? 20 : 0) + (hasBio ? 15 : 0) + (hasSkills ? 15 : 0) + (hasCities ? 10 : 0) + (hasApprovedCert ? 20 : 0) + (hasBank ? 20 : 0);
+          const missing = [
+            !hasPhoto && 'a profile photo',
+            !hasBio && 'a bio',
+            !hasSkills && 'skills',
+            !hasCities && 'coverage cities',
+            !hasApprovedCert && 'a certification',
+            !hasBank && 'bank info to get paid',
+          ].filter(Boolean) as string[];
+          return (
+            <View style={styles.completionWrap}>
+              <View style={styles.completionTop}>
+                <Text style={styles.completionLabel}>Profile {pct}% complete</Text>
+                {missing.length > 0 && (
+                  <Text style={styles.completionHint}>add {missing[0]}</Text>
+                )}
+              </View>
+              <View style={styles.completionBg}>
+                <View style={[styles.completionFill, { width: `${pct}%` as any }]} />
+              </View>
+            </View>
+          );
+        })()}
+
         <View style={styles.section}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Work Photos</Text>
@@ -669,37 +701,7 @@ export default function WorkerProfile() {
           </View>
         ) : null}
 
-        {/* My Ratings section */}
-        <View style={styles.section}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>My Ratings</Text>
-            {(reviewsQuery.data ?? []).length > 0 && (
-              <View style={styles.avgRatingRow}>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <Star key={n} size={13} color={n <= Math.round(avgRating) ? C.yellow : C.border} fill={n <= Math.round(avgRating) ? C.yellow : 'transparent'} />
-                ))}
-                <Text style={styles.avgRatingText}>{avgRating.toFixed(1)} ({(reviewsQuery.data ?? []).length})</Text>
-              </View>
-            )}
-          </View>
-          {reviewsQuery.isLoading ? (
-            <Text style={styles.noCertText}>Loading reviews…</Text>
-          ) : (reviewsQuery.data ?? []).length === 0 ? (
-            <Card><Text style={styles.noCertText}>No reviews yet. Complete shifts to earn ratings from employers.</Text></Card>
-          ) : (
-            (reviewsQuery.data ?? []).map((r) => (
-              <Card key={r.id} style={styles.reviewCard}>
-                <View style={styles.reviewStars}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Star key={n} size={14} color={n <= r.rating ? C.yellow : C.border} fill={n <= r.rating ? C.yellow : 'transparent'} />
-                  ))}
-                  <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
-                </View>
-                {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
-              </Card>
-            ))
-          )}
-        </View>
+
 
         <View style={styles.section}>
           <View style={styles.sectionRow}>
@@ -772,12 +774,18 @@ export default function WorkerProfile() {
           )}
         </View>
 
-        {/* Private Information Section */}
+        {/* Change 2 — Private Information Section (lock-card visual) */}
         <View style={styles.section}>
-          <TouchableOpacity onPress={() => setPrivateExpanded((v) => !v)} style={styles.privateHeader}>
+          <TouchableOpacity
+            onPress={() => setPrivateExpanded((v) => !v)}
+            style={styles.privateHeaderCard}
+          >
             <View style={styles.privateHeaderLeft}>
-              <Lock size={15} color={C.textSecondary} />
-              <Text style={styles.sectionTitle}>Private Information</Text>
+              <Lock size={15} color={C.purple} />
+              <View>
+                <Text style={styles.sectionTitle}>Private Information</Text>
+                <Text style={styles.privateSubtitle}>Stored securely · Only visible to you and platform admins</Text>
+              </View>
             </View>
             {privateExpanded ? <ChevronUp size={18} color={C.textMuted} /> : <ChevronDown size={18} color={C.textMuted} />}
           </TouchableOpacity>
@@ -952,4 +960,14 @@ const styles = StyleSheet.create({
   reviewStars: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, marginBottom: 4 },
   reviewDate: { fontSize: 11, color: C.textMuted, marginLeft: 6 },
   reviewComment: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  // Change 1 — Profile completion bar
+  completionWrap: { marginBottom: 20, gap: 6 },
+  completionTop: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+  completionLabel: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  completionHint: { fontSize: 11, color: C.accent },
+  completionBg: { height: 6, backgroundColor: C.border, borderRadius: 3, overflow: 'hidden' as const },
+  completionFill: { height: 6, backgroundColor: C.green, borderRadius: 3 },
+  // Change 2 — Private info card
+  privateHeaderCard: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, padding: 14, backgroundColor: C.bgSecondary, borderRadius: 12, borderWidth: 1, borderColor: C.purple + '40', marginBottom: 10 },
+  privateSubtitle: { fontSize: 11, color: C.textMuted, marginTop: 2 },
 });

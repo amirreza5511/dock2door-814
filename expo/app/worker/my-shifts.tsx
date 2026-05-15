@@ -1,83 +1,270 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MapPin, Clock, DollarSign, LogIn, LogOut as LogOutIcon, CheckCircle, Star } from 'lucide-react-native';
+import {
+  MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon,
+} from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
-import type { ShiftAssignment } from '@/constants/types';
+import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
 
-type ViewTab = 'Applications' | 'Assignments';
+type ViewTab = 'Active' | 'Applications' | 'History';
+
+interface AssignmentRow {
+  id: string;
+  shift_id: string;
+  worker_user_id: string;
+  confirmed_rate: number;
+  status: string;
+  created_at: string;
+}
+
+interface TimeEntryRow {
+  id: string;
+  assignment_id: string;
+  start_timestamp: string | null;
+  end_timestamp: string | null;
+  employer_confirmed_hours: number | null;
+  employer_notes: string | null;
+}
+
+interface AppRow {
+  id: string;
+  shift_id: string;
+  worker_user_id: string;
+  status: string;
+  applied_at: string;
+  rejection_reason?: string | null;
+}
+
+function fmtTime(t: string): string {
+  try {
+    const [h, m] = t.split(':').map(Number);
+    const ap = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return m === 0 ? `${h12} ${ap}` : `${h12}:${String(m).padStart(2, '0')} ${ap}`;
+  } catch { return t; }
+}
+
+function formatDate(date: string): string {
+  try {
+    const d = new Date(date + 'T00:00:00');
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()}`;
+  } catch { return date; }
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
+  return `${Math.floor(diff / 86400)} days ago`;
+}
+
+function isToday(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toDateString() === new Date().toDateString();
+}
+
+function countdownText(date: string, startTime: string, now: number): string {
+  try {
+    const target = new Date(`${date}T${startTime}`).getTime();
+    const diff = (target - now) / 1000;
+    if (diff <= 0) return 'Starting now';
+    if (diff < 3600) return `Starts in ${Math.floor(diff / 60)} min`;
+    if (diff < 86400) return `Starts in ${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
+    if (diff < 172800) return `Tomorrow ${fmtTime(startTime)}`;
+    return `${formatDate(date)} · ${fmtTime(startTime)}`;
+  } catch { return startTime; }
+}
+
+function elapsedText(startTs: string, now: number): string {
+  const diff = Math.max(0, now - new Date(startTs).getTime());
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+}
 
 export default function WorkerMyShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftApplications, shiftAssignments, shiftPosts, timeEntries, companies } = useDockData();
+  const { shiftPosts, companies } = useDockData();
+  const queryClient = useQueryClient();
+
   const utils = trpc.useUtils();
-  const invalidate = async () => { await utils.dock.bootstrap.invalidate(); };
-  const withdrawM = trpc.shifts.withdraw.useMutation({ onSuccess: invalidate });
-  const clockInM = trpc.shifts.clockIn.useMutation({ onSuccess: invalidate });
-  const clockOutM = trpc.shifts.clockOut.useMutation({ onSuccess: invalidate });
+  const [tab, setTab] = useState<ViewTab>('Active');
+  const [reviewFor, setReviewFor] = useState<AssignmentRow | null>(null);
+  const [disputeFor, setDisputeFor] = useState<AssignmentRow | null>(null);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [submittingDispute, setSubmittingDispute] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
-  const [tab, setTab] = useState<ViewTab>('Applications');
-  const [selectedAss, setSelectedAss] = useState<ShiftAssignment | null>(null);
-  const [detailModal, setDetailModal] = useState(false);
-  const [reviewFor, setReviewFor] = useState<ShiftAssignment | null>(null);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
-  const myApps = useMemo(() => shiftApplications.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.appliedAt).getTime() - new Date(a.appliedAt).getTime()), [shiftApplications, user]);
-  const myAssignments = useMemo(() => shiftAssignments.filter((a) => a.workerUserId === user?.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftAssignments, user]);
-
-  const completedAssignmentIds = useMemo(
-    () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
-    [myAssignments],
-  );
-  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
-    { contextKind: 'shift_assignment', contextIds: completedAssignmentIds },
-    { enabled: completedAssignmentIds.length > 0 },
-  );
-  const reviewedAssignmentIds = useMemo(
-    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
-    [myReviewsQuery.data],
-  );
-
-  const getShift = (id: string) => shiftPosts.find((s) => s.id === id);
-  const getTimeEntry = (assignmentId: string) => timeEntries.find((t) => t.assignmentId === assignmentId);
-  const getEmployerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? companyId;
-
-  const handleWithdraw = (appId: string) => {
-    Alert.alert('Withdraw Application', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Withdraw', style: 'destructive', onPress: () => withdrawM.mutate({ applicationId: appId }, {
-        onError: (e: Error) => Alert.alert('Unable to withdraw', e.message),
-      }) },
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['myshifts-assignments', user?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['myshifts-apps', user?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['myshifts-timeentries', user?.id] }),
+      utils.dock.bootstrap.invalidate(),
     ]);
   };
 
-  const handleStartShift = (ass: ShiftAssignment) => {
-    clockInM.mutate({ assignmentId: ass.id }, {
-      onSuccess: () => Alert.alert('Shift Started!', 'Your start time has been recorded.'),
-      onError: (e: Error) => Alert.alert('Unable to start shift', e.message),
-    });
+  const clockInM = trpc.shifts.clockIn.useMutation({
+    onSuccess: async () => { await invalidate(); Alert.alert('Clocked in!', 'Shift started.'); },
+    onError: (e: Error) => Alert.alert('Unable to clock in', e.message),
+  });
+  const clockOutM = trpc.shifts.clockOut.useMutation({
+    onSuccess: async () => { await invalidate(); Alert.alert('Shift ended', 'Awaiting employer to confirm your hours.'); },
+    onError: (e: Error) => Alert.alert('Unable to clock out', e.message),
+  });
+  const withdrawM = trpc.shifts.withdraw.useMutation({
+    onSuccess: invalidate,
+    onError: (e: Error) => Alert.alert('Unable to withdraw', e.message),
+  });
+
+  // Direct Supabase queries
+  const assignmentsQ = useQuery({
+    queryKey: ['myshifts-assignments', user?.id],
+    queryFn: async (): Promise<AssignmentRow[]> => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('shift_assignments')
+        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at')
+        .eq('worker_user_id', user.id);
+      return (data ?? []) as AssignmentRow[];
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+
+  const appsQ = useQuery({
+    queryKey: ['myshifts-apps', user?.id],
+    queryFn: async (): Promise<AppRow[]> => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('shift_applications')
+        .select('id,shift_id,worker_user_id,status,applied_at')
+        .eq('worker_user_id', user.id)
+        .order('applied_at', { ascending: false });
+      return (data ?? []) as AppRow[];
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+
+  const myAssignments = assignmentsQ.data ?? [];
+  const myApps = appsQ.data ?? [];
+
+  const timeEntriesQ = useQuery({
+    queryKey: ['myshifts-timeentries', user?.id],
+    queryFn: async (): Promise<TimeEntryRow[]> => {
+      if (!user?.id || myAssignments.length === 0) return [];
+      const ids = myAssignments.map((a) => a.id);
+      const { data } = await supabase
+        .from('time_entries')
+        .select('id,assignment_id,start_timestamp,end_timestamp,employer_confirmed_hours,employer_notes')
+        .in('assignment_id', ids);
+      return (data ?? []) as TimeEntryRow[];
+    },
+    enabled: Boolean(user?.id) && myAssignments.length > 0,
+    staleTime: 30_000,
+  });
+  const myTimeEntries = timeEntriesQ.data ?? [];
+
+  // Review tracking
+  const completedIds = useMemo(
+    () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
+    [myAssignments],
+  );
+  const myReviewsQ = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'shift_assignment', contextIds: completedIds },
+    { enabled: completedIds.length > 0 },
+  );
+  const reviewedIds = useMemo(
+    () => new Set(((myReviewsQ.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQ.data],
+  );
+
+  const getShift = (shiftId: string) => shiftPosts.find((s) => s.id === shiftId);
+  const getTE = (assignmentId: string) => myTimeEntries.find((t) => t.assignment_id === assignmentId);
+  const getEmpName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? 'Employer';
+
+  // Partitioned data
+  const activeAssignments = useMemo(
+    () => myAssignments.filter((a) => ['Scheduled', 'InProgress'].includes(a.status))
+      .sort((a, b) => {
+        const sa = getShift(a.shift_id);
+        const sb = getShift(b.shift_id);
+        return new Date((sa?.date ?? '') + 'T' + (sa?.startTime ?? '')).getTime() -
+          new Date((sb?.date ?? '') + 'T' + (sb?.startTime ?? '')).getTime();
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [myAssignments, shiftPosts],
+  );
+
+  const historyAssignments = useMemo(
+    () => myAssignments
+      .filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed', 'Cancelled', 'NoShow'].includes(a.status))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+    [myAssignments],
+  );
+
+  const handleDispute = async () => {
+    if (!disputeFor || !user || !disputeReason.trim()) {
+      Alert.alert('Enter a reason for the dispute');
+      return;
+    }
+    setSubmittingDispute(true);
+    try {
+      const { error } = await supabase.from('disputes').insert({
+        reference_type: 'shift_assignment',
+        reference_id: disputeFor.id,
+        description: disputeReason.trim(),
+        opened_by_user_id: user.id,
+        status: 'Open',
+      });
+      if (error) throw new Error(error.message);
+      setDisputeFor(null);
+      setDisputeReason('');
+      Alert.alert('Dispute submitted', 'An admin will review your dispute.');
+    } catch (err) {
+      Alert.alert('Unable to submit dispute', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSubmittingDispute(false);
+    }
   };
 
-  const handleEndShift = (ass: ShiftAssignment) => {
-    clockOutM.mutate({ assignmentId: ass.id }, {
-      onSuccess: () => { Alert.alert('Shift Ended!', 'Awaiting employer to confirm your hours.'); setDetailModal(false); },
-      onError: (e: Error) => Alert.alert('Unable to end shift', e.message),
-    });
+  const shouldShowDispute = (ass: AssignmentRow): boolean => {
+    const te = getTE(ass.id);
+    if (!te?.start_timestamp || !te?.end_timestamp || !te?.employer_confirmed_hours) return false;
+    const clock = (new Date(te.end_timestamp).getTime() - new Date(te.start_timestamp).getTime()) / 3_600_000;
+    return Math.abs(clock - te.employer_confirmed_hours) > 0.5;
   };
+
+  const TABS: ViewTab[] = ['Active', 'Applications', 'History'];
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Shifts</Text>
         <View style={styles.tabs}>
-          {(['Applications', 'Assignments'] as ViewTab[]).map((t) => (
+          {TABS.map((t) => (
             <TouchableOpacity key={t} onPress={() => setTab(t)} style={[styles.tab, tab === t && styles.tabActive]}>
               <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t}</Text>
             </TouchableOpacity>
@@ -85,163 +272,290 @@ export default function WorkerMyShifts() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
-        {tab === 'Applications' && (
-          myApps.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No applications yet</Text></View>
-          ) : myApps.map((app) => {
-            const shift = getShift(app.shiftId);
-            return (
-              <Card key={app.id} style={styles.card}>
-                <View style={styles.cardTop}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.shiftTitle}>{shift?.title ?? app.shiftId}</Text>
-                    {shift && <Text style={styles.employer}>{getEmployerName(shift.employerCompanyId)}</Text>}
-                    {shift && (
-                      <View style={styles.metaRow}>
-                        <MapPin size={12} color={C.textMuted} />
-                        <Text style={styles.meta}>{shift.locationCity}</Text>
-                        <Clock size={12} color={C.textMuted} />
-                        <Text style={styles.meta}>{shift.date}</Text>
-                        <DollarSign size={12} color={C.textMuted} />
-                        <Text style={styles.meta}>${shift.hourlyRate}/hr</Text>
+      <ScrollView
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ─── Active Tab ─── */}
+        {tab === 'Active' && (
+          activeAssignments.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No active shifts</Text>
+              <Text style={styles.emptySub}>Accepted shifts appear here</Text>
+            </View>
+          ) : (
+            activeAssignments.map((ass) => {
+              const shift = getShift(ass.shift_id);
+              const te = getTE(ass.id);
+              const isInProgress = ass.status === 'InProgress';
+              return (
+                <Card key={ass.id} style={[styles.card, isInProgress && styles.cardActive]}>
+                  {isInProgress ? (
+                    <>
+                      <View style={styles.activePill}>
+                        <Text style={styles.activePillText}>⚡ IN PROGRESS</Text>
                       </View>
-                    )}
-                  </View>
-                  <StatusBadge status={app.status} />
-                </View>
-                {app.status === 'Applied' && (
-                  <Button label="Withdraw" onPress={() => handleWithdraw(app.id)} variant="danger" size="sm" />
-                )}
-              </Card>
-            );
-          })
+                      <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                      {te?.start_timestamp && (
+                        <View style={styles.timerCard}>
+                          <Clock size={16} color={C.accent} />
+                          <Text style={styles.timerText}>{elapsedText(te.start_timestamp, now)}</Text>
+                        </View>
+                      )}
+                      <Button
+                        label="Clock Out"
+                        onPress={() => clockOutM.mutate({ assignmentId: ass.id })}
+                        loading={clockOutM.isPending}
+                        fullWidth
+                        size="lg"
+                        variant="outline"
+                        icon={<LogOutIcon size={16} color={C.accent} />}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <View style={styles.cardTop}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
+                          {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                        </View>
+                        <StatusBadge status={ass.status} />
+                      </View>
+                      {shift && (
+                        <>
+                          <View style={styles.metaRow}>
+                            <Clock size={12} color={C.textMuted} />
+                            <Text style={styles.meta}>
+                              {countdownText(shift.date, shift.startTime, now)}
+                            </Text>
+                          </View>
+                          <View style={styles.metaRow}>
+                            <MapPin size={12} color={C.textMuted} />
+                            <Text style={styles.meta} numberOfLines={1}>
+                              {shift.locationAddress}, {shift.locationCity}
+                            </Text>
+                          </View>
+                          <View style={styles.metaRow}>
+                            <DollarSign size={12} color={C.textMuted} />
+                            <Text style={styles.meta}>${ass.confirmed_rate}/hr</Text>
+                          </View>
+                        </>
+                      )}
+                      <Button
+                        label={isToday(shift?.date ?? '') ? 'Clock In' : `Available on ${formatDate(shift?.date ?? '')}`}
+                        onPress={() => clockInM.mutate({ assignmentId: ass.id })}
+                        loading={clockInM.isPending}
+                        disabled={!isToday(shift?.date ?? '')}
+                        fullWidth
+                        size="lg"
+                        icon={<LogIn size={16} color={C.white} />}
+                      />
+                    </>
+                  )}
+                </Card>
+              );
+            })
+          )
         )}
 
-        {tab === 'Assignments' && (
-          myAssignments.length === 0 ? (
-            <View style={styles.empty}><Text style={styles.emptyText}>No assignments yet</Text></View>
-          ) : myAssignments.map((ass) => {
-            const shift = getShift(ass.shiftId);
-            const te = getTimeEntry(ass.id);
-            return (
-              <TouchableOpacity key={ass.id} onPress={() => { setSelectedAss(ass); setDetailModal(true); }} activeOpacity={0.85}>
-                <Card style={styles.card}>
+        {/* ─── Applications Tab ─── */}
+        {tab === 'Applications' && (
+          myApps.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No applications yet</Text>
+            </View>
+          ) : (
+            myApps.map((app) => {
+              const shift = getShift(app.shift_id);
+              return (
+                <Card key={app.id} style={styles.card}>
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.shiftTitle}>{shift?.title ?? ass.shiftId}</Text>
-                      {shift && <Text style={styles.employer}>{getEmployerName(shift.employerCompanyId)}</Text>}
+                      <Text style={styles.shiftTitle}>{shift?.title ?? app.shift_id}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
                       {shift && (
                         <View style={styles.metaRow}>
-                          <MapPin size={12} color={C.textMuted} />
-                          <Text style={styles.meta}>{shift.locationCity} · {shift.date}</Text>
-                          <DollarSign size={12} color={C.textMuted} />
-                          <Text style={styles.meta}>${ass.confirmedRate}/hr</Text>
+                          <Clock size={12} color={C.textMuted} />
+                          <Text style={styles.meta}>
+                            {formatDate(shift.date)} · {fmtTime(shift.startTime)} – {fmtTime(shift.endTime)}
+                          </Text>
                         </View>
+                      )}
+                      {shift && (
+                        <View style={styles.metaRow}>
+                          <DollarSign size={12} color={C.textMuted} />
+                          <Text style={styles.meta}>${shift.hourlyRate ?? shift.flatRate}/hr</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {app.status === 'Applied' && (
+                    <View style={styles.statusInfo}>
+                      <View style={styles.pendingBadge}>
+                        <Clock size={12} color={C.yellow} />
+                        <Text style={styles.pendingText}>Pending review</Text>
+                      </View>
+                      <Text style={styles.timeAgo}>Applied {timeAgo(app.applied_at)}</Text>
+                    </View>
+                  )}
+                  {app.status === 'Accepted' && (
+                    <View style={[styles.statusInfo, styles.acceptedInfo]}>
+                      <CheckCircle size={14} color={C.green} />
+                      <View>
+                        <Text style={styles.acceptedText}>Accepted!</Text>
+                        <Text style={styles.acceptedSub}>Check the Active tab to clock in</Text>
+                      </View>
+                    </View>
+                  )}
+                  {app.status === 'Rejected' && (
+                    <View style={[styles.statusInfo, styles.rejectedInfo]}>
+                      <AlertTriangle size={14} color={C.red} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.rejectedText}>Not selected</Text>
+                        {app.rejection_reason && (
+                          <Text style={styles.rejectedReason}>{app.rejection_reason}</Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                  {app.status === 'Applied' && (
+                    <Button
+                      label="Withdraw Application"
+                      onPress={() => Alert.alert('Withdraw?', 'Remove your application?', [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Withdraw', style: 'destructive', onPress: () => withdrawM.mutate({ applicationId: app.id }) },
+                      ])}
+                      variant="danger"
+                      size="sm"
+                    />
+                  )}
+                </Card>
+              );
+            })
+          )
+        )}
+
+        {/* ─── History Tab ─── */}
+        {tab === 'History' && (
+          historyAssignments.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No completed shifts yet</Text>
+            </View>
+          ) : (
+            historyAssignments.map((ass) => {
+              const shift = getShift(ass.shift_id);
+              const te = getTE(ass.id);
+              const confirmed = te?.employer_confirmed_hours;
+              const earnings = confirmed ? (confirmed * ass.confirmed_rate).toFixed(0) : null;
+              const showDispute = shouldShowDispute(ass);
+
+              return (
+                <Card key={ass.id} style={styles.card}>
+                  <View style={styles.cardTop}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.shiftTitle}>{shift?.title ?? ass.shift_id}</Text>
+                      {shift && <Text style={styles.employer}>{getEmpName(shift.employerCompanyId)}</Text>}
+                      {shift && (
+                        <Text style={styles.meta}>{formatDate(shift.date)}</Text>
                       )}
                     </View>
                     <StatusBadge status={ass.status} />
                   </View>
-                  {te && (
-                    <View style={styles.timeRow}>
-                      {te.startTimestamp && <Text style={styles.timeText}>Started: {te.startTimestamp.replace('T', ' ').slice(0, 16)}</Text>}
-                      {te.endTimestamp && <Text style={styles.timeText}>Ended: {te.endTimestamp.replace('T', ' ').slice(0, 16)}</Text>}
-                      {te.employerConfirmedHours && (
-                        <View style={styles.confirmedRow}>
-                          <CheckCircle size={13} color={C.green} />
-                          <Text style={styles.confirmedText}>{te.employerConfirmedHours}h confirmed · ${(te.employerConfirmedHours * ass.confirmedRate).toFixed(0)} earned</Text>
+                  {confirmed != null && (
+                    <View style={styles.hoursRow}>
+                      <View style={styles.hoursStat}>
+                        <Text style={styles.hoursVal}>{confirmed}h</Text>
+                        <Text style={styles.hoursLbl}>Confirmed</Text>
+                      </View>
+                      {earnings && (
+                        <View style={styles.hoursStat}>
+                          <Text style={[styles.hoursVal, { color: C.green }]}>${earnings}</Text>
+                          <Text style={styles.hoursLbl}>Earned</Text>
                         </View>
                       )}
                     </View>
                   )}
-                  {ass.status === 'Scheduled' && (
-                    <Button label="Start Shift" onPress={() => handleStartShift(ass)} size="sm" icon={<LogIn size={13} color={C.white} />} />
+                  {showDispute && (
+                    <TouchableOpacity
+                      onPress={() => setDisputeFor(ass)}
+                      style={styles.disputeBtn}
+                    >
+                      <AlertTriangle size={13} color={C.yellow} />
+                      <Text style={styles.disputeBtnText}>Dispute Hours</Text>
+                    </TouchableOpacity>
                   )}
-                  {ass.status === 'InProgress' && (
-                    <Button label="End Shift" onPress={() => { setSelectedAss(ass); setDetailModal(true); }} size="sm" variant="outline" icon={<LogOutIcon size={13} color={C.accent} />} />
+                  {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) &&
+                    !reviewedIds.has(ass.id) &&
+                    shift && (
+                      <Button
+                        label="Rate Employer"
+                        onPress={() => setReviewFor(ass)}
+                        variant="outline"
+                        size="sm"
+                        fullWidth
+                        icon={<Star size={13} color={C.accent} />}
+                      />
+                    )}
+                  {reviewedIds.has(ass.id) && (
+                    <View style={styles.ratedRow}>
+                      <Star size={13} color={C.yellow} fill={C.yellow} />
+                      <Text style={styles.ratedText}>Employer rated</Text>
+                    </View>
                   )}
                 </Card>
-              </TouchableOpacity>
-            );
-          })
+              );
+            })
+          )
         )}
       </ScrollView>
 
-      <Modal visible={detailModal && !!selectedAss} animationType="slide" presentationStyle="pageSheet">
+      {/* Dispute Modal */}
+      <Modal visible={!!disputeFor} animationType="slide" presentationStyle="formSheet">
         <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHandle} />
-          {selectedAss && (() => {
-            const shift = getShift(selectedAss.shiftId);
-            const te = getTimeEntry(selectedAss.id);
-            return (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                <View style={styles.modalBody}>
-                  <View style={styles.modalTitleRow}>
-                    <Text style={styles.modalTitle}>{shift?.title ?? selectedAss.shiftId}</Text>
-                    <StatusBadge status={selectedAss.status} size="md" />
-                  </View>
-                  {shift && <Text style={styles.modalEmployer}>{getEmployerName(shift.employerCompanyId)}</Text>}
-                  <View style={styles.detailGrid}>
-                    {shift && [
-                      ['Location', `${shift.locationAddress}, ${shift.locationCity}`],
-                      ['Date', shift.date],
-                      ['Time', `${shift.startTime} – ${shift.endTime}`],
-                      ['Rate', `$${selectedAss.confirmedRate}/hr`],
-                      ['Category', shift.category],
-                    ].map(([l, v]) => (
-                      <View key={l} style={styles.detailItem}>
-                        <Text style={styles.detailLabel}>{l}</Text>
-                        <Text style={styles.detailValue}>{v}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  {te && (
-                    <View style={styles.timeCard}>
-                      <Text style={styles.timeCardTitle}>Time Record</Text>
-                      {te.startTimestamp && <Text style={styles.timeCardDetail}>Check-In: {te.startTimestamp.replace('T', ' ').slice(0, 16)}</Text>}
-                      {te.endTimestamp && <Text style={styles.timeCardDetail}>Check-Out: {te.endTimestamp.replace('T', ' ').slice(0, 16)}</Text>}
-                      {te.employerConfirmedHours && (
-                        <Text style={[styles.timeCardDetail, { color: C.green }]}>Confirmed: {te.employerConfirmedHours}h · ${(te.employerConfirmedHours * selectedAss.confirmedRate).toFixed(0)}</Text>
-                      )}
-                    </View>
-                  )}
-                  <View style={styles.actionBtns}>
-                    {selectedAss.status === 'Scheduled' && (
-                      <Button label="Start Shift" onPress={() => { handleStartShift(selectedAss); setDetailModal(false); }} fullWidth size="lg" icon={<LogIn size={16} color={C.white} />} />
-                    )}
-                    {selectedAss.status === 'InProgress' && (
-                      <Button label="End Shift" onPress={() => handleEndShift(selectedAss)} fullWidth size="lg" variant="outline" icon={<LogOutIcon size={16} color={C.accent} />} />
-                    )}
-                    {['Completed', 'HoursConfirmed', 'Confirmed'].includes(selectedAss.status) && !reviewedAssignmentIds.has(selectedAss.id) && shift && (
-                      <Button
-                        label="Rate Employer"
-                        onPress={() => { setDetailModal(false); setReviewFor(selectedAss); }}
-                        fullWidth
-                        variant="outline"
-                        icon={<Star size={15} color={C.accent} />}
-                      />
-                    )}
-                    {['Completed', 'HoursConfirmed', 'Confirmed'].includes(selectedAss.status) && reviewedAssignmentIds.has(selectedAss.id) && (
-                      <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this employer</Text>
-                    )}
-                    <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
-                  </View>
-                </View>
-              </ScrollView>
-            );
-          })()}
+          <View style={styles.modalBody}>
+            <Text style={styles.modalTitle}>Dispute Hours</Text>
+            <Text style={styles.modalSub}>
+              Describe why you believe the confirmed hours are incorrect.
+            </Text>
+            <TextInput
+              value={disputeReason}
+              onChangeText={setDisputeReason}
+              placeholder="e.g. I worked 8h but employer confirmed 6h..."
+              placeholderTextColor={C.textMuted}
+              style={styles.disputeInput}
+              multiline
+              numberOfLines={4}
+            />
+            <Button
+              label={submittingDispute ? 'Submitting…' : 'Submit Dispute'}
+              onPress={handleDispute}
+              loading={submittingDispute}
+              fullWidth
+              size="lg"
+              icon={<AlertTriangle size={15} color={C.white} />}
+            />
+            <Button
+              label="Cancel"
+              onPress={() => { setDisputeFor(null); setDisputeReason(''); }}
+              variant="ghost"
+              fullWidth
+            />
+          </View>
         </View>
       </Modal>
 
+      {/* Review Modal */}
       <ReviewModal
         visible={!!reviewFor}
         onClose={() => setReviewFor(null)}
         title="Rate this employer"
-        subtitle={reviewFor ? getEmployerName(getShift(reviewFor.shiftId)?.employerCompanyId ?? '') : undefined}
+        subtitle={reviewFor ? getEmpName(getShift(reviewFor.shift_id)?.employerCompanyId ?? '') : undefined}
         contextKind="shift_assignment"
         contextId={reviewFor?.id ?? ''}
         targetKind="company"
-        targetCompanyId={reviewFor ? getShift(reviewFor.shiftId)?.employerCompanyId ?? null : null}
+        targetCompanyId={reviewFor ? getShift(reviewFor.shift_id)?.employerCompanyId ?? null : null}
       />
     </View>
   );
@@ -249,38 +563,93 @@ export default function WorkerMyShifts() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 0, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 0,
+    backgroundColor: C.bgSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 12 },
   tabs: { flexDirection: 'row' },
-  tab: { paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tab: { paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: C.accent },
-  tabText: { fontSize: 14, color: C.textMuted, fontWeight: '600' as const },
+  tabText: { fontSize: 13, color: C.textMuted, fontWeight: '600' as const },
   tabTextActive: { color: C.accent },
-  list: { padding: 16, gap: 10 },
-  card: {},
-  cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 },
-  shiftTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
-  employer: { fontSize: 12, color: C.accent, fontWeight: '600' as const, marginTop: 2, marginBottom: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  meta: { fontSize: 12, color: C.textSecondary },
-  timeRow: { paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border, gap: 4 },
-  timeText: { fontSize: 12, color: C.textSecondary },
-  confirmedRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  confirmedText: { fontSize: 12, color: C.green, fontWeight: '600' as const },
-  empty: { alignItems: 'center', paddingVertical: 60 },
-  emptyText: { fontSize: 15, color: C.textSecondary },
+  list: { padding: 16, gap: 12 },
+  card: { gap: 10 },
+  cardActive: { borderColor: C.accent + '50', backgroundColor: C.accent + '08' },
+  cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  activePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: C.accent + '30',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  activePillText: { fontSize: 10, fontWeight: '800' as const, color: C.accent, letterSpacing: 1.5 },
+  timerCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.bgSecondary,
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  timerText: { fontSize: 22, fontWeight: '800' as const, color: C.accent, fontVariant: ['tabular-nums'] as const },
+  shiftTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 2 },
+  employer: { fontSize: 12, color: C.accent, fontWeight: '600' as const, marginBottom: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  meta: { fontSize: 12, color: C.textSecondary, flex: 1 },
+  statusInfo: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
+  pendingBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pendingText: { fontSize: 13, color: C.yellow, fontWeight: '600' as const },
+  timeAgo: { fontSize: 12, color: C.textMuted },
+  acceptedInfo: { backgroundColor: C.greenDim, borderRadius: 8, padding: 10 },
+  acceptedText: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  acceptedSub: { fontSize: 12, color: C.green + 'BB' },
+  rejectedInfo: { backgroundColor: C.redDim, borderRadius: 8, padding: 10 },
+  rejectedText: { fontSize: 13, color: C.red, fontWeight: '700' as const },
+  rejectedReason: { fontSize: 12, color: C.red + 'BB', marginTop: 2 },
+  hoursRow: { flexDirection: 'row', gap: 20, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
+  hoursStat: { gap: 2 },
+  hoursVal: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  hoursLbl: { fontSize: 11, color: C.textMuted },
+  disputeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: C.yellowDim,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: C.yellow + '40',
+  },
+  disputeBtnText: { fontSize: 13, color: C.yellow, fontWeight: '600' as const },
+  ratedRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratedText: { fontSize: 12, color: C.yellow },
+  empty: { alignItems: 'center', paddingVertical: 60, gap: 6 },
+  emptyText: { fontSize: 15, color: C.textSecondary, fontWeight: '600' as const },
+  emptySub: { fontSize: 13, color: C.textMuted },
+  // Modal
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
   modalBody: { padding: 20, gap: 14 },
-  modalTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  modalTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text, flex: 1, marginRight: 8 },
-  modalEmployer: { fontSize: 14, color: C.accent, fontWeight: '600' as const },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  detailItem: { width: '50%', padding: 12, borderBottomWidth: 1, borderRightWidth: 1, borderColor: C.border },
-  detailLabel: { fontSize: 11, color: C.textMuted, marginBottom: 2 },
-  detailValue: { fontSize: 12, color: C.text, fontWeight: '600' as const },
-  timeCard: { backgroundColor: C.card, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: C.border, gap: 6 },
-  timeCardTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
-  timeCardDetail: { fontSize: 13, color: C.textSecondary },
-  actionBtns: { gap: 10 },
+  modalTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text },
+  modalSub: { fontSize: 14, color: C.textSecondary },
+  disputeInput: {
+    backgroundColor: C.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    color: C.text,
+    fontSize: 14,
+    minHeight: 100,
+    textAlignVertical: 'top' as const,
+  },
 });

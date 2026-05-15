@@ -1,9 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Users, CheckCircle, XCircle, Clock, Star } from 'lucide-react-native';
+import {
+  Users, CheckCircle, XCircle, Clock, Star, ChevronDown, ChevronUp,
+  Award, User, AlertTriangle,
+} from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
+import { useRouter } from 'expo-router';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -11,77 +18,210 @@ import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftPost, ShiftStatus } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
 import ReviewModal from '@/components/ReviewModal';
 
 const FILTERS: (ShiftStatus | 'All')[] = ['All', 'Posted', 'Filled', 'InProgress', 'Completed', 'Cancelled'];
 
+interface AssignmentRow {
+  id: string;
+  shift_id: string;
+  worker_user_id: string;
+  confirmed_rate: number;
+  status: string;
+  created_at: string;
+}
+
+interface AppRow {
+  id: string;
+  shift_id: string;
+  worker_user_id: string;
+  status: string;
+  applied_at: string;
+}
+
+interface TimeEntryRow {
+  id: string;
+  assignment_id: string;
+  start_timestamp: string | null;
+  end_timestamp: string | null;
+  employer_confirmed_hours: number | null;
+  employer_notes: string | null;
+}
+
+interface WorkerReviewRow { reviewee_user_id: string; rating: number; }
+
+function calcClockHours(start: string, end: string): number {
+  return (new Date(end).getTime() - new Date(start).getTime()) / 3_600_000;
+}
+
+function roundHalf(n: number): number {
+  return Math.round(n * 2) / 2;
+}
+
+function fmtTs(ts: string): string {
+  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 export default function EmployerShifts() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { shiftPosts, shiftApplications, shiftAssignments, timeEntries, workerProfiles, users } = useDockData();
+  const router = useRouter();
+  const { shiftPosts, workerProfiles, users, workerCertifications } = useDockData();
+  const queryClient = useQueryClient();
+
   const utils = trpc.useUtils();
-  const invalidate = async () => { await utils.dock.bootstrap.invalidate(); };
-  const acceptApplicantM = trpc.shifts.acceptApplicant.useMutation({ onSuccess: invalidate });
-  const rejectApplicantM = trpc.shifts.rejectApplicant.useMutation({ onSuccess: invalidate });
-  const confirmHoursM = trpc.shifts.confirmHours.useMutation({ onSuccess: invalidate });
+  const invalidate = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['employer-assignments', user?.companyId] }),
+      queryClient.invalidateQueries({ queryKey: ['employer-apps', user?.companyId] }),
+      queryClient.invalidateQueries({ queryKey: ['employer-timeentries', user?.companyId] }),
+      utils.dock.bootstrap.invalidate(),
+    ]);
+  };
+
+  const acceptM = trpc.shifts.acceptApplicant.useMutation({ onSuccess: invalidate });
+  const rejectM = trpc.shifts.rejectApplicant.useMutation({ onSuccess: invalidate });
+  const confirmM = trpc.shifts.confirmHours.useMutation({ onSuccess: invalidate });
   const setStatusM = trpc.shifts.setStatus.useMutation({ onSuccess: invalidate });
 
   const [filter, setFilter] = useState<ShiftStatus | 'All'>('All');
   const [selected, setSelected] = useState<ShiftPost | null>(null);
   const [detailModal, setDetailModal] = useState(false);
   const [confirmHours, setConfirmHours] = useState('');
-  const [confirmNotes, setConfirmNotes] = useState('');
+  const [editingHours, setEditingHours] = useState(false);
   const [reviewFor, setReviewFor] = useState<{ assignmentId: string; workerUserId: string; workerName: string } | null>(null);
+  const [expandedApplicantId, setExpandedApplicantId] = useState<string | null>(null);
 
-  // myShifts must be declared BEFORE myAssignmentIds (which depends on it)
-  const myShifts = useMemo(() => shiftPosts.filter((s) => s.employerCompanyId === user?.companyId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [shiftPosts, user]);
-  const filtered = useMemo(() => filter === 'All' ? myShifts : myShifts.filter((s) => s.status === filter), [myShifts, filter]);
-
-  const myAssignmentIds = useMemo(
-    () => shiftAssignments
-      .filter((a) => myShifts.some((s) => s.id === a.shiftId))
-      .filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status))
-      .map((a) => a.id),
-    [shiftAssignments, myShifts],
+  const myShifts = useMemo(
+    () => shiftPosts
+      .filter((s) => s.employerCompanyId === user?.companyId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [shiftPosts, user],
   );
-  const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
-    { contextKind: 'shift_assignment', contextIds: myAssignmentIds },
-    { enabled: myAssignmentIds.length > 0 },
-  );
-  const reviewedAssignmentIds = useMemo(
-    () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
-    [myReviewsQuery.data],
+  const filteredShifts = useMemo(
+    () => (filter === 'All' ? myShifts : myShifts.filter((s) => s.status === filter)),
+    [myShifts, filter],
   );
 
-  const getApplicants = (shiftId: string) => shiftApplications.filter((a) => a.shiftId === shiftId && a.status === 'Applied');
-  const getAssignments = (shiftId: string) => shiftAssignments.filter((a) => a.shiftId === shiftId);
+  // Direct Supabase queries for assignments and applications
+  const assignmentsQ = useQuery({
+    queryKey: ['employer-assignments', user?.companyId],
+    queryFn: async (): Promise<AssignmentRow[]> => {
+      if (!user?.companyId) return [];
+      const shiftIds = shiftPosts.filter((s) => s.employerCompanyId === user.companyId).map((s) => s.id);
+      if (shiftIds.length === 0) return [];
+      const { data } = await supabase
+        .from('shift_assignments')
+        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at')
+        .in('shift_id', shiftIds);
+      return (data ?? []) as AssignmentRow[];
+    },
+    enabled: Boolean(user?.companyId),
+    staleTime: 30_000,
+  });
+
+  const appsQ = useQuery({
+    queryKey: ['employer-apps', user?.companyId],
+    queryFn: async (): Promise<AppRow[]> => {
+      if (!user?.companyId) return [];
+      const shiftIds = shiftPosts.filter((s) => s.employerCompanyId === user.companyId).map((s) => s.id);
+      if (shiftIds.length === 0) return [];
+      const { data } = await supabase
+        .from('shift_applications')
+        .select('id,shift_id,worker_user_id,status,applied_at')
+        .in('shift_id', shiftIds)
+        .eq('status', 'Applied');
+      return (data ?? []) as AppRow[];
+    },
+    enabled: Boolean(user?.companyId),
+    staleTime: 30_000,
+  });
+
+  const teQ = useQuery({
+    queryKey: ['employer-timeentries', user?.companyId],
+    queryFn: async (): Promise<TimeEntryRow[]> => {
+      const ids = (assignmentsQ.data ?? []).map((a) => a.id);
+      if (ids.length === 0) return [];
+      const { data } = await supabase
+        .from('time_entries')
+        .select('id,assignment_id,start_timestamp,end_timestamp,employer_confirmed_hours,employer_notes')
+        .in('assignment_id', ids);
+      return (data ?? []) as TimeEntryRow[];
+    },
+    enabled: (assignmentsQ.data?.length ?? 0) > 0,
+    staleTime: 30_000,
+  });
+
+  // Worker reviews for inline rating display
+  const workerReviewsQ = useQuery({
+    queryKey: ['worker-ratings'],
+    queryFn: async (): Promise<WorkerReviewRow[]> => {
+      const { data } = await supabase
+        .from('reviews')
+        .select('reviewee_user_id,rating')
+        .not('reviewee_user_id', 'is', null);
+      return (data ?? []) as WorkerReviewRow[];
+    },
+    staleTime: 120_000,
+  });
+
+  const allAssignments = assignmentsQ.data ?? [];
+  const allApps = appsQ.data ?? [];
+  const allTEs = teQ.data ?? [];
+  const workerReviews = workerReviewsQ.data ?? [];
+
+  const getApplicants = (shiftId: string) => allApps.filter((a) => a.shift_id === shiftId);
+  const getAssignments = (shiftId: string) => allAssignments.filter((a) => a.shift_id === shiftId);
+  const getTE = (assignmentId: string) => allTEs.find((t) => t.assignment_id === assignmentId);
+
   const getWorkerName = (userId: string) => {
     const wp = workerProfiles.find((w) => w.userId === userId);
     if (wp) return wp.displayName;
     return users.find((u) => u.id === userId)?.name ?? userId;
   };
 
-  const getTimeEntry = (assignmentId: string) => timeEntries.find((t) => t.assignmentId === assignmentId);
+  const getWorkerProfile = (userId: string) => workerProfiles.find((w) => w.userId === userId);
+  const getWorkerCerts = (userId: string) => workerCertifications.filter((c) => c.workerUserId === userId && c.adminApproved);
 
-  const handleAcceptApplicant = (_shiftId: string, _workerUserId: string, appId: string) => {
-    acceptApplicantM.mutate({ applicationId: appId }, {
-      onError: (e: Error) => Alert.alert('Unable to accept', e.message),
-    });
+  const getWorkerRating = (userId: string): { avg: number; count: number } => {
+    const revs = workerReviews.filter((r) => r.reviewee_user_id === userId);
+    if (revs.length === 0) return { avg: 0, count: 0 };
+    return { avg: revs.reduce((s, r) => s + r.rating, 0) / revs.length, count: revs.length };
   };
 
-  const handleRejectApplicant = (appId: string) => {
-    rejectApplicantM.mutate({ applicationId: appId, reason: 'Rejected by employer' }, {
-      onError: (e: Error) => Alert.alert('Unable to reject', e.message),
-    });
+  const getWorkerReliability = (userId: string): { total: number; noShows: number } => {
+    const workerAsss = allAssignments.filter((a) => a.worker_user_id === userId);
+    const total = workerAsss.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).length;
+    const noShows = workerAsss.filter((a) => a.status === 'NoShow').length;
+    return { total, noShows };
   };
 
-  const handleConfirmHours = (_assignmentId: string, teId: string) => {
-    if (!confirmHours) { Alert.alert('Enter confirmed hours'); return; }
-    confirmHoursM.mutate(
-      { timeEntryId: teId, hours: Number(confirmHours), notes: confirmNotes },
+  // Review tracking
+  const reviewableIds = useMemo(
+    () => allAssignments
+      .filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status))
+      .map((a) => a.id),
+    [allAssignments],
+  );
+  const myReviewsQ = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'shift_assignment', contextIds: reviewableIds },
+    { enabled: reviewableIds.length > 0 },
+  );
+  const reviewedIds = useMemo(
+    () => new Set(((myReviewsQ.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [myReviewsQ.data],
+  );
+
+  const handleConfirmHours = (assignmentId: string, teId: string, hours: number) => {
+    const h = Number(hours);
+    if (!h || h <= 0) { Alert.alert('Enter valid hours'); return; }
+    confirmM.mutate(
+      { timeEntryId: teId, hours: h, notes: '' },
       {
         onSuccess: () => {
-          setConfirmHours(''); setConfirmNotes('');
+          setConfirmHours('');
+          setEditingHours(false);
           Alert.alert('Hours Confirmed', 'Worker payment will be processed.');
         },
         onError: (e: Error) => Alert.alert('Unable to confirm hours', e.message),
@@ -93,24 +233,42 @@ export default function EmployerShifts() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Shifts</Text>
-        <Text style={styles.sub}>{myShifts.length} total</Text>
+        <Text style={styles.sub}>{myShifts.length} total · {allApps.length} pending applicants</Text>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterContent}
+      >
         {FILTERS.map((f) => (
-          <TouchableOpacity key={f} onPress={() => setFilter(f)} style={[styles.chip, filter === f && styles.chipActive]}>
+          <TouchableOpacity
+            key={f}
+            onPress={() => setFilter(f)}
+            style={[styles.chip, filter === f && styles.chipActive]}
+          >
             <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>{f}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
-        {filtered.length === 0 && <View style={styles.empty}><Text style={styles.emptyText}>No shifts here</Text></View>}
-        {filtered.map((s) => {
+      <ScrollView
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {filteredShifts.length === 0 && (
+          <View style={styles.empty}><Text style={styles.emptyText}>No shifts here</Text></View>
+        )}
+        {filteredShifts.map((s) => {
           const apps = getApplicants(s.id);
           const assignments = getAssignments(s.id);
           return (
-            <TouchableOpacity key={s.id} onPress={() => { setSelected(s); setDetailModal(true); }} activeOpacity={0.85}>
+            <TouchableOpacity
+              key={s.id}
+              onPress={() => { setSelected(s); setExpandedApplicantId(null); setDetailModal(true); }}
+              activeOpacity={0.85}
+            >
               <Card style={styles.card}>
                 <View style={styles.cardTop}>
                   <View style={{ flex: 1 }}>
@@ -142,6 +300,7 @@ export default function EmployerShifts() {
         })}
       </ScrollView>
 
+      {/* Detail Modal */}
       <Modal visible={detailModal && !!selected} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHandle} />
@@ -152,90 +311,248 @@ export default function EmployerShifts() {
                   <Text style={styles.modalTitle}>{selected.title}</Text>
                   <StatusBadge status={selected.status} size="md" />
                 </View>
-                <Text style={styles.modalMeta}>{selected.locationAddress}, {selected.locationCity} · {selected.date} · {selected.startTime}–{selected.endTime}</Text>
-                <View style={styles.detailGrid}>
-                  {[
-                    ['Category', selected.category],
-                    ['Rate', `$${selected.hourlyRate}/hr`],
-                    ['Min Hours', `${selected.minimumHours}h`],
-                    ['Workers Needed', `${selected.workersNeeded}`],
-                    ['Requirements', selected.requirements || 'None'],
-                  ].map(([l, v]) => (
-                    <View key={l} style={styles.detailItem}>
-                      <Text style={styles.detailLabel}>{l}</Text>
-                      <Text style={styles.detailValue}>{v}</Text>
-                    </View>
-                  ))}
-                </View>
+                <Text style={styles.modalMeta}>
+                  {selected.locationAddress}, {selected.locationCity} · {selected.date} · {selected.startTime}–{selected.endTime}
+                </Text>
 
                 {/* Applicants */}
                 {getApplicants(selected.id).length > 0 && (
                   <View style={styles.applicantsSection}>
-                    <Text style={styles.sectionTitle}>Applicants ({getApplicants(selected.id).length})</Text>
-                    {getApplicants(selected.id).map((app) => (
-                      <View key={app.id} style={styles.applicantRow}>
-                        <View style={styles.workerInfo}>
-                          <View style={styles.workerAvatar}>
-                            <Text style={styles.workerAvatarText}>{getWorkerName(app.workerUserId).charAt(0)}</Text>
+                    <Text style={styles.sectionTitle}>
+                      Applicants ({getApplicants(selected.id).length})
+                    </Text>
+                    {getApplicants(selected.id).map((app) => {
+                      const wp = getWorkerProfile(app.worker_user_id);
+                      const certs = getWorkerCerts(app.worker_user_id);
+                      const rating = getWorkerRating(app.worker_user_id);
+                      const rel = getWorkerReliability(app.worker_user_id);
+                      const isExpanded = expandedApplicantId === app.id;
+
+                      return (
+                        <View key={app.id} style={styles.applicantBlock}>
+                          <View style={styles.applicantRow}>
+                            <TouchableOpacity
+                              style={styles.workerInfo}
+                              onPress={() => setExpandedApplicantId(isExpanded ? null : app.id)}
+                            >
+                              <View style={styles.workerAvatar}>
+                                <Text style={styles.workerAvatarText}>
+                                  {getWorkerName(app.worker_user_id).charAt(0)}
+                                </Text>
+                              </View>
+                              <View>
+                                <Text style={styles.workerName}>{getWorkerName(app.worker_user_id)}</Text>
+                                <Text style={styles.appliedAt}>Applied {app.applied_at.split('T')[0]}</Text>
+                              </View>
+                              {isExpanded ? (
+                                <ChevronUp size={14} color={C.textMuted} />
+                              ) : (
+                                <ChevronDown size={14} color={C.textMuted} />
+                              )}
+                            </TouchableOpacity>
+                            <View style={styles.applicantBtns}>
+                              <TouchableOpacity
+                                onPress={() => acceptM.mutate({ applicationId: app.id }, {
+                                  onError: (e: Error) => Alert.alert('Unable to accept', e.message),
+                                })}
+                                style={styles.acceptBtn}
+                              >
+                                <CheckCircle size={16} color={C.green} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => rejectM.mutate({ applicationId: app.id, reason: 'Rejected by employer' }, {
+                                  onError: (e: Error) => Alert.alert('Unable to reject', e.message),
+                                })}
+                                style={styles.rejectBtn}
+                              >
+                                <XCircle size={16} color={C.red} />
+                              </TouchableOpacity>
+                            </View>
                           </View>
-                          <View>
-                            <Text style={styles.workerName}>{getWorkerName(app.workerUserId)}</Text>
-                            <Text style={styles.appliedAt}>Applied {app.appliedAt.split('T')[0]}</Text>
-                          </View>
+
+                          {/* Inline expanded worker profile */}
+                          {isExpanded && (
+                            <View style={styles.workerExpandCard}>
+                              {/* Skills */}
+                              {(wp?.skills ?? []).length > 0 && (
+                                <View style={styles.expandRow}>
+                                  {(wp!.skills).map((s) => (
+                                    <View key={s} style={styles.skillChip}>
+                                      <Text style={styles.skillText}>{s}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                              {/* Certs */}
+                              {certs.length > 0 && (
+                                <View style={styles.expandRow}>
+                                  {certs.map((c) => (
+                                    <View key={c.id} style={styles.certChip}>
+                                      <Award size={11} color={C.green} />
+                                      <Text style={styles.certChipText}>{c.type}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              )}
+                              {/* Rating */}
+                              {rating.count > 0 && (
+                                <View style={styles.expandMeta}>
+                                  {[1, 2, 3, 4, 5].map((n) => (
+                                    <Star key={n} size={12} color={n <= Math.round(rating.avg) ? C.yellow : C.border} fill={n <= Math.round(rating.avg) ? C.yellow : 'transparent'} />
+                                  ))}
+                                  <Text style={styles.expandMetaText}>{rating.avg.toFixed(1)} ({rating.count})</Text>
+                                </View>
+                              )}
+                              {/* Reliability */}
+                              <View style={styles.expandMeta}>
+                                <CheckCircle size={12} color={C.green} />
+                                <Text style={styles.expandMetaText}>
+                                  {rel.total} shifts completed
+                                  {rel.noShows > 0 ? ` · ${rel.noShows} no-shows` : ''}
+                                </Text>
+                              </View>
+                              {/* Bio snippet */}
+                              {wp?.bio && (
+                                <Text style={styles.bioSnippet} numberOfLines={2}>{wp.bio}</Text>
+                              )}
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setDetailModal(false);
+                                  setTimeout(() => router.push({ pathname: '/worker/[id]' as any, params: { id: app.worker_user_id } }), 300);
+                                }}
+                              >
+                                <Text style={styles.viewFullProfile}>View Full Profile →</Text>
+                              </TouchableOpacity>
+                            </View>
+                          )}
                         </View>
-                        <View style={styles.applicantBtns}>
-                          <TouchableOpacity onPress={() => handleAcceptApplicant(selected.id, app.workerUserId, app.id)} style={styles.acceptBtn}>
-                            <CheckCircle size={16} color={C.green} />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleRejectApplicant(app.id)} style={styles.rejectBtn}>
-                            <XCircle size={16} color={C.red} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
 
-                {/* Assignments & Time Confirmation */}
+                {/* Assignments + Time Confirmation */}
                 {getAssignments(selected.id).length > 0 && (
                   <View style={styles.assignSection}>
                     <Text style={styles.sectionTitle}>Assignments</Text>
                     {getAssignments(selected.id).map((ass) => {
-                      const te = getTimeEntry(ass.id);
+                      const te = getTE(ass.id);
+                      const clockHours = te?.start_timestamp && te?.end_timestamp
+                        ? calcClockHours(te.start_timestamp, te.end_timestamp)
+                        : null;
+                      const preFilledHours = clockHours ? roundHalf(clockHours) : 0;
+                      const diff = clockHours && te?.employer_confirmed_hours
+                        ? Math.abs(clockHours - te.employer_confirmed_hours)
+                        : 0;
+
                       return (
                         <View key={ass.id} style={styles.assignRow}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.workerName}>{getWorkerName(ass.workerUserId)}</Text>
-                            <Text style={styles.appliedAt}>${ass.confirmedRate}/hr</Text>
+                          <View style={styles.assignWorkerInfo}>
+                            <View style={styles.workerAvatar}>
+                              <User size={14} color={C.accent} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.workerName}>{getWorkerName(ass.worker_user_id)}</Text>
+                              <Text style={styles.appliedAt}>${ass.confirmed_rate}/hr</Text>
+                            </View>
                             <StatusBadge status={ass.status} />
+                            {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) &&
+                              !reviewedIds.has(ass.id) && (
+                                <TouchableOpacity
+                                  onPress={() => setReviewFor({
+                                    assignmentId: ass.id,
+                                    workerUserId: ass.worker_user_id,
+                                    workerName: getWorkerName(ass.worker_user_id),
+                                  })}
+                                  style={styles.rateBtn}
+                                >
+                                  <Star size={13} color={C.accent} />
+                                  <Text style={styles.rateBtnText}>Rate</Text>
+                                </TouchableOpacity>
+                              )}
                           </View>
-                          {te && te.endTimestamp && !te.employerConfirmedHours && (
-                            <View style={styles.timeConfirm}>
+
+                          {/* Awaiting worker confirmation badge */}
+                          {ass.status === 'Scheduled' && (
+                            <View style={styles.awaitingBadge}>
+                              <Clock size={12} color={C.yellow} />
+                              <Text style={styles.awaitingText}>Awaiting worker confirmation</Text>
+                            </View>
+                          )}
+
+                          {/* Time entry + confirmation */}
+                          {te && te.end_timestamp && !te.employer_confirmed_hours && (
+                            <View style={styles.timeConfirmBox}>
                               <Text style={styles.timeConfirmTitle}>Confirm Hours</Text>
-                              <Input value={confirmHours} onChangeText={setConfirmHours} keyboardType="numeric" placeholder="Hours worked" />
-                              <Input value={confirmNotes} onChangeText={setConfirmNotes} placeholder="Notes (optional)" />
-                              <Button label="Confirm" onPress={() => handleConfirmHours(ass.id, te.id)} size="sm" fullWidth icon={<Clock size={13} color={C.white} />} />
+                              <View style={styles.clockRecord}>
+                                <Clock size={13} color={C.textMuted} />
+                                <Text style={styles.clockText}>
+                                  Worker clocked: {fmtTs(te.start_timestamp!)} – {fmtTs(te.end_timestamp)}
+                                  {' '}({clockHours?.toFixed(2)}h)
+                                </Text>
+                              </View>
+
+                              {!editingHours ? (
+                                <View style={styles.confirmBtns}>
+                                  <Button
+                                    label={`Confirm Exact (${preFilledHours}h)`}
+                                    onPress={() => handleConfirmHours(ass.id, te.id, preFilledHours)}
+                                    size="sm"
+                                    fullWidth
+                                    icon={<CheckCircle size={13} color={C.white} />}
+                                  />
+                                  <Button
+                                    label="Edit Hours"
+                                    onPress={() => { setConfirmHours(String(preFilledHours)); setEditingHours(true); }}
+                                    variant="outline"
+                                    size="sm"
+                                    fullWidth
+                                  />
+                                </View>
+                              ) : (
+                                <View style={styles.confirmBtns}>
+                                  <Input
+                                    value={confirmHours}
+                                    onChangeText={(v) => setConfirmHours(v)}
+                                    keyboardType="numeric"
+                                    placeholder={String(preFilledHours)}
+                                    label="Hours worked"
+                                  />
+                                  {Number(confirmHours) > 0 && clockHours && Math.abs(clockHours - Number(confirmHours)) > 1 && (
+                                    <View style={styles.warnRow}>
+                                      <AlertTriangle size={13} color={C.yellow} />
+                                      <Text style={styles.warnText}>
+                                        ⚠️ Hours differ significantly from clock record. Worker may dispute.
+                                      </Text>
+                                    </View>
+                                  )}
+                                  <Button
+                                    label="Confirm"
+                                    onPress={() => handleConfirmHours(ass.id, te.id, Number(confirmHours))}
+                                    loading={confirmM.isPending}
+                                    size="sm"
+                                    fullWidth
+                                    icon={<CheckCircle size={13} color={C.white} />}
+                                  />
+                                  <Button
+                                    label="Cancel"
+                                    onPress={() => setEditingHours(false)}
+                                    variant="ghost"
+                                    size="sm"
+                                    fullWidth
+                                  />
+                                </View>
+                              )}
                             </View>
                           )}
-                          {te && te.employerConfirmedHours && (
-                            <View style={styles.confirmedBadge}>
+
+                          {te?.employer_confirmed_hours != null && (
+                            <View style={styles.confirmedBox}>
                               <CheckCircle size={14} color={C.green} />
-                              <Text style={styles.confirmedText}>{te.employerConfirmedHours}h confirmed</Text>
-                            </View>
-                          )}
-                          {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) && !reviewedAssignmentIds.has(ass.id) && (
-                            <TouchableOpacity
-                              onPress={() => setReviewFor({ assignmentId: ass.id, workerUserId: ass.workerUserId, workerName: getWorkerName(ass.workerUserId) })}
-                              style={styles.rateBtn}
-                            >
-                              <Star size={14} color={C.accent} />
-                              <Text style={styles.rateBtnText}>Rate</Text>
-                            </TouchableOpacity>
-                          )}
-                          {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) && reviewedAssignmentIds.has(ass.id) && (
-                            <View style={styles.ratedBadge}>
-                              <Star size={12} color={C.yellow} fill={C.yellow} />
-                              <Text style={styles.ratedText}>Rated</Text>
+                              <Text style={styles.confirmedText}>
+                                {te.employer_confirmed_hours}h confirmed
+                                {diff > 0.5 && <Text style={{ color: C.yellow }}> (disputed)</Text>}
+                              </Text>
                             </View>
                           )}
                         </View>
@@ -246,7 +563,15 @@ export default function EmployerShifts() {
 
                 <View style={styles.actionBtns}>
                   {selected.status === 'Posted' && (
-                    <Button label="Cancel Shift" onPress={() => { setStatusM.mutate({ id: selected.id, status: 'Cancelled' }); setDetailModal(false); }} variant="danger" fullWidth />
+                    <Button
+                      label="Cancel Shift"
+                      onPress={() => {
+                        setStatusM.mutate({ id: selected.id, status: 'Cancelled' });
+                        setDetailModal(false);
+                      }}
+                      variant="danger"
+                      fullWidth
+                    />
                   )}
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>
@@ -301,14 +626,11 @@ const styles = StyleSheet.create({
   modalTitleRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   modalTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text, flex: 1, marginRight: 8 },
   modalMeta: { fontSize: 13, color: C.textSecondary },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  detailItem: { width: '50%', padding: 12, borderBottomWidth: 1, borderRightWidth: 1, borderColor: C.border },
-  detailLabel: { fontSize: 11, color: C.textMuted, marginBottom: 2 },
-  detailValue: { fontSize: 12, color: C.text, fontWeight: '600' as const },
-  applicantsSection: { gap: 10, padding: 14, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border },
-  sectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
-  applicantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  workerInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  sectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 8 },
+  applicantsSection: { gap: 8, padding: 14, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border },
+  applicantBlock: { gap: 0 },
+  applicantRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 },
+  workerInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
   workerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
   workerAvatarText: { fontSize: 14, fontWeight: '700' as const, color: C.accent },
   workerName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
@@ -316,15 +638,42 @@ const styles = StyleSheet.create({
   applicantBtns: { flexDirection: 'row', gap: 8 },
   acceptBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
   rejectBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.redDim, alignItems: 'center', justifyContent: 'center' },
+  // Inline expanded worker card
+  workerExpandCard: {
+    backgroundColor: C.bgSecondary,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    gap: 8,
+    marginBottom: 8,
+  },
+  expandRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  skillChip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: C.accentDim, borderRadius: 6 },
+  skillText: { fontSize: 12, color: C.accent, fontWeight: '600' as const },
+  certChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: C.greenDim, borderRadius: 6 },
+  certChipText: { fontSize: 11, color: C.green, fontWeight: '600' as const },
+  expandMeta: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  expandMetaText: { fontSize: 12, color: C.textSecondary },
+  bioSnippet: { fontSize: 12, color: C.textMuted, fontStyle: 'italic' as const },
+  viewFullProfile: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+  // Assignments
   assignSection: { gap: 10, padding: 14, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border },
-  assignRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  timeConfirm: { flex: 1, gap: 8 },
-  timeConfirmTitle: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
-  confirmedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  assignRow: { gap: 8 },
+  assignWorkerInfo: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  awaitingBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.yellowDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  awaitingText: { fontSize: 12, color: C.yellow, fontWeight: '600' as const },
+  // Time confirm
+  timeConfirmBox: { backgroundColor: C.bgSecondary, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.border, gap: 8 },
+  timeConfirmTitle: { fontSize: 12, color: C.accent, fontWeight: '700' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  clockRecord: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clockText: { fontSize: 12, color: C.textSecondary },
+  confirmBtns: { gap: 8 },
+  warnRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, backgroundColor: C.yellowDim, borderRadius: 8, padding: 10 },
+  warnText: { fontSize: 12, color: C.yellow, flex: 1 },
+  confirmedBox: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   confirmedText: { fontSize: 13, color: C.green, fontWeight: '600' as const },
   actionBtns: { gap: 10 },
   rateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   rateBtnText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
-  ratedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  ratedText: { fontSize: 12, color: C.yellow, fontWeight: '600' as const },
 });

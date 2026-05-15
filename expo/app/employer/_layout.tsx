@@ -21,6 +21,7 @@ export default function EmployerLayout() {
       <Tabs.Screen name="shifts" options={{ title: 'Shifts', tabBarIcon: ({ color }) => <CalendarDays size={22} color={color} /> }} />
       <Tabs.Screen name="create-shift" options={{ title: 'Post Shift', tabBarIcon: ({ color }) => <PlusCircle size={22} color={color} /> }} />
       <Tabs.Screen name="browse-workers" options={{ title: 'Find Workers', tabBarIcon: ({ color }) => <Users size={22} color={color} /> }} />
+      <Tabs.Screen name="company-profile" options={{ href: null }} />
     </Tabs>
   );
 }

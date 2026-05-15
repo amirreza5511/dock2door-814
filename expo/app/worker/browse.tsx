@@ -1,27 +1,75 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
+  Alert, Modal, Linking,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MapPin, Clock, DollarSign, X, Users } from 'lucide-react-native';
+import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
-import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftCategory, ShiftPost } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
 
 const CATEGORY_COLORS: Record<ShiftCategory, string> = {
-  General: C.yellow, Driver: C.blue, Forklift: C.accent, HighReach: C.purple,
+  General: C.yellow,
+  Driver: C.blue,
+  Forklift: C.accent,
+  HighReach: C.purple,
 };
+
+interface AppRow { id: string; shift_id: string; worker_user_id: string; status: string; }
+
+interface CompanyReviewRow { target_company_id: string; rating: number; }
+
+function fmtTime(t: string): string {
+  try {
+    const [h, m] = t.split(':').map(Number);
+    const ap = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return m === 0 ? `${h12} ${ap}` : `${h12}:${String(m).padStart(2, '0')} ${ap}`;
+  } catch { return t; }
+}
+
+function formatShiftLine(date: string, startTime: string, endTime: string): string {
+  try {
+    const d = new Date(date + 'T00:00:00');
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()} · ${fmtTime(startTime)} – ${fmtTime(endTime)}`;
+  } catch { return `${date} · ${startTime} – ${endTime}`; }
+}
+
+function StarRow({ rating, size = 12 }: { rating: number; size?: number }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <Star key={n} size={size} color={n <= Math.round(rating) ? C.yellow : C.border} fill={n <= Math.round(rating) ? C.yellow : 'transparent'} />
+      ))}
+    </View>
+  );
+}
 
 export default function BrowseShifts() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { shiftPosts, shiftApplications, workerProfiles, companies } = useDockData();
+  const { shiftPosts, workerProfiles, companies, workerCertifications } = useDockData();
+  const queryClient = useQueryClient();
+
   const utils = trpc.useUtils();
   const applyM = trpc.shifts.apply.useMutation({
-    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['browse-apps', user?.id] }),
+        utils.dock.bootstrap.invalidate(),
+      ]);
+    },
   });
 
   const [query, setQuery] = useState('');
@@ -30,21 +78,63 @@ export default function BrowseShifts() {
   const [applyModal, setApplyModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Direct query for applications
+  const appsQ = useQuery({
+    queryKey: ['browse-apps', user?.id],
+    queryFn: async (): Promise<AppRow[]> => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('shift_applications')
+        .select('id,shift_id,worker_user_id,status')
+        .eq('worker_user_id', user.id);
+      return (data ?? []) as AppRow[];
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+  const myApps = appsQ.data ?? [];
+
+  // Company reviews for star ratings
+  const reviewsQ = useQuery({
+    queryKey: ['company-reviews'],
+    queryFn: async (): Promise<CompanyReviewRow[]> => {
+      const { data } = await supabase
+        .from('reviews')
+        .select('target_company_id,rating')
+        .not('target_company_id', 'is', null);
+      return (data ?? []) as CompanyReviewRow[];
+    },
+    staleTime: 120_000,
+  });
+  const allReviews = reviewsQ.data ?? [];
+
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
 
   const available = useMemo(() => shiftPosts.filter((s) => s.status === 'Posted'), [shiftPosts]);
-
   const filtered = useMemo(() => available.filter((s) => {
     const matchQ = s.title.toLowerCase().includes(query.toLowerCase()) || s.locationCity.toLowerCase().includes(query.toLowerCase());
     const matchCat = filterCat === 'All' || s.category === filterCat;
     return matchQ && matchCat;
   }), [available, query, filterCat]);
 
-  const myApps = useMemo(() => shiftApplications.filter((a) => a.workerUserId === user?.id), [shiftApplications, user]);
+  const hasApplied = (shiftId: string) => myApps.some((a) => a.shift_id === shiftId && ['Applied', 'Accepted'].includes(a.status));
 
-  const hasApplied = (shiftId: string) => myApps.some((a) => a.shiftId === shiftId && ['Applied', 'Accepted'].includes(a.status));
+  const getEmployerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? 'Employer';
 
-  const getEmployerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? companyId;
+  const getCompanyRating = (companyId: string): { avg: number; count: number } => {
+    const revs = allReviews.filter((r) => r.target_company_id === companyId);
+    if (revs.length === 0) return { avg: 0, count: 0 };
+    return { avg: revs.reduce((s, r) => s + r.rating, 0) / revs.length, count: revs.length };
+  };
+
+  const getAppliedCount = (shiftId: string) => myApps.filter((a) => a.shift_id === shiftId).length;
+
+  const hasCertForCategory = (category: ShiftCategory): boolean => {
+    if (category !== 'Forklift' && category !== 'HighReach') return true;
+    return workerCertifications.some(
+      (c) => c.workerUserId === user?.id && c.type === category && c.adminApproved,
+    );
+  };
 
   const handleApply = () => {
     if (!selected || !user) return;
@@ -59,7 +149,7 @@ export default function BrowseShifts() {
         onSettled: () => setSubmitting(false),
         onSuccess: () => {
           setApplyModal(false);
-          Alert.alert('Applied!', 'Your application has been sent. The employer will review it.');
+          Alert.alert('Applied!', 'Your application has been sent.');
         },
         onError: (e: Error) => Alert.alert('Unable to apply', e.message),
       },
@@ -68,6 +158,8 @@ export default function BrowseShifts() {
 
   const CATEGORIES: (ShiftCategory | 'All')[] = ['All', 'General', 'Driver', 'Forklift', 'HighReach'];
 
+  const isUrgent = (s: ShiftPost) => s.notes?.startsWith('[URGENT]');
+
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
@@ -75,20 +167,42 @@ export default function BrowseShifts() {
         <Text style={styles.sub}>{filtered.length} open shifts</Text>
         <View style={styles.searchBar}>
           <Search size={16} color={C.textMuted} />
-          <TextInput value={query} onChangeText={setQuery} placeholder="Search shifts…" placeholderTextColor={C.textMuted} style={styles.searchInput} />
-          {query ? <TouchableOpacity onPress={() => setQuery('')}><X size={16} color={C.textMuted} /></TouchableOpacity> : null}
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search shifts…"
+            placeholderTextColor={C.textMuted}
+            style={styles.searchInput}
+          />
+          {query ? (
+            <TouchableOpacity onPress={() => setQuery('')}>
+              <X size={16} color={C.textMuted} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterContent}
+      >
         {CATEGORIES.map((c) => (
-          <TouchableOpacity key={c} onPress={() => setFilterCat(c)} style={[styles.chip, filterCat === c && styles.chipActive]}>
+          <TouchableOpacity
+            key={c}
+            onPress={() => setFilterCat(c)}
+            style={[styles.chip, filterCat === c && styles.chipActive]}
+          >
             <Text style={[styles.chipText, filterCat === c && styles.chipTextActive]}>{c}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         {filtered.length === 0 && (
           <View style={styles.empty}>
             <Search size={40} color={C.textMuted} />
@@ -98,29 +212,81 @@ export default function BrowseShifts() {
         {filtered.map((s) => {
           const applied = hasApplied(s.id);
           const color = CATEGORY_COLORS[s.category];
+          const rating = getCompanyRating(s.employerCompanyId);
+          const urgent = isUrgent(s);
           return (
-            <TouchableOpacity key={s.id} onPress={() => { setSelected(s); setApplyModal(true); }} activeOpacity={0.85}>
+            <TouchableOpacity
+              key={s.id}
+              onPress={() => { setSelected(s); setApplyModal(true); }}
+              activeOpacity={0.85}
+            >
               <Card style={[styles.card, applied && styles.cardApplied]}>
+                {/* Top row: category + rating + applied count + urgent */}
                 <View style={styles.cardTop}>
                   <View style={[styles.catChip, { backgroundColor: color + '20' }]}>
                     <Text style={[styles.catText, { color }]}>{s.category}</Text>
                   </View>
-                  {applied && <View style={styles.appliedBadge}><Text style={styles.appliedText}>Applied</Text></View>}
-                  <StatusBadge status={s.status} />
+                  {urgent && (
+                    <View style={styles.urgentBadge}>
+                      <Text style={styles.urgentText}>URGENT</Text>
+                    </View>
+                  )}
+                  {rating.count > 0 && (
+                    <View style={styles.ratingRow}>
+                      <StarRow rating={rating.avg} />
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }} />
+                  {applied && (
+                    <View style={styles.appliedBadge}>
+                      <CheckCircle size={11} color={C.green} />
+                      <Text style={styles.appliedText}>Applied</Text>
+                    </View>
+                  )}
                 </View>
+
+                {/* Title */}
                 <Text style={styles.shiftTitle}>{s.title}</Text>
-                <Text style={styles.employer}>{getEmployerName(s.employerCompanyId)}</Text>
+
+                {/* Employer name — tappable */}
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: s.employerCompanyId } })}
+                  hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
+                >
+                  <Text style={styles.employer}>{getEmployerName(s.employerCompanyId)}</Text>
+                </TouchableOpacity>
+
+                {/* Location */}
                 <View style={styles.metaRow}>
                   <MapPin size={12} color={C.textMuted} />
-                  <Text style={styles.metaText}>{s.locationCity}</Text>
-                  <Clock size={12} color={C.textMuted} />
-                  <Text style={styles.metaText}>{s.date} · {s.startTime}–{s.endTime}</Text>
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {s.locationAddress}, {s.locationCity}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      Linking.openURL(
+                        `https://maps.google.com/?q=${encodeURIComponent(`${s.locationAddress}, ${s.locationCity}`)}`,
+                      )
+                    }
+                    style={styles.mapsLink}
+                  >
+                    <Navigation size={11} color={C.blue} />
+                  </TouchableOpacity>
                 </View>
+
+                {/* Date/time */}
+                <View style={styles.metaRow}>
+                  <Clock size={12} color={C.textMuted} />
+                  <Text style={styles.metaText}>{formatShiftLine(s.date, s.startTime, s.endTime)}</Text>
+                </View>
+
+                {/* Bottom: rate + min hours + workers */}
                 <View style={styles.cardBottom}>
                   <View style={styles.rateRow}>
-                    <DollarSign size={14} color={C.green} />
-                    <Text style={styles.rate}>${s.hourlyRate}/hr</Text>
-                    <Text style={styles.minHours}>Min {s.minimumHours}h</Text>
+                    <Text style={styles.rate}>${s.hourlyRate ?? s.flatRate}/hr</Text>
+                    <View style={styles.minHoursBadge}>
+                      <Text style={styles.minHoursText}>min {s.minimumHours}h</Text>
+                    </View>
                   </View>
                   <View style={styles.workersRow}>
                     <Users size={12} color={C.textMuted} />
@@ -133,72 +299,143 @@ export default function BrowseShifts() {
         })}
       </ScrollView>
 
+      {/* Apply Modal */}
       <Modal visible={applyModal && !!selected} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHandle} />
-          {selected && (
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.modalBody}>
-                <View style={styles.modalCatRow}>
-                  <View style={[styles.catChip, { backgroundColor: CATEGORY_COLORS[selected.category] + '20' }]}>
-                    <Text style={[styles.catText, { color: CATEGORY_COLORS[selected.category] }]}>{selected.category}</Text>
-                  </View>
-                  <StatusBadge status={selected.status} />
-                </View>
-                <Text style={styles.modalTitle}>{selected.title}</Text>
-                <Text style={styles.modalEmployer}>{getEmployerName(selected.employerCompanyId)}</Text>
+          {selected && (() => {
+            const rating = getCompanyRating(selected.employerCompanyId);
+            const certOk = hasCertForCategory(selected.category);
+            const workerRate = profile?.hourlyExpectation ?? 0;
+            const shiftRate = selected.hourlyRate ?? selected.flatRate ?? 0;
+            const reqParts = selected.requirements?.split(',').map((r) => r.trim()).filter(Boolean) ?? [];
+            const employerShiftCount = shiftPosts.filter((s) => s.employerCompanyId === selected.employerCompanyId).length;
+            const fillRate = employerShiftCount > 0
+              ? Math.round((shiftPosts.filter((s) => s.employerCompanyId === selected.employerCompanyId && s.status === 'Completed').length / employerShiftCount) * 100)
+              : 0;
 
-                <View style={styles.detailGrid}>
-                  {[
-                    ['Location', `${selected.locationAddress}, ${selected.locationCity}`],
-                    ['Date', selected.date],
-                    ['Time', `${selected.startTime} – ${selected.endTime}`],
-                    ['Pay', `$${selected.hourlyRate}/hr`],
-                    ['Min Hours', `${selected.minimumHours}h`],
-                    ['Workers Needed', `${selected.workersNeeded}`],
-                    ['Requirements', selected.requirements || 'None'],
-                  ].map(([l, v]) => (
-                    <View key={l} style={styles.detailItem}>
-                      <Text style={styles.detailLabel}>{l}</Text>
-                      <Text style={styles.detailValue}>{v}</Text>
+            return (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalBody}>
+                  <View style={styles.modalCatRow}>
+                    <View style={[styles.catChip, { backgroundColor: CATEGORY_COLORS[selected.category] + '20' }]}>
+                      <Text style={[styles.catText, { color: CATEGORY_COLORS[selected.category] }]}>
+                        {selected.category}
+                      </Text>
                     </View>
-                  ))}
-                </View>
-
-                {selected.notes ? (
-                  <View style={styles.notesBox}>
-                    <Text style={styles.notesLabel}>Additional Notes</Text>
-                    <Text style={styles.notesText}>{selected.notes}</Text>
+                    {isUrgent(selected) && (
+                      <View style={styles.urgentBadge}>
+                        <Text style={styles.urgentText}>URGENT</Text>
+                      </View>
+                    )}
                   </View>
-                ) : null}
+                  <Text style={styles.modalTitle}>{selected.title}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setApplyModal(false);
+                      setTimeout(() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: selected.employerCompanyId } }), 300);
+                    }}
+                  >
+                    <Text style={styles.modalEmployer}>{getEmployerName(selected.employerCompanyId)} →</Text>
+                  </TouchableOpacity>
 
-                {profile && (
-                  <View style={styles.profileMatch}>
-                    <Text style={styles.profileMatchTitle}>Your Skills</Text>
-                    <View style={styles.skillsRow}>
-                      {profile.skills.map((sk) => (
-                        <View key={sk} style={[styles.skillChip, selected.category === sk && styles.skillChipMatch]}>
-                          <Text style={[styles.skillText, selected.category === sk && styles.skillTextMatch]}>{sk}</Text>
+                  {/* Requirements */}
+                  {reqParts.length > 0 && (
+                    <View style={styles.modalSection}>
+                      <Text style={styles.modalSectionTitle}>Requirements</Text>
+                      {reqParts.map((r, i) => (
+                        <View key={i} style={styles.bulletRow}>
+                          <Text style={styles.bullet}>•</Text>
+                          <Text style={styles.bulletText}>{r}</Text>
                         </View>
                       ))}
                     </View>
-                    <Text style={styles.profileMatchSub}>Your rate: ${profile.hourlyExpectation}/hr · Offering: ${selected.hourlyRate}/hr</Text>
-                  </View>
-                )}
-
-                <View style={styles.actionBtns}>
-                  {hasApplied(selected.id) ? (
-                    <View style={styles.alreadyApplied}>
-                      <Text style={styles.alreadyAppliedText}>✓ You have already applied to this shift</Text>
-                    </View>
-                  ) : (
-                    <Button label={`Apply for This Shift · $${selected.hourlyRate}/hr`} onPress={handleApply} loading={submitting} fullWidth size="lg" />
                   )}
-                  <Button label="Close" onPress={() => setApplyModal(false)} variant="ghost" fullWidth />
+
+                  {/* Your Match */}
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Your Match</Text>
+                    <View style={styles.matchRow}>
+                      {certOk ? (
+                        <CheckCircle size={15} color={C.green} />
+                      ) : (
+                        <AlertTriangle size={15} color={C.red} />
+                      )}
+                      <Text style={[styles.matchText, { color: certOk ? C.green : C.red }]}>
+                        {certOk
+                          ? `${selected.category} certification — verified ✓`
+                          : `Missing ${selected.category} certification — required`}
+                      </Text>
+                    </View>
+                    {workerRate > 0 && shiftRate > 0 && (
+                      <View style={styles.matchRow}>
+                        {shiftRate >= workerRate ? (
+                          <CheckCircle size={15} color={C.green} />
+                        ) : (
+                          <AlertTriangle size={15} color={C.yellow} />
+                        )}
+                        <Text style={[styles.matchText, { color: shiftRate >= workerRate ? C.green : C.yellow }]}>
+                          You expect ${workerRate}/hr — this shift pays ${shiftRate}/hr{shiftRate >= workerRate ? ' ✓' : ''}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Employer Reliability */}
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Employer Reliability</Text>
+                    <View style={styles.reliabilityRow}>
+                      <Text style={styles.reliabilityText}>
+                        {employerShiftCount} shifts posted
+                      </Text>
+                      <Text style={styles.reliabilityDot}>·</Text>
+                      <Text style={styles.reliabilityText}>{fillRate}% fill rate</Text>
+                      {rating.count > 0 && (
+                        <>
+                          <Text style={styles.reliabilityDot}>·</Text>
+                          <StarRow rating={rating.avg} />
+                          <Text style={styles.reliabilityText}>{rating.avg.toFixed(1)}</Text>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  {/* Notes */}
+                  {selected.notes && !selected.notes.startsWith('[URGENT]') && (
+                    <View style={styles.notesBox}>
+                      <Text style={styles.notesLabel}>Notes from employer</Text>
+                      <Text style={styles.notesText}>{selected.notes}</Text>
+                    </View>
+                  )}
+                  {selected.notes?.startsWith('[URGENT]') && selected.notes.length > 8 && (
+                    <View style={styles.notesBox}>
+                      <Text style={styles.notesLabel}>Notes from employer</Text>
+                      <Text style={styles.notesText}>{selected.notes.replace('[URGENT] ', '')}</Text>
+                    </View>
+                  )}
+
+                  {/* Apply */}
+                  <View style={styles.actionBtns}>
+                    {hasApplied(selected.id) ? (
+                      <View style={styles.alreadyApplied}>
+                        <CheckCircle size={16} color={C.green} />
+                        <Text style={styles.alreadyAppliedText}>Already applied to this shift</Text>
+                      </View>
+                    ) : (
+                      <Button
+                        label={`Apply · $${selected.hourlyRate ?? selected.flatRate}/hr`}
+                        onPress={handleApply}
+                        loading={submitting}
+                        fullWidth
+                        size="lg"
+                      />
+                    )}
+                    <Button label="Close" onPress={() => setApplyModal(false)} variant="ghost" fullWidth />
+                  </View>
                 </View>
-              </View>
-            </ScrollView>
-          )}
+              </ScrollView>
+            );
+          })()}
         </View>
       </Modal>
     </View>
@@ -207,10 +444,26 @@ export default function BrowseShifts() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: C.bgSecondary,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 4 },
   sub: { fontSize: 13, color: C.textSecondary, marginBottom: 12 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 10, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, height: 44 },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: C.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.border,
+    paddingHorizontal: 12,
+    height: 44,
+  },
   searchInput: { flex: 1, color: C.text, fontSize: 14 },
   filterScroll: { maxHeight: 50, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   filterContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, alignItems: 'center' },
@@ -219,47 +472,67 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, color: C.textSecondary, fontWeight: '500' as const },
   chipTextActive: { color: C.accent, fontWeight: '700' as const },
   list: { padding: 16, gap: 12 },
-  card: {},
+  card: { gap: 6 },
   cardApplied: { borderColor: C.green + '50', backgroundColor: C.greenDim },
-  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
   catChip: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   catText: { fontSize: 12, fontWeight: '700' as const },
-  appliedBadge: { backgroundColor: C.greenDim, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  urgentBadge: { backgroundColor: C.redDim, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  urgentText: { fontSize: 10, color: C.red, fontWeight: '800' as const, letterSpacing: 0.5 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  appliedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.greenDim, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
   appliedText: { fontSize: 11, color: C.green, fontWeight: '700' as const },
-  shiftTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text, marginBottom: 2 },
-  employer: { fontSize: 13, color: C.accent, fontWeight: '600' as const, marginBottom: 6 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 10 },
-  metaText: { fontSize: 12, color: C.textSecondary },
-  cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
-  rateRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rate: { fontSize: 16, fontWeight: '800' as const, color: C.green },
-  minHours: { fontSize: 12, color: C.textMuted, marginLeft: 8 },
+  shiftTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  employer: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  metaText: { fontSize: 12, color: C.textSecondary, flex: 1 },
+  mapsLink: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: C.blueDim, borderRadius: 6 },
+  cardBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    marginTop: 4,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+  },
+  rateRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rate: { fontSize: 18, fontWeight: '800' as const, color: C.green },
+  minHoursBadge: { backgroundColor: C.bgSecondary, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  minHoursText: { fontSize: 11, color: C.textMuted, fontWeight: '500' as const },
   workersRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   workersText: { fontSize: 12, color: C.textMuted },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyText: { fontSize: 16, color: C.textSecondary, fontWeight: '600' as const },
+  // Modal
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
-  modalBody: { padding: 20, gap: 14 },
-  modalCatRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  modalBody: { padding: 20, gap: 16 },
+  modalCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modalTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   modalEmployer: { fontSize: 15, color: C.accent, fontWeight: '600' as const },
-  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  detailItem: { width: '50%', padding: 12, borderBottomWidth: 1, borderRightWidth: 1, borderColor: C.border },
-  detailLabel: { fontSize: 11, color: C.textMuted, marginBottom: 2 },
-  detailValue: { fontSize: 12, color: C.text, fontWeight: '600' as const },
+  modalSection: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14, gap: 8 },
+  modalSectionTitle: { fontSize: 12, fontWeight: '700' as const, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 4 },
+  bulletRow: { flexDirection: 'row', gap: 8 },
+  bullet: { fontSize: 14, color: C.textSecondary, marginTop: 1 },
+  bulletText: { fontSize: 14, color: C.textSecondary, flex: 1 },
+  matchRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  matchText: { fontSize: 13, fontWeight: '600' as const, flex: 1 },
+  reliabilityRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  reliabilityText: { fontSize: 13, color: C.textSecondary },
+  reliabilityDot: { fontSize: 13, color: C.textMuted },
   notesBox: { backgroundColor: C.bgSecondary, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.border },
-  notesLabel: { fontSize: 11, color: C.textMuted, marginBottom: 4 },
+  notesLabel: { fontSize: 11, color: C.textMuted, marginBottom: 4, fontWeight: '600' as const },
   notesText: { fontSize: 13, color: C.textSecondary },
-  profileMatch: { backgroundColor: C.card, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: C.border, gap: 8 },
-  profileMatchTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
-  skillsRow: { flexDirection: 'row', gap: 6 },
-  skillChip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: C.bgSecondary, borderRadius: 6 },
-  skillChipMatch: { backgroundColor: C.greenDim },
-  skillText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
-  skillTextMatch: { color: C.green },
-  profileMatchSub: { fontSize: 12, color: C.textMuted },
   actionBtns: { gap: 10 },
-  alreadyApplied: { backgroundColor: C.greenDim, borderRadius: 12, padding: 14, alignItems: 'center' },
+  alreadyApplied: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: C.greenDim,
+    borderRadius: 12,
+    padding: 14,
+    justifyContent: 'center',
+  },
   alreadyAppliedText: { fontSize: 14, color: C.green, fontWeight: '600' as const },
 });
