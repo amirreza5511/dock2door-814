@@ -3,12 +3,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight } from 'lucide-react-native';
+import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight, Star } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+
+interface RatingSummary { target_id: string; count: number; avg_rating: number; }
 
 type SkillFilter = 'All' | 'General' | 'Driver' | 'Forklift' | 'HighReach';
 
@@ -24,6 +26,22 @@ interface WorkerRow {
   verified: boolean;
   status: string;
   bio: string | null;
+}
+
+async function fetchRatingSummaries(): Promise<Record<string, RatingSummary>> {
+  const { data } = await supabase
+    .from('review_summaries')
+    .select('target_id, count, avg_rating')
+    .eq('target_kind', 'worker');
+  const map: Record<string, RatingSummary> = {};
+  for (const row of (data ?? [])) {
+    map[row.target_id as string] = {
+      target_id: row.target_id as string,
+      count: Number(row.count ?? 0),
+      avg_rating: Number(row.avg_rating ?? 0),
+    };
+  }
+  return map;
 }
 
 async function fetchWorkers(): Promise<WorkerRow[]> {
@@ -49,6 +67,13 @@ export default function BrowseWorkers() {
     queryFn: fetchWorkers,
     staleTime: 30_000,
   });
+
+  const ratingsQuery = useQuery({
+    queryKey: ['browse-worker-ratings'],
+    queryFn: fetchRatingSummaries,
+    staleTime: 60_000,
+  });
+  const ratingMap = ratingsQuery.data ?? {};
 
   const filtered = useMemo(() => {
     const list = workersQuery.data ?? [];
@@ -140,6 +165,21 @@ export default function BrowseWorkers() {
                       </>
                     )}
                   </View>
+                  {ratingMap[w.user_id] && (
+                    <View style={styles.ratingRow}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <Star
+                          key={n}
+                          size={10}
+                          color={n <= Math.round(ratingMap[w.user_id].avg_rating) ? C.yellow : C.border}
+                          fill={n <= Math.round(ratingMap[w.user_id].avg_rating) ? C.yellow : 'transparent'}
+                        />
+                      ))}
+                      <Text style={styles.ratingText}>
+                        {ratingMap[w.user_id].avg_rating.toFixed(1)} ({ratingMap[w.user_id].count})
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </View>
 
@@ -203,6 +243,8 @@ const styles = StyleSheet.create({
   skillChip: { paddingHorizontal: 10, paddingVertical: 4, backgroundColor: C.accentDim, borderRadius: 6 },
   skillText: { fontSize: 11, color: C.accent, fontWeight: '600' as const },
   bio: { fontSize: 13, color: C.textMuted, lineHeight: 18 },
+  ratingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, marginTop: 3 },
+  ratingText: { fontSize: 11, color: C.yellow, fontWeight: '600' as const, marginLeft: 3 },
   viewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accentDim, borderRadius: 10, paddingVertical: 10, borderWidth: 1, borderColor: C.accent + '50' },
   viewBtnText: { fontSize: 14, color: C.accent, fontWeight: '700' as const },
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },

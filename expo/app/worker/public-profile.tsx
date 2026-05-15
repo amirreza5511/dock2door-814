@@ -46,6 +46,8 @@ interface ReviewRow {
   comment: string | null;
   created_at: string;
   reviewer_user_id: string;
+  reviewer_company_id: string | null;
+  reviewer_company: { name: string } | null;
 }
 
 async function fetchPublicProfile(workerId: string) {
@@ -68,8 +70,8 @@ async function fetchPublicProfile(workerId: string) {
       .eq('moderation_status', 'approved'),
     supabase
       .from('reviews')
-      .select('id,rating,comment,created_at,reviewer_user_id')
-      .eq('reviewee_user_id', workerId)
+      .select('id,rating,comment,created_at,reviewer_user_id,reviewer_company_id,reviewer_company:reviewer_company_id(name)')
+      .eq('target_user_id', workerId)
       .order('created_at', { ascending: false })
       .limit(10),
   ]);
@@ -298,6 +300,9 @@ export default function WorkerPublicProfile() {
                   <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
                 </View>
                 {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
+                {r.reviewer_company?.name ? (
+                  <Text style={styles.reviewerName}>by {r.reviewer_company.name}</Text>
+                ) : null}
               </Card>
             ))
           )}
@@ -351,4 +356,5 @@ const styles = StyleSheet.create({
   reviewDate: { fontSize: 11, color: C.textMuted, marginLeft: 6 },
   reviewComment: { fontSize: 13, color: C.textSecondary, lineHeight: 20 },
   emptyText: { fontSize: 13, color: C.textMuted, textAlign: 'center' },
+  reviewerName: { fontSize: 11, color: C.textMuted, marginTop: 4, fontStyle: 'italic' as const },
 });

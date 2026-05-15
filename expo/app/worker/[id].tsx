@@ -29,7 +29,7 @@ interface WorkerPublic {
 
 interface CertRow { id: string; type: string; expiry_date: string | null; status: string; }
 interface PhotoRow { id: string; file_path: string; caption: string | null; visibility: string; moderation_status: string; }
-interface ReviewRow { id: string; rating: number; comment: string | null; created_at: string; reviewer_user_id: string; }
+interface ReviewRow { id: string; rating: number; comment: string | null; created_at: string; reviewer_user_id: string; reviewer_company_id: string | null; reviewer_company: { name: string } | null; }
 interface AssignmentCountRow { id: string; status: string; }
 interface AvailabilityRow { date: string; available: boolean; }
 
@@ -58,8 +58,8 @@ async function fetchWorkerById(userId: string) {
       .limit(24),
     supabase
       .from('reviews')
-      .select('id,rating,comment,created_at,reviewer_user_id')
-      .eq('reviewee_user_id', userId)
+      .select('id,rating,comment,created_at,reviewer_user_id,reviewer_company_id,reviewer_company:reviewer_company_id(name)')
+      .eq('target_user_id', userId)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
@@ -426,6 +426,9 @@ export default function WorkerPublicProfileById() {
                   <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
                 </View>
                 {r.comment ? <Text style={styles.reviewComment}>{r.comment}</Text> : null}
+                {(r.reviewer_company?.name) ? (
+                  <Text style={styles.reviewerName}>by {r.reviewer_company.name}</Text>
+                ) : null}
               </Card>
             ))
           )}
@@ -539,6 +542,7 @@ const styles = StyleSheet.create({
   reviewDate: { fontSize: 11, color: C.textMuted, marginLeft: 6 },
   reviewComment: { fontSize: 13, color: C.textSecondary, lineHeight: 20 },
   emptyText: { fontSize: 13, color: C.textMuted, textAlign: 'center' as const, fontStyle: 'italic' as const },
+  reviewerName: { fontSize: 11, color: C.textMuted, marginTop: 4, fontStyle: 'italic' as const },
   // Employer rate stats
   statsRow: { flexDirection: 'row', width: '100%', paddingHorizontal: 16 },
   stat: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -118,6 +118,15 @@ interface CertRow {
   created_at: string;
 }
 
+interface OwnReviewRow {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_company_id: string | null;
+  reviewer_company: { name: string } | null;
+}
+
 interface PrivateInfo {
   date_of_birth: string | null;
   gender: string | null;
@@ -192,7 +201,7 @@ export default function WorkerProfile() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const { workerProfiles, updateWorkerProfile, refetch } = useDockData();
+  const { workerProfiles, updateWorkerProfile, refetch, isLoading: bootstrapLoading } = useDockData();
   const queryClient = useQueryClient();
 
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id) as EditableWorkerProfile | undefined, [workerProfiles, user]);
@@ -247,6 +256,38 @@ export default function WorkerProfile() {
       setGovtIdType((d.govt_id_type as GovtIdType) ?? '');
     }
   }, [privateQuery.data]);
+
+  const ratingSummaryQuery = useQuery({
+    queryKey: ['worker-own-rating-summary', user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async (): Promise<{ count: number; avg_rating: number } | null> => {
+      if (!user) return null;
+      const { data } = await supabase
+        .from('review_summaries')
+        .select('count, avg_rating')
+        .eq('target_kind', 'worker')
+        .eq('target_id', user.id)
+        .maybeSingle();
+      return data as { count: number; avg_rating: number } | null;
+    },
+    staleTime: 30_000,
+  });
+
+  const ownReviewsQuery = useQuery({
+    queryKey: ['worker-own-reviews', user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async (): Promise<OwnReviewRow[]> => {
+      if (!user) return [];
+      const { data } = await supabase
+        .from('reviews')
+        .select('id, rating, comment, created_at, reviewer_company_id, reviewer_company:reviewer_company_id(name)')
+        .eq('target_user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      return (data ?? []) as OwnReviewRow[];
+    },
+    staleTime: 30_000,
+  });
 
   const extendedQuery = useQuery({
     queryKey: ['worker-profile-extended', user?.id],
@@ -637,6 +678,21 @@ export default function WorkerProfile() {
 
   const ext = extendedQuery.data;
 
+  const displayedPhotos = useMemo(() => {
+    const photos = photosQuery.data ?? [];
+    if (photoVisibility === 'private') return photos;
+    if (photoVisibility === 'company') return photos.filter((p) => p.visibility === 'company' || p.visibility === 'public');
+    return photos.filter((p) => p.visibility === 'public');
+  }, [photosQuery.data, photoVisibility]);
+
+  if (bootstrapLoading && !profile) {
+    return (
+      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={styles.noProfileText}>Loading your profile…</Text>
+      </View>
+    );
+  }
+
   if (!profile) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
@@ -689,6 +745,40 @@ export default function WorkerProfile() {
             ) : null}
           </View>
         </View>
+
+        {/* ── My Ratings ── */}
+        {ratingSummaryQuery.data && Number(ratingSummaryQuery.data.count) > 0 && (
+          <Card style={styles.ratingsCard}>
+            <View style={styles.ratingsHeaderRow}>
+              <Star size={15} color={C.yellow} fill={C.yellow} />
+              <Text style={styles.ratingsTitle}>My Employer Ratings</Text>
+              <Text style={styles.ratingsAvgNum}>{Number(ratingSummaryQuery.data.avg_rating).toFixed(1)}</Text>
+            </View>
+            <View style={styles.ratingsStarsRow}>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  size={13}
+                  color={n <= Math.round(Number(ratingSummaryQuery.data!.avg_rating)) ? C.yellow : C.border}
+                  fill={n <= Math.round(Number(ratingSummaryQuery.data!.avg_rating)) ? C.yellow : 'transparent'}
+                />
+              ))}
+              <Text style={styles.ratingsCount}>{ratingSummaryQuery.data.count} review{Number(ratingSummaryQuery.data.count) === 1 ? '' : 's'}</Text>
+            </View>
+            {(ownReviewsQuery.data ?? []).map((r) => (
+              <View key={r.id} style={styles.reviewRow}>
+                <View style={styles.reviewStarsSmall}>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Star key={n} size={10} color={n <= r.rating ? C.yellow : C.border} fill={n <= r.rating ? C.yellow : 'transparent'} />
+                  ))}
+                  <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                </View>
+                {r.comment ? <Text style={styles.reviewComment}>&quot;{r.comment}&quot;</Text> : null}
+                {r.reviewer_company?.name ? <Text style={styles.reviewerName}>— {r.reviewer_company.name}</Text> : null}
+              </View>
+            ))}
+          </Card>
+        )}
 
         {/* ── Stats ── */}
         <Card style={styles.statsCard}>
@@ -924,6 +1014,7 @@ export default function WorkerProfile() {
             action="+ Upload"
             onAction={() => uploadWorkPhotoMutation.mutate()}
           />
+          <Text style={styles.visibilityLabel}>Show &amp; upload as:</Text>
           <View style={styles.visibilityRow}>
             {(['private', 'company', 'public'] as const).map((v) => (
               <TouchableOpacity
@@ -936,11 +1027,20 @@ export default function WorkerProfile() {
               </TouchableOpacity>
             ))}
           </View>
-          {(photosQuery.data ?? []).length === 0 ? (
-            <Card><Text style={styles.noCertText}>No work photos uploaded yet.</Text></Card>
+          {photoVisibility === 'company' && (
+            <Text style={styles.visibilityHint}>Showing photos visible to employers (company + public)</Text>
+          )}
+          {photoVisibility === 'public' && (
+            <Text style={styles.visibilityHint}>Showing photos visible to everyone (public only)</Text>
+          )}
+          {photoVisibility === 'private' && (
+            <Text style={styles.visibilityHint}>Showing all your photos (only you can see this view)</Text>
+          )}
+          {displayedPhotos.length === 0 ? (
+            <Card><Text style={styles.noCertText}>{photoVisibility === 'private' ? 'No work photos uploaded yet.' : `No ${photoVisibility}-visible photos yet.`}</Text></Card>
           ) : (
             <View style={styles.photoGrid}>
-              {(photosQuery.data ?? []).map((p) => (
+              {displayedPhotos.map((p) => (
                 <View key={p.id} style={styles.photoCell}>
                   {p.signed_url ? (
                     <Image source={{ uri: p.signed_url }} style={styles.photoImage} />
@@ -1222,6 +1322,22 @@ const styles = StyleSheet.create({
   formGap: { gap: 12 },
   hint: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   noCertText: { fontSize: 13, color: C.textMuted, textAlign: 'center' },
+
+  // Ratings
+  ratingsCard: { marginBottom: 20, gap: 10 },
+  ratingsHeaderRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  ratingsTitle: { flex: 1, fontSize: 14, fontWeight: '700' as const, color: C.text },
+  ratingsAvgNum: { fontSize: 22, fontWeight: '800' as const, color: C.yellow },
+  ratingsStarsRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 4 },
+  ratingsCount: { fontSize: 12, color: C.textSecondary, marginLeft: 6 },
+  reviewRow: { gap: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
+  reviewStarsSmall: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3 },
+  reviewDate: { fontSize: 10, color: C.textMuted, marginLeft: 6 },
+  reviewComment: { fontSize: 13, color: C.textSecondary, lineHeight: 18, fontStyle: 'italic' as const },
+  reviewerName: { fontSize: 11, color: C.textMuted },
+  loadingText: { fontSize: 14, color: C.textSecondary },
+  visibilityLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 6 },
+  visibilityHint: { fontSize: 11, color: C.textMuted, fontStyle: 'italic' as const, marginBottom: 8 },
 
   // Logout
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40' },
