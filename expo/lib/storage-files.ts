@@ -61,9 +61,9 @@ export async function uploadFileWithMetadata(args: UploadArgs): Promise<Uploaded
 
   const size = typeof (payload as Blob).size === 'number' ? (payload as Blob).size : 0;
 
-  const { data: userRes } = await supabase.auth.getUser();
-  const uploaderUserId = userRes.user?.id ?? null;
-
+  // Do NOT pass uploader_user_id — the column DEFAULT auth.uid() fills it in
+  // automatically. Passing an explicit value (even from getUser()) can fail
+  // if the session object is momentarily stale, causing an RLS violation.
   const { data, error } = await supabase
     .from('storage_files')
     .insert({
@@ -72,7 +72,6 @@ export async function uploadFileWithMetadata(args: UploadArgs): Promise<Uploaded
       entity_type: args.entityType,
       entity_id: args.entityId ?? null,
       company_id: args.companyId ?? null,
-      uploader_user_id: uploaderUserId,
       mime: args.contentType ?? null,
       size_bytes: size,
     })
