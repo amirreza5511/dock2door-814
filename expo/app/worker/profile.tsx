@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, Star } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, Star, LogOut } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -836,6 +836,24 @@ export default function WorkerProfile() {
           )}
         </View>
 
+        {!editing && (
+          <View style={[styles.section, { marginTop: 8 }]}>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert('Log Out', 'Are you sure you want to log out?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Log Out', style: 'destructive', onPress: () => void logout() },
+                ]);
+              }}
+              style={styles.logoutBtn}
+              activeOpacity={0.8}
+            >
+              <LogOut size={18} color={C.red} />
+              <Text style={styles.logoutText}>Log Out</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {editing && (
           <View style={styles.section}>
             <Card elevated>
@@ -954,6 +972,8 @@ const styles = StyleSheet.create({
   privateHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   privateHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   privacyNotice: { fontSize: 12, color: C.textMuted, lineHeight: 18, backgroundColor: C.card, borderRadius: 8, padding: 10, borderWidth: 1, borderColor: C.border },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40' },
+  logoutText: { fontSize: 15, fontWeight: '700' as const, color: C.red },
   avgRatingRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3 },
   avgRatingText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const, marginLeft: 4 },
   reviewCard: { marginBottom: 8 },
