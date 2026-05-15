@@ -133,6 +133,7 @@ async function listMyCerts(userId: string): Promise<CertRow[]> {
 export default function WorkerProfile() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const { workerProfiles, updateWorkerProfile, refetch } = useDockData();
   const queryClient = useQueryClient();
 
