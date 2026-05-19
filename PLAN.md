@@ -17,9 +17,9 @@ These override any earlier plan decisions.
   - sent on every request as Postgres GUC `request.active_company_id` via `supabase.rpc('set_active_company', { company_id })` at session start / on switch
 - RLS never trusts `profiles.active_company_id`. RLS trusts only:
   1. `auth.uid()`
-  2. membership rows in `company_members`
+  2. membership rows in `company_users`
   3. the GUC above (optional narrowing, not a security boundary)
-- Security boundary = `company_members`. The GUC only scopes which company the UI is currently acting as.
+- Security boundary = `company_users`. The GUC only scopes which company the UI is currently acting as.
 
 ### 0.2 Admin model — strict, auditable, no silent overrides
 - Admin status is stored in `user_roles(user_id, role)` with `role = 'admin'` (not a boolean on profiles). Future-proof for `support`, `finance`, etc.
@@ -120,7 +120,7 @@ Per-transition actor rules:
 Enforcement:
 - `BEFORE UPDATE` trigger `enforce_booking_transition()`:
   - Looks up allowed `next_statuses` for `OLD.status` from a `booking_transitions` table.
-  - Checks the caller's role via `auth.uid()` + `company_members` against the actor rule.
+  - Checks the caller's role via `auth.uid()` + `company_users` against the actor rule.
   - Raises exception on invalid transition.
 - `booking_status_history(booking_id, from_status, to_status, actor_user_id, actor_company_id, reason, created_at)` populated by the same trigger → also feeds audit.
 - RLS UPDATE policy only allows updating `status` (and a small whitelist of columns) via transition; other column edits are blocked or restricted to creator/admin.
@@ -133,7 +133,7 @@ Enforcement:
 companies(id, type, owner_user_id, name, status, created_at)
   type ∈ (customer, warehouse_provider, service_provider, employer, trucking_company)
 
-company_members(company_id, user_id, role, created_at)
+company_users(company_id, user_id, role, created_at)
   role ∈ (owner, admin, staff, supervisor, dispatcher, viewer)
   PK (company_id, user_id)
 
@@ -176,14 +176,14 @@ Every business table has `company_id uuid NOT NULL` and RLS predicate `is_member
 | shift_assignments | — | — | — | read own | CRUD own | read all |
 | time_entries | — | — | — | create own (clock in/out) | read own company | read all |
 | companies | — | read/update own | read/update own | — | read/update own | CRUD (audited) |
-| company_members | — | manage own (owner) | manage own (owner) | — | manage own (owner) | CRUD (audited) |
+| company_users | — | manage own (owner) | manage own (owner) | — | manage own (owner) | CRUD (audited) |
 | audit_logs | — | — | — | — | — | read |
 
 ---
 
 ## 4) End-to-end flows (exact tables per flow)
 
-1. **Company + user** — `auth.users`, `profiles`, `companies`, `company_members`, `user_roles`
+1. **Company + user** — `auth.users`, `profiles`, `companies`, `company_users`, `user_roles`
 2. **Warehouse listing** — `warehouse_listings`, `warehouse_docs` (+ storage)
 3. **Booking** — `warehouse_listings`, `bookings`, `booking_status_history`, `booking_docs`
 4. **Worker certification** — `worker_certifications` (+ storage `certifications/`)

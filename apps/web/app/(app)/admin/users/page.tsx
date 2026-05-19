@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -21,6 +20,9 @@ interface ProfileRow {
   company_name?: string | null;
 }
 
+/** Fetch page size — cursor-based load-more means no hard ceiling. */
+const PAGE_SIZE = 200;
+
 function statusVariant(status: string | null): "success" | "destructive" | "warning" | "secondary" {
   if (status === "Active") return "success";
   if (status === "Suspended") return "destructive";
@@ -31,23 +33,42 @@ function statusVariant(status: string | null): "success" | "destructive" | "warn
 export default function AdminUsersPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
 
-  const usersQuery = useQuery({
+  /**
+   * Cursor-based infinite query.
+   * Each page fetches the next PAGE_SIZE rows ordered by created_at DESC,
+   * starting after the last created_at from the previous page.
+   * Invalidation (after suspend/role change) resets back to page 1.
+   */
+  const usersQuery = useInfiniteQuery({
     queryKey: ["admin", "users"],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }: { pageParam: string | null }) => {
+      let q = supabase
         .from("profiles")
         .select("id, email, name, role, company_id, status, profile_image, created_at, companies(name)")
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(PAGE_SIZE);
+      // Apply cursor for pages beyond the first.
+      if (pageParam) {
+        q = q.lt("created_at", pageParam);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []).map((u: any) => ({
         ...u,
         company_name: u.companies?.name ?? null,
       })) as ProfileRow[];
     },
+    getNextPageParam: (lastPage: ProfileRow[]) => {
+      // If the page was full, there may be more rows after the oldest created_at.
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return lastPage[lastPage.length - 1]?.created_at ?? undefined;
+    },
   });
+
+  // Flatten all fetched pages into a single array for the DataTable.
+  const allUsers = usersQuery.data?.pages.flat() ?? [];
 
   const setStatus = useMutation({
     mutationFn: async (input: { user_id: string; status: string; reason: string }) => {
@@ -58,12 +79,12 @@ export default function AdminUsersPage() {
       });
       if (error) throw error;
     },
+    // Invalidating resets the infinite query back to page 1.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });
 
   const grantRole = useMutation({
     mutationFn: async (input: { user_id: string; role: string; reason: string }) => {
-      // admin_grant_role requires p_reason (enforced by require_reason() inside the RPC)
       const { error } = await supabase.rpc("admin_grant_role", {
         p_user_id: input.user_id,
         p_role: input.role,
@@ -90,7 +111,12 @@ export default function AdminUsersPage() {
     {
       key: "role",
       header: "Role",
-      render: (u) => u.role ? <Badge variant="secondary">{u.role}</Badge> : <span className="text-muted-foreground">—</span>,
+      render: (u) =>
+        u.role ? (
+          <Badge variant="secondary">{u.role}</Badge>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
       sortable: true,
       sortValue: (u) => u.role,
     },
@@ -113,7 +139,9 @@ export default function AdminUsersPage() {
     {
       key: "created",
       header: "Joined",
-      render: (u) => <span className="text-xs text-muted-foreground">{formatDate(u.created_at)}</span>,
+      render: (u) => (
+        <span className="text-xs text-muted-foreground">{formatDate(u.created_at)}</span>
+      ),
       sortable: true,
       sortValue: (u) => u.created_at,
     },
@@ -130,7 +158,7 @@ export default function AdminUsersPage() {
             onClick={() => {
               const next = u.status === "Suspended" ? "Active" : "Suspended";
               const reason = window.prompt(
-                `Reason for ${next === "Active" ? "reinstating" : "suspending"} ${u.name || u.email}?`
+                `Reason for ${next === "Active" ? "reinstating" : "suspending"} ${u.name || u.email}?`,
               );
               if (!reason) return;
               setStatus.mutate({ user_id: u.id, status: next, reason });
@@ -145,7 +173,7 @@ export default function AdminUsersPage() {
               disabled={grantRole.isPending}
               onClick={() => {
                 const reason = window.prompt(
-                  `Reason for granting admin role to ${u.name || u.email}?`
+                  `Reason for granting admin role to ${u.name || u.email}?`,
                 );
                 if (!reason?.trim()) return;
                 grantRole.mutate({ user_id: u.id, role: "admin", reason: reason.trim() });
@@ -177,11 +205,14 @@ export default function AdminUsersPage() {
       <Card>
         <CardHeader>
           <CardTitle>All profiles</CardTitle>
-          <CardDescription>{usersQuery.data?.length ?? 0} users</CardDescription>
+          <CardDescription>
+            {allUsers.length} users loaded
+            {usersQuery.hasNextPage ? " — more available" : ""}
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <DataTable
-            rows={usersQuery.data ?? []}
+            rows={allUsers}
             columns={cols}
             rowKey={(u) => u.id}
             isLoading={usersQuery.isLoading}
@@ -193,14 +224,50 @@ export default function AdminUsersPage() {
               (u.company_name?.toLowerCase().includes(q) ?? false)
             }
             filters={[
-              { value: "active", label: "Active", predicate: (u) => u.status === "Active" || !u.status },
-              { value: "suspended", label: "Suspended", predicate: (u) => u.status === "Suspended" },
-              { value: "Worker", label: "Workers", predicate: (u) => u.role === "Worker" },
-              { value: "Employer", label: "Employers", predicate: (u) => u.role === "Employer" },
-              { value: "WarehouseProvider", label: "WH Providers", predicate: (u) => u.role === "WarehouseProvider" },
+              {
+                value: "active",
+                label: "Active",
+                predicate: (u) => u.status === "Active" || !u.status,
+              },
+              {
+                value: "suspended",
+                label: "Suspended",
+                predicate: (u) => u.status === "Suspended",
+              },
+              {
+                value: "Worker",
+                label: "Workers",
+                predicate: (u) => u.role === "Worker",
+              },
+              {
+                value: "Employer",
+                label: "Employers",
+                predicate: (u) => u.role === "Employer",
+              },
+              {
+                value: "WarehouseProvider",
+                label: "WH Providers",
+                predicate: (u) => u.role === "WarehouseProvider",
+              },
             ]}
             emptyMessage="No users found."
           />
+
+          {/* Cursor-based load-more — appears only when the server has more rows. */}
+          {usersQuery.hasNextPage && (
+            <div className="flex items-center justify-center gap-3 border-t pt-4">
+              <span className="text-sm text-muted-foreground">
+                Showing {allUsers.length} users
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => usersQuery.fetchNextPage()}
+                disabled={usersQuery.isFetchingNextPage}
+              >
+                {usersQuery.isFetchingNextPage ? "Loading…" : "Load more users"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

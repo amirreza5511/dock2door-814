@@ -35,7 +35,7 @@ import type {
 
 type RemoteTable =
   | 'companies'
-  | 'company_members'
+  | 'company_users'
   | 'warehouse_listings'
   | 'service_listings'
   | 'service_jobs'
