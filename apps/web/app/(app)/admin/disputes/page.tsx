@@ -76,9 +76,13 @@ export default function AdminDisputesPage() {
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status, outcome, notes }: { id: string; status: string; outcome?: string; notes: string }) => {
-      const update: any = { status, admin_notes: notes };
-      if (outcome) update.outcome = outcome;
-      const { error } = await supabase.from("disputes").update(update).eq("id", id);
+      const { error } = await supabase.rpc("admin_resolve_dispute", {
+        p_dispute_id: id,
+        p_status: status,
+        p_outcome: outcome ?? null,
+        p_admin_notes: notes || null,
+        p_reason: notes || null,
+      });
       if (error) throw error;
     },
     onSuccess: () => {

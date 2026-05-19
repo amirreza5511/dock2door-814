@@ -13,7 +13,7 @@ interface InvoiceRow {
   id: string;
   invoice_number: string | null;
   status: string;
-  total: number | null;
+  total_amount: number | null;
   due_date: string | null;
   issued_at: string | null;
   paid_at: string | null;
@@ -62,7 +62,7 @@ export default function WarehouseBillingPage() {
       if (!company) return [];
       const { data, error } = await supabase
         .from("invoices")
-        .select("id,invoice_number,status,total,due_date,issued_at,paid_at")
+        .select("id,invoice_number,status,total_amount,due_date,issued_at,paid_at")
         .eq("provider_company_id", company.id)
         .order("issued_at", { ascending: false })
         .limit(100);
@@ -115,11 +115,11 @@ export default function WarehouseBillingPage() {
 
   const totalPaid = (invoicesQ.data ?? [])
     .filter((i) => i.status === "Paid")
-    .reduce((s, i) => s + (i.total ?? 0), 0);
+    .reduce((s, i) => s + (i.total_amount ?? 0), 0);
 
   const totalPending = (invoicesQ.data ?? [])
     .filter((i) => i.status === "Issued" || i.status === "Overdue")
-    .reduce((s, i) => s + (i.total ?? 0), 0);
+    .reduce((s, i) => s + (i.total_amount ?? 0), 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -226,7 +226,7 @@ export default function WarehouseBillingPage() {
                     <TD>
                       <Badge variant={invoiceStatusVariant(inv.status)}>{inv.status}</Badge>
                     </TD>
-                    <TD>${Number(inv.total ?? 0).toFixed(2)}</TD>
+                    <TD>${Number(inv.total_amount ?? 0).toFixed(2)}</TD>
                     <TD className="text-xs text-muted-foreground">{inv.due_date ?? "—"}</TD>
                     <TD className="text-xs text-muted-foreground">{formatDate(inv.issued_at)}</TD>
                     <TD className="text-xs text-muted-foreground">{formatDate(inv.paid_at)}</TD>
