@@ -12,7 +12,7 @@ interface Invoice {
   id: string;
   invoice_number: string | null;
   status: string;
-  total: number | null;
+  total_amount: number | null;
   currency: string | null;
   issued_at: string | null;
   due_date: string | null;
@@ -29,7 +29,7 @@ export default function CustomerInvoicesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("invoices")
-        .select("id,invoice_number,status,total,currency,issued_at,due_date,paid_at,created_at")
+        .select("id,invoice_number,status,total_amount,currency,issued_at,due_date,paid_at,created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
@@ -53,7 +53,7 @@ export default function CustomerInvoicesPage() {
   const cols: Column<Invoice>[] = [
     { key: "num", header: "Invoice", render: (i) => <span className="font-medium">{i.invoice_number ?? i.id.slice(0, 8)}</span> },
     { key: "status", header: "Status", render: (i) => <Badge variant={i.status === "Paid" ? "success" : i.status === "Overdue" ? "destructive" : "warning"}>{i.status}</Badge>, sortable: true, sortValue: (i) => i.status },
-    { key: "total", header: "Total", render: (i) => i.total != null ? `${Number(i.total).toFixed(2)} ${i.currency ?? ""}` : "—", sortable: true, sortValue: (i) => i.total },
+    { key: "total", header: "Total", render: (i) => i.total_amount != null ? `${Number(i.total_amount).toFixed(2)} ${i.currency ?? ""}` : "—", sortable: true, sortValue: (i) => i.total_amount },
     { key: "issued", header: "Issued", render: (i) => i.issued_at ? formatDate(i.issued_at) : "—" },
     { key: "due", header: "Due", render: (i) => i.due_date ?? "—" },
     { key: "paid", header: "Paid", render: (i) => i.paid_at ? formatDate(i.paid_at) : "—" },

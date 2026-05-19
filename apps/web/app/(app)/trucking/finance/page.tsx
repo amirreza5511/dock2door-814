@@ -11,9 +11,9 @@ interface InvoiceRow {
   id: string;
   invoice_number: string;
   status: string;
-  subtotal: number | null;
-  tax: number | null;
-  total: number | null;
+  subtotal_amount: number | null;
+  tax_amount: number | null;
+  total_amount: number | null;
   due_date: string | null;
   issued_at: string | null;
   paid_at: string | null;
@@ -54,7 +54,7 @@ export default function TruckingFinancePage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("invoices")
-        .select(`id, invoice_number, status, subtotal, tax, total, due_date, issued_at, paid_at, created_at,
+        .select(`id, invoice_number, status, subtotal_amount, tax_amount, total_amount, due_date, issued_at, paid_at, created_at,
           companies!customer_company_id(name)`)
         .order("created_at", { ascending: false })
         .limit(200);
@@ -80,8 +80,8 @@ export default function TruckingFinancePage() {
   });
 
   const stats = {
-    revenue: (invoicesQ.data ?? []).filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total ?? 0), 0),
-    outstanding: (invoicesQ.data ?? []).filter((i) => i.status === "issued").reduce((s, i) => s + Number(i.total ?? 0), 0),
+    revenue: (invoicesQ.data ?? []).filter((i) => i.status === "paid").reduce((s, i) => s + Number(i.total_amount ?? 0), 0),
+    outstanding: (invoicesQ.data ?? []).filter((i) => i.status === "issued").reduce((s, i) => s + Number(i.total_amount ?? 0), 0),
     pendingPayouts: (payoutsQ.data ?? []).filter((p) => p.status === "pending").reduce((s, p) => s + Number(p.amount ?? 0), 0),
     overdue: (invoicesQ.data ?? []).filter((i) => i.status === "overdue").length,
   };
@@ -109,9 +109,9 @@ export default function TruckingFinancePage() {
     {
       key: "total",
       header: "Total",
-      render: (i) => i.total != null ? `$${Number(i.total).toFixed(2)}` : "—",
+      render: (i) => i.total_amount != null ? `${Number(i.total_amount).toFixed(2)}` : "—",
       sortable: true,
-      sortValue: (i) => i.total,
+      sortValue: (i) => i.total_amount,
     },
     {
       key: "due",
