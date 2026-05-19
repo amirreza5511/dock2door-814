@@ -70,10 +70,11 @@ export default function DockStationPage() {
 
   const record = useMutation({
     mutationFn: async () => {
+      if (!appointmentId.trim()) throw new Error("Appointment ID is required.");
       const { error } = await supabase.rpc("gate_record_event", {
-        p_appointment_id: appointmentId || null,
+        p_appointment_id: appointmentId.trim(),
         p_kind: kind,
-        p_notes: notes || null,
+        p_payload: notes.trim() ? { notes: notes.trim() } : {},
       });
       if (error) throw error;
     },
@@ -110,7 +111,7 @@ export default function DockStationPage() {
         <CardHeader><CardTitle>Record event</CardTitle><CardDescription>Fires gate_record_event RPC.</CardDescription></CardHeader>
         <CardContent>
           <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); record.mutate(); }}>
-            <div className="md:col-span-2"><Label>Appointment id (optional)</Label><Input value={appointmentId} onChange={(e) => setAppointmentId(e.target.value)} placeholder="appt_…" /></div>
+            <div className="md:col-span-2"><Label>Appointment ID <span className="text-red-500">*</span></Label><Input value={appointmentId} onChange={(e) => setAppointmentId(e.target.value)} placeholder="UUID of the dock appointment" required /></div>
             <div>
               <Label>Event</Label>
               <select value={kind} onChange={(e) => setKind(e.target.value)} className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm shadow-sm">
@@ -119,7 +120,7 @@ export default function DockStationPage() {
             </div>
             <div className="md:col-span-3"><Label>Notes</Label><Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Driver name, seal #…" /></div>
             <div className="md:col-span-3 flex items-center gap-2">
-              <Button type="submit" disabled={record.isPending}>Log event</Button>
+              <Button type="submit" disabled={record.isPending || !appointmentId.trim()}>Log event</Button>
               {record.error && <span className="text-sm text-red-600">{(record.error as Error).message}</span>}
               {record.isSuccess && <span className="text-sm text-emerald-600">Logged.</span>}
             </div>

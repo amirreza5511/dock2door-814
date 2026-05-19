@@ -71,7 +71,7 @@ export default function SuperAdminAnalyticsPage() {
         supabase.from("profiles").select("*", { count: "exact", head: true }),
         supabase.from("companies").select("*", { count: "exact", head: true }),
         supabase.from("warehouse_bookings").select("*", { count: "exact", head: true }),
-        supabase.from("invoices").select("total").eq("status", "Paid"),
+        supabase.from("invoices").select("total_amount").eq("status", "Paid"),
         supabase.from("disputes").select("*", { count: "exact", head: true }).eq("status", "Open"),
         supabase.from("worker_certifications").select("*", { count: "exact", head: true }).eq("status", "Pending"),
         supabase.from("shift_posts").select("*", { count: "exact", head: true }).eq("status", "Posted"),
@@ -79,7 +79,7 @@ export default function SuperAdminAnalyticsPage() {
         supabase.from("fulfillment_orders").select("*", { count: "exact", head: true }),
       ]);
 
-      const totalRevenue = (revenueData ?? []).reduce((s: number, i: { total: number | null }) => s + (i.total ?? 0), 0);
+      const totalRevenue = (revenueData ?? []).reduce((s: number, i: { total_amount: number | null }) => s + (i.total_amount ?? 0), 0);
 
       return {
         totalUsers: totalUsers ?? 0,

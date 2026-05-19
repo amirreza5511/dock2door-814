@@ -46,25 +46,22 @@ export default function MessagesPage() {
   const threadsQ = useQuery({
     queryKey: ["messages", "threads"],
     queryFn: async () => {
+      // last_message_preview is written by the tg_notify_thread_message trigger
+      // (migration 0040) — no need to fetch thread_messages rows here.
       const { data, error } = await supabase
         .from("chat_threads")
-        .select(`id, scope, booking_id, updated_at, created_at,
-          thread_messages(body, created_at)`)
+        .select("id, scope, booking_id, updated_at, created_at, last_message_preview")
         .order("updated_at", { ascending: false })
         .limit(100);
       if (error) throw error;
-      return (data ?? []).map((t: any) => {
-        const messages = t.thread_messages ?? [];
-        const last = messages.sort((a: any, b: any) => b.created_at.localeCompare(a.created_at))[0];
-        return {
-          id: t.id,
-          scope: t.scope,
-          booking_id: t.booking_id,
-          updated_at: t.updated_at,
-          created_at: t.created_at,
-          last_message: last?.body ?? null,
-        } as Thread;
-      });
+      return (data ?? []).map((t: any) => ({
+        id: t.id,
+        scope: t.scope,
+        booking_id: t.booking_id,
+        updated_at: t.updated_at,
+        created_at: t.created_at,
+        last_message: (t.last_message_preview as string | null) ?? null,
+      } as Thread));
     },
   });
 
