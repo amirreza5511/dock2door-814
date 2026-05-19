@@ -39,7 +39,7 @@ type RemoteTable =
   | 'warehouse_listings'
   | 'service_listings'
   | 'service_jobs'
-  | 'bookings'
+  | 'warehouse_bookings'
   | 'messages'
   | 'notifications'
   | 'payments'
@@ -270,13 +270,13 @@ export function useDockData(): DockDataState {
       await updateRecord('warehouse_listings', id, { status });
     },
     addWarehouseBooking: async (booking) => {
-      await createRecord('bookings', { ...booking, bookingType: 'Warehouse' } as Record<string, unknown>);
+      await createRecord('warehouse_bookings', { ...booking, bookingType: 'Warehouse' } as Record<string, unknown>);
     },
     updateWarehouseBooking: async (id, booking) => {
-      await updateRecord('bookings', id, booking as unknown as Record<string, unknown>);
+      await updateRecord('warehouse_bookings', id, booking as unknown as Record<string, unknown>);
     },
     setWarehouseBookingStatus: async (id, status) => {
-      await updateRecord('bookings', id, { status });
+      await updateRecord('warehouse_bookings', id, { status });
     },
     addServiceListing: async (listing) => {
       await createRecord('service_listings', listing as unknown as Record<string, unknown>);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -30,6 +30,9 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
 
 const OUTCOMES = ["Refund", "PartialRefund", "Denied", "Other"] as const;
 
+/** Rows per page for cursor-based load-more. */
+const PAGE_SIZE = 100;
+
 export default function AdminDisputesPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
@@ -37,15 +40,25 @@ export default function AdminDisputesPage() {
   const [adminNotes, setAdminNotes] = useState("");
   const [selectedOutcome, setSelectedOutcome] = useState<typeof OUTCOMES[number]>("Denied");
 
-  const disputesQ = useQuery({
+  /**
+   * Cursor-based infinite query.
+   * Removes the hard 500-row ceiling — each page loads PAGE_SIZE rows and
+   * a "Load more" button fetches subsequent pages.
+   */
+  const disputesQ = useInfiniteQuery({
     queryKey: ["admin", "disputes"],
-    queryFn: async () => {
-      const { data, error } = await supabase
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam }: { pageParam: string | null }) => {
+      let q = supabase
         .from("disputes")
         .select(`id, reference_type, reference_id, status, outcome, description, admin_notes, created_at,
           profiles!opened_by_user_id(name, email)`)
         .order("created_at", { ascending: false })
-        .limit(500);
+        .limit(PAGE_SIZE);
+      if (pageParam) {
+        q = q.lt("created_at", pageParam);
+      }
+      const { data, error } = await q;
       if (error) throw error;
       return (data ?? []).map((d: any) => ({
         ...d,
@@ -53,7 +66,13 @@ export default function AdminDisputesPage() {
         opener_email: d.profiles?.email ?? null,
       })) as DisputeRow[];
     },
+    getNextPageParam: (lastPage: DisputeRow[]) => {
+      if (lastPage.length < PAGE_SIZE) return undefined;
+      return lastPage[lastPage.length - 1]?.created_at ?? undefined;
+    },
   });
+
+  const allDisputes = disputesQ.data?.pages.flat() ?? [];
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status, outcome, notes }: { id: string; status: string; outcome?: string; notes: string }) => {
@@ -69,10 +88,10 @@ export default function AdminDisputesPage() {
   });
 
   const stats = {
-    open: (disputesQ.data ?? []).filter((d) => d.status === "Open").length,
-    underReview: (disputesQ.data ?? []).filter((d) => d.status === "UnderReview").length,
-    resolved: (disputesQ.data ?? []).filter((d) => d.status === "Resolved").length,
-    total: (disputesQ.data ?? []).length,
+    open: allDisputes.filter((d) => d.status === "Open").length,
+    underReview: allDisputes.filter((d) => d.status === "UnderReview").length,
+    resolved: allDisputes.filter((d) => d.status === "Resolved").length,
+    total: allDisputes.length,
   };
 
   const cols: Column<DisputeRow>[] = [
@@ -147,7 +166,7 @@ export default function AdminDisputesPage() {
           { label: "Open", value: stats.open },
           { label: "Under review", value: stats.underReview },
           { label: "Resolved", value: stats.resolved },
-          { label: "Total", value: stats.total },
+          { label: "Total loaded", value: stats.total },
         ].map((s) => (
           <Card key={s.label}>
             <CardHeader className="pb-2">
@@ -161,11 +180,11 @@ export default function AdminDisputesPage() {
       <Card>
         <CardHeader>
           <CardTitle>All disputes</CardTitle>
-          <CardDescription>{disputesQ.data?.length ?? 0} total</CardDescription>
+          <CardDescription>{allDisputes.length} loaded</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <DataTable
-            rows={disputesQ.data ?? []}
+            rows={allDisputes}
             columns={cols}
             rowKey={(d) => d.id}
             isLoading={disputesQ.isLoading}
@@ -178,6 +197,19 @@ export default function AdminDisputesPage() {
             ]}
             emptyMessage="No disputes filed."
           />
+
+          {/* Load more */}
+          {disputesQ.hasNextPage && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                onClick={() => disputesQ.fetchNextPage()}
+                disabled={disputesQ.isFetchingNextPage}
+              >
+                {disputesQ.isFetchingNextPage ? "Loading…" : "Load more"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
