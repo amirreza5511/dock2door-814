@@ -29,6 +29,9 @@ export default function AdminCertificationsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("Pending");
+  const [rejectTarget, setRejectTarget] = useState<CertRow | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [viewError, setViewError] = useState<string | null>(null);
 
   /**
    * Cursor-based infinite query.
@@ -81,20 +84,29 @@ export default function AdminCertificationsPage() {
 
   const openSigned = async (path: string | null) => {
     if (!path) return;
+    setViewError(null);
     const { data, error } = await supabase.functions.invoke("get-signed-url", {
       body: { bucket: "certifications", path },
     });
     if (error) {
-      window.alert(error.message);
+      setViewError(error.message);
       return;
     }
     const url = (data as { signedUrl?: string; url?: string } | null)?.signedUrl
       ?? (data as { url?: string } | null)?.url;
     if (url) window.open(url, "_blank");
+    else setViewError("Signed URL not returned — check edge function logs.");
   };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {viewError && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center justify-between">
+          <span>{viewError}</span>
+          <button onClick={() => setViewError(null)} className="ml-3 text-red-500 hover:text-red-700">✕</button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Worker Certifications</h1>
@@ -164,11 +176,7 @@ export default function AdminCertificationsPage() {
                               size="sm"
                               variant="destructive"
                               disabled={reject.isPending}
-                              onClick={() => {
-                                const reason = window.prompt("Reason for rejection?");
-                                if (!reason) return;
-                                reject.mutate({ id: c.id, reason });
-                              }}
+                              onClick={() => { setRejectTarget(c); setRejectReason(""); }}
                             >
                               Reject
                             </Button>
@@ -196,6 +204,47 @@ export default function AdminCertificationsPage() {
           )}
         </CardContent>
       </Card>
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRejectTarget(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-base">Reject certification</h3>
+            <p className="text-sm text-muted-foreground">
+              Reject <span className="font-medium">{rejectTarget.type}</span> submitted by worker <span className="font-mono text-xs">{rejectTarget.worker_user_id.slice(0, 8)}</span>?
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" htmlFor="reject-reason">Reason *</label>
+              <input
+                id="reject-reason"
+                className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm shadow-sm"
+                placeholder="e.g. document expired, illegible scan…"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+              />
+            </div>
+            {reject.error && (
+              <p className="text-sm text-red-600">{(reject.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-accent"
+                onClick={() => setRejectTarget(null)}
+              >Cancel</button>
+              <button
+                className="flex-1 rounded-md bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+                disabled={!rejectReason.trim() || reject.isPending}
+                onClick={() =>
+                  reject.mutate(
+                    { id: rejectTarget.id, reason: rejectReason.trim() },
+                    { onSuccess: () => setRejectTarget(null) },
+                  )
+                }
+              >
+                {reject.isPending ? "Rejecting…" : "Reject"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

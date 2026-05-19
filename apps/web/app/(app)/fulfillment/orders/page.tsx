@@ -55,7 +55,13 @@ export default function FulfillmentOrdersPage() {
 
   const advance = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("fulfillment_orders").update({ status }).eq("id", id);
+      // Use the RPC to enforce valid one-step transitions server-side.
+      // Direct UPDATE would allow concurrent pickers/packers/shippers
+      // to skip intermediate statuses or race on the same order.
+      const { error } = await supabase.rpc("advance_fulfillment_order", {
+        p_order_id: id,
+        p_next_status: status,
+      });
       if (error) throw error;
     },
     onSuccess: () => {

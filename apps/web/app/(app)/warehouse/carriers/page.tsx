@@ -39,6 +39,7 @@ export default function WarehouseCarriersPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [form, setForm] = useState({
     carrier_code: "canada_post",
     account_number: "",
@@ -227,18 +228,25 @@ export default function WarehouseCarriersPage() {
                       >
                         {c.is_active ? "Deactivate" : "Activate"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={deleteMut.isPending}
-                        onClick={() => {
-                          if (window.confirm("Remove this carrier account?")) {
-                            deleteMut.mutate(c.id);
-                          }
-                        }}
-                      >
-                        Remove
-                      </Button>
+                      {deleteTarget === c.id ? (
+                        <div className="inline-flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground">Remove?</span>
+                          <Button size="sm" variant="destructive" disabled={deleteMut.isPending}
+                            onClick={() => deleteMut.mutate(c.id, { onSuccess: () => setDeleteTarget(null) })}>
+                            Yes
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(null)}>No</Button>
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleteMut.isPending}
+                          onClick={() => setDeleteTarget(c.id)}
+                        >
+                          Remove
+                        </Button>
+                      )}
                     </TD>
                   </TR>
                 ))}

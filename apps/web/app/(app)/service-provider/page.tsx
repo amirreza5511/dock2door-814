@@ -213,7 +213,7 @@ export default function ServiceProviderPage() {
                 <h2 className="text-lg font-semibold">{CAT_LABEL[selected.service_category ?? ""] ?? selected.service_category}</h2>
                 <p className="text-sm text-muted-foreground">{selected.customer_company} · {selected.location_city}</p>
               </div>
-              <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>✕</Button>
+              <Button variant="ghost" size="sm" onClick={() => { setSelected(null); setDeclineReason(""); }}>✕</Button>
             </div>
 
             {transition.error && (
@@ -265,12 +265,32 @@ export default function ServiceProviderPage() {
                     <Button className="flex-1" disabled={transition.isPending}
                       onClick={() => transition.mutate({ id: selected.id, status: "Accepted" })}>Accept</Button>
                     <Button variant="destructive" className="flex-1" disabled={transition.isPending}
-                      onClick={() => {
-                        const reason = window.prompt("Reason for declining?");
-                        if (!reason) return;
-                        transition.mutate({ id: selected.id, status: "Cancelled", reason });
-                      }}>Decline</Button>
+                      onClick={() => setDeclineReason(declineReason === "__open__" ? "" : "__open__")}>Decline</Button>
                   </>
+                )}
+                {selected.status === "Requested" && declineReason === "__open__" && (
+                  <div className="w-full rounded-md border border-red-200 bg-red-50 p-3 space-y-2">
+                    <p className="text-xs font-medium text-red-700">Reason for declining *</p>
+                    <div className="flex gap-2">
+                      <input
+                        autoFocus
+                        className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-sm"
+                        placeholder="e.g. not available on that date…"
+                        value={declineReason === "__open__" ? "" : declineReason}
+                        onChange={(e) => setDeclineReason(e.target.value)}
+                      />
+                      <button
+                        className="rounded bg-destructive px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                        disabled={!declineReason || declineReason === "__open__" || transition.isPending}
+                        onClick={() => {
+                          if (!declineReason || declineReason === "__open__") return;
+                          transition.mutate({ id: selected.id, status: "Cancelled", reason: declineReason });
+                          setDeclineReason("");
+                        }}
+                      >Confirm</button>
+                      <button className="rounded border border-border px-3 py-1.5 text-xs" onClick={() => setDeclineReason("")}>✕</button>
+                    </div>
+                  </div>
                 )}
                 {selected.status === "Accepted" && (
                   <Button className="flex-1" disabled={transition.isPending}

@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +48,8 @@ interface ChannelOrder {
 export default function IntegrationsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const [disconnectTarget, setDisconnectTarget] = useState<Connection | null>(null);
+  const [disconnectReason, setDisconnectReason] = useState("");
 
   const connections = useQuery({
     queryKey: ["channel", "connections"],
@@ -120,11 +125,7 @@ export default function IntegrationsPage() {
     { key: "actions", header: "", className: "text-right", render: (c) => (
       <div className="flex justify-end gap-2">
         <Button size="sm" disabled={syncNow.isPending} onClick={() => syncNow.mutate(c)}>Sync now</Button>
-        <Button size="sm" variant="destructive" onClick={() => {
-          const reason = window.prompt("Reason for disconnect?");
-          if (!reason) return;
-          disconnect.mutate({ id: c.id, reason });
-        }}>Disconnect</Button>
+        <Button size="sm" variant="destructive" onClick={() => { setDisconnectTarget(c); setDisconnectReason(""); }}>Disconnect</Button>
       </div>
     ) },
   ];
@@ -214,6 +215,44 @@ export default function IntegrationsPage() {
           />
         </CardContent>
       </Card>
+      {disconnectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setDisconnectTarget(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-base">Disconnect integration</h3>
+            <p className="text-sm text-muted-foreground">
+              Disconnect <span className="font-medium capitalize">{disconnectTarget.channel_kind}</span> store{disconnectTarget.shop_domain ? ` (${disconnectTarget.shop_domain})` : ""}? Orders already imported will be kept.
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="disc-reason">Reason *</Label>
+              <Input
+                id="disc-reason"
+                placeholder="e.g. switching to a different channel…"
+                value={disconnectReason}
+                onChange={(e) => setDisconnectReason(e.target.value)}
+              />
+            </div>
+            {disconnect.error && (
+              <p className="text-sm text-red-600">{(disconnect.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDisconnectTarget(null)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={!disconnectReason.trim() || disconnect.isPending}
+                onClick={() =>
+                  disconnect.mutate(
+                    { id: disconnectTarget.id, reason: disconnectReason.trim() },
+                    { onSuccess: () => setDisconnectTarget(null) },
+                  )
+                }
+              >
+                {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

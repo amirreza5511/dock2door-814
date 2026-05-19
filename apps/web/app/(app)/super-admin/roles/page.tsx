@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -22,6 +24,8 @@ export default function PlatformRolesPage() {
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<string>("admin");
+  const [revokeTarget, setRevokeTarget] = useState<RoleRow | null>(null);
+  const [revokeReason, setRevokeReason] = useState("");
 
   const q = useQuery({
     queryKey: ["super_admin", "roles"],
@@ -129,11 +133,7 @@ export default function PlatformRolesPage() {
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => {
-                          const reason = window.prompt("Reason?");
-                          if (!reason) return;
-                          revoke.mutate({ user_id: r.user_id, role: r.role, reason });
-                        }}
+                        onClick={() => { setRevokeTarget(r); setRevokeReason(""); }}
                       >
                         Revoke
                       </Button>
@@ -145,6 +145,48 @@ export default function PlatformRolesPage() {
           )}
         </CardContent>
       </Card>
+      {revokeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRevokeTarget(null)}>
+          <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-base">Revoke platform role</h3>
+            <p className="text-sm text-muted-foreground">
+              Revoke <Badge>{revokeTarget.role}</Badge> from <span className="font-mono text-xs">{revokeTarget.user_id.slice(0, 8)}</span>?
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="revoke-reason">Reason *</Label>
+              <Input
+                id="revoke-reason"
+                placeholder="Required — will be written to audit log"
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && revokeReason.trim() && revoke.mutate(
+                  { user_id: revokeTarget.user_id, role: revokeTarget.role, reason: revokeReason.trim() },
+                  { onSuccess: () => setRevokeTarget(null) },
+                )}
+              />
+            </div>
+            {revoke.error && (
+              <p className="text-sm text-red-600">{(revoke.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setRevokeTarget(null)}>Cancel</Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={!revokeReason.trim() || revoke.isPending}
+                onClick={() =>
+                  revoke.mutate(
+                    { user_id: revokeTarget.user_id, role: revokeTarget.role, reason: revokeReason.trim() },
+                    { onSuccess: () => setRevokeTarget(null) },
+                  )
+                }
+              >
+                {revoke.isPending ? "Revoking…" : "Revoke"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

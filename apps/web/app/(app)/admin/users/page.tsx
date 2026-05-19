@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
 
 interface ProfileRow {
@@ -20,6 +23,11 @@ interface ProfileRow {
   company_name?: string | null;
 }
 
+type ActionModal =
+  | { kind: "status"; user: ProfileRow; next: string }
+  | { kind: "admin"; user: ProfileRow }
+  | null;
+
 /** Fetch page size — cursor-based load-more means no hard ceiling. */
 const PAGE_SIZE = 200;
 
@@ -33,6 +41,8 @@ function statusVariant(status: string | null): "success" | "destructive" | "warn
 export default function AdminUsersPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const [actionModal, setActionModal] = useState<ActionModal>(null);
+  const [actionReason, setActionReason] = useState("");
 
   /**
    * Cursor-based infinite query.
@@ -49,7 +59,6 @@ export default function AdminUsersPage() {
         .select("id, email, name, role, company_id, status, profile_image, created_at, companies(name)")
         .order("created_at", { ascending: false })
         .limit(PAGE_SIZE);
-      // Apply cursor for pages beyond the first.
       if (pageParam) {
         q = q.lt("created_at", pageParam);
       }
@@ -61,13 +70,11 @@ export default function AdminUsersPage() {
       })) as ProfileRow[];
     },
     getNextPageParam: (lastPage: ProfileRow[]) => {
-      // If the page was full, there may be more rows after the oldest created_at.
       if (lastPage.length < PAGE_SIZE) return undefined;
       return lastPage[lastPage.length - 1]?.created_at ?? undefined;
     },
   });
 
-  // Flatten all fetched pages into a single array for the DataTable.
   const allUsers = usersQuery.data?.pages.flat() ?? [];
 
   const setStatus = useMutation({
@@ -79,7 +86,6 @@ export default function AdminUsersPage() {
       });
       if (error) throw error;
     },
-    // Invalidating resets the infinite query back to page 1.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });
 
@@ -94,6 +100,23 @@ export default function AdminUsersPage() {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });
+
+  const handleConfirm = () => {
+    if (!actionModal) return;
+    const reason = actionReason.trim();
+    if (!reason) return;
+    if (actionModal.kind === "status") {
+      setStatus.mutate(
+        { user_id: actionModal.user.id, status: actionModal.next, reason },
+        { onSuccess: () => setActionModal(null) },
+      );
+    } else {
+      grantRole.mutate(
+        { user_id: actionModal.user.id, role: "admin", reason },
+        { onSuccess: () => setActionModal(null) },
+      );
+    }
+  };
 
   const cols: Column<ProfileRow>[] = [
     {
@@ -157,11 +180,8 @@ export default function AdminUsersPage() {
             disabled={setStatus.isPending}
             onClick={() => {
               const next = u.status === "Suspended" ? "Active" : "Suspended";
-              const reason = window.prompt(
-                `Reason for ${next === "Active" ? "reinstating" : "suspending"} ${u.name || u.email}?`,
-              );
-              if (!reason) return;
-              setStatus.mutate({ user_id: u.id, status: next, reason });
+              setActionModal({ kind: "status", user: u, next });
+              setActionReason("");
             }}
           >
             {u.status === "Suspended" ? "Reinstate" : "Suspend"}
@@ -171,13 +191,7 @@ export default function AdminUsersPage() {
               size="sm"
               variant="outline"
               disabled={grantRole.isPending}
-              onClick={() => {
-                const reason = window.prompt(
-                  `Reason for granting admin role to ${u.name || u.email}?`,
-                );
-                if (!reason?.trim()) return;
-                grantRole.mutate({ user_id: u.id, role: "admin", reason: reason.trim() });
-              }}
+              onClick={() => { setActionModal({ kind: "admin", user: u }); setActionReason(""); }}
             >
               Make Admin
             </Button>
@@ -189,18 +203,69 @@ export default function AdminUsersPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      {/* Inline reason modal — replaces window.prompt */}
+      {actionModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setActionModal(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-base">
+              {actionModal.kind === "status"
+                ? `${actionModal.next === "Active" ? "Reinstate" : "Suspend"} user`
+                : "Grant admin role"}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {actionModal.kind === "status"
+                ? `${actionModal.next === "Active" ? "Reinstate" : "Suspend"} ${actionModal.user.name || actionModal.user.email}?`
+                : `Grant admin role to ${actionModal.user.name || actionModal.user.email}?`}
+            </p>
+            <div className="space-y-1.5">
+              <Label htmlFor="user-action-reason">Reason *</Label>
+              <Input
+                id="user-action-reason"
+                placeholder="Required — will be recorded in audit log"
+                value={actionReason}
+                onChange={(e) => setActionReason(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleConfirm()}
+                autoFocus
+              />
+            </div>
+            {(setStatus.error || grantRole.error) && (
+              <p className="text-sm text-red-600">
+                {((setStatus.error ?? grantRole.error) as Error).message}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setActionModal(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant={
+                  actionModal.kind === "status" && actionModal.next === "Suspended"
+                    ? "destructive"
+                    : "default"
+                }
+                className="flex-1"
+                disabled={!actionReason.trim() || setStatus.isPending || grantRole.isPending}
+                onClick={handleConfirm}
+              >
+                {setStatus.isPending || grantRole.isPending ? "Saving…" : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Users</h1>
         <p className="text-sm text-muted-foreground">
           All platform users. Suspend/reinstate via audited RPC.
         </p>
       </div>
-
-      {setStatus.error && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
-          {(setStatus.error as Error).message}
-        </div>
-      )}
 
       <Card>
         <CardHeader>
@@ -224,36 +289,15 @@ export default function AdminUsersPage() {
               (u.company_name?.toLowerCase().includes(q) ?? false)
             }
             filters={[
-              {
-                value: "active",
-                label: "Active",
-                predicate: (u) => u.status === "Active" || !u.status,
-              },
-              {
-                value: "suspended",
-                label: "Suspended",
-                predicate: (u) => u.status === "Suspended",
-              },
-              {
-                value: "Worker",
-                label: "Workers",
-                predicate: (u) => u.role === "Worker",
-              },
-              {
-                value: "Employer",
-                label: "Employers",
-                predicate: (u) => u.role === "Employer",
-              },
-              {
-                value: "WarehouseProvider",
-                label: "WH Providers",
-                predicate: (u) => u.role === "WarehouseProvider",
-              },
+              { value: "active", label: "Active", predicate: (u) => u.status === "Active" || !u.status },
+              { value: "suspended", label: "Suspended", predicate: (u) => u.status === "Suspended" },
+              { value: "Worker", label: "Workers", predicate: (u) => u.role === "Worker" },
+              { value: "Employer", label: "Employers", predicate: (u) => u.role === "Employer" },
+              { value: "WarehouseProvider", label: "WH Providers", predicate: (u) => u.role === "WarehouseProvider" },
             ]}
             emptyMessage="No users found."
           />
 
-          {/* Cursor-based load-more — appears only when the server has more rows. */}
           {usersQuery.hasNextPage && (
             <div className="flex items-center justify-center gap-3 border-t pt-4">
               <span className="text-sm text-muted-foreground">

@@ -110,12 +110,18 @@ export default function CustomerServicesPage() {
       if (!booking) return;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const { data: profile } = await supabase.from("profiles").select("company_id").eq("id", user.id).single();
-      if (!profile?.company_id) throw new Error("No company associated.");
+      const { data: cu } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .single();
+      if (!cu?.company_id) throw new Error("No company associated. Complete onboarding first.");
+      const companyId = cu.company_id;
       const totalPrice = Number(booking.hourly_rate) * form.duration;
       const { error } = await supabase.from("service_jobs").insert({
         service_id: booking.id,
-        customer_company_id: profile.company_id,
+        customer_company_id: companyId,
         location_city: form.city.trim(),
         location_address: form.address.trim(),
         date_time_start: new Date(form.date_time).toISOString(),

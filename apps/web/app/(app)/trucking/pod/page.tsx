@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,7 @@ interface POD {
 export default function PodReviewPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
 
   const pods = useQuery({
     queryKey: ["trucking", "pods"],
@@ -70,10 +72,19 @@ export default function PodReviewPage() {
           <Button size="sm" disabled={setStatus.isPending} onClick={() => setStatus.mutate({ id: p.id, status: "Approved" })}>Approve</Button>
         )}
         {p.status !== "Rejected" && (
-          <Button size="sm" variant="destructive" disabled={setStatus.isPending} onClick={() => {
-            if (!window.confirm("Reject POD?")) return;
-            setStatus.mutate({ id: p.id, status: "Rejected" });
-          }}>Reject</Button>
+          rejectTarget === p.id ? (
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted-foreground">Reject?</span>
+              <Button size="sm" variant="destructive" disabled={setStatus.isPending}
+                onClick={() => setStatus.mutate({ id: p.id, status: "Rejected" }, { onSuccess: () => setRejectTarget(null) })}>
+                Yes
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setRejectTarget(null)}>No</Button>
+            </div>
+          ) : (
+            <Button size="sm" variant="destructive" disabled={setStatus.isPending}
+              onClick={() => setRejectTarget(p.id)}>Reject</Button>
+          )
         )}
       </div>
     ) },
