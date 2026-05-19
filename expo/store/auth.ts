@@ -186,7 +186,21 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   refreshSession: async () => {
     try {
       const { data, error } = await supabase.auth.refreshSession();
-      if (error || !data.session?.user) return false;
+      if (error) {
+        const msg = error.message?.toLowerCase() ?? '';
+        if (
+          msg.includes('refresh token not found') ||
+          msg.includes('invalid refresh token') ||
+          msg.includes('token has expired') ||
+          msg.includes('jwt expired')
+        ) {
+          console.log('[Auth] refreshSession: stale/revoked token — clearing local session');
+          try { await supabase.auth.signOut({ scope: 'local' }); } catch {}
+          set({ user: null });
+        }
+        return false;
+      }
+      if (!data.session?.user) return false;
       const user = await fetchProfile(data.session.user.id);
       set({ user });
       return Boolean(user);

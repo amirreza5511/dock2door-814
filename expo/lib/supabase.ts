@@ -137,6 +137,32 @@ console.log('[supabase] client initialized', {
 });
 
 // ---------------------------------------------------------------------------
+// Early TOKEN_REFRESH_FAILED guard
+// Registered immediately on client creation so it fires even before any
+// screen mounts or the auth store's own listener is set up.
+// Uses scope:'local' to clear AsyncStorage without a server round-trip
+// (the refresh token is already invalid, so a server call would fail anyway).
+// ---------------------------------------------------------------------------
+supabase.auth.onAuthStateChange(async (event) => {
+  if ((event as string) === 'TOKEN_REFRESH_FAILED') {
+    console.log('[supabase] TOKEN_REFRESH_FAILED — clearing stale local session');
+    try {
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch {
+      // If signOut itself fails (e.g. no network) remove the token key directly.
+      try {
+        const storage = Platform.OS === 'web' ? webStorage : AsyncStorage;
+        const keys = [
+          `sb-${SUPABASE_URL.replace(/https?:\/\//, '').split('.')[0]}-auth-token`,
+          'supabase.auth.token',
+        ];
+        await Promise.allSettled(keys.map((k) => storage.removeItem(k)));
+      } catch {}
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Optional connectivity check — fires once on import, non-blocking
 // ---------------------------------------------------------------------------
 if (isSupabaseConfigured) {
