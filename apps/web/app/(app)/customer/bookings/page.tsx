@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
 
 interface BookingRow {
@@ -41,6 +43,8 @@ export default function CustomerBookingsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<BookingRow | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
 
   const bookingsQ = useQuery({
     queryKey: ["customer", "bookings"],
@@ -63,16 +67,19 @@ export default function CustomerBookingsPage() {
   });
 
   const cancel = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("warehouse_bookings")
-        .update({ status: "Cancelled" })
-        .eq("id", id);
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await supabase.rpc("transition_booking", {
+        p_booking_id: id,
+        p_next_status: "Cancelled",
+        p_reason: reason,
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["customer", "bookings"] });
       setSelected(null);
+      setShowCancelModal(false);
+      setCancelReason("");
     },
   });
 
@@ -80,7 +87,7 @@ export default function CustomerBookingsPage() {
     mutationFn: async (id: string) => {
       const { error } = await supabase.rpc("transition_booking", {
         p_booking_id: id,
-        p_new_status: "Accepted",
+        p_next_status: "Accepted",
         p_reason: "Customer accepted counter offer",
       });
       if (error) throw error;
@@ -269,12 +276,57 @@ export default function CustomerBookingsPage() {
                     variant="destructive"
                     className="flex-1"
                     disabled={cancel.isPending}
-                    onClick={() => cancel.mutate(selected.id)}
+                    onClick={() => setShowCancelModal(true)}
                   >
                     Cancel booking
                   </Button>
                 )}
               </div>
+
+              {/* Cancel confirmation modal */}
+              {showCancelModal && (
+                <div
+                  className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4"
+                  onClick={() => { setShowCancelModal(false); setCancelReason(""); }}
+                >
+                  <div
+                    className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <h3 className="font-semibold text-base">Cancel booking</h3>
+                    <p className="text-sm text-muted-foreground">Please provide a reason for cancelling.</p>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="cancel-reason">Reason</Label>
+                      <Input
+                        id="cancel-reason"
+                        placeholder="e.g. dates changed, found alternative…"
+                        value={cancelReason}
+                        onChange={(e) => setCancelReason(e.target.value)}
+                      />
+                    </div>
+                    {cancel.error && (
+                      <p className="text-sm text-red-600">{(cancel.error as Error).message}</p>
+                    )}
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => { setShowCancelModal(false); setCancelReason(""); }}
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        className="flex-1"
+                        disabled={!cancelReason.trim() || cancel.isPending}
+                        onClick={() => cancel.mutate({ id: selected.id, reason: cancelReason.trim() })}
+                      >
+                        {cancel.isPending ? "Cancelling…" : "Confirm cancel"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

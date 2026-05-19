@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
 
 // ── Real schema columns from warehouse_bookings (0001 + 0004) ──────────────
@@ -26,7 +29,7 @@ interface BookingRow {
   created_at: string;
 }
 
-// Transitions available to warehouse-side users
+// Transitions available to warehouse-side users.
 // Keys must exactly match booking_status enum values.
 const TRANSITIONS: Record<string, { label: string; next: string; variant?: "default" | "destructive" | "secondary" }[]> = {
   Requested: [
@@ -34,7 +37,6 @@ const TRANSITIONS: Record<string, { label: string; next: string; variant?: "defa
     { label: "Counter",  next: "CounterOffered", variant: "secondary" },
     { label: "Decline",  next: "Cancelled",      variant: "destructive" },
   ],
-  // Warehouse can confirm once both sides agreed
   CounterOffered: [
     { label: "Accept",  next: "Accepted" },
     { label: "Decline", next: "Cancelled", variant: "destructive" },
@@ -50,9 +52,27 @@ const TRANSITIONS: Record<string, { label: string; next: string; variant?: "defa
   ],
 };
 
+type DialogState =
+  | { type: "cancel"; booking: BookingRow }
+  | { type: "counter"; booking: BookingRow }
+  | null;
+
 export default function WarehouseBookingsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+
+  // Modal state for decline and counter-offer actions
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [counterPrice, setCounterPrice] = useState("");
+  const [counterNote, setCounterNote] = useState("");
+
+  function openDialog(state: DialogState) {
+    setCancelReason("");
+    setCounterPrice("");
+    setCounterNote("");
+    setDialog(state);
+  }
 
   const bookingsQuery = useQuery({
     queryKey: ["warehouse", "bookings"],
@@ -80,13 +100,43 @@ export default function WarehouseBookingsPage() {
       });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["warehouse", "bookings"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["warehouse", "bookings"] });
+      setDialog(null);
+    },
   });
 
   /** Best display price: final → counter-offer → proposed. */
   function displayPrice(b: BookingRow): string {
     const v = b.final_price ?? b.counter_offer_price ?? b.proposed_price;
     return v != null ? `$${Number(v).toFixed(2)}` : "—";
+  }
+
+  function handleTransitionClick(b: BookingRow, next: string) {
+    if (next === "Cancelled") {
+      openDialog({ type: "cancel", booking: b });
+    } else if (next === "CounterOffered") {
+      openDialog({ type: "counter", booking: b });
+    } else {
+      transition.mutate({ id: b.id, next });
+    }
+  }
+
+  function confirmCancel() {
+    if (!dialog || dialog.type !== "cancel" || !cancelReason.trim()) return;
+    transition.mutate({ id: dialog.booking.id, next: "Cancelled", reason: cancelReason.trim() });
+  }
+
+  function confirmCounter() {
+    if (!dialog || dialog.type !== "counter") return;
+    const price = parseFloat(counterPrice);
+    if (isNaN(price) || price <= 0) return;
+    transition.mutate({
+      id: dialog.booking.id,
+      next: "CounterOffered",
+      counterPrice: price,
+      reason: counterNote.trim() || undefined,
+    });
   }
 
   return (
@@ -98,7 +148,7 @@ export default function WarehouseBookingsPage() {
         </p>
       </div>
 
-      {transition.error && (
+      {transition.error && !dialog && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {(transition.error as Error).message}
         </div>
@@ -145,22 +195,7 @@ export default function WarehouseBookingsPage() {
                           size="sm"
                           variant={t.variant ?? "default"}
                           disabled={transition.isPending}
-                          onClick={() => {
-                            if (t.next === "Cancelled") {
-                              const reason = window.prompt("Reason for declining?") ?? undefined;
-                              if (!reason) return;
-                              transition.mutate({ id: b.id, next: t.next, reason });
-                            } else if (t.next === "CounterOffered") {
-                              const priceStr = window.prompt("Counter-offer price ($):");
-                              if (!priceStr) return;
-                              const counterPrice = parseFloat(priceStr);
-                              if (isNaN(counterPrice) || counterPrice <= 0) return;
-                              const reason = window.prompt("Message to customer (optional):") ?? undefined;
-                              transition.mutate({ id: b.id, next: t.next, counterPrice, reason });
-                            } else {
-                              transition.mutate({ id: b.id, next: t.next });
-                            }
-                          }}
+                          onClick={() => handleTransitionClick(b, t.next)}
                         >
                           {t.label}
                         </Button>
@@ -173,6 +208,116 @@ export default function WarehouseBookingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Decline / cancel modal */}
+      {dialog?.type === "cancel" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDialog(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h3 className="font-semibold text-base">Decline booking</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Booking <span className="font-mono text-xs">{dialog.booking.id.slice(0, 8)}</span>
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="decline-reason">Reason for declining (required)</Label>
+              <Input
+                id="decline-reason"
+                placeholder="e.g. no capacity for requested dates…"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+              />
+            </div>
+            {transition.error && (
+              <p className="text-sm text-red-600">{(transition.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDialog(null)}>
+                Back
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={!cancelReason.trim() || transition.isPending}
+                onClick={confirmCancel}
+              >
+                {transition.isPending ? "Declining…" : "Confirm decline"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Counter-offer modal */}
+      {dialog?.type === "counter" && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDialog(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div>
+              <h3 className="font-semibold text-base">Counter offer</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Customer proposed{" "}
+                {dialog.booking.proposed_price != null
+                  ? `$${Number(dialog.booking.proposed_price).toFixed(2)}`
+                  : "no price"}
+                . Enter your counter price.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="counter-price">Counter price ($)</Label>
+              <Input
+                id="counter-price"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="e.g. 1200.00"
+                value={counterPrice}
+                onChange={(e) => setCounterPrice(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="counter-note">Message to customer (optional)</Label>
+              <Input
+                id="counter-note"
+                placeholder="e.g. Rate includes forklift handling…"
+                value={counterNote}
+                onChange={(e) => setCounterNote(e.target.value)}
+              />
+            </div>
+            {transition.error && (
+              <p className="text-sm text-red-600">{(transition.error as Error).message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={() => setDialog(null)}>
+                Back
+              </Button>
+              <Button
+                className="flex-1"
+                disabled={
+                  !counterPrice.trim() ||
+                  isNaN(parseFloat(counterPrice)) ||
+                  parseFloat(counterPrice) <= 0 ||
+                  transition.isPending
+                }
+                onClick={confirmCounter}
+              >
+                {transition.isPending ? "Sending…" : "Send counter offer"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

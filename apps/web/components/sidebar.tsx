@@ -167,6 +167,15 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     });
   }
 
+  if (role === "GateStaff") {
+    sections.push({
+      label: "Gate",
+      items: [
+        { href: "/warehouse/stations/dock", label: "Dock station", icon: Warehouse },
+      ],
+    });
+  }
+
   if (role === "Worker") {
     sections.push({
       label: "Work",
