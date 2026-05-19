@@ -43,11 +43,16 @@ export default function CreateServiceListingPage() {
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const { data: profile } = await supabase
-        .from("profiles").select("company_id").eq("id", user.id).single();
-      if (!profile?.company_id) throw new Error("No company associated.");
+      const { data: membership, error: memErr } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .in("role", ["owner", "admin", "staff", "supervisor"])
+        .limit(1)
+        .single();
+      if (memErr || !membership?.company_id) throw new Error("No company associated.");
       const { error } = await supabase.from("service_listings").insert({
-        company_id: profile.company_id,
+        company_id: membership.company_id,
         category,
         coverage_area: coverage,
         hourly_rate: hourlyRate,

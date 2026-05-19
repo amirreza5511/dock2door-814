@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
@@ -44,26 +46,36 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
   Cancelled: "destructive",
 };
 
+const PAGE_SIZE = 50;
+
 export default function EmployerPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"shifts" | "applications">("shifts");
 
+  // Cancel confirmation state
+  const [cancelTarget, setCancelTarget] = useState<{ id: string; title: string } | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
+  // Pagination
+  const [shiftsPage, setShiftsPage] = useState(1);
+  const [appsPage, setAppsPage] = useState(1);
+
   const shiftsQ = useQuery({
-    queryKey: ["employer", "shifts"],
+    queryKey: ["employer", "shifts", shiftsPage],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shift_posts")
         .select("id,title,category,status,date,start_time,end_time,hourly_rate,workers_needed,location_city,requirements,created_at")
         .order("date", { ascending: false })
-        .limit(200);
+        .range(0, shiftsPage * PAGE_SIZE - 1);
       if (error) throw error;
       return (data ?? []) as ShiftRow[];
     },
   });
 
   const appsQ = useQuery({
-    queryKey: ["employer", "applications"],
+    queryKey: ["employer", "applications", appsPage],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shift_applications")
@@ -71,7 +83,7 @@ export default function EmployerPage() {
           shift_posts!inner(title),
           profiles!inner(name)`)
         .order("applied_at", { ascending: false })
-        .limit(300);
+        .range(0, appsPage * PAGE_SIZE - 1);
       if (error) throw error;
       return (data ?? []).map((a: any) => ({
         id: a.id,
@@ -105,11 +117,18 @@ export default function EmployerPage() {
   });
 
   const closeShift = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from("shift_posts").update({ status: "Cancelled" }).eq("id", id);
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await supabase.rpc("cancel_shift_with_reason", {
+        p_shift_id: id,
+        p_reason: reason,
+      });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["employer", "shifts"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employer", "shifts"] });
+      setCancelTarget(null);
+      setCancelReason("");
+    },
   });
 
   const shiftCols: Column<ShiftRow>[] = [
@@ -160,9 +179,11 @@ export default function EmployerPage() {
       render: (s) => (
         <div className="flex justify-end gap-2">
           {(s.status === "Posted" || s.status === "Draft") && (
-            <Button size="sm" variant="destructive"
-              disabled={closeShift.isPending}
-              onClick={() => closeShift.mutate(s.id)}>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => { setCancelTarget({ id: s.id, title: s.title }); setCancelReason(""); }}
+            >
               Cancel
             </Button>
           )}
@@ -222,6 +243,8 @@ export default function EmployerPage() {
   ];
 
   const pendingApps = (appsQ.data ?? []).filter((a) => a.status === "Applied").length;
+  const hasMoreShifts = (shiftsQ.data?.length ?? 0) === shiftsPage * PAGE_SIZE;
+  const hasMoreApps = (appsQ.data?.length ?? 0) === appsPage * PAGE_SIZE;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -262,6 +285,44 @@ export default function EmployerPage() {
         </Link>
       </div>
 
+      {/* Cancel confirmation dialog */}
+      {cancelTarget && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+          <p className="text-sm font-medium text-destructive">
+            Cancel shift: <span className="font-semibold">{cancelTarget.title}</span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This will notify all applicants and cannot be undone. Please provide a reason.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reason *</Label>
+            <Input
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="e.g. Shift no longer needed, reorganisation…"
+              className="text-sm"
+              autoFocus
+            />
+          </div>
+          {closeShift.error && (
+            <p className="text-xs text-destructive">{(closeShift.error as Error).message}</p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={!cancelReason.trim() || closeShift.isPending}
+              onClick={() => closeShift.mutate({ id: cancelTarget.id, reason: cancelReason.trim() })}
+            >
+              {closeShift.isPending ? "Cancelling…" : "Confirm cancel"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setCancelTarget(null); setCancelReason(""); }}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Tab switcher */}
       <div className="flex gap-1 border-b">
         {(["shifts", "applications"] as const).map((t) => (
@@ -283,9 +344,9 @@ export default function EmployerPage() {
         <Card>
           <CardHeader>
             <CardTitle>Posted shifts</CardTitle>
-            <CardDescription>{shiftsQ.data?.length ?? 0} total</CardDescription>
+            <CardDescription>{shiftsQ.data?.length ?? 0} loaded</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <DataTable
               rows={shiftsQ.data ?? []}
               columns={shiftCols}
@@ -300,6 +361,13 @@ export default function EmployerPage() {
               ]}
               emptyMessage="No shifts yet. Post your first shift."
             />
+            {hasMoreShifts && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" size="sm" onClick={() => setShiftsPage((p) => p + 1)}>
+                  Load more shifts
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -308,9 +376,9 @@ export default function EmployerPage() {
         <Card>
           <CardHeader>
             <CardTitle>Applications</CardTitle>
-            <CardDescription>{appsQ.data?.length ?? 0} total · {pendingApps} pending</CardDescription>
+            <CardDescription>{appsQ.data?.length ?? 0} loaded · {pendingApps} pending</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <DataTable
               rows={appsQ.data ?? []}
               columns={appCols}
@@ -325,6 +393,13 @@ export default function EmployerPage() {
               ]}
               emptyMessage="No applications yet."
             />
+            {hasMoreApps && (
+              <div className="flex justify-center pt-2">
+                <Button variant="outline" size="sm" onClick={() => setAppsPage((p) => p + 1)}>
+                  Load more applications
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

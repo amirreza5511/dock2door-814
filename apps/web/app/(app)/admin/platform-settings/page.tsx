@@ -59,17 +59,13 @@ export default function PlatformSettingsPage() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
-        .from("platform_settings")
-        .update({
-          warehouse_commission_percentage: form.warehouse_commission_percentage,
-          service_commission_percentage: form.service_commission_percentage,
-          labour_commission_percentage: form.labour_commission_percentage,
-          handling_fee_per_pallet_default: form.handling_fee_per_pallet_default,
-          tax_mode: form.tax_mode,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", settingsQ.data!.id);
+      const { error } = await supabase.rpc("admin_update_platform_settings", {
+        p_warehouse_commission_percentage: form.warehouse_commission_percentage,
+        p_service_commission_percentage: form.service_commission_percentage,
+        p_labour_commission_percentage: form.labour_commission_percentage,
+        p_handling_fee_per_pallet_default: form.handling_fee_per_pallet_default,
+        p_tax_mode: form.tax_mode,
+      });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "platform-settings"] }),

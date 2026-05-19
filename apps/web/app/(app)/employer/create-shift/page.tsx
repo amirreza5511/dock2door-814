@@ -43,16 +43,18 @@ export default function CreateShiftPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { data: profile } = await supabase
-        .from("profiles")
+      const { data: membership, error: memErr } = await supabase
+        .from("company_users")
         .select("company_id")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
+        .in("role", ["owner", "admin", "staff", "supervisor"])
+        .limit(1)
         .single();
 
-      if (!profile?.company_id) throw new Error("No company associated with your account.");
+      if (memErr || !membership?.company_id) throw new Error("No company associated with your account.");
 
       const { error } = await supabase.from("shift_posts").insert({
-        employer_company_id: profile.company_id,
+        employer_company_id: membership.company_id,
         title: form.title.trim(),
         category: form.category,
         location_address: form.location_address.trim(),
