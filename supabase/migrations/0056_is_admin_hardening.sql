@@ -109,6 +109,8 @@ create policy "wc_profile_admin_write" on public.worker_certifications
 -- 5) Diagnostic helper — run SELECT * FROM public.admin_role_audit()
 --    to verify which admins have / are missing user_roles rows
 -- =========================================================================
+-- DROP first: cannot change OUT-parameter signature with CREATE OR REPLACE
+drop function if exists public.admin_role_audit();
 create or replace function public.admin_role_audit()
 returns table (
   user_id            uuid,
