@@ -34,6 +34,7 @@ import {
   ExternalLink,
   FileSearch,
   Loader2,
+  Wrench,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -69,6 +70,15 @@ interface PendingListing {
   company_name: string | null;
 }
 
+interface PendingServiceListing {
+  id: string;
+  company_id: string;
+  category: string;
+  coverage_area: string[] | null;
+  created_at: string;
+  company_name: string | null;
+}
+
 interface OpenDispute {
   id: string;
   status: string;
@@ -86,30 +96,35 @@ type ActionType =
   | { kind: "approve-cert"; id: string; workerName: string; certType: string }
   | { kind: "reject-cert"; id: string; workerName: string; certType: string }
   | { kind: "approve-listing"; id: string; name: string }
-  | { kind: "suspend-listing"; id: string; name: string };
+  | { kind: "suspend-listing"; id: string; name: string }
+  | { kind: "approve-service-listing"; id: string; name: string }
+  | { kind: "suspend-service-listing"; id: string; name: string };
 
 function reasonRequired(a: ActionType): boolean {
   return (
     a.kind === "suspend-company" ||
     a.kind === "reject-cert" ||
-    a.kind === "suspend-listing"
+    a.kind === "suspend-listing" ||
+    a.kind === "suspend-service-listing"
   );
 }
 
 function actionTitle(a: ActionType): string {
   switch (a.kind) {
-    case "approve-company":  return `Approve company: ${a.name}`;
-    case "suspend-company":  return `Suspend company: ${a.name}`;
-    case "approve-cert":     return `Approve ${a.certType} cert for ${a.workerName}`;
-    case "reject-cert":      return `Reject ${a.certType} cert for ${a.workerName}`;
-    case "approve-listing":  return `Approve listing: ${a.name}`;
-    case "suspend-listing":  return `Suspend listing: ${a.name}`;
+    case "approve-company":          return `Approve company: ${a.name}`;
+    case "suspend-company":          return `Suspend company: ${a.name}`;
+    case "approve-cert":             return `Approve ${a.certType} cert for ${a.workerName}`;
+    case "reject-cert":              return `Reject ${a.certType} cert for ${a.workerName}`;
+    case "approve-listing":          return `Approve warehouse listing: ${a.name}`;
+    case "suspend-listing":          return `Suspend warehouse listing: ${a.name}`;
+    case "approve-service-listing":  return `Approve service listing: ${a.name}`;
+    case "suspend-service-listing":  return `Suspend service listing: ${a.name}`;
   }
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-type Tab = "companies" | "certifications" | "listings" | "disputes";
+type Tab = "companies" | "certifications" | "listings" | "service-listings" | "disputes";
 
 export default function CompliancePage() {
   const supabase = getBrowserSupabase();
@@ -195,6 +210,29 @@ export default function CompliancePage() {
         name: r.name,
         city: r.city,
         warehouse_type: r.warehouse_type,
+        created_at: r.created_at,
+        company_name: r.companies?.name ?? null,
+      }));
+    },
+    staleTime: 30_000,
+  });
+
+  const serviceListingsQ = useQuery({
+    queryKey: ["compliance", "service-listings"],
+    queryFn: async (): Promise<PendingServiceListing[]> => {
+      const { data, error } = await supabase
+        .from("service_listings")
+        .select(
+          "id,company_id,category,coverage_area,created_at,companies!company_id(name)"
+        )
+        .eq("status", "PendingApproval")
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return ((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        company_id: r.company_id,
+        category: r.category,
+        coverage_area: r.coverage_area ?? null,
         created_at: r.created_at,
         company_name: r.companies?.name ?? null,
       }));
@@ -288,6 +326,25 @@ export default function CompliancePage() {
           if (error) throw new Error(error.message);
           break;
         }
+        case "approve-service-listing": {
+          const { error } = await supabase.rpc("admin_set_service_listing_status", {
+            p_listing_id: action.id,
+            p_status: "Available",
+            p_reason: r ?? "Approved via compliance queue",
+          });
+          if (error) throw new Error(error.message);
+          break;
+        }
+        case "suspend-service-listing": {
+          if (!r) throw new Error("Reason required to suspend a service listing");
+          const { error } = await supabase.rpc("admin_set_service_listing_status", {
+            p_listing_id: action.id,
+            p_status: "Suspended",
+            p_reason: r,
+          });
+          if (error) throw new Error(error.message);
+          break;
+        }
       }
     },
     onSuccess: () => {
@@ -299,26 +356,40 @@ export default function CompliancePage() {
     onError: (err: Error) => setActionError(err.message),
   });
 
+  // ── Derived state ─────────────────────────────────────────────────────────
+
   const totalPending =
     (companiesQ.data?.length ?? 0) +
     (certsQ.data?.length ?? 0) +
     (listingsQ.data?.length ?? 0) +
+    (serviceListingsQ.data?.length ?? 0) +
     (disputesQ.data?.length ?? 0);
 
-  const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; count: number }[] = [
-    { id: "companies",      label: "Companies",      icon: Building2,     count: companiesQ.data?.length ?? 0 },
-    { id: "certifications", label: "Certifications", icon: Award,         count: certsQ.data?.length ?? 0 },
-    { id: "listings",       label: "Listings",       icon: Warehouse,     count: listingsQ.data?.length ?? 0 },
-    { id: "disputes",       label: "Disputes",       icon: AlertTriangle, count: disputesQ.data?.length ?? 0 },
+  const TABS: {
+    id: Tab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    count: number;
+  }[] = [
+    { id: "companies",        label: "Companies",        icon: Building2,     count: companiesQ.data?.length ?? 0 },
+    { id: "certifications",   label: "Certifications",   icon: Award,         count: certsQ.data?.length ?? 0 },
+    { id: "listings",         label: "Warehouses",       icon: Warehouse,     count: listingsQ.data?.length ?? 0 },
+    { id: "service-listings", label: "Services",         icon: Wrench,        count: serviceListingsQ.data?.length ?? 0 },
+    { id: "disputes",         label: "Disputes",         icon: AlertTriangle, count: disputesQ.data?.length ?? 0 },
   ];
 
   const isLoading =
-    companiesQ.isLoading || certsQ.isLoading || listingsQ.isLoading || disputesQ.isLoading;
+    companiesQ.isLoading ||
+    certsQ.isLoading ||
+    listingsQ.isLoading ||
+    serviceListingsQ.isLoading ||
+    disputesQ.isLoading;
 
   const refetchAll = () => {
     void companiesQ.refetch();
     void certsQ.refetch();
     void listingsQ.refetch();
+    void serviceListingsQ.refetch();
     void disputesQ.refetch();
   };
 
@@ -333,7 +404,9 @@ export default function CompliancePage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
             {totalPending > 0 ? (
-              <span className="text-amber-600 font-medium">{totalPending} item{totalPending !== 1 ? "s" : ""} pending admin action</span>
+              <span className="text-amber-600 font-medium">
+                {totalPending} item{totalPending !== 1 ? "s" : ""} pending admin action
+              </span>
             ) : isLoading ? (
               "Loading…"
             ) : (
@@ -348,12 +421,12 @@ export default function CompliancePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto">
         {TABS.map(({ id, label, icon: Icon, count }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            className={`relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px whitespace-nowrap ${
               tab === id
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -483,7 +556,7 @@ export default function CompliancePage() {
         </div>
       )}
 
-      {/* ── Listings Tab ────────────────────────────────────────────────── */}
+      {/* ── Warehouse Listings Tab ───────────────────────────────────────── */}
       {tab === "listings" && (
         <div className="space-y-3">
           {listingsQ.isLoading ? (
@@ -630,7 +703,7 @@ export default function CompliancePage() {
           <CardDescription>Items requiring admin action across all categories</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {TABS.map(({ id, label, icon: Icon, count }) => (
               <button
                 key={id}
@@ -641,7 +714,7 @@ export default function CompliancePage() {
                 <span className={`text-xl font-bold tabular-nums ${count > 0 ? "text-foreground" : "text-muted-foreground"}`}>
                   {count}
                 </span>
-                <span className="text-xs text-muted-foreground">{label}</span>
+                <span className="text-xs text-muted-foreground text-center">{label}</span>
               </button>
             ))}
           </div>
@@ -694,8 +767,15 @@ export default function CompliancePage() {
             </Button>
             <Button
               onClick={() => executeMutation.mutate()}
-              disabled={executeMutation.isPending || (action !== null && reasonRequired(action) && !reason.trim())}
-              variant={action?.kind.includes("reject") || action?.kind.includes("suspend") ? "destructive" : "default"}
+              disabled={
+                executeMutation.isPending ||
+                (action !== null && reasonRequired(action) && !reason.trim())
+              }
+              variant={
+                action?.kind.includes("reject") || action?.kind.includes("suspend")
+                  ? "destructive"
+                  : "default"
+              }
             >
               {executeMutation.isPending ? "Processing…" : "Confirm"}
             </Button>
