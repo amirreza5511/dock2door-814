@@ -52,7 +52,7 @@ interface TimeEntryRow {
   employer_notes: string | null;
 }
 
-interface WorkerReviewRow { reviewee_user_id: string; rating: number; }
+interface WorkerReviewRow { target_user_id: string; rating: number; }
 
 function calcClockHours(start: string, end: string): number {
   return (new Date(end).getTime() - new Date(start).getTime()) / 3_600_000;
@@ -165,8 +165,8 @@ export default function EmployerShifts() {
     queryFn: async (): Promise<WorkerReviewRow[]> => {
       const { data } = await supabase
         .from('reviews')
-        .select('reviewee_user_id,rating')
-        .not('reviewee_user_id', 'is', null);
+        .select('target_user_id,rating')
+        .not('target_user_id', 'is', null);
       return (data ?? []) as WorkerReviewRow[];
     },
     staleTime: 120_000,
@@ -191,7 +191,7 @@ export default function EmployerShifts() {
   const getWorkerCerts = (userId: string) => workerCertifications.filter((c) => c.workerUserId === userId && c.adminApproved);
 
   const getWorkerRating = (userId: string): { avg: number; count: number } => {
-    const revs = workerReviews.filter((r) => r.reviewee_user_id === userId);
+    const revs = workerReviews.filter((r) => r.target_user_id === userId);
     if (revs.length === 0) return { avg: 0, count: 0 };
     return { avg: revs.reduce((s, r) => s + r.rating, 0) / revs.length, count: revs.length };
   };

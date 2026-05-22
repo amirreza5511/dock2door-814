@@ -607,24 +607,26 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { id: order!.id };
   },
 
+  // fulfillment order transitions go through advance_fulfillment_order RPC (0042) which
+  // validates allowed transitions, prevents status jumps, and enforces membership checks.
   'fulfillment.pickOrder': async (input: { orderId: string }) => {
-    const { error } = await supabase.from('fulfillment_orders').update({ status: 'Picking' }).eq('id', input.orderId);
-    if (error) throwErr(error, 'Unable to update order');
+    const { error } = await supabase.rpc('advance_fulfillment_order', { p_order_id: input.orderId, p_next_status: 'Picking' });
+    if (error) throwErr(error, 'Unable to pick order — invalid transition or access denied');
     return { success: true, status: 'Picking' };
   },
   'fulfillment.packOrder': async (input: { orderId: string }) => {
-    const { error } = await supabase.from('fulfillment_orders').update({ status: 'Packed' }).eq('id', input.orderId);
-    if (error) throwErr(error, 'Unable to update order');
+    const { error } = await supabase.rpc('advance_fulfillment_order', { p_order_id: input.orderId, p_next_status: 'Packed' });
+    if (error) throwErr(error, 'Unable to pack order — invalid transition or access denied');
     return { success: true, status: 'Packed' };
   },
   'fulfillment.shipOrder': async (input: { orderId: string }) => {
-    const { error } = await supabase.from('fulfillment_orders').update({ status: 'Shipped' }).eq('id', input.orderId);
-    if (error) throwErr(error, 'Unable to update order');
+    const { error } = await supabase.rpc('advance_fulfillment_order', { p_order_id: input.orderId, p_next_status: 'Shipped' });
+    if (error) throwErr(error, 'Unable to ship order — invalid transition or access denied');
     return { success: true, status: 'Shipped' };
   },
   'fulfillment.completeOrder': async (input: { orderId: string }) => {
-    const { error } = await supabase.from('fulfillment_orders').update({ status: 'Completed' }).eq('id', input.orderId);
-    if (error) throwErr(error, 'Unable to update order');
+    const { error } = await supabase.rpc('advance_fulfillment_order', { p_order_id: input.orderId, p_next_status: 'Completed' });
+    if (error) throwErr(error, 'Unable to complete order — invalid transition or access denied');
     return { success: true, status: 'Completed' };
   },
 
@@ -936,15 +938,26 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'admin.setCompanyStatus': async (input: { companyId: string; status: string }) => {
-    const { error } = await supabase.from('companies').update({ status: input.status }).eq('id', input.companyId);
-    if (error) throwErr(error, 'Unable to update company');
+  // admin.setCompanyStatus routes through admin_set_company_status SECURITY DEFINER RPC (0007)
+  // which asserts is_admin(), captures before/after JSONB, and writes to audit_logs.
+  'admin.setCompanyStatus': async (input: { companyId: string; status: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_set_company_status', {
+      p_company_id: input.companyId,
+      p_status: input.status,
+      p_reason: input.reason ?? `Status set to ${input.status} by admin`,
+    });
+    if (error) throwErr(error, 'Unable to update company — check admin privileges');
     return { success: true };
   },
 
-  'admin.setUserStatus': async (input: { userId: string; status: string }) => {
-    const { error } = await supabase.from('profiles').update({ status: input.status }).eq('id', input.userId);
-    if (error) throwErr(error, 'Unable to update user');
+  // admin.setUserStatus routes through admin_set_user_status SECURITY DEFINER RPC (0007).
+  'admin.setUserStatus': async (input: { userId: string; status: string; reason?: string }) => {
+    const { error } = await supabase.rpc('admin_set_user_status', {
+      p_user_id: input.userId,
+      p_status: input.status,
+      p_reason: input.reason ?? `Status set to ${input.status} by admin`,
+    });
+    if (error) throwErr(error, 'Unable to update user — check admin privileges');
     return { success: true };
   },
 
@@ -1241,6 +1254,23 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'shifts.clockOut': async (input: { assignmentId: string }) => {
     const { error } = await supabase.rpc('worker_clock_out', { p_assignment_id: input.assignmentId });
     if (error) throwErr(error, 'Unable to clock out');
+    return { success: true };
+  },
+  'shifts.closeShift': async (input: { shiftId: string; reason?: string }) => {
+    const { error } = await supabase.rpc('employer_close_shift_post', {
+      p_shift_id: input.shiftId,
+      p_reason: input.reason ?? 'Shift closed by employer',
+    });
+    if (error) throwErr(error, 'Unable to close shift — ensure all assignments are in a terminal state');
+    return { success: true };
+  },
+  'shifts.confirmAttendance': async (input: { assignmentId: string; confirmed: boolean; reason?: string }) => {
+    const { error } = await supabase.rpc('worker_confirm_attendance', {
+      p_assignment_id: input.assignmentId,
+      p_confirmed: input.confirmed,
+      p_reason: input.reason ?? null,
+    });
+    if (error) throwErr(error, input.confirmed ? 'Unable to confirm attendance' : 'Unable to cancel attendance — a reason is required');
     return { success: true };
   },
   'shifts.confirmHours': async (input: { timeEntryId: string; hours: number; notes?: string }) => {

@@ -35,6 +35,7 @@ import {
   RotateCcw,
   Tag,
   Boxes,
+  ClipboardCheck,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -69,6 +70,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "Administration",
       items: [
+        { href: "/admin/compliance", label: "Compliance queue", icon: ClipboardCheck },
         { href: "/admin/companies", label: "Companies", icon: Building2 },
         { href: "/admin/users", label: "Users", icon: Users },
         { href: "/admin/certifications", label: "Certifications", icon: ShieldCheck },
