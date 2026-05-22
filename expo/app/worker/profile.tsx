@@ -573,7 +573,16 @@ export default function WorkerProfile() {
     onError: (err: unknown) => Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error'),
   });
 
-  /** Upload government ID (stored in certifications bucket as a special cert type) */
+  /**
+   * Upload government ID (stored in certifications bucket as a special cert type).
+   *
+   * Dedup strategy:
+   *  - If an existing Pending row for the same ID type already exists, we re-use it
+   *    (update its file_path) rather than creating a duplicate.
+   *  - If the previous row was Approved/Rejected/Expired a fresh Pending row is inserted
+   *    so the admin can review the replacement document.
+   *  - The UI already deduplicates the display list via `idDocs` (latest per type).
+   */
   const uploadGovtId = async () => {
     if (!user) return;
     if (!govtIdType) { Alert.alert('Select ID type', 'Choose which type of government ID you are uploading.'); return; }
@@ -588,13 +597,35 @@ export default function WorkerProfile() {
       const asset = picked.assets[0];
       const filename = asset.name ?? `govt-id-${Date.now()}`;
       const mime = asset.mimeType ?? 'application/octet-stream';
-      // Store as a cert row with type = "GovtID_<type>" so it's tracked
-      const { data: row, error: insertErr } = await supabase
+
+      const idCertType = `GovtID_${govtIdType}`;
+
+      // Check for an existing Pending row for this ID type — reuse it to avoid duplicates.
+      const { data: existingPending } = await supabase
         .from('worker_certifications')
-        .insert({ worker_user_id: user.id, type: `GovtID_${govtIdType}`, expiry_date: null, file_path: '', certificate_file: '', notes: `Government ID: ${govtIdType}` })
-        .select('id').single();
-      if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create ID record');
-      const certId = row.id as string;
+        .select('id')
+        .eq('worker_user_id', user.id)
+        .eq('type', idCertType)
+        .eq('status', 'Pending')
+        .maybeSingle();
+
+      let certId: string;
+      let isNew = false;
+
+      if (existingPending) {
+        // Re-upload: reuse the existing Pending row so admin sees a single entry
+        certId = existingPending.id as string;
+      } else {
+        // New submission (no Pending row — previous was Approved/Rejected/Expired or first upload)
+        const { data: row, error: insertErr } = await supabase
+          .from('worker_certifications')
+          .insert({ worker_user_id: user.id, type: idCertType, expiry_date: null, file_path: '', certificate_file: '', notes: `Government ID: ${govtIdType}` })
+          .select('id').single();
+        if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create ID record');
+        certId = row.id as string;
+        isNew = true;
+      }
+
       const path = buildCertPath(user.id, certId, filename);
       let body: Blob;
       if (Platform.OS === 'web' && asset.file) {
@@ -605,11 +636,12 @@ export default function WorkerProfile() {
       try {
         await uploadFileWithMetadata({ bucket: 'certifications', path, file: body, contentType: mime, entityType: 'worker_govt_id', entityId: certId, companyId: null });
       } catch (err) {
-        await supabase.from('worker_certifications').delete().eq('id', certId);
+        // On upload failure, clean up only if we inserted a fresh row
+        if (isNew) await supabase.from('worker_certifications').delete().eq('id', certId);
         throw err;
       }
       await supabase.from('worker_certifications').update({ file_path: path, certificate_file: path }).eq('id', certId);
-      // Also update govt_id_path in private info
+      // Mirror latest ID path + type in private info for quick admin reference
       await supabase.from('worker_private_info').upsert({ user_id: user.id, govt_id_path: path, govt_id_type: govtIdType, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       await queryClient.invalidateQueries({ queryKey: ['worker-certs', user?.id] });
       await queryClient.invalidateQueries({ queryKey: ['worker-private-info', user?.id] });
@@ -640,7 +672,15 @@ export default function WorkerProfile() {
   const myCerts = certsQuery.data ?? [];
   // Split certs: work certs vs govt ID docs
   const workCerts = myCerts.filter((c) => !c.type.startsWith('GovtID_'));
-  const idDocs = myCerts.filter((c) => c.type.startsWith('GovtID_'));
+  // Deduplicate: keep only the most-recent row per GovtID type so the UI never shows duplicate IDs.
+  const idDocsRaw = myCerts.filter((c) => c.type.startsWith('GovtID_'));
+  const idDocs = Object.values(
+    idDocsRaw.reduce((acc, doc) => {
+      const key = doc.type;
+      if (!acc[key] || doc.created_at > acc[key].created_at) acc[key] = doc;
+      return acc;
+    }, {} as Record<string, CertRow>),
+  );
   const criminalRecordCert = workCerts.find((c) => c.type === 'CriminalRecordCheck');
 
   const profilePhotoPath = profile?.profilePhotoPath ?? profile?.avatarPath ?? '';

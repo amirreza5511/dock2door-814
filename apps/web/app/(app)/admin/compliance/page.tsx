@@ -32,6 +32,8 @@ import {
   RefreshCw,
   ClipboardCheck,
   ExternalLink,
+  FileSearch,
+  Loader2,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
@@ -116,6 +118,24 @@ export default function CompliancePage() {
   const [action, setAction] = useState<ActionType | null>(null);
   const [reason, setReason] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  const [fileLoadingId, setFileLoadingId] = useState<string | null>(null);
+
+  /** Open the uploaded certificate file directly via a signed URL (60s expiry). */
+  const openCertFile = async (certId: string, filePath: string) => {
+    setFileLoadingId(certId);
+    try {
+      const { data, error } = await supabase.storage
+        .from("certifications")
+        .createSignedUrl(filePath, 60);
+      if (error || !data?.signedUrl) throw new Error(error?.message ?? "Unable to generate preview link");
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("[compliance] openCertFile", err);
+      alert(`Could not open file: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setFileLoadingId(null);
+    }
+  };
 
   // ── Queries ──────────────────────────────────────────────────────────────
 
@@ -411,12 +431,19 @@ export default function CompliancePage() {
                       Expires {c.expiry_date ?? "N/A"} · Submitted {formatDate(c.created_at)}
                     </p>
                     {c.file_path && (
-                      <Link
-                        href={`/admin/certifications`}
-                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1"
+                      <button
+                        type="button"
+                        onClick={() => void openCertFile(c.id, c.file_path!)}
+                        disabled={fileLoadingId === c.id}
+                        className="text-xs text-primary hover:underline flex items-center gap-1 mt-1 disabled:opacity-60"
                       >
-                        <ExternalLink className="h-3 w-3" /> View certificate file
-                      </Link>
+                        {fileLoadingId === c.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <FileSearch className="h-3 w-3" />
+                        )}
+                        {fileLoadingId === c.id ? "Opening…" : "Preview certificate file"}
+                      </button>
                     )}
                   </div>
                   <div className="flex gap-2 shrink-0">

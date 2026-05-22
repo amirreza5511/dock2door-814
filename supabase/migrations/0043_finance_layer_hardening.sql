@@ -50,8 +50,9 @@ begin
   if v_booking is null then
     raise exception 'booking not found';
   end if;
-  if v_booking.status <> 'completed' then
-    raise exception 'booking must be completed before invoicing';
+  -- Use ::text cast to safely compare against the PascalCase enum value 'Completed'
+  if v_booking.status::text <> 'Completed' then
+    raise exception 'booking must be completed before invoicing (current status: %)', v_booking.status;
   end if;
   if not (public.is_member_of(v_booking.warehouse_company_id) or public.is_admin()) then
     raise exception 'only warehouse provider or admin can issue invoice';

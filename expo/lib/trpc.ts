@@ -233,10 +233,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       if ('name' in payload) db.name = payload.name;
       if ('description' in payload) db.description = payload.description;
     } else {
-      // fallback: snake_case-ify keys
-      for (const k of Object.keys(payload)) {
-        db[k.replace(/([A-Z])/g, '_$1').toLowerCase()] = payload[k];
-      }
+      // No fallback — require explicit per-table mapping to prevent arbitrary column writes.
+      throw new Error(`updateRecord: table "${table}" is not supported. Add explicit handling in dock.updateRecord.`);
     }
     const { error } = await supabase.from(table).update(db).eq('id', id);
     if (error) throwErr(error, 'Unable to update record');
@@ -411,9 +409,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'warehouses.setListingStatus': async (input: { id: string; status: string }) => {
-    const { error } = await supabase.from('warehouse_listings').update({ status: input.status }).eq('id', input.id);
-    if (error) throwErr(error, 'Unable to update status');
+  // warehouses.setListingStatus — all transitions are routed through audited RPCs.
+  // Provider:  Draft → PendingApproval   via provider_submit_listing (0050)
+  // Provider:  PendingApproval → Draft   via provider_withdraw_listing (0050)
+  // Admin:     any status                via admin_set_listing_status (0007)
+  // No direct warehouse_listings UPDATE is allowed.
+  'warehouses.setListingStatus': async (input: { id: string; status: string }, ctx) => {
+    if (isAdmin(ctx.user.role)) {
+      const { error } = await supabase.rpc('admin_set_listing_status', {
+        p_listing_id: input.id,
+        p_status: input.status,
+        p_reason: `Status set to ${input.status} by admin`,
+      });
+      if (error) throwErr(error, 'Unable to update listing status — check admin privileges');
+    } else if (input.status === 'PendingApproval') {
+      const { error } = await supabase.rpc('provider_submit_listing', { p_listing_id: input.id });
+      if (error) throwErr(error, 'Unable to submit listing for review');
+    } else if (input.status === 'Draft') {
+      const { error } = await supabase.rpc('provider_withdraw_listing', { p_listing_id: input.id });
+      if (error) throwErr(error, 'Unable to withdraw listing from review');
+    } else {
+      throw new Error(`setListingStatus: status "${input.status}" requires admin privileges`);
+    }
     return { success: true };
   },
 
@@ -899,11 +916,33 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
   },
 
+  // admin.listEntity — strict allowlist prevents arbitrary table enumeration.
+  // Add new entries here explicitly; never allow pass-through of unknown entity names.
   'admin.listEntity': async (input: { entity: string }) => {
-    const entity = input.entity;
-    const table = entity === 'users' ? 'profiles' : entity === 'message_threads' ? 'chat_threads' : entity;
-    const q = supabase.from(table).select('*').order('created_at', { ascending: false }).limit(200);
-    const { data, error } = await q;
+    const ENTITY_TABLE: Record<string, string> = {
+      users:              'profiles',
+      companies:          'companies',
+      disputes:           'disputes',
+      warehouse_bookings: 'warehouse_bookings',
+      warehouse_listings: 'warehouse_listings',
+      service_listings:   'service_listings',
+      service_jobs:       'service_jobs',
+      products:           'products',
+      payments:           'payments',
+      invoices:           'invoices',
+      payouts:            'payouts',
+      commission_rules:   'commission_rules',
+      tax_rules:          'tax_rules',
+      message_threads:    'chat_threads',
+      notifications:      'notifications',
+      audit_logs:         'audit_logs',
+      shift_posts:        'shift_posts',
+      shift_applications: 'shift_applications',
+      shift_assignments:  'shift_assignments',
+    };
+    const table = ENTITY_TABLE[input.entity];
+    if (!table) throw new Error(`admin.listEntity: "${input.entity}" is not in the allowed entity list`);
+    const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false }).limit(200);
     if (error) return [];
     return data ?? [];
   },
@@ -1187,13 +1226,32 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to create shift');
     return { id: data!.id };
   },
+  // shifts.setStatus — all transitions are routed through audited RPCs. No direct shift_posts UPDATE.
+  // Cancelled  → cancel_shift_with_reason (0024)
+  // Completed  → employer_close_shift_post (0049) — validates all assignments are terminal first
+  // InProgress / Posted → provider_set_shift_status (0050)
   'shifts.setStatus': async (input: { id: string; status: string; reason?: string }) => {
     if (input.status === 'Cancelled') {
-      const { error } = await supabase.rpc('cancel_shift_with_reason', { p_shift_id: input.id, p_reason: input.reason ?? 'Cancelled by company' });
+      const { error } = await supabase.rpc('cancel_shift_with_reason', {
+        p_shift_id: input.id,
+        p_reason: input.reason ?? 'Cancelled by company',
+      });
       if (error) throwErr(error, 'Unable to cancel shift');
+    } else if (input.status === 'Completed') {
+      const { error } = await supabase.rpc('employer_close_shift_post', {
+        p_shift_id: input.id,
+        p_reason: input.reason ?? 'Shift closed by employer',
+      });
+      if (error) throwErr(error, 'Unable to close shift — ensure all workers are confirmed or marked no-show first');
+    } else if (input.status === 'InProgress' || input.status === 'Posted') {
+      const { error } = await supabase.rpc('provider_set_shift_status', {
+        p_shift_id: input.id,
+        p_status: input.status,
+        p_reason: input.reason ?? null,
+      });
+      if (error) throwErr(error, `Unable to set shift to ${input.status}`);
     } else {
-      const { error } = await supabase.from('shift_posts').update({ status: input.status }).eq('id', input.id);
-      if (error) throwErr(error, 'Unable to update shift');
+      throw new Error(`shifts.setStatus: status "${input.status}" is not a valid self-serve transition`);
     }
     return { success: true };
   },
