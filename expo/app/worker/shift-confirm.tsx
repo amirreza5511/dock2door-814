@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, XCircle, MapPin, Clock, DollarSign, Building2 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
@@ -49,6 +49,7 @@ export default function ShiftConfirmScreen() {
   const router = useRouter();
   const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
 
+  const queryClient = useQueryClient();
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelForm, setShowCancelForm] = useState(false);
@@ -98,6 +99,9 @@ export default function ShiftConfirmScreen() {
         })
         .eq('id', assignment.id);
       if (error) throw new Error(error.message);
+      // Invalidate the my-shifts assignments cache so the confirm banner disappears immediately
+      await queryClient.invalidateQueries({ queryKey: ['myshifts-assignments'] });
+      await queryClient.invalidateQueries({ queryKey: ['shift-confirm', assignmentId] });
       Alert.alert('Confirmed!', "See you there. We'll send a reminder before your shift.", [
         { text: 'OK', onPress: () => router.back() },
       ]);
@@ -124,6 +128,9 @@ export default function ShiftConfirmScreen() {
         })
         .eq('id', assignment.id);
       if (error) throw new Error(error.message);
+      // Invalidate the my-shifts assignments cache so the confirm banner disappears immediately
+      await queryClient.invalidateQueries({ queryKey: ['myshifts-assignments'] });
+      await queryClient.invalidateQueries({ queryKey: ['shift-confirm', assignmentId] });
       Alert.alert('Shift cancelled', 'The employer has been notified.', [
         { text: 'OK', onPress: () => router.back() },
       ]);
