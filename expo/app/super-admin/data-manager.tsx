@@ -75,11 +75,63 @@ export default function SuperAdminDataManagerScreen() {
     }
   }, [listQuery.isError, listQuery.error, entity]);
 
+  /**
+   * Maps generic UI intent (approve / active / suspend) to a valid DB enum value
+   * for the currently-selected entity. Each entity uses its own status enum, so
+   * a blanket 'Active' would crash on e.g. shift_posts (shift_status enum).
+   */
   const resolveStatusValue = (intent: 'approve' | 'active' | 'suspend'): string => {
-    if (entity === 'companies') {
-      return intent === 'suspend' ? 'Suspended' : 'Approved';
+    const isSuspend = intent === 'suspend';
+    switch (entity) {
+      // active_status: 'Active' | 'Suspended' | 'Inactive'
+      case 'companies':
+      case 'users':
+        return isSuspend ? 'Suspended' : 'Active';
+
+      // listing_status: 'Draft'|'PendingApproval'|'Available'|'Active'|'Hidden'|'Suspended'
+      case 'warehouse_listings':
+      case 'service_listings':
+        return isSuspend ? 'Suspended' : 'Available';
+
+      // booking_status: 'Requested'|'Accepted'|'CounterOffered'|'Confirmed'|'InProgress'|'Completed'|'Cancelled'
+      case 'bookings':
+        return isSuspend ? 'Cancelled' : 'Confirmed';
+
+      // dispute_status: 'Open'|'UnderReview'|'Resolved'|'Rejected'|'Escalated'
+      case 'disputes':
+        return isSuspend ? 'Rejected' : 'Resolved';
+
+      // invoice_status: 'Draft'|'Issued'|'Paid'|'Voided'|'Overdue'
+      case 'invoices':
+        return isSuspend ? 'Voided' : 'Issued';
+
+      // payout_status: 'Pending'|'Processing'|'Paid'|'Failed'|'Cancelled'
+      case 'payouts':
+        return isSuspend ? 'Cancelled' : 'Processing';
+
+      // payment_status varies; fall back to generic active_status-like values
+      case 'payments':
+        return isSuspend ? 'Cancelled' : 'Captured';
+
+      // shift_status: 'Draft'|'Posted'|'Filled'|'InProgress'|'Completed'|'Cancelled'
+      case 'shift_posts':
+        return isSuspend ? 'Cancelled' : 'Posted';
+
+      // shift_application_status: 'Applied'|'Accepted'|'Rejected'|'Withdrawn'
+      case 'shift_applications':
+        return isSuspend ? 'Rejected' : 'Accepted';
+
+      // assignment_status: 'Scheduled'|'InProgress'|'Completed'|'NoShow'|'Cancelled'|'Disputed'
+      case 'shift_assignments':
+        return isSuspend ? 'Cancelled' : 'Scheduled';
+
+      // gate_events is an append-only event log — no status column to update
+      case 'dock_appointments':
+        return isSuspend ? 'Cancelled' : 'Confirmed';
+
+      default:
+        return isSuspend ? 'Suspended' : 'Active';
     }
-    return intent === 'suspend' ? 'Suspended' : 'Active';
   };
 
   const applyStatus = async (intent: 'approve' | 'active' | 'suspend') => {
