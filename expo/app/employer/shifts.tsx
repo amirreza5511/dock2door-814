@@ -599,7 +599,7 @@ export default function EmployerShifts() {
                                     if (h <= 12) return (
                                       <View style={styles.warnRow}>
                                         <AlertTriangle size={13} color={C.yellow} />
-                                        <Text style={styles.warnText}>⚠️ Overtime applies (BC law): {reg}h regular + {ot}h at 1.5× = ${total.toFixed(2)} total</Text>
+                                        <Text style={styles.warnText}>⚠️ Overtime applies: {reg}h regular + {ot}h at 1.5× = ${total.toFixed(2)} total</Text>
                                       </View>
                                     );
                                     return (
@@ -638,7 +638,7 @@ export default function EmployerShifts() {
                           )}
 
                           {te && te.end_timestamp && !te.employer_confirmed_hours && (
-                            <Text style={styles.bcNotice}>BC Employment Standards minimum wage: $17.40/hr. Overtime applies after 8 hours.</Text>
+                            <Text style={styles.bcNotice}>Reminder: verify local minimum wage and overtime rules before confirming.</Text>
                           )}
                           {te?.employer_confirmed_hours != null && (
                             <View style={styles.confirmedBox}>

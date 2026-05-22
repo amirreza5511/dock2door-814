@@ -21,7 +21,7 @@ export default function NewWarehouseListingPage() {
   const [form, setForm] = useState({
     name: "",
     address: "",
-    city: "Vancouver",
+    city: "",
     warehouse_type: "Dry" as typeof WAREHOUSE_TYPES[number],
     available_pallet_capacity: 100,
     min_pallets: 1,

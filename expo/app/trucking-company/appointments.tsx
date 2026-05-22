@@ -343,7 +343,7 @@ export default function DispatcherBoardScreen() {
               </>
             ) : null}
             <Input label="Driver name" value={assignForm.driverName} onChangeText={(v) => setAssignForm((p) => ({ ...p, driverName: v }))} placeholder="Sam Driver" />
-            <Input label="Truck plate" value={assignForm.truckPlate} onChangeText={(v) => setAssignForm((p) => ({ ...p, truckPlate: v }))} placeholder="BC-12345" autoCapitalize="characters" />
+            <Input label="Truck plate" value={assignForm.truckPlate} onChangeText={(v) => setAssignForm((p) => ({ ...p, truckPlate: v }))} placeholder="e.g. ABC 1234" autoCapitalize="characters" />
             <Input label="ETA (minutes)" value={assignForm.etaMinutes} onChangeText={(v) => setAssignForm((p) => ({ ...p, etaMinutes: v }))} keyboardType="numeric" />
             <Input label="Notes" value={assignForm.notes} onChangeText={(v) => setAssignForm((p) => ({ ...p, notes: v }))} multiline numberOfLines={2} />
             <Button label="Save assignment" onPress={() => void handleAssign()} loading={updateMutation.isPending} fullWidth size="lg" icon={<UserCheck size={15} color={C.white} />} />

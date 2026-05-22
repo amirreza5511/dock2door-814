@@ -32,7 +32,7 @@ type GovtIdType = typeof GOVT_ID_TYPES[number];
 
 const GENDER_OPTIONS = ['Male', 'Female', 'Non-binary', 'Prefer not to say'] as const;
 const WORK_PERMIT_OPTIONS = ['Citizen', 'PR', 'Open Work Permit', 'Employer-Specific Work Permit', 'Student Work Permit', 'Other'] as const;
-const PROVINCE_OPTIONS = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'] as const;
+// Province/state is a free-text field to support global workers
 
 /** Read a local file URI (from DocumentPicker) as a Blob without using fetch(). */
 async function readLocalFileAsBlob(uri: string, mimeType: string): Promise<Blob> {
@@ -251,7 +251,7 @@ export default function WorkerProfile() {
       setAddressCity(d.city ?? '');
       setAddressProvince(d.province ?? '');
       setAddressPostal(d.postal_code ?? '');
-      setAddressCountry(d.country ?? 'Canada');
+      setAddressCountry(d.country ?? '');
       setNationality(d.nationality ?? '');
       setGovtIdType((d.govt_id_type as GovtIdType) ?? '');
     }
@@ -1109,19 +1109,10 @@ export default function WorkerProfile() {
               <Text style={styles.subSectionNote}>Required for T4 slips and direct deposit setup.</Text>
               <Input label="Street Address" value={addressLine1} onChangeText={setAddressLine1} placeholder="123 Main Street" />
               <Input label="Apt / Suite / Unit (optional)" value={addressLine2} onChangeText={setAddressLine2} placeholder="Unit 204" />
-              <Input label="City" value={addressCity} onChangeText={setAddressCity} placeholder="Vancouver" />
-              <View>
-                <Text style={styles.fieldLabel}>Province</Text>
-                <View style={styles.chipRow}>
-                  {PROVINCE_OPTIONS.map((prov) => (
-                    <TouchableOpacity key={prov} onPress={() => setAddressProvince(addressProvince === prov ? '' : prov)} style={[styles.chip, addressProvince === prov && styles.chipActive]}>
-                      <Text style={[styles.chipText, addressProvince === prov && styles.chipTextActive]}>{prov}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-              <Input label="Postal Code" value={addressPostal} onChangeText={setAddressPostal} placeholder="V6B 1A1" autoCapitalize="characters" />
-              <Input label="Country" value={addressCountry} onChangeText={setAddressCountry} placeholder="Canada" />
+              <Input label="City" value={addressCity} onChangeText={setAddressCity} placeholder="e.g. Chicago" />
+              <Input label="State / Province / Region" value={addressProvince} onChangeText={setAddressProvince} placeholder="e.g. Illinois" />
+              <Input label="Postal / ZIP Code" value={addressPostal} onChangeText={setAddressPostal} placeholder="e.g. 60601" autoCapitalize="characters" />
+              <Input label="Country" value={addressCountry} onChangeText={setAddressCountry} placeholder="e.g. United States" />
 
               {/* ─ Bank Info ─ */}
               <Text style={styles.subSectionTitle}>Bank Info (Direct Deposit)</Text>
@@ -1150,12 +1141,12 @@ export default function WorkerProfile() {
             <Card elevated>
               <Text style={styles.sectionTitle}>Edit Profile</Text>
               <View style={styles.formGap}>
-                <Input label="Headline / Tagline" value={editTagline} onChangeText={setEditTagline} placeholder="Forklift operator · 5 yrs · Vancouver" />
+                <Input label="Headline / Tagline" value={editTagline} onChangeText={setEditTagline} placeholder="Forklift operator · 5 yrs exp." />
                 <Input label="About Me" value={editBio} onChangeText={setEditBio} multiline numberOfLines={3} />
-                <Input label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="+1 604 555 0100" />
+                <Input label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="+1 555 000 0000" />
                 <Input label="Hourly Rate Expectation ($)" value={editRate} onChangeText={setEditRate} keyboardType="numeric" />
                 <Input label="Years of Experience" value={editExperience} onChangeText={setEditExperience} keyboardType="numeric" placeholder="3" />
-                <Input label="Coverage Cities (comma separated)" value={editCities} onChangeText={setEditCities} placeholder="Vancouver, Richmond, Delta" />
+                <Input label="Coverage Cities (comma separated)" value={editCities} onChangeText={setEditCities} placeholder="e.g. Chicago, Naperville, Aurora" />
                 <Input label="Languages (comma separated)" value={editLanguages} onChangeText={setEditLanguages} placeholder="English, Punjabi" />
                 <Input label="Transportation" value={editTransport} onChangeText={setEditTransport} placeholder="Own vehicle / Transit" />
                 <Input label="Preferred Shift" value={editPreferredShift} onChangeText={setEditPreferredShift} placeholder="Day / Night / Swing" />

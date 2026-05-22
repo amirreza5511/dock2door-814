@@ -268,13 +268,13 @@ export default function TruckingFleetScreen() {
             {entity === 'trucks' ? (
               <>
                 <Input label="Unit number" value={form.unitNumber} onChangeText={(value) => setForm((current) => ({ ...current, unitNumber: value }))} placeholder="TRK-102" testID="fleet-truck-unit" />
-                <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="BC-12345" testID="fleet-truck-plate" />
+                <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="e.g. ABC 1234" testID="fleet-truck-plate" />
               </>
             ) : null}
             {entity === 'trailers' ? (
               <>
                 <Input label="Trailer number" value={form.trailerNumber} onChangeText={(value) => setForm((current) => ({ ...current, trailerNumber: value }))} placeholder="TRL-88" testID="fleet-trailer-number" />
-                <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="BC-77891" testID="fleet-trailer-plate" />
+                <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="e.g. XYZ 5678" testID="fleet-trailer-plate" />
               </>
             ) : null}
             {entity === 'containers' ? (

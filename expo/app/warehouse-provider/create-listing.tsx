@@ -25,7 +25,7 @@ export default function CreateListing() {
   const user = useAuthStore((s) => s.user);
 
   const [setupName, setSetupName] = useState<string>('');
-  const [setupCity, setSetupCity] = useState<string>('Vancouver');
+  const [setupCity, setSetupCity] = useState<string>('');
   const [settingUp, setSettingUp] = useState<boolean>(false);
 
   const handleSetupCompany = async () => {
@@ -39,7 +39,7 @@ export default function CreateListing() {
       console.log('[create-listing] calling setup_my_company', { name, city: setupCity });
       const { data, error } = await supabase.rpc('setup_my_company', {
         p_name: name,
-        p_city: setupCity.trim() || 'Vancouver',
+        p_city: setupCity.trim() || '',
         p_type: 'WarehouseProvider',
       });
       console.log('[create-listing] setup_my_company result', { data, error });

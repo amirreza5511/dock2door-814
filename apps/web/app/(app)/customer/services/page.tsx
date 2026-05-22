@@ -72,7 +72,7 @@ export default function CustomerServicesPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"browse" | "jobs">("browse");
   const [booking, setBooking] = useState<ServiceListing | null>(null);
-  const [form, setForm] = useState({ date_time: "", duration: 4, city: "Vancouver", address: "", notes: "" });
+  const [form, setForm] = useState({ date_time: "", duration: 4, city: "", address: "", notes: "" });
 
   const listingsQ = useQuery({
     queryKey: ["customer", "service-listings"],
@@ -181,7 +181,7 @@ export default function CustomerServicesPage() {
                     {l.per_job_rate && <div className="text-sm text-muted-foreground">or ${Number(l.per_job_rate).toFixed(2)} flat</div>}
                     {l.certifications && <div className="text-xs text-muted-foreground">{l.certifications}</div>}
                     <div className="mt-auto">
-                      <Button size="sm" className="w-full" onClick={() => { setBooking(l); setForm({ date_time: "", duration: Math.max(l.minimum_hours, 1), city: "Vancouver", address: "", notes: "" }); }}>
+                      <Button size="sm" className="w-full" onClick={() => { setBooking(l); setForm({ date_time: "", duration: Math.max(l.minimum_hours, 1), city: "", address: "", notes: "" }); }}>
                         Book now
                       </Button>
                     </div>

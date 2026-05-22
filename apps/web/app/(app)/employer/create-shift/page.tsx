@@ -21,7 +21,7 @@ export default function CreateShiftPage() {
     title: "",
     category: "General" as typeof CATEGORIES[number],
     location_address: "",
-    location_city: "Vancouver",
+    location_city: "",
     date: "",
     start_time: "08:00",
     end_time: "17:00",

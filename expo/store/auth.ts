@@ -258,7 +258,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             name: data.name,
             role: data.role,
             company_name: data.companyName ?? '',
-            city: data.city ?? 'Vancouver',
+            city: data.city ?? '',
           },
         },
       });

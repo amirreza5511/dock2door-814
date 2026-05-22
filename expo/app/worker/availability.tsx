@@ -112,7 +112,7 @@ export default function WorkerAvailability() {
             <View style={{ flex: 1 }}><Input label="Start" value={start} onChangeText={setStart} placeholder="09:00" /></View>
             <View style={{ flex: 1 }}><Input label="End" value={end} onChangeText={setEnd} placeholder="17:00" /></View>
           </View>
-          <Input label="Preferred Area (optional)" value={area} onChangeText={setArea} placeholder="Vancouver" />
+          <Input label="Preferred Area (optional)" value={area} onChangeText={setArea} placeholder="e.g. Chicago Metro" />
           <Button label={addMut.isPending ? 'Adding...' : 'Add to Calendar'} onPress={() => addMut.mutate()} disabled={addMut.isPending} icon={<Plus size={15} color={C.white} />} fullWidth />
         </Card>
 

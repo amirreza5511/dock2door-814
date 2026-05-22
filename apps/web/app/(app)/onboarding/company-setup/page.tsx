@@ -38,7 +38,7 @@ export default function CompanySetupPage() {
   const router = useRouter();
   const supabase = getBrowserSupabase();
   const [name, setName] = useState("");
-  const [city, setCity] = useState("Vancouver");
+  const [city, setCity] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const profileQ = useQuery({

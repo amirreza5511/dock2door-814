@@ -204,7 +204,7 @@ export default function GatePanelScreen() {
             </View>
 
             <Input label="Driver name" value={form.driverName} onChangeText={(v) => setForm((p) => ({ ...p, driverName: v }))} placeholder="John Smith" />
-            <Input label="Truck plate" value={form.truckPlate} onChangeText={(v) => setForm((p) => ({ ...p, truckPlate: v }))} placeholder="BC ABC-1234" autoCapitalize="characters" />
+            <Input label="Truck plate" value={form.truckPlate} onChangeText={(v) => setForm((p) => ({ ...p, truckPlate: v }))} placeholder="e.g. ABC 1234" autoCapitalize="characters" />
             <Input label="Trailer number" value={form.trailerNumber} onChangeText={(v) => setForm((p) => ({ ...p, trailerNumber: v }))} placeholder="T-12345" autoCapitalize="characters" />
             <Input label="Reference / PO" value={form.referenceNumber} onChangeText={(v) => setForm((p) => ({ ...p, referenceNumber: v }))} placeholder="PO-1024" autoCapitalize="characters" />
             <Input label="Notes" value={form.notes} onChangeText={(v) => setForm((p) => ({ ...p, notes: v }))} placeholder="Seal number, observations…" multiline numberOfLines={3} />

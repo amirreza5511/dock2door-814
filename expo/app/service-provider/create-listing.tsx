@@ -107,8 +107,8 @@ export default function CreateServiceListing() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Location & Coverage</Text>
           <View style={styles.formGap}>
-            <Input label="Primary City *" value={city} onChangeText={setCity} placeholder="Vancouver" />
-            <Input label="Coverage Cities (comma separated)" value={coverage} onChangeText={setCoverage} placeholder="Vancouver, Burnaby, Richmond" />
+            <Input label="Primary City *" value={city} onChangeText={setCity} placeholder="e.g. Chicago" />
+            <Input label="Coverage Cities (comma separated)" value={coverage} onChangeText={setCoverage} placeholder="e.g. Chicago, Aurora, Naperville" />
           </View>
         </View>
 

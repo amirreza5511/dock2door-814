@@ -35,7 +35,7 @@ export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
-  const [city, setCity] = useState('Vancouver');
+  const [city, setCity] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -87,17 +87,17 @@ export default function Signup() {
             <Text style={styles.logoText}>Dock2Door</Text>
           </View>
           <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Join BC&apos;s logistics marketplace</Text>
+          <Text style={styles.subtitle}>Join the global logistics marketplace</Text>
         </View>
 
         <View style={styles.form}>
           <Input label="Full Name" value={name} onChangeText={setName} placeholder="Jane Smith" testID="input-name" />
-          <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@company.ca" keyboardType="email-address" autoCapitalize="none" testID="input-email" />
+          <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@company.com" keyboardType="email-address" autoCapitalize="none" testID="input-email" />
           <Input label="Password" value={password} onChangeText={setPassword} placeholder="Min. 6 characters" secureTextEntry testID="input-password" />
           {!['Worker', 'Driver', 'SuperAdmin'].includes(selectedRole ?? '') ? (
             <>
               <Input label="Company Name" value={companyName} onChangeText={setCompanyName} placeholder="Dock2Door Logistics Ltd." testID="input-company-name" />
-              <Input label="City" value={city} onChangeText={setCity} placeholder="Vancouver" testID="input-city" />
+              <Input label="City" value={city} onChangeText={setCity} placeholder="e.g. Chicago" testID="input-city" />
             </>
           ) : null}
 

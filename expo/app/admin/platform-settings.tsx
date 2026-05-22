@@ -76,7 +76,7 @@ export default function AdminPlatformSettings() {
   const [handlingFee, setHandlingFee] = useState<string>('12');
   const [taxMode, setTaxMode] = useState<string>('GST+PST');
   const [commissionDraft, setCommissionDraft] = useState<CommissionDraft>({ module: 'warehouse', percentage: '8', minimumAmount: '0' });
-  const [taxDraft, setTaxDraft] = useState<TaxDraft>({ jurisdiction: 'BC', rate: '12', appliesTo: 'all' });
+  const [taxDraft, setTaxDraft] = useState<TaxDraft>({ jurisdiction: '', rate: '0', appliesTo: 'all' });
   const [flagDraft, setFlagDraft] = useState<FlagDraft>({ key: '', description: '', enabled: false });
 
   useEffect(() => {
@@ -250,7 +250,7 @@ export default function AdminPlatformSettings() {
           ))}
           <Card style={styles.formCard}>
             <View style={styles.inlineRow}>
-              <View style={{ flex: 1 }}><Input label="Jurisdiction" value={taxDraft.jurisdiction} onChangeText={(v) => setTaxDraft((p) => ({ ...p, jurisdiction: v }))} placeholder="BC" /></View>
+              <View style={{ flex: 1 }}><Input label="Jurisdiction" value={taxDraft.jurisdiction} onChangeText={(v) => setTaxDraft((p) => ({ ...p, jurisdiction: v }))} placeholder="e.g. US-CA, DE, AU" /></View>
               <View style={{ flex: 1 }}><Input label="Rate (%)" value={taxDraft.rate} onChangeText={(v) => setTaxDraft((p) => ({ ...p, rate: v }))} keyboardType="numeric" /></View>
             </View>
             <Input label="Applies to" value={taxDraft.appliesTo} onChangeText={(v) => setTaxDraft((p) => ({ ...p, appliesTo: v }))} placeholder="all / warehouse / service" />

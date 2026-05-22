@@ -18,7 +18,7 @@ const FEATURES = [
   {
     icon: Warehouse, color: C.blue, bg: C.blueDim,
     title: 'Warehouse Space', subtitle: 'Dry · Chill · Frozen',
-    desc: 'Book pallet storage across Vancouver, Richmond, Delta & Surrey.',
+    desc: 'Book pallet storage at facilities worldwide — dry, chill, and frozen.',
   },
   {
     icon: Wrench, color: C.accent, bg: C.accentDim,
@@ -91,16 +91,16 @@ export default function Landing() {
         <Animated.View style={[styles.hero, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.heroPill}>
             <MapPin size={12} color={C.accent} />
-            <Text style={styles.heroPillText}>Vancouver · Lower Mainland</Text>
+            <Text style={styles.heroPillText}>Global Logistics Platform</Text>
           </View>
 
           <Text style={styles.heroTitle}>
             {'The B2B Logistics\nMarketplace for\n'}
-            <Text style={{ color: C.accent }}>BC Industry</Text>
+            <Text style={{ color: C.accent }}>Modern Industry</Text>
           </Text>
 
           <Text style={styles.heroSub}>
-            Book warehouse space, hire industrial crews, and post labour shifts — all in one platform built for Lower Mainland logistics.
+            Book warehouse space, hire industrial crews, and post labour shifts — all in one platform built for modern logistics operations.
           </Text>
 
           <View style={styles.heroCtas}>
@@ -184,7 +184,7 @@ export default function Landing() {
           <LinearGradient colors={['#0D1E35', '#162438']} style={styles.bottomCtaGrad}>
             <View style={styles.trendRow}>
               <TrendingUp size={16} color={C.accent} />
-              <Text style={styles.trendText}>Trusted by Lower Mainland businesses</Text>
+              <Text style={styles.trendText}>Trusted by logistics businesses worldwide</Text>
             </View>
             <Text style={styles.bottomCtaTitle}>Ready to streamline{'\n'}your logistics?</Text>
             <TouchableOpacity

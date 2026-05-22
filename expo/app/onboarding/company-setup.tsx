@@ -21,7 +21,7 @@ export default function CompanySetup() {
   const user = useAuthStore((s) => s.user);
   const { memberships, refresh } = useActiveCompany();
   const [name, setName] = useState('');
-  const [city, setCity] = useState('Vancouver');
+  const [city, setCity] = useState('');
   const [loading, setLoading] = useState(false);
 
   // If user already has a company, skip onboarding
@@ -94,7 +94,7 @@ export default function CompanySetup() {
             label="City"
             value={city}
             onChangeText={setCity}
-            placeholder="Vancouver"
+            placeholder="e.g. Chicago"
             testID="input-city"
           />
 

@@ -9,7 +9,7 @@ export default function ModalScreen() {
       <View style={styles.modalContent}>
         <Text style={styles.title}>Dock2Door</Text>
         <Text style={styles.description}>
-          B2B Logistics Marketplace for Vancouver & Lower Mainland.
+          B2B Logistics Marketplace for modern logistics operations worldwide.
         </Text>
         <Pressable style={styles.closeButton} onPress={() => router.back()}>
           <Text style={styles.closeButtonText}>Close</Text>

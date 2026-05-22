@@ -19,7 +19,7 @@ const CATEGORIES = [
   { value: "IndustrialCleaning", label: "Industrial Cleaning" },
 ] as const;
 
-const COVERAGE_OPTIONS = ["Vancouver", "Burnaby", "Richmond", "Surrey", "Delta", "Langley", "Coquitlam", "Abbotsford", "Other"];
+
 
 export default function CreateServiceListingPage() {
   const router = useRouter();
@@ -31,13 +31,9 @@ export default function CreateServiceListingPage() {
   const [perJobRate, setPerJobRate] = useState(0);
   const [minHours, setMinHours] = useState(4);
   const [certifications, setCertifications] = useState("");
-  const [coverage, setCoverage] = useState<string[]>(["Vancouver"]);
+  const [coverage, setCoverage] = useState<string[]>([]);
 
-  const toggleCoverage = (city: string) => {
-    setCoverage((prev) =>
-      prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city]
-    );
-  };
+
 
   const create = useMutation({
     mutationFn: async () => {
@@ -119,30 +115,20 @@ export default function CreateServiceListingPage() {
 
       <Card>
         <CardHeader><CardTitle>Coverage area</CardTitle></CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            {COVERAGE_OPTIONS.map((city) => (
-              <button
-                key={city}
-                type="button"
-                onClick={() => toggleCoverage(city)}
-                className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                  coverage.includes(city)
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-border bg-background text-muted-foreground hover:bg-accent"
-                }`}
-              >
-                {city}
-              </button>
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">Select all cities where you provide this service.</p>
+        <CardContent className="space-y-2">
+          <Label>Cities / regions (comma-separated)</Label>
+          <Input
+            value={coverage.join(", ")}
+            onChange={(e) => setCoverage(e.target.value.split(",").map((c) => c.trim()).filter(Boolean))}
+            placeholder="e.g. Chicago, Aurora, Naperville"
+          />
+          <p className="text-xs text-muted-foreground">Enter all cities or regions where you provide this service.</p>
         </CardContent>
       </Card>
 
       <div className="flex justify-end gap-3">
         <Link href="/service-provider/listings"><Button variant="secondary">Cancel</Button></Link>
-        <Button disabled={coverage.length === 0 || create.isPending} onClick={() => create.mutate()}>
+        <Button disabled={create.isPending} onClick={() => create.mutate()}>
           {create.isPending ? "Creating…" : "Create listing"}
         </Button>
       </div>
