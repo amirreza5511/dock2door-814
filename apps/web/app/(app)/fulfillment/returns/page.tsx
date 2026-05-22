@@ -25,15 +25,17 @@ interface OrderRow {
   reference_code: string | null;
 }
 
-const STATUS_TABS = ["all", "Pending", "Approved", "InTransit", "Received", "Restocked", "Disposed", "Cancelled"] as const;
+// Valid return_status enum values from migration 0013:
+// Requested, Approved, Rejected, Received, Refunded, Closed
+const STATUS_TABS = ["all", "Requested", "Approved", "Rejected", "Received", "Refunded", "Closed"] as const;
 type StatusTab = typeof STATUS_TABS[number];
 
 function statusVariant(s: string): "success" | "warning" | "destructive" | "secondary" | "default" {
-  if (s === "Restocked") return "success";
+  if (s === "Refunded" || s === "Closed") return "success";
   if (s === "Received") return "default";
-  if (s === "Approved" || s === "InTransit") return "warning";
-  if (s === "Cancelled" || s === "Disposed") return "destructive";
-  return "secondary";
+  if (s === "Approved") return "warning";
+  if (s === "Rejected") return "destructive";
+  return "secondary"; // Requested
 }
 
 export default function FulfillmentReturnsPage() {
@@ -100,8 +102,9 @@ export default function FulfillmentReturnsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["fulfillment", "returns"] }),
   });
 
+  // Incoming = items actively being processed — Requested or Approved
   const incoming = (returnsQ.data ?? []).filter((r) =>
-    ["Pending", "InTransit", "Approved"].includes(r.status)
+    ["Requested", "Approved"].includes(r.status)
   );
 
   return (
@@ -110,7 +113,7 @@ export default function FulfillmentReturnsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Returns (RMA)</h1>
           <p className="text-sm text-muted-foreground">
-            Manage return authorizations, incoming returns, and restocking.
+            Manage return authorizations, incoming returns, and refunds.
           </p>
         </div>
         <Button onClick={() => setShowForm((v) => !v)}>
@@ -229,45 +232,68 @@ export default function FulfillmentReturnsPage() {
                       </TD>
                       <TD className="text-xs text-muted-foreground">{formatDate(r.created_at)}</TD>
                       <TD className="text-right space-x-2">
-                        {r.status === "Pending" && (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            disabled={updateStatusMut.isPending}
-                            onClick={() => updateStatusMut.mutate({ id: r.id, status: "Approved" })}
-                          >
-                            Approve
-                          </Button>
+                        {/* Requested → Approve or Reject */}
+                        {r.status === "Requested" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              disabled={updateStatusMut.isPending}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Approved" })}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={updateStatusMut.isPending}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Rejected" })}
+                            >
+                              Reject
+                            </Button>
+                          </>
                         )}
+                        {/* Approved → Mark Received or Close */}
+                        {r.status === "Approved" && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              disabled={updateStatusMut.isPending}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Received" })}
+                            >
+                              Mark received
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={updateStatusMut.isPending}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Closed" })}
+                            >
+                              Close
+                            </Button>
+                          </>
+                        )}
+                        {/* Received → Refund or Close */}
                         {r.status === "Received" && (
                           <>
                             <Button
                               size="sm"
                               variant="default"
                               disabled={updateStatusMut.isPending}
-                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Restocked" })}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Refunded" })}
                             >
-                              Restock
+                              Refund
                             </Button>
                             <Button
                               size="sm"
-                              variant="destructive"
+                              variant="outline"
                               disabled={updateStatusMut.isPending}
-                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Disposed" })}
+                              onClick={() => updateStatusMut.mutate({ id: r.id, status: "Closed" })}
                             >
-                              Dispose
+                              Close
                             </Button>
                           </>
-                        )}
-                        {(r.status === "Pending" || r.status === "Approved") && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={updateStatusMut.isPending}
-                            onClick={() => updateStatusMut.mutate({ id: r.id, status: "Cancelled" })}
-                          >
-                            Cancel
-                          </Button>
                         )}
                       </TD>
                     </TR>
@@ -301,7 +327,7 @@ export default function FulfillmentReturnsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={statusVariant(r.status)}>{r.status}</Badge>
-                    {r.status === "InTransit" && (
+                    {r.status === "Approved" && (
                       <Button
                         size="sm"
                         disabled={updateStatusMut.isPending}

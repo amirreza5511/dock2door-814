@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -24,6 +22,7 @@ export default function PlatformRolesPage() {
   const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<string>("admin");
+  const [grantReason, setGrantReason] = useState("");
   const [revokeTarget, setRevokeTarget] = useState<RoleRow | null>(null);
   const [revokeReason, setRevokeReason] = useState("");
 
@@ -36,13 +35,21 @@ export default function PlatformRolesPage() {
     },
   });
 
+  // Uses admin_grant_role_by_email (migration 0053) which looks up auth.users by email server-side
+  // then delegates to admin_grant_role(p_user_id, p_role, p_reason). Never sends p_user_email to
+  // the original admin_grant_role RPC which expects a uuid.
   const grant = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("admin_grant_role", { p_user_email: email, p_role: role });
+      const { error } = await supabase.rpc("admin_grant_role_by_email", {
+        p_email: email.trim().toLowerCase(),
+        p_role: role,
+        p_reason: grantReason.trim(),
+      });
       if (error) throw error;
     },
     onSuccess: () => {
       setEmail("");
+      setGrantReason("");
       qc.invalidateQueries({ queryKey: ["super_admin", "roles"] });
     },
   });
@@ -66,7 +73,7 @@ export default function PlatformRolesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Grant role</CardTitle>
-          <CardDescription>Assign platform-level role to an existing user.</CardDescription>
+          <CardDescription>Assign platform-level role to an existing user by email.</CardDescription>
         </CardHeader>
         <CardContent>
           <form
@@ -74,7 +81,7 @@ export default function PlatformRolesPage() {
               e.preventDefault();
               grant.mutate();
             }}
-            className="grid gap-3 md:grid-cols-[1fr_180px_auto]"
+            className="grid gap-3 md:grid-cols-[1fr_180px_1fr_auto]"
           >
             <div>
               <Label htmlFor="email">Email</Label>
@@ -95,8 +102,18 @@ export default function PlatformRolesPage() {
                 ))}
               </select>
             </div>
+            <div>
+              <Label htmlFor="grant-reason">Reason *</Label>
+              <Input
+                id="grant-reason"
+                required
+                placeholder="Required — written to audit log"
+                value={grantReason}
+                onChange={(e) => setGrantReason(e.target.value)}
+              />
+            </div>
             <div className="flex items-end">
-              <Button type="submit" disabled={grant.isPending}>
+              <Button type="submit" disabled={!email.trim() || !grantReason.trim() || grant.isPending}>
                 Grant
               </Button>
             </div>
@@ -117,7 +134,7 @@ export default function PlatformRolesPage() {
             <Table>
               <THead>
                 <TR>
-                  <TH>User</TH>
+                  <TH>User ID</TH>
                   <TH>Role</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
@@ -125,7 +142,7 @@ export default function PlatformRolesPage() {
               <TBody>
                 {(q.data ?? []).map((r) => (
                   <TR key={`${r.user_id}-${r.role}`}>
-                    <TD className="font-mono text-xs">{r.user_id.slice(0, 8)}</TD>
+                    <TD className="font-mono text-xs">{r.user_id.slice(0, 8)}…</TD>
                     <TD>
                       <Badge>{r.role}</Badge>
                     </TD>
@@ -145,6 +162,7 @@ export default function PlatformRolesPage() {
           )}
         </CardContent>
       </Card>
+
       {revokeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRevokeTarget(null)}>
           <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl space-y-4" onClick={(e) => e.stopPropagation()}>

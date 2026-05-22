@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,8 @@ export default function NewWarehouseListingPage() {
   const router = useRouter();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  // Use active company from company_users membership — never reads legacy profiles.company_id
+  const activeCompanyId = useActiveCompanyId("warehouse_provider");
 
   const [form, setForm] = useState({
     name: "",
@@ -42,19 +45,10 @@ export default function NewWarehouseListingPage() {
 
   const create = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", user.id)
-        .single();
-
-      if (!profile?.company_id) throw new Error("No company associated with your account.");
+      if (!activeCompanyId) throw new Error("No active warehouse company. Please select your company first.");
 
       const { error } = await supabase.from("warehouse_listings").insert({
-        company_id: profile.company_id,
+        company_id: activeCompanyId,
         name: form.name.trim(),
         address: form.address.trim(),
         city: form.city.trim(),

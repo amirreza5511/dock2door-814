@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,8 @@ const TRAILER_TYPES = ["Dry Van", "Reefer", "Flatbed", "Step Deck", "Container",
 export default function TruckingFleetPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  // Use active company from company_users membership — never reads legacy profiles.company_id
+  const activeCompanyId = useActiveCompanyId("trucking_company");
   const [tab, setTab] = useState<"trucks" | "trailers">("trucks");
   const [showAdd, setShowAdd] = useState(false);
 
@@ -88,18 +91,10 @@ export default function TruckingFleetPage() {
   // ── Mutations ────────────────────────────────────────────────────────────
   const addTruck = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      // Look up the user's trucking company via profiles.company_id
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", user.id)
-        .single();
-      if (!profile?.company_id) throw new Error("No company associated with your account.");
+      if (!activeCompanyId) throw new Error("No active trucking company. Please select your company first.");
 
       const { error } = await supabase.from("trucks").insert({
-        company_id: profile.company_id,
+        company_id: activeCompanyId,
         plate: truckForm.plate.trim().toUpperCase(),
         make: truckForm.make.trim() || null,
         model: truckForm.model.trim() || null,
@@ -117,17 +112,10 @@ export default function TruckingFleetPage() {
 
   const addTrailer = useMutation({
     mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("company_id")
-        .eq("id", user.id)
-        .single();
-      if (!profile?.company_id) throw new Error("No company associated with your account.");
+      if (!activeCompanyId) throw new Error("No active trucking company. Please select your company first.");
 
       const { error } = await supabase.from("trailers").insert({
-        company_id: profile.company_id,
+        company_id: activeCompanyId,
         plate: trailerForm.plate.trim().toUpperCase(),
         trailer_type: trailerForm.trailer_type || null,
         status: "Active" as FleetStatus,

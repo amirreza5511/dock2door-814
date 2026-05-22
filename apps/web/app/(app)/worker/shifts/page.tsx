@@ -93,11 +93,11 @@ export default function WorkerShiftsPage() {
     { key: "title", header: "Shift", render: (a) => <span className="font-medium">{a.title}</span> },
     { key: "when", header: "When", render: (a) => `${a.date ?? "—"} ${a.start_time ?? ""} → ${a.end_time ?? ""}`.trim(), sortable: true, sortValue: (a) => a.date },
     { key: "rate", header: "Pay rate", render: (a) => a.hourly_rate ? `${Number(a.hourly_rate).toFixed(2)}/hr` : "—" },
-    { key: "status", header: "Status", render: (a) => <Badge variant={a.status === "completed" ? "success" : a.status === "in_progress" ? "default" : "warning"}>{a.status}</Badge>, sortable: true, sortValue: (a) => a.status },
+    { key: "status", header: "Status", render: (a) => <Badge variant={a.status === "Completed" ? "success" : a.status === "InProgress" ? "default" : "warning"}>{a.status}</Badge>, sortable: true, sortValue: (a) => a.status },
     { key: "actions", header: "", className: "text-right", render: (a) => (
       <div className="flex justify-end gap-2">
-        {a.status === "assigned" && <Button size="sm" disabled={clockIn.isPending} onClick={() => clockIn.mutate(a.id)}>Clock in</Button>}
-        {a.status === "in_progress" && <Button size="sm" disabled={clockOut.isPending} onClick={() => clockOut.mutate(a.id)}>Clock out</Button>}
+        {a.status === "Scheduled" && <Button size="sm" disabled={clockIn.isPending} onClick={() => clockIn.mutate(a.id)}>Clock in</Button>}
+        {a.status === "InProgress" && <Button size="sm" disabled={clockOut.isPending} onClick={() => clockOut.mutate(a.id)}>Clock out</Button>}
       </div>
     ) },
   ];
@@ -119,8 +119,8 @@ export default function WorkerShiftsPage() {
             error={assignments.error as Error | null}
             searchPlaceholder="Search shift…"
             filters={[
-              { value: "active", label: "Active", predicate: (a) => a.status === "assigned" || a.status === "in_progress" },
-              { value: "completed", label: "Completed", predicate: (a) => a.status === "completed" },
+              { value: "active", label: "Active", predicate: (a) => a.status === "Scheduled" || a.status === "InProgress" },
+              { value: "completed", label: "Completed", predicate: (a) => a.status === "Completed" },
             ]}
           />
           {(clockIn.error || clockOut.error) && (

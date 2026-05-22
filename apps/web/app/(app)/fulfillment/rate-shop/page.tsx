@@ -76,7 +76,7 @@ export default function FulfillmentRateShopPage() {
     queryFn: async () => {
       if (!selectedShipmentId) return [];
       const { data, error } = await supabase
-        .from("rate_quotes")
+        .from("shipping_rate_quotes")
         .select("id,carrier_code,service_level,service_name,rate_amount,currency,est_delivery_days,est_delivery_date,carrier_rate_id")
         .eq("shipment_id", selectedShipmentId)
         .order("rate_amount", { ascending: true });
@@ -88,7 +88,7 @@ export default function FulfillmentRateShopPage() {
 
   const rateShopMut = useMutation({
     mutationFn: async (shipmentId: string) => {
-      const { data, error } = await supabase.functions.invoke("rate-shop-shipment", {
+      const { data, error } = await supabase.functions.invoke("shipping-rate-shop", {
         body: { shipmentId },
       });
       if (error) throw error;
