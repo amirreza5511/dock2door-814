@@ -59,12 +59,55 @@ export default function ServiceProviderListingsPage() {
     },
   });
 
-  const setStatus = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("service_listings").update({ status }).eq("id", id);
-      if (error) throw error;
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["service-provider", "listings"] });
+
+  /**
+   * Submit Draft/Rejected listing for admin review → PendingApproval.
+   * Routes through provider_submit_service_listing RPC (0051) — audited, state-machine enforced.
+   */
+  const submitM = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc("provider_submit_service_listing", { p_listing_id: id });
+      if (error) throw new Error(error.message);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["service-provider", "listings"] }),
+    onSuccess: invalidate,
+  });
+
+  /**
+   * Withdraw PendingApproval listing back to Draft.
+   * Routes through provider_withdraw_service_listing RPC (0051) — audited, state-machine enforced.
+   */
+  const withdrawM = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc("provider_withdraw_service_listing", { p_listing_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: invalidate,
+  });
+
+  /**
+   * Hide an Available/Active listing.
+   * Routes through provider_hide_service_listing RPC (0055) — audited.
+   * Provider cannot self-approve; only admins can set Available via admin_set_service_listing_status.
+   */
+  const hideM = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc("provider_hide_service_listing", { p_listing_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: invalidate,
+  });
+
+  /**
+   * Unhide a Hidden listing → Available.
+   * Routes through provider_unhide_service_listing RPC (0055) — audited.
+   */
+  const unhideM = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.rpc("provider_unhide_service_listing", { p_listing_id: id });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: invalidate,
   });
 
   const updateRates = useMutation({
@@ -82,10 +125,16 @@ export default function ServiceProviderListingsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["service-provider", "listings"] });
+      invalidate();
       setEditing(null);
     },
   });
+
+  // Aggregate any mutation error for display under the table
+  const mutationError =
+    submitM.error ?? withdrawM.error ?? hideM.error ?? unhideM.error;
+  const mutationPending =
+    submitM.isPending || withdrawM.isPending || hideM.isPending || unhideM.isPending;
 
   const cols: Column<ListingRow>[] = [
     {
@@ -134,25 +183,52 @@ export default function ServiceProviderListingsPage() {
       header: "",
       className: "text-right",
       render: (l) => (
-        <div className="flex justify-end gap-2">
-          <Button size="sm" variant="outline"
+        <div className="flex justify-end gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
             onClick={() => {
               setEditing(l);
               setForm({ hourly_rate: Number(l.hourly_rate), per_job_rate: Number(l.per_job_rate ?? 0), minimum_hours: l.minimum_hours, certifications: l.certifications ?? "" });
             }}>
             Edit rates
           </Button>
-          {l.status === "Draft" && (
-            <Button size="sm" variant="secondary" disabled={setStatus.isPending}
-              onClick={() => setStatus.mutate({ id: l.id, status: "PendingApproval" })}>Submit</Button>
+
+          {/* Draft / Rejected → PendingApproval (via provider_submit_service_listing) */}
+          {(l.status === "Draft" || l.status === "Rejected") && (
+            <Button size="sm" variant="secondary" disabled={mutationPending}
+              onClick={() => submitM.mutate(l.id)}>
+              Submit for review
+            </Button>
           )}
-          {(l.status === "Active" || l.status === "Available") && (
-            <Button size="sm" variant="secondary" disabled={setStatus.isPending}
-              onClick={() => setStatus.mutate({ id: l.id, status: "Hidden" })}>Hide</Button>
+
+          {/* PendingApproval → Draft (via provider_withdraw_service_listing) */}
+          {l.status === "PendingApproval" && (
+            <Button size="sm" variant="outline" disabled={mutationPending}
+              onClick={() => withdrawM.mutate(l.id)}>
+              Withdraw
+            </Button>
           )}
+
+          {/* Available / Active → Hidden (via provider_hide_service_listing) */}
+          {(l.status === "Available" || l.status === "Active") && (
+            <Button size="sm" variant="secondary" disabled={mutationPending}
+              onClick={() => hideM.mutate(l.id)}>
+              Hide
+            </Button>
+          )}
+
+          {/* Hidden → Available (via provider_unhide_service_listing) */}
           {l.status === "Hidden" && (
-            <Button size="sm" disabled={setStatus.isPending}
-              onClick={() => setStatus.mutate({ id: l.id, status: "Active" })}>Activate</Button>
+            <Button size="sm" disabled={mutationPending}
+              onClick={() => unhideM.mutate(l.id)}>
+              Unhide
+            </Button>
+          )}
+
+          {/* Suspended — provider cannot self-unsuspend; must contact admin */}
+          {l.status === "Suspended" && (
+            <span className="text-xs text-muted-foreground italic">Contact admin to reinstate</span>
           )}
         </div>
       ),
@@ -171,10 +247,18 @@ export default function ServiceProviderListingsPage() {
         </Link>
       </div>
 
+      {mutationError && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
+          {(mutationError as Error).message}
+        </div>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Your listings</CardTitle>
-          <CardDescription>{listingsQ.data?.length ?? 0} total</CardDescription>
+          <CardDescription>
+            {listingsQ.data?.length ?? 0} total · Listings must be approved by an admin before becoming visible.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
@@ -188,13 +272,14 @@ export default function ServiceProviderListingsPage() {
               { value: "active", label: "Active", predicate: (l) => l.status === "Active" || l.status === "Available" },
               { value: "draft", label: "Draft", predicate: (l) => l.status === "Draft" },
               { value: "pending", label: "Pending", predicate: (l) => l.status === "PendingApproval" },
+              { value: "hidden", label: "Hidden", predicate: (l) => l.status === "Hidden" },
             ]}
             emptyMessage="No listings yet."
           />
         </CardContent>
       </Card>
 
-      {/* Edit modal */}
+      {/* Edit rates modal */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setEditing(null)}>
           <div className="w-full max-w-sm rounded-xl bg-card p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -202,27 +287,36 @@ export default function ServiceProviderListingsPage() {
               <h2 className="text-lg font-semibold">Edit rates — {CAT_LABEL[editing.category] ?? editing.category}</h2>
               <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>✕</Button>
             </div>
-            {updateRates.error && <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{(updateRates.error as Error).message}</div>}
+            {updateRates.error && (
+              <div className="mb-3 rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                {(updateRates.error as Error).message}
+              </div>
+            )}
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Hourly rate ($)</label>
-                <input type="number" min={0} step={0.5} value={form.hourly_rate} onChange={(e) => setForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
+                <input type="number" min={0} step={0.5} value={form.hourly_rate}
+                  onChange={(e) => setForm(f => ({ ...f, hourly_rate: Number(e.target.value) }))}
                   className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Flat per-job rate ($, optional)</label>
-                <input type="number" min={0} step={5} value={form.per_job_rate} onChange={(e) => setForm(f => ({ ...f, per_job_rate: Number(e.target.value) }))}
+                <input type="number" min={0} step={5} value={form.per_job_rate}
+                  onChange={(e) => setForm(f => ({ ...f, per_job_rate: Number(e.target.value) }))}
                   className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Minimum hours</label>
-                <input type="number" min={1} value={form.minimum_hours} onChange={(e) => setForm(f => ({ ...f, minimum_hours: Number(e.target.value) }))}
+                <input type="number" min={1} value={form.minimum_hours}
+                  onChange={(e) => setForm(f => ({ ...f, minimum_hours: Number(e.target.value) }))}
                   className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Certifications</label>
-                <input value={form.certifications} onChange={(e) => setForm(f => ({ ...f, certifications: e.target.value }))}
-                  className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm" placeholder="e.g. Forklift cert required" />
+                <input value={form.certifications}
+                  onChange={(e) => setForm(f => ({ ...f, certifications: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+                  placeholder="e.g. Forklift cert required" />
               </div>
               <Button className="w-full" disabled={updateRates.isPending} onClick={() => updateRates.mutate()}>
                 {updateRates.isPending ? "Saving…" : "Save changes"}
