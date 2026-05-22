@@ -37,7 +37,7 @@ on conflict (user_id, role) do nothing;
 create or replace function public.sync_admin_role_from_profile()
 returns trigger language plpgsql security definer
 set search_path = public
-as $
+as $$
 begin
   -- Gained admin/superadmin status (covers INSERT with role already set, and UPDATE that promotes)
   if NEW.role in ('Admin', 'SuperAdmin') then
@@ -57,7 +57,7 @@ begin
 
   return NEW;
 end;
-$;
+$$;
 
 drop trigger if exists trg_sync_admin_role on public.profiles;
 create trigger trg_sync_admin_role
