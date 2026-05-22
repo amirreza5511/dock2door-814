@@ -479,11 +479,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // services.setListingStatus — all transitions are routed through audited RPCs.
   // Provider:  Draft/Rejected → PendingApproval  via provider_submit_service_listing (0051)
   // Provider:  PendingApproval → Draft            via provider_withdraw_service_listing (0051)
-  // Admin:     any status                         via admin_set_listing_status (0007)
+  // Admin:     any status                         via admin_set_service_listing_status (0052)
+  //            NOTE: admin_set_listing_status (0007) only targets warehouse_listings.
+  //            Service listings require the separate admin_set_service_listing_status RPC.
   // No direct service_listings UPDATE is allowed.
   'services.setListingStatus': async (input: { id: string; status: string }, ctx) => {
     if (isAdmin(ctx.user.role)) {
-      const { error } = await supabase.rpc('admin_set_listing_status', {
+      const { error } = await supabase.rpc('admin_set_service_listing_status', {
         p_listing_id: input.id,
         p_status: input.status,
         p_reason: `Status set to ${input.status} by admin`,
@@ -966,32 +968,115 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
+  // admin.getEntityRecord / updateEntityStatus / archiveEntity — same strict allowlist as
+  // admin.listEntity to prevent arbitrary table enumeration or writes via entity name.
+  // Status mutations for companies/users/listings should prefer the audited RPCs:
+  //   admin.setCompanyStatus  → admin_set_company_status
+  //   admin.setUserStatus     → admin_set_user_status
+  //   warehouses.setListingStatus / services.setListingStatus → admin_set_*_status
   'admin.getEntityRecord': async (input: { entity: string; id: string }) => {
     if (!input.id) return null;
-    const table = input.entity === 'users' ? 'profiles' : input.entity === 'message_threads' ? 'chat_threads' : input.entity;
+    const ENTITY_TABLE: Record<string, string> = {
+      users:              'profiles',
+      companies:          'companies',
+      disputes:           'disputes',
+      warehouse_bookings: 'warehouse_bookings',
+      warehouse_listings: 'warehouse_listings',
+      service_listings:   'service_listings',
+      service_jobs:       'service_jobs',
+      products:           'products',
+      payments:           'payments',
+      invoices:           'invoices',
+      payouts:            'payouts',
+      commission_rules:   'commission_rules',
+      tax_rules:          'tax_rules',
+      message_threads:    'chat_threads',
+      notifications:      'notifications',
+      audit_logs:         'audit_logs',
+      shift_posts:        'shift_posts',
+      shift_applications: 'shift_applications',
+      shift_assignments:  'shift_assignments',
+    };
+    const table = ENTITY_TABLE[input.entity];
+    if (!table) throw new Error(`admin.getEntityRecord: "${input.entity}" is not in the allowed entity list`);
     const { data } = await supabase.from(table).select('*').eq('id', input.id).maybeSingle();
     return data;
   },
 
   'admin.updateEntityStatus': async (input: { entity: string; id: string; status: string }) => {
-    const table = input.entity === 'users' ? 'profiles' : input.entity === 'message_threads' ? 'chat_threads' : input.entity;
+    // Prefer audited RPCs for companies and users; this path covers other entity types.
+    if (input.entity === 'users') {
+      const { error } = await supabase.rpc('admin_set_user_status', {
+        p_user_id: input.id,
+        p_status: input.status,
+        p_reason: `Status set to ${input.status} by admin`,
+      });
+      if (error) throwErr(error, 'Unable to update user status — check admin privileges');
+      return { success: true };
+    }
+    if (input.entity === 'companies') {
+      const { error } = await supabase.rpc('admin_set_company_status', {
+        p_company_id: input.id,
+        p_status: input.status,
+        p_reason: `Status set to ${input.status} by admin`,
+      });
+      if (error) throwErr(error, 'Unable to update company status — check admin privileges');
+      return { success: true };
+    }
+    const ENTITY_TABLE: Record<string, string> = {
+      disputes:           'disputes',
+      warehouse_bookings: 'warehouse_bookings',
+      warehouse_listings: 'warehouse_listings',
+      service_listings:   'service_listings',
+      service_jobs:       'service_jobs',
+      products:           'products',
+      payments:           'payments',
+      invoices:           'invoices',
+      payouts:            'payouts',
+      shift_posts:        'shift_posts',
+      shift_applications: 'shift_applications',
+      shift_assignments:  'shift_assignments',
+    };
+    const table = ENTITY_TABLE[input.entity];
+    if (!table) throw new Error(`admin.updateEntityStatus: "${input.entity}" is not in the allowed entity list`);
     const { error } = await supabase.from(table).update({ status: input.status }).eq('id', input.id);
     if (error) throwErr(error, 'Unable to update status');
     return { success: true };
   },
 
   'admin.archiveEntity': async (input: { entity: string; id: string }) => {
-    const table = input.entity === 'users' ? 'profiles' : input.entity === 'message_threads' ? 'chat_threads' : input.entity;
-    if (table === 'profiles') {
-      // profiles has no archived_at column — use status = 'Inactive' (active_status enum)
-      await supabase.from('profiles').update({ status: 'Inactive' }).eq('id', input.id);
-    } else {
-      // other tables support soft-delete via archived_at; fall back to status update if the
-      // column doesn't exist (e.g. chat_threads has no archived_at).
-      const { error } = await supabase.from(table).update({ archived_at: new Date().toISOString() }).eq('id', input.id);
-      if (error) {
-        await supabase.from(table).update({ status: 'Inactive' }).eq('id', input.id);
-      }
+    // profiles: no archived_at — use admin_set_user_status('Inactive') for audit trail.
+    if (input.entity === 'users') {
+      const { error } = await supabase.rpc('admin_set_user_status', {
+        p_user_id: input.id,
+        p_status: 'Inactive',
+        p_reason: 'Archived via admin panel',
+      });
+      if (error) throwErr(error, 'Unable to archive user — check admin privileges');
+      return { success: true };
+    }
+    const ARCHIVE_TABLE: Record<string, string> = {
+      companies:          'companies',
+      disputes:           'disputes',
+      warehouse_bookings: 'warehouse_bookings',
+      warehouse_listings: 'warehouse_listings',
+      service_listings:   'service_listings',
+      service_jobs:       'service_jobs',
+      products:           'products',
+      payments:           'payments',
+      invoices:           'invoices',
+      payouts:            'payouts',
+      message_threads:    'chat_threads',
+      shift_posts:        'shift_posts',
+      shift_applications: 'shift_applications',
+      shift_assignments:  'shift_assignments',
+    };
+    const table = ARCHIVE_TABLE[input.entity];
+    if (!table) throw new Error(`admin.archiveEntity: "${input.entity}" is not in the allowed entity list`);
+    // Try archived_at first; fall back to status=Inactive if the column is absent.
+    const { error } = await supabase.from(table).update({ archived_at: new Date().toISOString() }).eq('id', input.id);
+    if (error) {
+      await supabase.from(table).update({ status: 'Inactive' }).eq('id', input.id);
     }
     return { success: true };
   },

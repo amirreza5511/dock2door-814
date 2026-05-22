@@ -524,6 +524,54 @@ export default function CompliancePage() {
         </div>
       )}
 
+      {/* ── Service Listings Tab ─────────────────────────────────────────── */}
+      {tab === "service-listings" && (
+        <div className="space-y-3">
+          {serviceListingsQ.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (serviceListingsQ.data ?? []).length === 0 ? (
+            <EmptyState icon={Wrench} message="No service listings pending approval" />
+          ) : (
+            (serviceListingsQ.data ?? []).map((s) => (
+              <Card key={s.id}>
+                <CardContent className="py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm">{s.category}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {s.company_name ?? "Unknown company"}
+                      {s.coverage_area && s.coverage_area.length > 0
+                        ? ` · Coverage: ${s.coverage_area.slice(0, 3).join(", ")}${s.coverage_area.length > 3 ? " +more" : ""}`
+                        : ""}
+                      {" · Submitted "}{formatDate(s.created_at)}
+                    </p>
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive hover:bg-destructive/10 border-destructive/40"
+                      onClick={() =>
+                        setAction({ kind: "suspend-service-listing", id: s.id, name: s.category })
+                      }
+                    >
+                      <XCircle className="h-3.5 w-3.5 mr-1" /> Reject
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        setAction({ kind: "approve-service-listing", id: s.id, name: s.category })
+                      }
+                    >
+                      <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+
       {/* ── Disputes Tab ────────────────────────────────────────────────── */}
       {tab === "disputes" && (
         <div className="space-y-3">
