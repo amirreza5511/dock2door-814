@@ -15,7 +15,7 @@ interface CarrierAccountRow {
   id: string;
   carrier_code: string;
   account_number: string | null;
-  nickname: string | null;
+  display_name: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -68,8 +68,8 @@ export default function WarehouseCarriersPage() {
       if (!companyId) return [];
       const { data, error } = await supabase
         .from("carrier_accounts")
-        .select("id,carrier_code,account_number,nickname,is_active,created_at")
-        .eq("provider_company_id", companyId)
+        .select("id,carrier_code,account_number,display_name,is_active,created_at")
+        .eq("company_id", companyId)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as CarrierAccountRow[];
@@ -82,10 +82,10 @@ export default function WarehouseCarriersPage() {
       const companyId = companyQ.data;
       if (!companyId) throw new Error("No company found");
       const { error } = await supabase.from("carrier_accounts").insert({
-        provider_company_id: companyId,
+        company_id: companyId,
         carrier_code: form.carrier_code,
         account_number: form.account_number.trim() || null,
-        nickname: form.nickname.trim() || null,
+        display_name: form.nickname.trim() || null,
         is_active: true,
       });
       if (error) throw error;
@@ -93,7 +93,7 @@ export default function WarehouseCarriersPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["warehouse", "carriers", "list"] });
       setShowAdd(false);
-      setForm({ carrier_code: "canada_post", account_number: "", nickname: "" });
+      setForm({ carrier_code: "canada_post", account_number: "", nickname: "" }); // nickname field maps to display_name on insert
     },
   });
 
@@ -212,7 +212,7 @@ export default function WarehouseCarriersPage() {
                   <TR key={c.id}>
                     <TD className="font-medium">{carrierLabel(c.carrier_code)}</TD>
                     <TD className="font-mono text-sm">{c.account_number ?? "—"}</TD>
-                    <TD className="text-sm text-muted-foreground">{c.nickname ?? "—"}</TD>
+                    <TD className="text-sm text-muted-foreground">{c.display_name ?? "—"}</TD>
                     <TD>
                       <Badge variant={c.is_active ? "success" : "secondary"}>
                         {c.is_active ? "Active" : "Inactive"}

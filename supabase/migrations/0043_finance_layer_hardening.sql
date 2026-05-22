@@ -58,12 +58,13 @@ begin
     raise exception 'only warehouse provider or admin can issue invoice';
   end if;
 
-  -- BUG 2 FIX: use final_price → proposed_price → counter_offer_price → 0
+  -- BUG 2 FIX: use final_price → counter_offer_price → proposed_price → 0
+  -- Priority: negotiated final > accepted counter offer > original proposed price.
   -- (total_amount column does not exist on warehouse_bookings)
   v_subtotal := coalesce(
     v_booking.final_price,
-    v_booking.proposed_price,
     v_booking.counter_offer_price,
+    v_booking.proposed_price,
     0
   );
 

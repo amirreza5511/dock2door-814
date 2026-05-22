@@ -16,10 +16,10 @@ export function OperatorCard({ stationName }: { stationName: string }) {
       setEmail(data.user.email ?? "");
       const { data: prof } = await supabase
         .from("profiles")
-        .select("full_name")
-        .eq("user_id", data.user.id)
+        .select("name")
+        .eq("id", data.user.id)
         .maybeSingle();
-      const fn = (prof as { full_name?: string | null } | null)?.full_name;
+      const fn = (prof as { name?: string | null } | null)?.name;
       if (fn) setName(fn);
     })();
   }, []);

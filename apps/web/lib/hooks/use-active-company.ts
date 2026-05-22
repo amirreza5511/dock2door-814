@@ -19,15 +19,15 @@ export function useMyCompanies() {
       if (!u.user) return [];
       const { data, error } = await supabase
         .from("company_users")
-        .select("company_id, role, companies!inner(name, type)")
+        .select("company_id, company_role, companies!inner(name, type)")
         .eq("user_id", u.user.id);
       if (error) throw error;
-      type Row = { company_id: string; role: string; companies: { name: string; type: string } | { name: string; type: string }[] | null };
+      type Row = { company_id: string; company_role: string; companies: { name: string; type: string } | { name: string; type: string }[] | null };
       return (data as Row[] | null ?? []).map((r) => {
         const c = Array.isArray(r.companies) ? r.companies[0] : r.companies;
         return {
           company_id: r.company_id,
-          role: r.role,
+          role: r.company_role,
           company_name: c?.name ?? "",
           company_type: c?.type ?? "",
         };

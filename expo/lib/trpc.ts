@@ -476,9 +476,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'services.setListingStatus': async (input: { id: string; status: string }) => {
-    const { error } = await supabase.from('service_listings').update({ status: input.status }).eq('id', input.id);
-    if (error) throwErr(error, 'Unable to update status');
+  // services.setListingStatus — all transitions are routed through audited RPCs.
+  // Provider:  Draft/Rejected → PendingApproval  via provider_submit_service_listing (0051)
+  // Provider:  PendingApproval → Draft            via provider_withdraw_service_listing (0051)
+  // Admin:     any status                         via admin_set_listing_status (0007)
+  // No direct service_listings UPDATE is allowed.
+  'services.setListingStatus': async (input: { id: string; status: string }, ctx) => {
+    if (isAdmin(ctx.user.role)) {
+      const { error } = await supabase.rpc('admin_set_listing_status', {
+        p_listing_id: input.id,
+        p_status: input.status,
+        p_reason: `Status set to ${input.status} by admin`,
+      });
+      if (error) throwErr(error, 'Unable to update service listing status — check admin privileges');
+    } else if (input.status === 'PendingApproval') {
+      const { error } = await supabase.rpc('provider_submit_service_listing', { p_listing_id: input.id });
+      if (error) throwErr(error, 'Unable to submit service listing for review');
+    } else if (input.status === 'Draft') {
+      const { error } = await supabase.rpc('provider_withdraw_service_listing', { p_listing_id: input.id });
+      if (error) throwErr(error, 'Unable to withdraw service listing from review');
+    } else {
+      throw new Error(`setListingStatus: status "${input.status}" requires admin privileges`);
+    }
     return { success: true };
   },
 
