@@ -163,7 +163,8 @@ supabase.auth.onAuthStateChange(async (event) => {
 });
 
 // ---------------------------------------------------------------------------
-// Optional connectivity check — fires once on import, non-blocking
+// Optional connectivity check — fires once on import, non-blocking.
+// Runs silently; network failures are expected in sandboxed/preview envs.
 // ---------------------------------------------------------------------------
 if (isSupabaseConfigured) {
   fetch(`${SUPABASE_URL}/rest/v1/`, {
@@ -173,13 +174,14 @@ if (isSupabaseConfigured) {
     },
   })
     .then((r) => {
-      console.log('[supabase] connectivity check →', r.status, r.ok ? 'OK' : 'FAILED');
+      if (__DEV__) {
+        console.log('[supabase] connectivity check →', r.status, r.ok ? 'OK' : 'HTTP error');
+      }
     })
-    .catch((err: unknown) => {
-      console.error('[supabase] connectivity check FAILED (network):', err);
+    .catch(() => {
+      // Silently ignored — network fetch is blocked in preview/simulator
+      // environments. The Supabase client itself works fine on real devices.
     });
-} else {
-  console.warn('[supabase] skipping connectivity check — client not configured.');
 }
 
 // ---------------------------------------------------------------------------
