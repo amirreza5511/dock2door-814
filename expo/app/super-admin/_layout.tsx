@@ -19,39 +19,10 @@ export default function SuperAdminLayout() {
     >
       <Tabs.Screen name="index" options={{ title: 'Overview', tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} /> }} />
       <Tabs.Screen name="analytics" options={{ title: 'Analytics', tabBarIcon: ({ color }) => <LineChart size={22} color={color} /> }} />
-      {/* These tabs navigate to the shared admin screens — SuperAdmin has full access to the /admin segment */}
-      <Tabs.Screen
-        name="certifications-redirect"
-        options={{
-          title: 'Certs',
-          tabBarIcon: ({ color }) => <Award size={22} color={color} />,
-          href: '/admin/certifications',
-        }}
-      />
-      <Tabs.Screen
-        name="compliance-redirect"
-        options={{
-          title: 'Compliance',
-          tabBarIcon: ({ color }) => <ClipboardCheck size={22} color={color} />,
-          href: '/admin/compliance',
-        }}
-      />
-      <Tabs.Screen
-        name="users-redirect"
-        options={{
-          title: 'Users',
-          tabBarIcon: ({ color }) => <Users size={22} color={color} />,
-          href: '/admin/users',
-        }}
-      />
-      <Tabs.Screen
-        name="companies-redirect"
-        options={{
-          title: 'Companies',
-          tabBarIcon: ({ color }) => <Building2 size={22} color={color} />,
-          href: '/admin/companies',
-        }}
-      />
+      <Tabs.Screen name="certifications" options={{ title: 'Certs', tabBarIcon: ({ color }) => <Award size={22} color={color} /> }} />
+      <Tabs.Screen name="compliance" options={{ title: 'Compliance', tabBarIcon: ({ color }) => <ClipboardCheck size={22} color={color} /> }} />
+      <Tabs.Screen name="users" options={{ title: 'Users', tabBarIcon: ({ color }) => <Users size={22} color={color} /> }} />
+      <Tabs.Screen name="companies" options={{ title: 'Companies', tabBarIcon: ({ color }) => <Building2 size={22} color={color} /> }} />
       <Tabs.Screen name="controls" options={{ title: 'Controls', tabBarIcon: ({ color }) => <Shield size={22} color={color} /> }} />
       <Tabs.Screen name="data-manager" options={{ title: 'Data', tabBarIcon: ({ color }) => <Database size={22} color={color} /> }} />
     </Tabs>
