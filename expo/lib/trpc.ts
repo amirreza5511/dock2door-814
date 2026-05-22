@@ -939,11 +939,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   // admin.listEntity — strict allowlist prevents arbitrary table enumeration.
   // Add new entries here explicitly; never allow pass-through of unknown entity names.
+  // UI aliases: 'bookings' → warehouse_bookings, 'dock_appointments' → gate_events
   'admin.listEntity': async (input: { entity: string }) => {
     const ENTITY_TABLE: Record<string, string> = {
       users:              'profiles',
       companies:          'companies',
       disputes:           'disputes',
+      bookings:           'warehouse_bookings',   // UI alias
       warehouse_bookings: 'warehouse_bookings',
       warehouse_listings: 'warehouse_listings',
       service_listings:   'service_listings',
@@ -960,6 +962,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       shift_posts:        'shift_posts',
       shift_applications: 'shift_applications',
       shift_assignments:  'shift_assignments',
+      dock_appointments:  'gate_events',          // UI alias → gate_events table (migration 0014)
     };
     const table = ENTITY_TABLE[input.entity];
     if (!table) throw new Error(`admin.listEntity: "${input.entity}" is not in the allowed entity list`);
@@ -980,6 +983,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       users:              'profiles',
       companies:          'companies',
       disputes:           'disputes',
+      bookings:           'warehouse_bookings',
       warehouse_bookings: 'warehouse_bookings',
       warehouse_listings: 'warehouse_listings',
       service_listings:   'service_listings',
@@ -996,6 +1000,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       shift_posts:        'shift_posts',
       shift_applications: 'shift_applications',
       shift_assignments:  'shift_assignments',
+      dock_appointments:  'gate_events',
     };
     const table = ENTITY_TABLE[input.entity];
     if (!table) throw new Error(`admin.getEntityRecord: "${input.entity}" is not in the allowed entity list`);
@@ -1025,6 +1030,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     }
     const ENTITY_TABLE: Record<string, string> = {
       disputes:           'disputes',
+      bookings:           'warehouse_bookings',
       warehouse_bookings: 'warehouse_bookings',
       warehouse_listings: 'warehouse_listings',
       service_listings:   'service_listings',
@@ -1036,6 +1042,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       shift_posts:        'shift_posts',
       shift_applications: 'shift_applications',
       shift_assignments:  'shift_assignments',
+      dock_appointments:  'gate_events',
     };
     const table = ENTITY_TABLE[input.entity];
     if (!table) throw new Error(`admin.updateEntityStatus: "${input.entity}" is not in the allowed entity list`);
@@ -1058,6 +1065,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const ARCHIVE_TABLE: Record<string, string> = {
       companies:          'companies',
       disputes:           'disputes',
+      bookings:           'warehouse_bookings',
       warehouse_bookings: 'warehouse_bookings',
       warehouse_listings: 'warehouse_listings',
       service_listings:   'service_listings',
@@ -1070,6 +1078,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       shift_posts:        'shift_posts',
       shift_applications: 'shift_applications',
       shift_assignments:  'shift_assignments',
+      dock_appointments:  'gate_events',
     };
     const table = ARCHIVE_TABLE[input.entity];
     if (!table) throw new Error(`admin.archiveEntity: "${input.entity}" is not in the allowed entity list`);
@@ -2041,10 +2050,17 @@ function callProcedure(ns: string, proc: string, input: unknown): Promise<unknow
   const key = procKey(ns, proc);
   const fn = PROCEDURES[key];
   if (!fn) {
-    console.log('[trpc-shim] unknown procedure', key);
+    console.error('[trpc-shim] unknown procedure:', key);
     return Promise.reject(new Error(`Unknown procedure: ${key}`));
   }
-  return requireCtx().then((ctx) => fn(input, ctx));
+  return requireCtx()
+    .then((ctx) => fn(input, ctx))
+    .catch((err: unknown) => {
+      // Always log the real error so it's visible in Metro / Rork console,
+      // not just a generic screen message with no details.
+      console.error('[trpc-shim] procedure error:', key, err instanceof Error ? err.message : String(err));
+      throw err;
+    });
 }
 
 type QueryHookInput<T> = [T] | [T, Partial<UseQueryOptions<unknown, Error>>] | [];

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Database, Trash2 } from 'lucide-react-native';
@@ -10,7 +10,37 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 
-type AdminEntity = 'companies' | 'users' | 'bookings' | 'drivers' | 'trucks' | 'trailers' | 'containers' | 'payments' | 'invoices' | 'payouts' | 'message_threads' | 'dock_appointments';
+// Only entities that exist in the ENTITY_TABLE allowlist inside trpc.ts are listed here.
+// Removed: 'drivers', 'trucks', 'trailers', 'containers' — no standalone tables in schema.
+// 'bookings' maps to warehouse_bookings; 'dock_appointments' maps to gate_events.
+type AdminEntity =
+  | 'companies'
+  | 'users'
+  | 'bookings'
+  | 'disputes'
+  | 'payments'
+  | 'invoices'
+  | 'payouts'
+  | 'shift_posts'
+  | 'message_threads'
+  | 'dock_appointments'
+  | 'service_listings'
+  | 'warehouse_listings';
+
+const ENTITY_TABS: [AdminEntity, string][] = [
+  ['companies', 'Companies'],
+  ['users', 'Users'],
+  ['bookings', 'Bookings'],
+  ['disputes', 'Disputes'],
+  ['payments', 'Payments'],
+  ['invoices', 'Invoices'],
+  ['payouts', 'Payouts'],
+  ['shift_posts', 'Shifts'],
+  ['message_threads', 'Threads'],
+  ['dock_appointments', 'Gate Events'],
+  ['service_listings', 'Svc Listings'],
+  ['warehouse_listings', 'WH Listings'],
+];
 
 interface EntityItem {
   id: string;
@@ -29,19 +59,27 @@ export default function SuperAdminDataManagerScreen() {
   const [status, setStatus] = useState<string>('');
 
   const listQuery = trpc.admin.listEntity.useQuery({ entity });
-  const detailQuery = trpc.admin.getEntityRecord.useQuery({ entity, id: selectedId ?? '' }, { enabled: Boolean(selectedId) });
+  const detailQuery = trpc.admin.getEntityRecord.useQuery(
+    { entity, id: selectedId ?? '' },
+    { enabled: Boolean(selectedId) },
+  );
   const updateStatusMutation = trpc.admin.updateEntityStatus.useMutation();
   const archiveMutation = trpc.admin.archiveEntity.useMutation();
 
   const items: EntityItem[] = (listQuery.data ?? []) as EntityItem[];
 
+  // Always log the real error to Metro / Rork console so it can be diagnosed.
+  useEffect(() => {
+    if (listQuery.isError && listQuery.error) {
+      console.error('[DataManager] listEntity failed — entity:', entity, '— error:', listQuery.error.message);
+    }
+  }, [listQuery.isError, listQuery.error, entity]);
+
   const resolveStatusValue = (intent: 'approve' | 'active' | 'suspend'): string => {
     if (entity === 'companies') {
-      if (intent === 'approve' || intent === 'active') return 'Approved';
-      return 'Suspended';
+      return intent === 'suspend' ? 'Suspended' : 'Approved';
     }
-    if (intent === 'approve' || intent === 'active') return 'Active';
-    return 'Suspended';
+    return intent === 'suspend' ? 'Suspended' : 'Active';
   };
 
   const applyStatus = async (intent: 'approve' | 'active' | 'suspend') => {
@@ -53,7 +91,10 @@ export default function SuperAdminDataManagerScreen() {
     try {
       await updateStatusMutation.mutateAsync({ entity, id: selectedId, status: newStatus });
       setStatus(newStatus);
-      await Promise.all([utils.admin.listEntity.invalidate({ entity }), utils.admin.getEntityRecord.invalidate({ entity, id: selectedId })]);
+      await Promise.all([
+        utils.admin.listEntity.invalidate({ entity }),
+        utils.admin.getEntityRecord.invalidate({ entity, id: selectedId }),
+      ]);
     } catch (error) {
       Alert.alert('Unable to update status', error instanceof Error ? error.message : 'Unknown error');
     }
@@ -73,56 +114,92 @@ export default function SuperAdminDataManagerScreen() {
   };
 
   if (listQuery.isLoading && items.length === 0) {
-    return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading data manager" /></View>;
+    return (
+      <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
+        <ScreenFeedback state="loading" title="Loading data manager" />
+      </View>
+    );
   }
 
   if (listQuery.isError) {
-    return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load data manager" onRetry={() => void listQuery.refetch()} /></View>;
+    // Show the actual error message so the real root cause is visible in the UI,
+    // not just a generic "Unable to load data manager" with no details.
+    const errMsg = listQuery.error?.message ?? 'Unknown error';
+    return (
+      <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
+        <ScreenFeedback
+          state="error"
+          title="Unable to load data manager"
+          description={errMsg}
+          onRetry={() => void listQuery.refetch()}
+        />
+      </View>
+    );
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: C.bg }]}> 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+    <View style={[styles.root, { backgroundColor: C.bg }]}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Global Data Manager</Text>
         <Text style={styles.subtitle}>Cross-tenant backend entity management for operations and admin support.</Text>
 
         <View style={styles.segmentRow}>
-          {([
-            ['companies', 'Companies'],
-            ['users', 'Users'],
-            ['bookings', 'Bookings'],
-            ['drivers', 'Drivers'],
-            ['trucks', 'Trucks'],
-            ['trailers', 'Trailers'],
-            ['containers', 'Containers'],
-            ['payments', 'Payments'],
-            ['invoices', 'Invoices'],
-            ['payouts', 'Payouts'],
-            ['message_threads', 'Threads'],
-            ['dock_appointments', 'Appointments'],
-          ] as [AdminEntity, string][]).map(([key, label]) => (
-            <TouchableOpacity key={key} style={[styles.segment, entity === key && styles.segmentActive]} onPress={() => { setEntity(key); setSelectedId(null); setStatus(''); }}>
+          {ENTITY_TABS.map(([key, label]) => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.segment, entity === key && styles.segmentActive]}
+              onPress={() => { setEntity(key); setSelectedId(null); setStatus(''); }}
+            >
               <Text style={[styles.segmentText, entity === key && styles.segmentTextActive]}>{label}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {items.length === 0 ? <EmptyState icon={Database} title={`No ${entity}`} description="Backend records for this entity will appear here automatically." /> : items.map((item) => (
-          <Card key={item.id} style={styles.listCard} onPress={() => { setSelectedId(item.id); setStatus(String(item.status ?? '')); }}>
-            <View style={styles.listTop}>
-              <View style={styles.iconWrap}><Database size={16} color={C.red} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.itemTitle}>{String(item.name ?? item.email ?? item.invoice_number ?? item.id)}</Text>
-                <Text style={styles.itemMeta}>{String(item.role ?? item.id)}</Text>
+        {items.length === 0 ? (
+          <EmptyState
+            icon={Database}
+            title={`No ${entity}`}
+            description="Backend records for this entity will appear here automatically."
+          />
+        ) : (
+          items.map((item) => (
+            <Card
+              key={item.id}
+              style={styles.listCard}
+              onPress={() => { setSelectedId(item.id); setStatus(String(item.status ?? '')); }}
+            >
+              <View style={styles.listTop}>
+                <View style={styles.iconWrap}>
+                  <Database size={16} color={C.red} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.itemTitle}>
+                    {String(item.name ?? item.email ?? item.invoice_number ?? item.id)}
+                  </Text>
+                  <Text style={styles.itemMeta}>{String(item.role ?? item.id)}</Text>
+                </View>
+                <StatusBadge status={String(item.status ?? 'Record')} />
               </View>
-              <StatusBadge status={String(item.status ?? 'Record')} />
-            </View>
-            <View style={styles.actionRow}>
-              <Button label="Select" variant="secondary" onPress={() => { setSelectedId(item.id); setStatus(String(item.status ?? '')); }} />
-              <Button label="Archive" variant="danger" onPress={() => void archiveRecord(item.id)} icon={<Trash2 size={14} color={C.red} />} loading={archiveMutation.isPending} />
-            </View>
-          </Card>
-        ))}
+              <View style={styles.actionRow}>
+                <Button
+                  label="Select"
+                  variant="secondary"
+                  onPress={() => { setSelectedId(item.id); setStatus(String(item.status ?? '')); }}
+                />
+                <Button
+                  label="Archive"
+                  variant="danger"
+                  onPress={() => void archiveRecord(item.id)}
+                  icon={<Trash2 size={14} color={C.red} />}
+                  loading={archiveMutation.isPending}
+                />
+              </View>
+            </Card>
+          ))
+        )}
 
         {selectedId ? (
           <Card elevated>
@@ -131,13 +208,32 @@ export default function SuperAdminDataManagerScreen() {
             {detailQuery.data ? (
               <View style={styles.summaryBlock}>
                 <Text style={styles.summaryLabel}>Current status</Text>
-                <View style={{ marginTop: 6 }}><StatusBadge status={String(status || 'Unknown')} /></View>
+                <View style={{ marginTop: 6 }}>
+                  <StatusBadge status={String(status || 'Unknown')} />
+                </View>
               </View>
             ) : null}
             <View style={styles.formGap}>
-              <Button label="Approve" onPress={() => void applyStatus('approve')} loading={updateStatusMutation.isPending} testID="data-manager-approve" />
-              <Button label="Set Active" variant="secondary" onPress={() => void applyStatus('active')} loading={updateStatusMutation.isPending} testID="data-manager-active" />
-              <Button label="Suspend" variant="danger" onPress={() => void applyStatus('suspend')} loading={updateStatusMutation.isPending} testID="data-manager-suspend" />
+              <Button
+                label="Approve"
+                onPress={() => void applyStatus('approve')}
+                loading={updateStatusMutation.isPending}
+                testID="data-manager-approve"
+              />
+              <Button
+                label="Set Active"
+                variant="secondary"
+                onPress={() => void applyStatus('active')}
+                loading={updateStatusMutation.isPending}
+                testID="data-manager-active"
+              />
+              <Button
+                label="Suspend"
+                variant="danger"
+                onPress={() => void applyStatus('suspend')}
+                loading={updateStatusMutation.isPending}
+                testID="data-manager-suspend"
+              />
             </View>
           </Card>
         ) : null}
@@ -153,18 +249,31 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '800' as const, color: C.text },
   subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 4 },
   segmentRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
-  segment: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  segment: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: C.bgSecondary,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
   segmentActive: { backgroundColor: C.redDim, borderColor: C.red },
   segmentText: { fontSize: 12, color: C.textSecondary, fontWeight: '700' as const },
   segmentTextActive: { color: C.red },
   listCard: { gap: 10 },
   listTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  iconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.redDim },
+  iconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: C.redDim,
+  },
   itemTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   itemMeta: { fontSize: 12, color: C.textSecondary, marginTop: 3 },
   actionRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   sectionTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
-  detailText: { marginTop: 12, color: C.textSecondary, fontSize: 12, lineHeight: 18 },
   formGap: { gap: 12, marginTop: 12 },
   summaryBlock: { marginTop: 12 },
   summaryLabel: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
