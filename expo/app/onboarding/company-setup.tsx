@@ -47,6 +47,27 @@ export default function CompanySetup() {
         p_type: companyType,
       });
       if (error) throw error;
+      // Best-effort: notify admins about the new pending company. Never blocks onboarding.
+      void (async () => {
+        const [adminsRes, companyRes] = await Promise.all([
+          supabase.from('user_roles').select('user_id').eq('role', 'admin'),
+          supabase.from('companies').select('id, name, type')
+            .eq('owner_user_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1).maybeSingle(),
+        ]);
+        const admins = adminsRes.data ?? [];
+        const co = companyRes.data;
+        if (!co || admins.length === 0) return;
+        await Promise.all(admins.map((a) => supabase.from('notifications').insert({
+          user_id: a.user_id,
+          kind: 'company_pending',
+          title: 'New company pending approval',
+          body: `${co.name} (${(co.type as string | null) ?? companyType}) has registered and requires your review in Compliance.`,
+          entity_type: 'companies',
+          entity_id: co.id,
+        })));
+      })();
       await refresh();
       router.replace(getRoleRoute(user.role) as never);
     } catch (err) {

@@ -245,6 +245,26 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'dock.updateCompany': async (input: { id: string; payload: AnyRecord }) => {
     const { error } = await supabase.from('companies').update(input.payload).eq('id', input.id);
     if (error) throwErr(error, 'Unable to update company');
+    // Best-effort: notify all admins when a company is submitted for approval.
+    if (input.payload.status === 'PendingApproval') {
+      void (async () => {
+        const [coRes, adminsRes] = await Promise.all([
+          supabase.from('companies').select('name, type').eq('id', input.id).maybeSingle(),
+          supabase.from('user_roles').select('user_id').eq('role', 'admin'),
+        ]);
+        const co = coRes.data;
+        const admins = adminsRes.data ?? [];
+        if (!co || admins.length === 0) return;
+        await Promise.all(admins.map((a) => supabase.from('notifications').insert({
+          user_id: a.user_id,
+          kind: 'company_pending',
+          title: 'Company pending approval',
+          body: `${co.name} (${(co.type as string | null) ?? 'unknown type'}) requires your review in Compliance.`,
+          entity_type: 'companies',
+          entity_id: input.id,
+        })));
+      })();
+    }
     return { success: true };
   },
 
@@ -331,6 +351,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_response_notes: input.message ?? null,
     });
     if (error) throwErr(error, 'Unable to submit counter offer');
+    // Best-effort: notify customer company members about the counter offer.
+    void (async () => {
+      const { data: booking } = await supabase
+        .from('warehouse_bookings')
+        .select('customer_company_id, listing_id')
+        .eq('id', input.id).maybeSingle();
+      if (!booking?.customer_company_id) return;
+      const { data: listing } = await supabase
+        .from('warehouse_listings').select('name').eq('id', booking.listing_id ?? '').maybeSingle();
+      const { data: members } = await supabase
+        .from('company_users').select('user_id')
+        .eq('company_id', booking.customer_company_id)
+        .in('company_role', ['Owner', 'Admin', 'owner', 'admin']);
+      await Promise.all((members ?? []).map((m) => supabase.from('notifications').insert({
+        user_id: m.user_id,
+        kind: 'booking_counter_offer',
+        title: 'Counter offer received 💬',
+        body: `${listing?.name ?? 'A warehouse'} has made a counter offer of ${Number(input.amount).toLocaleString()} for your booking. Open Bookings to review and respond.`,
+        entity_type: 'warehouse_bookings',
+        entity_id: input.id,
+      })));
+    })();
     return { id: input.id };
   },
 
@@ -616,8 +658,14 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'fulfillment.createOrder': async (input: { bookingId: string; reference: string; shipTo: string; notes: string; items: { inventoryItemId: string; quantity: number }[] }, ctx) => {
     const { data: booking } = await supabase
       .from('warehouse_bookings')
-      .select('customer_company_id,listing_id')
+      .select('customer_company_id,listing_id,status')
       .eq('id', input.bookingId).single();
+    // Gate: only allow fulfillment orders when the booking is active.
+    if (!booking) throw new Error('Booking not found');
+    const ACTIVE_BOOKING_STATUSES = ['Accepted', 'Confirmed', 'Scheduled', 'InProgress', 'Active'];
+    if (!ACTIVE_BOOKING_STATUSES.includes((booking.status as string | null) ?? '')) {
+      throw new Error(`Cannot create fulfillment orders for a booking with status "${booking.status as string}". The booking must be Accepted or Active first.`);
+    }
     let providerCompanyId: string | null = null;
     if (booking?.listing_id) {
       const { data: listing } = await supabase
@@ -704,7 +752,21 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const p = input.payload;
     let row: AnyRecord = { company_id: ctx.user.companyId, status: p.status ?? 'Active' };
     if (input.entity === 'drivers') {
-      row = { ...row, name: p.name ?? '', license_number: p.licenseNumber ?? '', phone: p.phone ?? '' };
+      // Best-effort: look up linked auth user by email to enable driver_user_id on appointments.
+      let linkedUserId: string | null = null;
+      if (p.email) {
+        const { data: profile } = await supabase
+          .from('profiles').select('id').eq('email', String(p.email).trim().toLowerCase()).maybeSingle();
+        linkedUserId = profile?.id ?? null;
+      }
+      row = {
+        ...row,
+        name: p.name ?? '',
+        license_number: p.licenseNumber ?? '',
+        phone: p.phone ?? '',
+        // data JSONB stores email + linked auth userId so dispatcher can set driver_user_id on appointments.
+        data: { name: p.name ?? '', email: p.email ?? '', ...(linkedUserId ? { userId: linkedUserId } : {}) },
+      };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '', make: p.make ?? '', model: p.model ?? '' };
     } else if (input.entity === 'trailers') {
@@ -721,7 +783,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const p = input.payload;
     let row: AnyRecord = { status: p.status ?? 'Active' };
     if (input.entity === 'drivers') {
-      row = { ...row, name: p.name ?? '', license_number: p.licenseNumber ?? '', phone: p.phone ?? '' };
+      // Best-effort: look up linked auth user by email to keep driver_user_id mapping current.
+      let linkedUserId: string | null = null;
+      if (p.email) {
+        const { data: profile } = await supabase
+          .from('profiles').select('id').eq('email', String(p.email).trim().toLowerCase()).maybeSingle();
+        linkedUserId = profile?.id ?? null;
+      }
+      row = {
+        ...row,
+        name: p.name ?? '',
+        license_number: p.licenseNumber ?? '',
+        phone: p.phone ?? '',
+        data: { name: p.name ?? '', email: p.email ?? '', ...(linkedUserId ? { userId: linkedUserId } : {}) },
+      };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '' };
     } else if (input.entity === 'trailers') {
@@ -1603,6 +1678,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_time_entry_id: input.timeEntryId, p_hours: input.hours, p_notes: input.notes ?? '',
     });
     if (error) throwErr(error, 'Unable to confirm hours');
+    // Best-effort: notify worker that hours have been confirmed. Never blocks the confirm.
+    void (async () => {
+      const { data: te } = await supabase
+        .from('time_entries').select('assignment_id').eq('id', input.timeEntryId).maybeSingle();
+      if (!te?.assignment_id) return;
+      const { data: ass } = await supabase
+        .from('shift_assignments').select('worker_user_id, shift_id').eq('id', te.assignment_id).maybeSingle();
+      if (!ass?.worker_user_id) return;
+      const { data: shift } = await supabase
+        .from('shift_posts').select('title').eq('id', ass.shift_id).maybeSingle();
+      await supabase.from('notifications').insert({
+        user_id: ass.worker_user_id,
+        kind: 'hours_confirmed',
+        title: 'Hours confirmed ✓',
+        body: `Your ${input.hours}h have been confirmed for "${shift?.title ?? 'your shift'}". Payment follows your employer's payroll schedule.`,
+        entity_type: 'time_entries',
+        entity_id: input.timeEntryId,
+      });
+    })();
     return { success: true };
   },
 
@@ -2068,11 +2162,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { id: data as string };
   },
 
-  // returns.advanceStatus — warehouse side only updates RMA status (Received, Restocked, Disposed).
-  // Replaces the previous direct supabase.from('return_authorizations').update() in returns.tsx.
-  // Valid next statuses: 'Received' | 'Restocked' | 'Disposed' | 'Approved' | 'Rejected'
+  // returns.advanceStatus — warehouse side updates RMA status.
+  // Valid DB return_status enum values: Requested, Approved, Rejected, Received, Refunded, Closed
   'returns.advanceStatus': async (input: { rmaId: string; status: string; notes?: string }) => {
-    const ALLOWED_STATUSES = new Set(['Received', 'Restocked', 'Disposed', 'Approved', 'Rejected', 'Closed']);
+    const ALLOWED_STATUSES = new Set(['Approved', 'Rejected', 'Received', 'Refunded', 'Closed']);
     if (!ALLOWED_STATUSES.has(input.status)) {
       throw new Error(`returns.advanceStatus: status "${input.status}" is not valid`);
     }

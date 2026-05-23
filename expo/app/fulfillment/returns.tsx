@@ -57,7 +57,8 @@ export default function ReturnsScreen() {
   };
 
   const rmas = useMemo<ReturnRow[]>(() => (listQuery.data ?? []) as ReturnRow[], [listQuery.data]);
-  const incoming = useMemo<ReturnRow[]>(() => rmas.filter((r) => ['Pending', 'InTransit', 'Approved'].includes(r.status)), [rmas]);
+  // Valid DB enum values: Requested, Approved, Rejected, Received, Refunded, Closed
+  const incoming = useMemo<ReturnRow[]>(() => rmas.filter((r) => ['Requested', 'Approved'].includes(r.status)), [rmas]);
   const availableOrders = useMemo<OrderRow[]>(() => ((orders.data as { orders?: OrderRow[] })?.orders ?? []).filter((o) => true) as OrderRow[], [orders.data]);
 
   const onSubmit = async () => {
@@ -97,6 +98,7 @@ export default function ReturnsScreen() {
         <TouchableOpacity onPress={() => setTab('receive')} style={[styles.tab, tab === 'receive' && styles.tabActive]} testID="returns-tab-receive">
           <Inbox size={14} color={tab === 'receive' ? C.accent : C.textMuted} />
           <Text style={[styles.tabText, tab === 'receive' && styles.tabTextActive]}>Receive ({incoming.length})</Text>
+          {/* Receive tab shows RMAs with Requested or Approved status — awaiting physical receipt at warehouse */}
         </TouchableOpacity>
       </View>
       <ScrollView
@@ -137,7 +139,7 @@ export default function ReturnsScreen() {
                 <Button
                   label="Restock"
                   size="sm"
-                  onPress={() => void updateRmaStatus(r.id, 'Restocked', 'restock')}
+                  onPress={() => void updateRmaStatus(r.id, 'Received', 'restock')}
                   icon={<PackageCheck size={14} color={C.white} />}
                   testID={`restock-${r.id}`}
                 />
@@ -147,7 +149,7 @@ export default function ReturnsScreen() {
                   variant="danger"
                   onPress={() => Alert.alert('Dispose items?', 'Mark these items as discarded? This cannot be undone.', [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Dispose', style: 'destructive', onPress: () => void updateRmaStatus(r.id, 'Disposed', 'dispose') },
+                    { text: 'Dispose', style: 'destructive', onPress: () => void updateRmaStatus(r.id, 'Closed', 'dispose') },
                   ])}
                   icon={<Trash2 size={14} color={C.red} />}
                   testID={`dispose-${r.id}`}

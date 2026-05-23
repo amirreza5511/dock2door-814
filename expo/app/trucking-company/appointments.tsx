@@ -27,12 +27,14 @@ const COLUMNS: { key: ColumnKey; label: string; color: string; statuses: string[
 interface AssignForm {
   driverId: string;
   driverName: string;
+  /** auth.uid() of a Driver-role user linked to this fleet driver (enables driverJobs lookup). */
+  driverUserId: string;
   truckPlate: string;
   etaMinutes: string;
   notes: string;
 }
 
-const INITIAL_ASSIGN: AssignForm = { driverId: '', driverName: '', truckPlate: '', etaMinutes: '30', notes: '' };
+const INITIAL_ASSIGN: AssignForm = { driverId: '', driverName: '', driverUserId: '', truckPlate: '', etaMinutes: '30', notes: '' };
 
 export default function DispatcherBoardScreen() {
   const insets = useSafeAreaInsets();
@@ -58,7 +60,7 @@ export default function DispatcherBoardScreen() {
   });
 
   const appointments = dashboardQuery.data?.appointments ?? [];
-  const drivers = (dashboardQuery.data?.drivers ?? []) as Array<{ id: string; name: string; status?: string }>;
+  const drivers = (dashboardQuery.data?.drivers ?? []) as Array<{ id: string; name: string; status?: string; data?: Record<string, unknown> | null }>;
   const trucks = (dashboardQuery.data?.trucks ?? []) as Array<{ id: string; plate: string }>;
 
   const grouped = useMemo(() => {
@@ -111,6 +113,8 @@ export default function DispatcherBoardScreen() {
         status: 'Approved',
         driverName: assignForm.driverName.trim() || null,
         truckPlate: assignForm.truckPlate.trim() || null,
+        // Pass linked auth uid so the driver sees this job via operations.driverJobs.
+        driverUserId: assignForm.driverUserId.trim() || null,
       });
       setAssignId(null);
       setAssignForm(INITIAL_ASSIGN);
@@ -315,7 +319,7 @@ export default function DispatcherBoardScreen() {
                     return (
                       <TouchableOpacity
                         key={d.id}
-                        onPress={() => setAssignForm((p) => ({ ...p, driverId: d.id, driverName: d.name }))}
+                        onPress={() => setAssignForm((p) => ({ ...p, driverId: d.id, driverName: d.name, driverUserId: String(d.data?.userId ?? '') }))}
                         style={[styles.driverChip, active && styles.driverChipActive]}
                       >
                         <UserCheck size={12} color={active ? C.accent : C.textMuted} />
