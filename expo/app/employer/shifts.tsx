@@ -267,7 +267,7 @@ export default function EmployerShifts() {
         onSuccess: () => {
           setConfirmHours('');
           setEditingHours(false);
-          Alert.alert('Hours Confirmed', 'Worker payment will be processed.');
+          Alert.alert('Hours Confirmed', 'Hours saved. The worker has been notified. Payment follows your payroll schedule.');
         },
         onError: (e: Error) => Alert.alert('Unable to confirm hours', e.message),
       },

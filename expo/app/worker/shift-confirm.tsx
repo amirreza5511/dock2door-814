@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle, XCircle, MapPin, Clock, DollarSign, Building2 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import { trpc } from '@/lib/trpc';
 
 interface AssignmentDetail {
   id: string;
@@ -50,10 +51,8 @@ export default function ShiftConfirmScreen() {
   const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
 
   const queryClient = useQueryClient();
-  const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [showCancelForm, setShowCancelForm] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [companyName, setCompanyName] = useState('');
 
   const assignmentQ = useQuery({
@@ -87,58 +86,39 @@ export default function ShiftConfirmScreen() {
   const assignment = assignmentQ.data;
   const shift = (assignment as any)?.shift_posts ?? null;
 
-  const handleConfirm = async () => {
-    if (!assignment) return;
-    setLoading(true);
-    try {
-      const { error } = await supabase
-        .from('shift_assignments')
-        .update({
-          worker_confirmed: true,
-          worker_confirmed_at: new Date().toISOString(),
-        })
-        .eq('id', assignment.id);
-      if (error) throw new Error(error.message);
-      // Invalidate the my-shifts assignments cache so the confirm banner disappears immediately
+  /**
+   * Use worker_confirm_attendance RPC via trpc (audited, state-machine enforced).
+   * Both confirm and cancel share the same mutation — `confirmed: true` = attend, `confirmed: false` = cancel.
+   */
+  const confirmAttendanceM = trpc.shifts.confirmAttendance.useMutation({
+    onSuccess: async (_data, variables) => {
       await queryClient.invalidateQueries({ queryKey: ['myshifts-assignments'] });
       await queryClient.invalidateQueries({ queryKey: ['shift-confirm', assignmentId] });
-      Alert.alert('Confirmed!', "See you there. We'll send a reminder before your shift.", [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to confirm');
-    } finally {
-      setLoading(false);
-    }
+      if (variables.confirmed) {
+        Alert.alert('Confirmed!', "See you there. We'll send a reminder before your shift.", [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      } else {
+        Alert.alert('Shift cancelled', 'The employer has been notified.', [
+          { text: 'OK', onPress: () => router.back() },
+        ]);
+      }
+    },
+    onError: (e: Error) => Alert.alert('Error', e.message),
+  });
+
+  const handleConfirm = () => {
+    if (!assignment) return;
+    confirmAttendanceM.mutate({ assignmentId: assignment.id, confirmed: true });
   };
 
-  const handleCancel = async () => {
+  const handleCancel = () => {
     if (!assignment) return;
     if (!cancelReason.trim()) {
       Alert.alert('Required', 'Please provide a reason for cancellation.');
       return;
     }
-    setCancelling(true);
-    try {
-      const { error } = await supabase
-        .from('shift_assignments')
-        .update({
-          worker_confirmed: false,
-          cancellation_reason: cancelReason.trim(),
-        })
-        .eq('id', assignment.id);
-      if (error) throw new Error(error.message);
-      // Invalidate the my-shifts assignments cache so the confirm banner disappears immediately
-      await queryClient.invalidateQueries({ queryKey: ['myshifts-assignments'] });
-      await queryClient.invalidateQueries({ queryKey: ['shift-confirm', assignmentId] });
-      Alert.alert('Shift cancelled', 'The employer has been notified.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
-    } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to cancel');
-    } finally {
-      setCancelling(false);
-    }
+    confirmAttendanceM.mutate({ assignmentId: assignment.id, confirmed: false, reason: cancelReason.trim() });
   };
 
   if (assignmentQ.isLoading) {
@@ -227,10 +207,10 @@ export default function ShiftConfirmScreen() {
           <TouchableOpacity
             onPress={handleConfirm}
             style={styles.confirmBtn}
-            disabled={loading}
+            disabled={confirmAttendanceM.isPending}
             activeOpacity={0.85}
           >
-            {loading ? (
+            {confirmAttendanceM.isPending ? (
               <ActivityIndicator size="small" color={C.white} />
             ) : (
               <>
@@ -270,10 +250,10 @@ export default function ShiftConfirmScreen() {
             <TouchableOpacity
               onPress={handleCancel}
               style={styles.cancelSubmitBtn}
-              disabled={cancelling}
+              disabled={confirmAttendanceM.isPending}
               activeOpacity={0.85}
             >
-              {cancelling ? (
+              {confirmAttendanceM.isPending ? (
                 <ActivityIndicator size="small" color={C.white} />
               ) : (
                 <Text style={styles.cancelSubmitText}>Submit Cancellation</Text>
