@@ -248,13 +248,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  // dock.updateUser
+  // dock.updateUser — INTENTIONALLY restricted to safe display fields only.
+  // role and status MUST NOT be updated here; use admin_set_user_status / admin_grant_role RPCs.
   'dock.updateUser': async (input: { id: string; payload: AnyRecord }) => {
     const db: AnyRecord = {};
     if ('name' in input.payload) db.name = input.payload.name;
-    if ('status' in input.payload) db.status = input.payload.status;
-    if ('role' in input.payload) db.role = input.payload.role;
     if ('profileImage' in input.payload) db.profile_image = input.payload.profileImage;
+    // role and status are intentionally excluded — they can only be changed via audited admin RPCs.
     const { error } = await supabase.from('profiles').update(db).eq('id', input.id);
     if (error) throwErr(error, 'Unable to update user');
     return { success: true };
@@ -738,11 +738,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // driverJobs — looks up by driver_user_id first (correct), falls back to driver_name
+  // for legacy records created before driver_user_id was available.
   'operations.driverJobs': async (_input, ctx) => {
     const { data } = await supabase
       .from('dock_appointments')
       .select('*')
-      .or(`driver_name.eq.${ctx.user.name}`)
+      .or(`driver_user_id.eq.${ctx.user.id},driver_name.eq.${encodeURIComponent(ctx.user.name ?? '')}`)
       .is('archived_at', null)
       .order('scheduled_start');
     return data ?? [];
@@ -799,6 +801,27 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     }).select().single();
     if (error) throwErr(error, 'Unable to create appointment');
     return { id: data!.id };
+  },
+
+  // =========================================================================
+  // YARD / GATE EVENTS  (used by driver screen and station-dock)
+  // =========================================================================
+  // yard.recordEvent — calls gate_record_event RPC (migration 0014) which appends
+  // an append-only gate_events row AND atomically advances the dock_appointment status.
+  'yard.recordEvent': async (input: {
+    appointmentId: string;
+    kind: string;
+    notes?: string;
+    meta?: Record<string, unknown>;
+  }) => {
+    const { error } = await supabase.rpc('gate_record_event', {
+      p_appointment_id: input.appointmentId,
+      p_kind: input.kind,
+      p_notes: input.notes ?? null,
+      p_meta: input.meta ?? {},
+    });
+    if (error) throwErr(error, 'Unable to record gate event');
+    return { success: true };
   },
 
   // =========================================================================
@@ -916,7 +939,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
   'notifications.markRead': async (input: { id: string }) => {
-    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', input.id);
+    // DB column is read_at (timestamp) from migration 0014; also set read=true for any legacy schema.
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('id', input.id);
     if (error) throwErr(error, 'Unable to mark notification');
     return { success: true };
   },

@@ -553,7 +553,8 @@ export default function WorkerMyShifts() {
             {/* Payment Notice */}
             <Card style={styles.paymentNotice}>
               <Text style={styles.paymentNoticeText}>
-                Confirmed hours are processed for payment weekly. Funds are deposited to your bank account on file via direct deposit. Allow 3–5 business days after confirmation.
+                Hours shown are employer-confirmed. Payment is processed by your company’s payroll cycle.
+                Contact your employer or platform admin if you have questions about a specific payment.
               </Text>
             </Card>
 
@@ -577,7 +578,7 @@ export default function WorkerMyShifts() {
                     <View style={styles.earningsAmtBlock}>
                       <Text style={styles.earningsAmt}>${amount.toFixed(2)}</Text>
                       <View style={styles.earningsStatusBadge}>
-                        <Text style={styles.earningsStatusText}>Processing</Text>
+                        <Text style={styles.earningsStatusText}>Hours Confirmed</Text>
                       </View>
                     </View>
                   </View>

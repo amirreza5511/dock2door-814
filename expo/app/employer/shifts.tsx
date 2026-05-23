@@ -188,7 +188,9 @@ export default function EmployerShifts() {
   };
 
   const getWorkerProfile = (userId: string) => workerProfiles.find((w) => w.userId === userId);
-  const getWorkerCerts = (userId: string) => workerCertifications.filter((c) => c.workerUserId === userId && c.adminApproved);
+  // Use status === 'Approved' — the adminApproved boolean is a legacy field and may be false
+  // even for newly approved certs. The status column is the authoritative source.
+  const getWorkerCerts = (userId: string) => workerCertifications.filter((c) => c.workerUserId === userId && c.status === 'Approved');
 
   const getWorkerRating = (userId: string): { avg: number; count: number } => {
     const revs = workerReviews.filter((r) => r.target_user_id === userId);

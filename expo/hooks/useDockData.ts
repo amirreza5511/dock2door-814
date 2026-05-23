@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import type {
@@ -217,18 +218,24 @@ export function useDockData(): DockDataState {
   return {
     ...state,
     updateUser: async (id, user) => {
+      // role and status MUST NOT be sent here — dock.updateUser is restricted to safe display
+      // fields only. Use admin_set_user_status / admin_grant_role RPCs for privileged changes.
       await updateUserMutation.mutateAsync({
         id,
         payload: {
           name: user.name,
-          role: user.role,
-          status: user.status,
           profileImage: user.profileImage ?? null,
         },
       });
     },
     suspendUser: async (id) => {
-      await updateUserMutation.mutateAsync({ id, payload: { status: 'Suspended' } });
+      // suspendUser goes through the audited admin RPC, not dock.updateUser.
+      const { error } = await supabase.rpc('admin_set_user_status', {
+        p_user_id: id,
+        p_status: 'Suspended',
+        p_reason: 'Suspended via admin panel',
+      });
+      if (error) throw new Error(error.message);
     },
     updateCompany: async (id, company) => {
       await updateCompanyMutation.mutateAsync({

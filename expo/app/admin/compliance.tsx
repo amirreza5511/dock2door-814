@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Award, Warehouse, AlertTriangle, CheckCircle,
-  XCircle, RefreshCw, ClipboardCheck, ExternalLink, FileSearch,
+  XCircle, RefreshCw, ClipboardCheck, ExternalLink, FileSearch, Wrench,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Card from '@/components/ui/Card';
@@ -43,6 +43,16 @@ interface PendingListing {
   name: string;
   city: string | null;
   warehouse_type: string;
+  created_at: string;
+  company_name: string | null;
+}
+
+interface PendingServiceListing {
+  id: string;
+  company_id: string;
+  category: string;
+  coverage_area: string[];
+  hourly_rate: number;
   created_at: string;
   company_name: string | null;
 }
@@ -131,13 +141,14 @@ const rm = StyleSheet.create({
 
 // ─── Tab types ────────────────────────────────────────────────────────────────
 
-type Tab = 'companies' | 'certifications' | 'listings' | 'disputes';
+type Tab = 'companies' | 'certifications' | 'listings' | 'service_listings' | 'disputes';
 
 interface PendingAction {
   kind:
-    | 'approve-company' | 'suspend-company'
-    | 'approve-cert'    | 'reject-cert'
-    | 'approve-listing' | 'suspend-listing';
+    | 'approve-company'         | 'suspend-company'
+    | 'approve-cert'            | 'reject-cert'
+    | 'approve-listing'         | 'suspend-listing'
+    | 'approve-service-listing' | 'suspend-service-listing';
   id: string;
   label: string;
   reasonRequired: boolean;
@@ -149,6 +160,30 @@ export default function AdminComplianceScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('companies');
+
+  // ── Service listings query ─────────────────────────────────────────────────
+
+  const serviceListingsQ = useQuery({
+    queryKey: ['admin-compliance', 'service_listings'],
+    queryFn: async (): Promise<PendingServiceListing[]> => {
+      const { data, error } = await supabase
+        .from('service_listings')
+        .select('id,company_id,category,coverage_area,hourly_rate,created_at,companies!company_id(name)')
+        .eq('status', 'PendingApproval')
+        .order('created_at', { ascending: true });
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as any[]).map((r) => ({
+        id: r.id,
+        company_id: r.company_id,
+        category: r.category,
+        coverage_area: Array.isArray(r.coverage_area) ? r.coverage_area : [],
+        hourly_rate: Number(r.hourly_rate ?? 0),
+        created_at: r.created_at,
+        company_name: r.companies?.name ?? null,
+      }));
+    },
+    staleTime: 30_000,
+  });
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [openingFileId, setOpeningFileId] = useState<string | null>(null);
 
@@ -238,6 +273,7 @@ export default function AdminComplianceScreen() {
     void companiesQ.refetch();
     void certsQ.refetch();
     void listingsQ.refetch();
+    void serviceListingsQ.refetch();
     void disputesQ.refetch();
   };
 
@@ -292,6 +328,21 @@ export default function AdminComplianceScreen() {
           if (error) throw new Error(error.message);
           break;
         }
+        case 'approve-service-listing': {
+          const { error } = await supabase.rpc('admin_set_service_listing_status', {
+            p_listing_id: action.id, p_status: 'Available', p_reason: r ?? 'Approved via compliance queue',
+          });
+          if (error) throw new Error(error.message);
+          break;
+        }
+        case 'suspend-service-listing': {
+          if (!r) throw new Error('Reason required to reject a service listing');
+          const { error } = await supabase.rpc('admin_set_service_listing_status', {
+            p_listing_id: action.id, p_status: 'Suspended', p_reason: r,
+          });
+          if (error) throw new Error(error.message);
+          break;
+        }
       }
     },
     onSuccess: () => {
@@ -324,19 +375,21 @@ export default function AdminComplianceScreen() {
   // ── Totals ─────────────────────────────────────────────────────────────────
 
   const counts = {
-    companies:      companiesQ.data?.length ?? 0,
-    certifications: certsQ.data?.length ?? 0,
-    listings:       listingsQ.data?.length ?? 0,
-    disputes:       disputesQ.data?.length ?? 0,
+    companies:        companiesQ.data?.length ?? 0,
+    certifications:   certsQ.data?.length ?? 0,
+    listings:         listingsQ.data?.length ?? 0,
+    service_listings: serviceListingsQ.data?.length ?? 0,
+    disputes:         disputesQ.data?.length ?? 0,
   };
-  const totalPending = counts.companies + counts.certifications + counts.listings + counts.disputes;
-  const isLoading = companiesQ.isLoading || certsQ.isLoading || listingsQ.isLoading || disputesQ.isLoading;
+  const totalPending = counts.companies + counts.certifications + counts.listings + counts.service_listings + counts.disputes;
+  const isLoading = companiesQ.isLoading || certsQ.isLoading || listingsQ.isLoading || serviceListingsQ.isLoading || disputesQ.isLoading;
 
   const TABS: { id: Tab; label: string; icon: typeof Building2 }[] = [
-    { id: 'companies',      label: 'Companies', icon: Building2 },
-    { id: 'certifications', label: 'Certs',     icon: Award },
-    { id: 'listings',       label: 'Listings',  icon: Warehouse },
-    { id: 'disputes',       label: 'Disputes',  icon: AlertTriangle },
+    { id: 'companies',        label: 'Companies', icon: Building2 },
+    { id: 'certifications',   label: 'Certs',     icon: Award },
+    { id: 'listings',         label: 'Wh.List',   icon: Warehouse },
+    { id: 'service_listings', label: 'Services',  icon: Wrench },
+    { id: 'disputes',         label: 'Disputes',  icon: AlertTriangle },
   ];
 
   return (
@@ -517,6 +570,43 @@ export default function AdminComplianceScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => setPendingAction({ kind: 'approve-listing', id: l.id, label: `Approve listing: ${l.name}`, reasonRequired: false })}
+                      style={[styles.actionBtn, styles.actionBtnApprove]}
+                    >
+                      <CheckCircle size={13} color={C.white} />
+                      <Text style={[styles.actionBtnText, { color: C.white }]}>Approve</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Card>
+              ))
+            )}
+          </View>
+        )}
+
+        {/* ── Service Listings ── */}
+        {tab === 'service_listings' && (
+          <View style={styles.list}>
+            {serviceListingsQ.isLoading ? (
+              <ActivityIndicator color={C.accent} style={styles.loader} />
+            ) : (serviceListingsQ.data ?? []).length === 0 ? (
+              <QueueEmptyState icon={Wrench} message="No service listings pending approval" />
+            ) : (
+              (serviceListingsQ.data ?? []).map((l) => (
+                <Card key={l.id} style={styles.itemCard}>
+                  <Text style={styles.itemTitle}>{l.category.replace(/([A-Z])/g, ' $1').trim()}</Text>
+                  <Text style={styles.itemMeta}>
+                    {l.company_name ?? 'Unknown company'} · ${l.hourly_rate}/hr{l.coverage_area.length > 0 ? ` · ${l.coverage_area.slice(0, 2).join(', ')}` : ''}
+                    {`\n`}Submitted {fmtDate(l.created_at)}
+                  </Text>
+                  <View style={styles.actionRow}>
+                    <TouchableOpacity
+                      onPress={() => setPendingAction({ kind: 'suspend-service-listing', id: l.id, label: `Reject service: ${l.category}`, reasonRequired: true })}
+                      style={[styles.actionBtn, styles.actionBtnDanger]}
+                    >
+                      <XCircle size={13} color={C.red} />
+                      <Text style={[styles.actionBtnText, { color: C.red }]}>Reject</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setPendingAction({ kind: 'approve-service-listing', id: l.id, label: `Approve service: ${l.category}`, reasonRequired: false })}
                       style={[styles.actionBtn, styles.actionBtnApprove]}
                     >
                       <CheckCircle size={13} color={C.white} />

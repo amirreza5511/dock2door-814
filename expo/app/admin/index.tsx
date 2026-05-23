@@ -119,7 +119,7 @@ export default function AdminDashboard() {
               <Text style={styles.attentionLabel}>Open disputes</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push('/admin/entities' as any)}
+              onPress={() => router.push('/admin/compliance' as any)}
               style={styles.attentionCard}
               activeOpacity={0.8}
             >

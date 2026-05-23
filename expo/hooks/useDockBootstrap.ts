@@ -238,6 +238,7 @@ function mapWorkerProfile(r: Row): WorkerProfile & { profilePhotoPath?: string; 
 }
 
 function mapWorkerCert(r: Row): WorkerCertification {
+  const status = (r.status as WorkerCertification['status']) ?? 'Pending';
   return {
     id: r.id,
     workerUserId: r.worker_user_id,
@@ -245,11 +246,12 @@ function mapWorkerCert(r: Row): WorkerCertification {
     expiryDate: r.expiry_date ?? '',
     certificateFile: r.certificate_file ?? '',
     filePath: r.file_path ?? '',
-    status: (r.status as WorkerCertification['status']) ?? 'Pending',
+    status,
     notes: r.notes ?? '',
     reviewedAt: r.reviewed_at ?? null,
     reviewedBy: r.reviewed_by ?? null,
-    adminApproved: Boolean(r.admin_approved),
+    // adminApproved derived from status — the admin_approved column is legacy and may not exist.
+    adminApproved: status === 'Approved',
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }
