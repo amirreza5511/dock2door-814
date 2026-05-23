@@ -20,42 +20,65 @@ const PUBLIC_SEGMENTS = ['', 'auth', '+not-found'];
 type ReactCreateElement = typeof React.createElement;
 type ReactRuntimeWithGuard = typeof React & { __dock2doorTextNodeGuard?: boolean };
 
+// Containers that cannot have raw string/number children in React Native
+const UNSAFE_CONTAINERS = new Set<unknown>();
+
+const sanitizeChild = (child: unknown, index: number): React.ReactNode => {
+  if (typeof child !== 'string' && typeof child !== 'number') return child as React.ReactNode;
+  const value = String(child);
+  if (value.trim().length === 0) return null;
+  // Wrap bare text in a Text component so it renders safely
+  return React.createElement(Text, { key: `safe-text-${index}` }, value);
+};
+
+const sanitizeChildren = (children: unknown): unknown => {
+  if (Array.isArray(children)) {
+    return children.map((c, i) => sanitizeChild(c, i));
+  }
+  return sanitizeChild(children, 0);
+};
+
 const installTextNodeGuard = () => {
   const reactRuntime = React as ReactRuntimeWithGuard;
-  if (reactRuntime.__dock2doorTextNodeGuard) {
-    return;
-  }
+  if (reactRuntime.__dock2doorTextNodeGuard) return;
 
-  const unsafeNativeContainers = new Set<unknown>([
-    View,
-    ScrollView,
-    TouchableOpacity,
-    Pressable,
-    KeyboardAvoidingView,
-    GestureHandlerRootView,
-  ]);
+  // Populate after imports are resolved
+  [View, ScrollView, TouchableOpacity, Pressable, KeyboardAvoidingView, GestureHandlerRootView]
+    .forEach((c) => UNSAFE_CONTAINERS.add(c));
+
+  // ── 1. Classic JSX transform: React.createElement(type, props, ...children) ──
   const originalCreateElement: ReactCreateElement = React.createElement.bind(React);
-
   React.createElement = ((type: Parameters<ReactCreateElement>[0], props: Parameters<ReactCreateElement>[1], ...children: React.ReactNode[]) => {
-    if (!unsafeNativeContainers.has(type)) {
-      return originalCreateElement(type, props, ...children);
+    if (UNSAFE_CONTAINERS.has(type) && children.length > 0) {
+      const safe = children.map((child, i) => sanitizeChild(child, i));
+      return originalCreateElement(type, props, ...safe);
     }
-
-    const safeChildren = children.map((child, index) => {
-      if (typeof child !== 'string' && typeof child !== 'number') {
-        return child;
-      }
-
-      const value = String(child);
-      if (value.trim().length === 0) {
-        return null;
-      }
-
-      return originalCreateElement(Text, { key: `safe-text-${index}` }, value);
-    });
-
-    return originalCreateElement(type, props, ...safeChildren);
+    return originalCreateElement(type, props, ...children);
   }) as ReactCreateElement;
+
+  // ── 2. Automatic JSX transform: jsx/jsxs pass children via props ──
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const jsr = require('react/jsx-runtime') as { jsx: Function; jsxs: Function };
+    const origJsx = jsr.jsx;
+    const origJsxs = jsr.jsxs;
+
+    jsr.jsx = (type: unknown, props: Record<string, unknown> | null, key?: unknown) => {
+      if (UNSAFE_CONTAINERS.has(type) && props != null && 'children' in props) {
+        props = { ...props, children: sanitizeChildren(props.children) };
+      }
+      return origJsx(type, props, key);
+    };
+
+    jsr.jsxs = (type: unknown, props: Record<string, unknown> | null, key?: unknown) => {
+      if (UNSAFE_CONTAINERS.has(type) && props != null && 'children' in props) {
+        props = { ...props, children: sanitizeChildren(props.children) };
+      }
+      return origJsxs(type, props, key);
+    };
+  } catch {
+    // react/jsx-runtime not available (older RN); classic createElement patch above is enough
+  }
 
   reactRuntime.__dock2doorTextNodeGuard = true;
 };
