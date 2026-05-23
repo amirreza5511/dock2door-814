@@ -1,9 +1,15 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, ActivityIndicator } from 'react-native';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Linking, Alert, ActivityIndicator,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { MapPin, Clock, Search, ChevronRight, AlertCircle, Zap, Navigation, DollarSign } from 'lucide-react-native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  MapPin, Clock, Search, ChevronRight, AlertCircle, Bell,
+  Navigation, CheckCircle, Shield, Award, Star, XCircle,
+} from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import Card from '@/components/ui/Card';
@@ -12,6 +18,8 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface AssignmentRow {
   id: string;
   shift_id: string;
@@ -19,6 +27,7 @@ interface AssignmentRow {
   confirmed_rate: number;
   status: string;
   created_at: string;
+  worker_confirmed: boolean | null;
 }
 
 interface TimeEntryRow {
@@ -36,6 +45,19 @@ interface AppRow {
   status: string;
   applied_at: string;
 }
+
+type BannerType = 'error' | 'active' | 'warning' | 'info' | 'success';
+
+interface CriticalAction {
+  type: BannerType;
+  title: string;
+  body: string;
+  action: string;
+  route: string | null;
+  assignmentId: string | null;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isToday(dateStr: string): boolean {
   const today = new Date();
@@ -84,21 +106,18 @@ function isThisWeek(dateStr: string): boolean {
   return d >= mon && d <= sun;
 }
 
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export default function WorkerDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const queryClient = useQueryClient();
   const bootstrapQuery = useDockBootstrapData();
-  const { shiftPosts, companies, workerProfiles } = bootstrapQuery.data;
-
+  const { shiftPosts, companies, workerProfiles, workerCertifications } = bootstrapQuery.data;
   const utils = trpc.useUtils();
 
   const invalidateAll = async () => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['my-assignments', user?.id] }),
-      queryClient.invalidateQueries({ queryKey: ['my-time-entries', user?.id] }),
-      queryClient.invalidateQueries({ queryKey: ['my-applications', user?.id] }),
       utils.dock.bootstrap.invalidate(),
     ]);
   };
@@ -107,22 +126,22 @@ export default function WorkerDashboard() {
     onSuccess: invalidateAll,
     onError: (e: Error) => Alert.alert('Unable to clock in', e.message),
   });
-
   const clockOutM = trpc.shifts.clockOut.useMutation({
     onSuccess: async () => {
       await invalidateAll();
-      Alert.alert('Shift ended', 'Awaiting employer to confirm your hours.');
+      Alert.alert('Shift ended', 'Your hours have been submitted. Waiting for employer to confirm.');
     },
     onError: (e: Error) => Alert.alert('Unable to clock out', e.message),
   });
 
+  // ── Assignments ──────────────────────────────────────────────────────────
   const assignmentsQ = useQuery({
     queryKey: ['my-assignments', user?.id],
     queryFn: async (): Promise<AssignmentRow[]> => {
       if (!user?.id) return [];
       const { data } = await supabase
         .from('shift_assignments')
-        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at')
+        .select('id,shift_id,worker_user_id,confirmed_rate,status,created_at,worker_confirmed')
         .eq('worker_user_id', user.id);
       return (data ?? []) as AssignmentRow[];
     },
@@ -130,6 +149,7 @@ export default function WorkerDashboard() {
     staleTime: 30_000,
   });
 
+  // ── Applications ─────────────────────────────────────────────────────────
   const appsQ = useQuery({
     queryKey: ['my-applications', user?.id],
     queryFn: async (): Promise<AppRow[]> => {
@@ -137,7 +157,8 @@ export default function WorkerDashboard() {
       const { data } = await supabase
         .from('shift_applications')
         .select('id,shift_id,worker_user_id,status,applied_at')
-        .eq('worker_user_id', user.id);
+        .eq('worker_user_id', user.id)
+        .order('applied_at', { ascending: false });
       return (data ?? []) as AppRow[];
     },
     enabled: Boolean(user?.id),
@@ -147,8 +168,9 @@ export default function WorkerDashboard() {
   const myAssignments = assignmentsQ.data ?? [];
   const myApps = appsQ.data ?? [];
 
+  // ── Time entries ─────────────────────────────────────────────────────────
   const timeEntriesQ = useQuery({
-    queryKey: ['my-time-entries', user?.id],
+    queryKey: ['my-time-entries', user?.id, myAssignments.map((a) => a.id).join(',')],
     queryFn: async (): Promise<TimeEntryRow[]> => {
       if (!user?.id || myAssignments.length === 0) return [];
       const ids = myAssignments.map((a) => a.id);
@@ -161,11 +183,181 @@ export default function WorkerDashboard() {
     enabled: Boolean(user?.id) && myAssignments.length > 0,
     staleTime: 30_000,
   });
-
   const myTimeEntries = timeEntriesQ.data ?? [];
-  const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
 
-  // Section 1: Next shift
+  // ── Unread notifications ─────────────────────────────────────────────────
+  const notifCountQ = useQuery({
+    queryKey: ['notif-unread-count', user?.id],
+    queryFn: async (): Promise<number> => {
+      if (!user?.id) return 0;
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+      return count ?? 0;
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+  const unreadCount = notifCountQ.data ?? 0;
+
+  // ── Profile + certs ──────────────────────────────────────────────────────
+  const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
+  const myCerts = useMemo(() => workerCertifications.filter((c) => c.workerUserId === user?.id), [workerCertifications, user]);
+  const govtIds = useMemo(() => myCerts.filter((c) => c.type.startsWith('GovtID_')), [myCerts]);
+  const workCerts = useMemo(() => myCerts.filter((c) => !c.type.startsWith('GovtID_')), [myCerts]);
+
+  // ── Review tracking ──────────────────────────────────────────────────────
+  const completedIds = useMemo(
+    () => myAssignments.filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed'].includes(a.status)).map((a) => a.id),
+    [myAssignments],
+  );
+  const reviewsQ = trpc.reviews.listMineByContext.useQuery(
+    { contextKind: 'shift_assignment', contextIds: completedIds },
+    { enabled: completedIds.length > 0 },
+  );
+  const reviewedIds = useMemo(
+    () => new Set(((reviewsQ.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
+    [reviewsQ.data],
+  );
+  const ratingPending = completedIds.some((id) => !reviewedIds.has(id));
+
+  // ── Critical action banner ────────────────────────────────────────────────
+  const criticalAction = useMemo((): CriticalAction | null => {
+    // 1. Profile missing
+    if (!profile) {
+      return {
+        type: 'error',
+        title: 'Create your worker profile',
+        body: 'Complete your profile to start applying for shifts.',
+        action: 'Create Profile',
+        route: '/worker/profile',
+        assignmentId: null,
+      };
+    }
+
+    // 2. Government ID rejected
+    const rejectedId = govtIds.find((c) => c.status === 'Rejected');
+    if (rejectedId) {
+      const label = rejectedId.type.replace('GovtID_', '');
+      return {
+        type: 'error',
+        title: 'Government ID rejected',
+        body: rejectedId.notes ? `${label}: ${rejectedId.notes}` : `Your ${label} was rejected. Please upload a new document.`,
+        action: 'Fix Now',
+        route: '/worker/profile',
+        assignmentId: null,
+      };
+    }
+
+    // 3. Certificate rejected
+    const rejectedCert = workCerts.find((c) => c.status === 'Rejected');
+    if (rejectedCert) {
+      return {
+        type: 'error',
+        title: `${rejectedCert.type} certificate rejected`,
+        body: rejectedCert.notes ? `Reason: ${rejectedCert.notes}` : 'Please upload a replacement certificate.',
+        action: 'Fix Certificate',
+        route: '/worker/profile',
+        assignmentId: null,
+      };
+    }
+
+    // 4. Active shift — clock out needed
+    const activeAss = myAssignments.find((a) => a.status === 'InProgress');
+    if (activeAss) {
+      const shift = shiftPosts.find((s) => s.id === activeAss.shift_id);
+      return {
+        type: 'active',
+        title: '⚡ You are clocked in',
+        body: shift ? `${shift.title} is in progress.` : 'Your shift is currently in progress.',
+        action: 'Clock Out',
+        route: null,
+        assignmentId: activeAss.id,
+      };
+    }
+
+    // 5. Attendance confirmation needed (within 48h, not yet confirmed)
+    const needsConfirm = myAssignments.find((a) => {
+      if (a.status !== 'Scheduled') return false;
+      if (a.worker_confirmed !== null && a.worker_confirmed !== undefined) return false;
+      const shift = shiftPosts.find((s) => s.id === a.shift_id);
+      if (!shift) return false;
+      const shiftStart = new Date(`${shift.date}T${shift.startTime}`).getTime();
+      const hoursUntil = (shiftStart - Date.now()) / 3_600_000;
+      return hoursUntil >= 0 && hoursUntil <= 48;
+    });
+    if (needsConfirm) {
+      const shift = shiftPosts.find((s) => s.id === needsConfirm.shift_id);
+      return {
+        type: 'warning',
+        title: 'Confirm your attendance',
+        body: shift
+          ? `${shift.title} starts ${isToday(shift.date) ? 'today' : 'soon'}. Please confirm you will attend.`
+          : 'A shift is starting soon. Please confirm attendance.',
+        action: 'Confirm Now',
+        route: '/worker/shift-confirm',
+        assignmentId: needsConfirm.id,
+      };
+    }
+
+    // 6. Government ID pending (no approved ID)
+    if (govtIds.length > 0 && !govtIds.some((c) => c.status === 'Approved')) {
+      return {
+        type: 'info',
+        title: 'Government ID under review',
+        body: 'Your ID is waiting for admin approval. You can still browse shifts.',
+        action: 'View Status',
+        route: '/worker/profile',
+        assignmentId: null,
+      };
+    }
+
+    // 7. Hours awaiting employer confirmation
+    const awaitingHours = myTimeEntries.some((t) => t.end_timestamp && !t.employer_confirmed_hours);
+    if (awaitingHours) {
+      return {
+        type: 'info',
+        title: 'Hours awaiting confirmation',
+        body: 'You have clocked hours waiting for employer to confirm.',
+        action: 'View Hours',
+        route: '/worker/my-shifts',
+        assignmentId: null,
+      };
+    }
+
+    // 8. Rating pending
+    if (ratingPending) {
+      return {
+        type: 'info',
+        title: 'Rate your employer',
+        body: 'You have completed shifts. Share your experience.',
+        action: 'Rate Now',
+        route: '/worker/my-shifts',
+        assignmentId: null,
+      };
+    }
+
+    return null;
+  }, [profile, govtIds, workCerts, myAssignments, shiftPosts, myTimeEntries, ratingPending]);
+
+  // ── Compliance readiness ─────────────────────────────────────────────────
+  const readiness = useMemo(() => {
+    const hasProfile = Boolean(profile);
+    const govtIdStatus = govtIds.length === 0
+      ? 'missing'
+      : govtIds.some((c) => c.status === 'Approved') ? 'done'
+      : govtIds.some((c) => c.status === 'Rejected') ? 'rejected' : 'pending';
+    const certStatus = workCerts.some((c) => c.status === 'Approved')
+      ? 'done'
+      : workCerts.length === 0 ? 'missing' : 'pending';
+    const profileOk = hasProfile && (profile!.bio?.length ?? 0) > 5 && profile!.skills.length > 0;
+
+    return { hasProfile, govtIdStatus, certStatus, profileOk };
+  }, [profile, govtIds, workCerts]);
+
+  // ── Next shift ───────────────────────────────────────────────────────────
   const nextShift = useMemo(() => {
     const active = myAssignments
       .filter((a) => a.status === 'Scheduled' || a.status === 'InProgress')
@@ -187,50 +379,73 @@ export default function WorkerDashboard() {
     return myTimeEntries.find((t) => t.assignment_id === nextShift.assignment.id) ?? null;
   }, [nextShift, myTimeEntries]);
 
-  // Section 2: Action items
-  const actions = useMemo(() => {
-    const pendingApps = myApps.filter((a) => a.status === 'Applied').length;
-    const needReview = myAssignments
-      .filter((a) => ['Completed', 'HoursConfirmed'].includes(a.status))
-      .filter((a) => {
-        const te = myTimeEntries.find((t) => t.assignment_id === a.id);
-        return te && te.end_timestamp && !te.employer_confirmed_hours;
-      }).length;
-    const toDispute = myAssignments
-      .filter((a) => ['Completed', 'HoursConfirmed'].includes(a.status))
-      .filter((a) => {
-        const te = myTimeEntries.find((t) => t.assignment_id === a.id);
-        if (!te?.start_timestamp || !te?.end_timestamp || !te?.employer_confirmed_hours) return false;
-        const clock = (new Date(te.end_timestamp).getTime() - new Date(te.start_timestamp).getTime()) / 3_600_000;
-        return Math.abs(clock - te.employer_confirmed_hours) > 0.5;
-      }).length;
-    return { pendingApps, needReview, toDispute };
-  }, [myApps, myAssignments, myTimeEntries]);
+  // ── Applications summary ─────────────────────────────────────────────────
+  const appStats = useMemo(() => ({
+    pending: myApps.filter((a) => a.status === 'Applied').length,
+    accepted: myApps.filter((a) => a.status === 'Accepted').length,
+    rejected: myApps.filter((a) => a.status === 'Rejected').length,
+  }), [myApps]);
 
-  // Section 3: This week earnings
+  // ── This week stats ──────────────────────────────────────────────────────
   const weekStats = useMemo(() => {
-    let hours = 0;
-    let earnings = 0;
-    let pendingPay = 0;
+    let confirmedHours = 0;
+    let estimatedEarnings = 0;
+    let awaitingConfirmation = 0;
     for (const te of myTimeEntries) {
       const ass = myAssignments.find((a) => a.id === te.assignment_id);
       if (!ass) continue;
       const shift = shiftPosts.find((s) => s.id === ass.shift_id);
       if (!shift || !isThisWeek(shift.date)) continue;
       if (te.employer_confirmed_hours) {
-        hours += te.employer_confirmed_hours;
-        earnings += te.employer_confirmed_hours * ass.confirmed_rate;
+        confirmedHours += te.employer_confirmed_hours;
+        estimatedEarnings += te.employer_confirmed_hours * ass.confirmed_rate;
       } else if (te.end_timestamp) {
-        pendingPay++;
+        awaitingConfirmation++;
       }
     }
-    return { hours, earnings, pendingPay };
+    return { confirmedHours, estimatedEarnings, awaitingConfirmation };
   }, [myTimeEntries, myAssignments, shiftPosts]);
 
   const employerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? 'Employer';
-  const hasActions = actions.pendingApps > 0 || actions.needReview > 0 || actions.toDispute > 0;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const BANNER_COLORS: Record<BannerType, { bg: string; border: string; text: string; btnBg: string; btnText: string }> = {
+    error:   { bg: C.redDim,    border: C.red    + '50', text: C.red,    btnBg: C.red    + '30', btnText: C.red    },
+    active:  { bg: C.accent + '12', border: C.accent + '50', text: C.accent, btnBg: C.accent + '25', btnText: C.accent },
+    warning: { bg: C.yellowDim, border: C.yellow + '50', text: C.yellow, btnBg: C.yellow + '30', btnText: C.yellow },
+    info:    { bg: C.blueDim,   border: C.blue   + '50', text: C.blue,   btnBg: C.blue   + '25', btnText: C.blue   },
+    success: { bg: C.greenDim,  border: C.green  + '50', text: C.green,  btnBg: C.green  + '25', btnText: C.green  },
+  };
+
+  const handleBannerPress = (action: CriticalAction) => {
+    if (action.type === 'active' && action.assignmentId) {
+      clockOutM.mutate({ assignmentId: action.assignmentId });
+    } else if (action.route === '/worker/shift-confirm' && action.assignmentId) {
+      router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: action.assignmentId } });
+    } else if (action.route) {
+      router.push(action.route as any);
+    }
+  };
+
+  const statusIcon = (status: string) => {
+    if (status === 'done') return <CheckCircle size={13} color={C.green} />;
+    if (status === 'pending') return <Clock size={13} color={C.yellow} />;
+    if (status === 'rejected') return <XCircle size={13} color={C.red} />;
+    return <AlertCircle size={13} color={C.textMuted} />;
+  };
+  const statusLabel = (status: string) => {
+    if (status === 'done') return 'Approved';
+    if (status === 'pending') return 'Under review';
+    if (status === 'rejected') return 'Rejected';
+    return 'Missing';
+  };
+  const statusColor = (status: string) => {
+    if (status === 'done') return C.green;
+    if (status === 'pending') return C.yellow;
+    if (status === 'rejected') return C.red;
+    return C.textMuted;
+  };
 
   if (bootstrapQuery.isLoading) {
     return (
@@ -242,14 +457,25 @@ export default function WorkerDashboard() {
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
+      {/* ── Header ── */}
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.name}>{profile?.displayName ?? user?.name ?? 'Worker'}</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/worker/profile' as any)} style={styles.avatarBtn}>
-          <Text style={styles.avatarLetter}>{(profile?.displayName ?? user?.name ?? 'W').charAt(0).toUpperCase()}</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.notifBtn}>
+            <Bell size={18} color={C.text} />
+            {unreadCount > 0 && (
+              <View style={styles.notifBadge}>
+                <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/worker/profile' as any)} style={styles.avatarBtn}>
+            <Text style={styles.avatarLetter}>{(profile?.displayName ?? user?.name ?? 'W').charAt(0).toUpperCase()}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -257,155 +483,300 @@ export default function WorkerDashboard() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* ─── Section 1: Next Shift Banner ─── */}
-        {nextShift ? (
-          nextShift.assignment.status === 'InProgress' ? (
-            <View style={[styles.banner, styles.bannerActive]}>
+        {/* ── Critical Action Banner ── */}
+        {criticalAction && (() => {
+          const colors = BANNER_COLORS[criticalAction.type];
+          return (
+            <TouchableOpacity
+              onPress={() => handleBannerPress(criticalAction)}
+              style={[styles.criticalBanner, { backgroundColor: colors.bg, borderColor: colors.border }]}
+              activeOpacity={0.8}
+            >
               <View style={{ flex: 1 }}>
-                <Text style={styles.bannerLabel}>⚡ SHIFT IN PROGRESS</Text>
-                <Text style={styles.bannerTitle}>{nextShift.shift.title}</Text>
-                <Text style={styles.bannerEmp}>{employerName(nextShift.shift.employerCompanyId)}</Text>
-                {nextTE?.start_timestamp && (
-                  <Text style={styles.bannerMeta}>
-                    Started at {new Date(nextTE.start_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <Text style={[styles.criticalTitle, { color: colors.text }]}>{criticalAction.title}</Text>
+                <Text style={[styles.criticalBody, { color: colors.text + 'CC' }]}>{criticalAction.body}</Text>
+              </View>
+              <View style={[styles.criticalBtn, { backgroundColor: colors.btnBg }]}>
+                <Text style={[styles.criticalBtnText, { color: colors.btnText }]}>
+                  {criticalAction.type === 'active' && clockOutM.isPending ? 'Clocking out…' : criticalAction.action + ' →'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })()}
+
+        {/* ── Work Readiness ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>WORK READINESS</Text>
+          <Card>
+            {/* Profile */}
+            <View style={styles.readinessRow}>
+              <View style={[styles.readinessIcon, { backgroundColor: readiness.profileOk ? C.greenDim : C.card }]}>
+                {readiness.profileOk ? <CheckCircle size={14} color={C.green} /> : <AlertCircle size={14} color={C.textMuted} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.readinessLabel}>Worker Profile</Text>
+              </View>
+              <Text style={[styles.readinessStatus, { color: readiness.profileOk ? C.green : C.textMuted }]}>
+                {readiness.profileOk ? 'Complete' : 'Incomplete'}
+              </Text>
+              {!readiness.profileOk && (
+                <TouchableOpacity onPress={() => router.push('/worker/profile' as any)} style={styles.readinessAction}>
+                  <Text style={styles.readinessActionText}>Fix</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.readinessDivider} />
+
+            {/* Government ID */}
+            <View style={styles.readinessRow}>
+              <View style={[styles.readinessIcon, {
+                backgroundColor: readiness.govtIdStatus === 'done' ? C.greenDim
+                  : readiness.govtIdStatus === 'rejected' ? C.redDim
+                  : readiness.govtIdStatus === 'pending' ? C.yellowDim : C.card,
+              }]}>
+                {statusIcon(readiness.govtIdStatus)}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.readinessLabel}>Government ID</Text>
+              </View>
+              <Text style={[styles.readinessStatus, { color: statusColor(readiness.govtIdStatus) }]}>
+                {statusLabel(readiness.govtIdStatus)}
+              </Text>
+              {(readiness.govtIdStatus === 'missing' || readiness.govtIdStatus === 'rejected') && (
+                <TouchableOpacity onPress={() => router.push('/worker/profile' as any)} style={styles.readinessAction}>
+                  <Text style={styles.readinessActionText}>
+                    {readiness.govtIdStatus === 'rejected' ? 'Re-upload' : 'Upload'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <View style={styles.readinessDivider} />
+
+            {/* Certifications */}
+            <View style={styles.readinessRow}>
+              <View style={[styles.readinessIcon, {
+                backgroundColor: readiness.certStatus === 'done' ? C.greenDim
+                  : readiness.certStatus === 'pending' ? C.yellowDim : C.card,
+              }]}>
+                <Award size={14} color={
+                  readiness.certStatus === 'done' ? C.green
+                  : readiness.certStatus === 'pending' ? C.yellow : C.textMuted
+                } />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.readinessLabel}>Certifications</Text>
+                {workCerts.length > 0 && (
+                  <Text style={styles.readinessSub}>
+                    {workCerts.filter((c) => c.status === 'Approved').length} approved · {workCerts.filter((c) => c.status === 'Pending').length} pending
                   </Text>
                 )}
               </View>
-              <Button
-                label="Clock Out"
-                onPress={() => clockOutM.mutate({ assignmentId: nextShift.assignment.id })}
-                loading={clockOutM.isPending}
-                size="sm"
-                variant="outline"
-              />
-            </View>
-          ) : (
-            <View style={[styles.banner, styles.bannerScheduled]}>
-              <View style={styles.bannerPill}>
-                <Text style={styles.bannerPillText}>
-                  {isToday(nextShift.shift.date) ? 'TODAY' : isTomorrow(nextShift.shift.date) ? 'TOMORROW' : 'UPCOMING'}
-                </Text>
-              </View>
-              <Text style={styles.bannerTitle}>{nextShift.shift.title}</Text>
-              <Text style={styles.bannerEmp}>{employerName(nextShift.shift.employerCompanyId)}</Text>
-              <View style={styles.bannerRow}>
-                <Clock size={12} color={C.blue + 'CC'} />
-                <Text style={styles.bannerMeta}>{formatShiftDateTime(nextShift.shift.date, nextShift.shift.startTime, nextShift.shift.endTime)}</Text>
-              </View>
-              <View style={styles.bannerRow}>
-                <MapPin size={12} color={C.blue + 'CC'} />
-                <Text style={styles.bannerMeta} numberOfLines={1}>
-                  {nextShift.shift.locationAddress}, {nextShift.shift.locationCity}
-                </Text>
-              </View>
-              <View style={styles.bannerBtns}>
-                <TouchableOpacity
-                  style={styles.dirBtn}
-                  onPress={() =>
-                    Linking.openURL(
-                      `https://maps.google.com/?q=${encodeURIComponent(
-                        `${nextShift.shift.locationAddress}, ${nextShift.shift.locationCity}`,
-                      )}`,
-                    )
-                  }
-                >
-                  <Navigation size={13} color={C.blue} />
-                  <Text style={styles.dirBtnText}>Get Directions</Text>
+              <Text style={[styles.readinessStatus, { color: statusColor(readiness.certStatus) }]}>
+                {statusLabel(readiness.certStatus)}
+              </Text>
+              {readiness.certStatus === 'missing' && (
+                <TouchableOpacity onPress={() => router.push('/worker/profile' as any)} style={styles.readinessAction}>
+                  <Text style={styles.readinessActionText}>Upload</Text>
                 </TouchableOpacity>
+              )}
+            </View>
+          </Card>
+        </View>
+
+        {/* ── Current / Next Shift ── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>YOUR SHIFT</Text>
+          {nextShift ? (
+            nextShift.assignment.status === 'InProgress' ? (
+              <View style={[styles.shiftCard, styles.shiftCardActive]}>
+                <View style={styles.shiftPill}>
+                  <Text style={[styles.shiftPillText, { color: C.accent }]}>⚡ IN PROGRESS</Text>
+                </View>
+                <Text style={styles.shiftTitle}>{nextShift.shift.title}</Text>
+                <Text style={styles.shiftEmployer}>{employerName(nextShift.shift.employerCompanyId)}</Text>
+                {nextTE?.start_timestamp && (
+                  <Text style={styles.shiftMeta}>
+                    Started at {new Date(nextTE.start_timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                )}
                 <Button
-                  label="Clock In"
+                  label={clockOutM.isPending ? 'Clocking out…' : 'Clock Out'}
+                  onPress={() => clockOutM.mutate({ assignmentId: nextShift.assignment.id })}
+                  loading={clockOutM.isPending}
+                  size="sm"
+                  variant="outline"
+                  fullWidth
+                />
+              </View>
+            ) : (
+              <View style={[styles.shiftCard, styles.shiftCardScheduled]}>
+                <View style={styles.shiftPill}>
+                  <Text style={[styles.shiftPillText, { color: C.blue }]}>
+                    {isToday(nextShift.shift.date) ? 'TODAY' : isTomorrow(nextShift.shift.date) ? 'TOMORROW' : 'UPCOMING'}
+                  </Text>
+                </View>
+                <Text style={styles.shiftTitle}>{nextShift.shift.title}</Text>
+                <Text style={styles.shiftEmployer}>{employerName(nextShift.shift.employerCompanyId)}</Text>
+                <View style={styles.shiftMetaRow}>
+                  <Clock size={12} color={C.textMuted} />
+                  <Text style={styles.shiftMeta}>{formatShiftDateTime(nextShift.shift.date, nextShift.shift.startTime, nextShift.shift.endTime)}</Text>
+                </View>
+                <View style={styles.shiftMetaRow}>
+                  <MapPin size={12} color={C.textMuted} />
+                  <Text style={styles.shiftMeta} numberOfLines={1}>
+                    {nextShift.shift.locationAddress}, {nextShift.shift.locationCity}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(`${nextShift.shift.locationAddress}, ${nextShift.shift.locationCity}`)}`)}
+                    style={styles.directionsBtn}
+                  >
+                    <Navigation size={11} color={C.blue} />
+                    <Text style={styles.directionsBtnText}>Directions</Text>
+                  </TouchableOpacity>
+                </View>
+                {nextShift.assignment.worker_confirmed === null && isToday(nextShift.shift.date) && (
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: nextShift.assignment.id } })}
+                    style={styles.confirmBanner}
+                  >
+                    <AlertCircle size={13} color={C.yellow} />
+                    <Text style={styles.confirmBannerText}>Confirm attendance before clocking in</Text>
+                    <Text style={styles.confirmBannerArrow}>→</Text>
+                  </TouchableOpacity>
+                )}
+                <Button
+                  label={isToday(nextShift.shift.date) ? 'Clock In' : `Available ${isToday(nextShift.shift.date) ? 'today' : 'on shift day'}`}
                   onPress={() => clockInM.mutate({ assignmentId: nextShift.assignment.id })}
                   loading={clockInM.isPending}
                   disabled={!isToday(nextShift.shift.date)}
                   size="sm"
+                  fullWidth
                 />
               </View>
+            )
+          ) : (
+            <View style={styles.noShift}>
+              <Search size={28} color={C.textMuted} />
+              <Text style={styles.noShiftTitle}>No upcoming shifts</Text>
+              <Text style={styles.noShiftSub}>Browse open shifts and apply</Text>
+              <Button
+                label="Browse Shifts"
+                onPress={() => router.push('/worker/browse' as any)}
+                size="sm"
+                icon={<Search size={14} color={C.white} />}
+              />
             </View>
-          )
-        ) : (
-          <View style={styles.noShift}>
-            <Text style={styles.noShiftTitle}>No upcoming shifts</Text>
-            <Text style={styles.noShiftSub}>Browse open shifts near you</Text>
-            <Button
-              label="Browse Shifts"
-              onPress={() => router.push('/worker/browse' as any)}
-              size="sm"
-              icon={<Search size={14} color={C.white} />}
-            />
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* ─── Section 2: Action Items ─── */}
-        {hasActions && (
+        {/* ── Applications ── */}
+        {(appStats.pending > 0 || appStats.accepted > 0) && (
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>ACTION REQUIRED</Text>
-            <View style={styles.chips}>
-              {actions.pendingApps > 0 && (
-                <TouchableOpacity onPress={() => router.push('/worker/my-shifts' as any)} style={[styles.chip, styles.chipYellow]}>
-                  <AlertCircle size={13} color={C.yellow} />
-                  <Text style={[styles.chipText, { color: C.yellow }]}>
-                    {actions.pendingApps} application{actions.pendingApps > 1 ? 's' : ''} pending
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>APPLICATIONS</Text>
+              <TouchableOpacity onPress={() => router.push('/worker/my-shifts' as any)}>
+                <Text style={styles.seeAll}>View All →</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.appRow}>
+              {appStats.pending > 0 && (
+                <View style={[styles.appChip, { backgroundColor: C.yellowDim, borderColor: C.yellow + '40' }]}>
+                  <Clock size={12} color={C.yellow} />
+                  <Text style={[styles.appChipText, { color: C.yellow }]}>
+                    {appStats.pending} pending
                   </Text>
-                </TouchableOpacity>
+                </View>
               )}
-              {actions.needReview > 0 && (
-                <TouchableOpacity onPress={() => router.push('/worker/my-shifts' as any)} style={[styles.chip, styles.chipBlue]}>
-                  <Clock size={13} color={C.blue} />
-                  <Text style={[styles.chipText, { color: C.blue }]}>
-                    {actions.needReview} shift{actions.needReview > 1 ? 's' : ''} need review
+              {appStats.accepted > 0 && (
+                <View style={[styles.appChip, { backgroundColor: C.greenDim, borderColor: C.green + '40' }]}>
+                  <CheckCircle size={12} color={C.green} />
+                  <Text style={[styles.appChipText, { color: C.green }]}>
+                    {appStats.accepted} accepted
                   </Text>
-                </TouchableOpacity>
+                </View>
               )}
-              {actions.toDispute > 0 && (
-                <TouchableOpacity onPress={() => router.push('/worker/my-shifts' as any)} style={[styles.chip, styles.chipRed]}>
-                  <Zap size={13} color={C.red} />
-                  <Text style={[styles.chipText, { color: C.red }]}>
-                    {actions.toDispute} hour{actions.toDispute > 1 ? 's' : ''} to dispute
+              {appStats.rejected > 0 && (
+                <View style={[styles.appChip, { backgroundColor: C.card, borderColor: C.border }]}>
+                  <XCircle size={12} color={C.textMuted} />
+                  <Text style={[styles.appChipText, { color: C.textMuted }]}>
+                    {appStats.rejected} not selected
                   </Text>
-                </TouchableOpacity>
+                </View>
               )}
             </View>
           </View>
         )}
 
-        {/* ─── Section 3: This Week Earnings ─── */}
+        {/* ── Hours This Week ── */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>THIS WEEK</Text>
           <Card>
             <View style={styles.weekRow}>
               <View style={styles.weekStat}>
-                <Text style={styles.weekVal}>{weekStats.hours.toFixed(1)}</Text>
-                <Text style={styles.weekLbl}>Hours Worked</Text>
+                <Text style={styles.weekVal}>{weekStats.confirmedHours.toFixed(1)}</Text>
+                <Text style={styles.weekLbl}>Confirmed{'\n'}Hours</Text>
               </View>
               <View style={[styles.weekStat, styles.weekMid]}>
-                <Text style={[styles.weekVal, { color: C.green }]}>${weekStats.earnings.toFixed(0)}</Text>
-                <Text style={styles.weekLbl}>Est. Earnings</Text>
+                <Text style={[styles.weekVal, { color: weekStats.estimatedEarnings > 0 ? C.green : C.textMuted }]}>
+                  ${weekStats.estimatedEarnings.toFixed(0)}
+                </Text>
+                <Text style={styles.weekLbl}>Est.{'\n'}Earnings</Text>
               </View>
               <View style={styles.weekStat}>
-                <Text style={[styles.weekVal, { color: weekStats.pendingPay > 0 ? C.yellow : C.textMuted }]}>
-                  {weekStats.pendingPay}
+                <Text style={[styles.weekVal, { color: weekStats.awaitingConfirmation > 0 ? C.yellow : C.textMuted }]}>
+                  {weekStats.awaitingConfirmation}
                 </Text>
-                <Text style={styles.weekLbl}>Payment Pending</Text>
+                <Text style={styles.weekLbl}>Awaiting{'\n'}Confirm.</Text>
               </View>
             </View>
+            <Text style={styles.payrollNote}>
+              Payment handled through your employer's payroll process.
+            </Text>
           </Card>
         </View>
 
-        {/* Quick Nav */}
+        {/* ── Ratings ── */}
+        {ratingPending && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              onPress={() => router.push('/worker/my-shifts' as any)}
+              style={styles.ratingPrompt}
+            >
+              <Star size={16} color={C.yellow} fill={C.yellow} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.ratingPromptTitle}>Rate your employer</Text>
+                <Text style={styles.ratingPromptSub}>Build your reputation on the platform</Text>
+              </View>
+              <ChevronRight size={16} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* ── Quick Actions ── */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>QUICK NAV</Text>
+          <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
           <View style={styles.navList}>
             {[
               { label: 'Browse Open Shifts', icon: Search, color: C.accent, path: '/worker/browse' },
               { label: 'My Shifts & Applications', icon: Clock, color: C.blue, path: '/worker/my-shifts' },
-              { label: 'My Earnings & Profile', icon: DollarSign, color: C.green, path: '/worker/profile' },
-            ].map(({ label, icon: Icon, color, path }) => (
+              { label: 'Documents & Certificates', icon: Shield, color: C.yellow, path: '/worker/profile' },
+              { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
+            ].map(({ label, icon: Icon, color, path, badge }) => (
               <TouchableOpacity key={label} onPress={() => router.push(path as any)} style={styles.navItem}>
                 <View style={[styles.navIcon, { backgroundColor: color + '20' }]}>
                   <Icon size={18} color={color} />
                 </View>
                 <Text style={styles.navLabel}>{label}</Text>
-                <ChevronRight size={16} color={C.textMuted} />
+                {badge != null ? (
+                  <View style={styles.navBadge}>
+                    <Text style={styles.navBadgeText}>{badge}</Text>
+                  </View>
+                ) : (
+                  <ChevronRight size={16} color={C.textMuted} />
+                )}
               </TouchableOpacity>
             ))}
           </View>
@@ -414,6 +785,8 @@ export default function WorkerDashboard() {
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -429,6 +802,30 @@ const styles = StyleSheet.create({
   },
   greeting: { fontSize: 12, color: C.textMuted, marginBottom: 2 },
   name: { fontSize: 20, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  notifBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: C.red,
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: { fontSize: 10, fontWeight: '800' as const, color: C.white },
   avatarBtn: {
     width: 40,
     height: 40,
@@ -441,34 +838,85 @@ const styles = StyleSheet.create({
   },
   avatarLetter: { fontSize: 16, fontWeight: '800' as const, color: C.accent },
   scroll: { padding: 16 },
-  banner: { borderRadius: 16, padding: 18, marginBottom: 16, borderWidth: 1 },
-  bannerActive: { backgroundColor: C.accent + '15', borderColor: C.accent + '50', flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bannerScheduled: { backgroundColor: C.blueDim, borderColor: C.blue + '50' },
-  bannerLabel: { fontSize: 10, fontWeight: '800' as const, color: C.accent, letterSpacing: 1.5, marginBottom: 6 },
-  bannerPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: C.blue + '30',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginBottom: 8,
-  },
-  bannerPillText: { fontSize: 10, fontWeight: '800' as const, color: C.blue, letterSpacing: 1.5 },
-  bannerTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, marginBottom: 2 },
-  bannerEmp: { fontSize: 13, color: C.accent, fontWeight: '600' as const, marginBottom: 8 },
-  bannerRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
-  bannerMeta: { fontSize: 12, color: C.textSecondary },
-  bannerBtns: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
-  dirBtn: {
+
+  // Critical banner
+  criticalBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    backgroundColor: C.blue + '25',
-    borderRadius: 8,
+    gap: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 16,
+  },
+  criticalTitle: { fontSize: 15, fontWeight: '800' as const, marginBottom: 2 },
+  criticalBody: { fontSize: 12, lineHeight: 18 },
+  criticalBtn: {
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  dirBtnText: { fontSize: 13, color: C.blue, fontWeight: '600' as const },
+  criticalBtnText: { fontSize: 12, fontWeight: '700' as const },
+
+  // Section
+  section: { marginBottom: 20 },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  sectionLabel: {
+    fontSize: 11, fontWeight: '700' as const, color: C.textMuted,
+    letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10,
+  },
+  seeAll: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+
+  // Readiness card rows
+  readinessRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  readinessIcon: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  readinessLabel: { fontSize: 13, fontWeight: '600' as const, color: C.text },
+  readinessSub: { fontSize: 11, color: C.textMuted, marginTop: 1 },
+  readinessStatus: { fontSize: 12, fontWeight: '600' as const },
+  readinessAction: {
+    marginLeft: 8,
+    backgroundColor: C.accentDim,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  readinessActionText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+  readinessDivider: { height: 1, backgroundColor: C.border, marginVertical: 4 },
+
+  // Shift card
+  shiftCard: { borderRadius: 16, padding: 16, borderWidth: 1, marginBottom: 0, gap: 8 },
+  shiftCardActive: { backgroundColor: C.accent + '10', borderColor: C.accent + '40' },
+  shiftCardScheduled: { backgroundColor: C.blueDim, borderColor: C.blue + '40' },
+  shiftPill: { alignSelf: 'flex-start', backgroundColor: 'transparent', marginBottom: 2 },
+  shiftPillText: { fontSize: 10, fontWeight: '800' as const, letterSpacing: 1.5 },
+  shiftTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text },
+  shiftEmployer: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+  shiftMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  shiftMeta: { fontSize: 12, color: C.textSecondary, flex: 1 },
+  directionsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: C.blueDim,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  directionsBtnText: { fontSize: 11, color: C.blue, fontWeight: '600' as const },
+  confirmBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: C.yellowDim,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: C.yellow + '40',
+  },
+  confirmBannerText: { flex: 1, fontSize: 12, color: C.yellow, fontWeight: '600' as const },
+  confirmBannerArrow: { fontSize: 13, color: C.yellow, fontWeight: '700' as const },
+
+  // No shift
   noShift: {
     backgroundColor: C.card,
     borderRadius: 16,
@@ -477,23 +925,38 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     gap: 6,
-    marginBottom: 16,
   },
-  noShiftTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
+  noShiftTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   noShiftSub: { fontSize: 13, color: C.textSecondary, marginBottom: 6 },
-  section: { marginBottom: 20 },
-  sectionLabel: { fontSize: 11, fontWeight: '700' as const, color: C.textMuted, letterSpacing: 1, textTransform: 'uppercase' as const, marginBottom: 10 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  chipYellow: { backgroundColor: C.yellowDim, borderColor: C.yellow + '40' },
-  chipBlue: { backgroundColor: C.blueDim, borderColor: C.blue + '40' },
-  chipRed: { backgroundColor: C.redDim, borderColor: C.red + '40' },
-  chipText: { fontSize: 13, fontWeight: '600' as const },
-  weekRow: { flexDirection: 'row' },
+
+  // Applications
+  appRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  appChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1 },
+  appChipText: { fontSize: 13, fontWeight: '600' as const },
+
+  // Week stats
+  weekRow: { flexDirection: 'row', marginBottom: 10 },
   weekStat: { flex: 1, alignItems: 'center', paddingVertical: 4, gap: 4 },
   weekMid: { borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.border },
   weekVal: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   weekLbl: { fontSize: 11, color: C.textSecondary, textAlign: 'center' as const },
+  payrollNote: { fontSize: 11, color: C.textMuted, textAlign: 'center' as const, lineHeight: 16 },
+
+  // Rating prompt
+  ratingPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.yellowDim,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.yellow + '40',
+    padding: 14,
+  },
+  ratingPromptTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  ratingPromptSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+
+  // Nav list
   navList: { gap: 8 },
   navItem: {
     flexDirection: 'row',
@@ -507,4 +970,9 @@ const styles = StyleSheet.create({
   },
   navIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   navLabel: { flex: 1, fontSize: 14, fontWeight: '600' as const, color: C.text },
+  navBadge: { backgroundColor: C.red, borderRadius: 10, minWidth: 20, height: 20, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  navBadgeText: { fontSize: 11, fontWeight: '700' as const, color: C.white },
+
+  // Shared
+  white: { color: '#fff' },
 });
