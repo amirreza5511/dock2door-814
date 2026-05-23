@@ -12,7 +12,8 @@ import { trpc } from '@/lib/trpc';
 
 // Only entities that exist in the ENTITY_TABLE allowlist inside trpc.ts are listed here.
 // Removed: 'drivers', 'trucks', 'trailers', 'containers' — no standalone tables in schema.
-// 'bookings' maps to warehouse_bookings; 'dock_appointments' maps to gate_events.
+// 'bookings' maps to warehouse_bookings.
+// 'dock_appointments' maps to gate_events — READ ONLY (append-only log, no status mutations).
 type AdminEntity =
   | 'companies'
   | 'users'
@@ -26,6 +27,12 @@ type AdminEntity =
   | 'dock_appointments'
   | 'service_listings'
   | 'warehouse_listings';
+
+/**
+ * Entities where status mutations (Approve / Set Active / Suspend) are not meaningful.
+ * gate_events is an append-only audit log — records can't be status-patched.
+ */
+const READ_ONLY_ENTITIES = new Set<AdminEntity>(['dock_appointments', 'message_threads']);
 
 const ENTITY_TABS: [AdminEntity, string][] = [
   ['companies', 'Companies'],
@@ -137,6 +144,15 @@ export default function SuperAdminDataManagerScreen() {
   const applyStatus = async (intent: 'approve' | 'active' | 'suspend') => {
     if (!selectedId) {
       Alert.alert('Select a record first');
+      return;
+    }
+    if (READ_ONLY_ENTITIES.has(entity)) {
+      Alert.alert(
+        'Read-only entity',
+        entity === 'dock_appointments'
+          ? 'Gate events (dock_appointments) is an append-only log. Status mutations are not applicable here.'
+          : 'This entity is read-only and cannot be status-patched.',
+      );
       return;
     }
     const newStatus = resolveStatusValue(intent);
@@ -265,28 +281,39 @@ export default function SuperAdminDataManagerScreen() {
                 </View>
               </View>
             ) : null}
-            <View style={styles.formGap}>
-              <Button
-                label="Approve"
-                onPress={() => void applyStatus('approve')}
-                loading={updateStatusMutation.isPending}
-                testID="data-manager-approve"
-              />
-              <Button
-                label="Set Active"
-                variant="secondary"
-                onPress={() => void applyStatus('active')}
-                loading={updateStatusMutation.isPending}
-                testID="data-manager-active"
-              />
-              <Button
-                label="Suspend"
-                variant="danger"
-                onPress={() => void applyStatus('suspend')}
-                loading={updateStatusMutation.isPending}
-                testID="data-manager-suspend"
-              />
-            </View>
+
+            {READ_ONLY_ENTITIES.has(entity) ? (
+              <View style={styles.readOnlyNote}>
+                <Text style={styles.readOnlyText}>
+                  {entity === 'dock_appointments'
+                    ? 'Gate events is an append-only log. Status mutations are not applicable — records can only be added via the gate_record_event RPC, never status-patched.'
+                    : 'This entity is read-only in the data manager.'}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.formGap}>
+                <Button
+                  label="Approve"
+                  onPress={() => void applyStatus('approve')}
+                  loading={updateStatusMutation.isPending}
+                  testID="data-manager-approve"
+                />
+                <Button
+                  label="Set Active"
+                  variant="secondary"
+                  onPress={() => void applyStatus('active')}
+                  loading={updateStatusMutation.isPending}
+                  testID="data-manager-active"
+                />
+                <Button
+                  label="Suspend"
+                  variant="danger"
+                  onPress={() => void applyStatus('suspend')}
+                  loading={updateStatusMutation.isPending}
+                  testID="data-manager-suspend"
+                />
+              </View>
+            )}
           </Card>
         ) : null}
       </ScrollView>
@@ -329,4 +356,6 @@ const styles = StyleSheet.create({
   formGap: { gap: 12, marginTop: 12 },
   summaryBlock: { marginTop: 12 },
   summaryLabel: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  readOnlyNote: { marginTop: 12, backgroundColor: C.bgSecondary, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.border },
+  readOnlyText: { fontSize: 12, color: C.textMuted, lineHeight: 18 },
 });

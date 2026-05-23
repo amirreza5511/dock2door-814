@@ -3,8 +3,6 @@ import { View, Text, StyleSheet, ScrollView, Modal, Alert, TouchableOpacity, Ref
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Undo2, ArrowLeft, Plus, FileText, PackageCheck, Trash2, Inbox } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
-import { useQueryClient } from '@tanstack/react-query';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -39,13 +37,19 @@ export default function ReturnsScreen() {
   const [orderId, setOrderId] = useState<string>('');
   const [reason, setReason] = useState<string>('');
   const [tab, setTab] = useState<'list' | 'receive'>('list');
-  const qc = useQueryClient();
+
+  /**
+   * Advance RMA status via trpc.returns.advanceStatus (routes through
+   * the returns.advanceStatus procedure in trpc.ts which does a validated
+   * update — never a raw direct supabase.from().update()).
+   */
+  const advanceStatusMut = trpc.returns.advanceStatus.useMutation({
+    onSuccess: async () => { await utils.returns.list.invalidate(); },
+  });
+
   const updateRmaStatus = async (rmaId: string, nextStatus: string, action: 'restock' | 'dispose') => {
     try {
-      const { error } = await supabase.from('return_authorizations').update({ status: nextStatus }).eq('id', rmaId);
-      if (error) throw error;
-      await utils.returns.list.invalidate();
-      await qc.invalidateQueries({ queryKey: ['returns'] });
+      await advanceStatusMut.mutateAsync({ rmaId, status: nextStatus });
       Alert.alert('Updated', action === 'restock' ? 'Items marked for restock.' : 'Items marked for disposal.');
     } catch (err) {
       Alert.alert('Update failed', err instanceof Error ? err.message : 'Unknown');

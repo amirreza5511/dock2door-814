@@ -738,8 +738,30 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  // driverJobs — looks up by driver_user_id first (correct), falls back to driver_name
-  // for legacy records created before driver_user_id was available.
+  // patchVehicleInfo — updates ONLY non-status vehicle fields on dock_appointments.
+  // Never touches status. Gate staff call this alongside yard.recordEvent.
+  'operations.patchVehicleInfo': async (input: {
+    appointmentId: string;
+    driverName?: string | null;
+    truckPlate?: string | null;
+    trailerNumber?: string | null;
+    referenceNumber?: string | null;
+  }) => {
+    const patch: AnyRecord = {};
+    if (input.driverName    !== undefined) patch.driver_name      = input.driverName;
+    if (input.truckPlate    !== undefined) patch.truck_plate      = input.truckPlate;
+    if (input.trailerNumber !== undefined) patch.trailer_number   = input.trailerNumber;
+    if (input.referenceNumber !== undefined) patch.reference_number = input.referenceNumber;
+    if (Object.keys(patch).length === 0) return { success: true };
+    const { error } = await supabase.from('dock_appointments').update(patch).eq('id', input.appointmentId);
+    if (error) throwErr(error, 'Unable to update vehicle info');
+    return { success: true };
+  },
+
+  // driverJobs — looks up by driver_user_id first (preferred), falls back to driver_name
+  // for legacy records created before driver_user_id was available on the trucking flow.
+  // Note: fleet drivers.id ≠ auth.uid; driver_user_id is only set when the driver is a
+  // registered app user with Driver role. Name-string fallback covers fleet-only records.
   'operations.driverJobs': async (_input, ctx) => {
     const { data } = await supabase
       .from('dock_appointments')
@@ -773,12 +795,30 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
-  'operations.checkInAppointment': async (input: { appointmentId: string; status: string; driverName?: string | null; truckPlate?: string | null }) => {
+  // checkInAppointment — advances dock appointment status directly (used by trucking dispatcher
+  // for assignment approval flow and by yard.tsx board view alongside gate_record_event).
+  // Gate staff should use yard.recordEvent exclusively; this procedure is kept for
+  // the warehouse/dispatcher-side approval step (Requested → Approved) and for
+  // driver_user_id assignment when a registered Driver-role user is dispatched.
+  'operations.checkInAppointment': async (input: {
+    appointmentId: string;
+    status: string;
+    driverName?: string | null;
+    truckPlate?: string | null;
+    driverUserId?: string | null;   // auth.uid() of a Driver-role user; null for fleet-only
+    trailerNumber?: string | null;
+    referenceNumber?: string | null;
+    notes?: string | null;
+  }) => {
     const patch: AnyRecord = { status: input.status };
     if (input.status === 'CheckedIn') patch.check_in_ts = new Date().toISOString();
     if (input.status === 'Completed') patch.check_out_ts = new Date().toISOString();
-    if (input.driverName) patch.driver_name = input.driverName;
-    if (input.truckPlate) patch.truck_plate = input.truckPlate;
+    if (input.driverName      !== undefined) patch.driver_name      = input.driverName;
+    if (input.truckPlate      !== undefined) patch.truck_plate      = input.truckPlate;
+    if (input.driverUserId    !== undefined) patch.driver_user_id   = input.driverUserId;
+    if (input.trailerNumber   !== undefined) patch.trailer_number   = input.trailerNumber;
+    if (input.referenceNumber !== undefined) patch.reference_number = input.referenceNumber;
+    if (input.notes           !== undefined) patch.notes            = input.notes;
     const { error } = await supabase.from('dock_appointments').update(patch).eq('id', input.appointmentId);
     if (error) throwErr(error, 'Unable to update appointment');
     return { success: true };
@@ -795,12 +835,36 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       dock_door: input.dockDoor ?? '',
       truck_plate: input.truckPlate ?? '',
       driver_name: input.driverName ?? '',
+      driver_user_id: (input.driverUserId as string | undefined) ?? null,
       appointment_type: input.appointmentType,
       pallet_count: input.palletCount,
       status: 'Requested',
     }).select().single();
     if (error) throwErr(error, 'Unable to create appointment');
     return { id: data!.id };
+  },
+
+  // approveDockAppointment — warehouse provider approves a Requested appointment.
+  // Advances status from Requested → Approved directly (no gate event needed for approval).
+  'operations.approveDockAppointment': async (input: { appointmentId: string; notes?: string }) => {
+    const { error } = await supabase
+      .from('dock_appointments')
+      .update({ status: 'Approved' })
+      .eq('id', input.appointmentId)
+      .eq('status', 'Requested');
+    if (error) throwErr(error, 'Unable to approve appointment');
+    return { success: true };
+  },
+
+  // rejectDockAppointment — warehouse provider rejects a Requested appointment.
+  'operations.rejectDockAppointment': async (input: { appointmentId: string; reason?: string }) => {
+    const { error } = await supabase
+      .from('dock_appointments')
+      .update({ status: 'Cancelled', notes: input.reason ?? 'Rejected by warehouse' })
+      .eq('id', input.appointmentId)
+      .eq('status', 'Requested');
+    if (error) throwErr(error, 'Unable to reject appointment');
+    return { success: true };
   },
 
   // =========================================================================
@@ -952,15 +1016,24 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // ADMIN
   // =========================================================================
   'admin.dashboard': async () => {
-    const [users, companies, bookings, disputes] = await Promise.all([
+    const [users, companies, bookings, disputes, pendingCerts, pendingCompanies, pendingWarehouseListings, pendingServiceListings] = await Promise.all([
       supabase.from('profiles').select('id,email,name,role,status,company_id,created_at').limit(200),
       supabase.from('companies').select('*').limit(200),
       supabase.from('warehouse_bookings').select('*').limit(200),
       supabase.from('disputes').select('*').limit(200),
+      supabase.from('worker_certifications').select('id').eq('status', 'Pending'),
+      supabase.from('companies').select('id').eq('status', 'PendingApproval'),
+      supabase.from('warehouse_listings').select('id').eq('status', 'PendingApproval'),
+      supabase.from('service_listings').select('id').eq('status', 'PendingApproval'),
     ]);
     return {
       users: users.data ?? [], companies: companies.data ?? [],
       bookings: bookings.data ?? [], disputes: disputes.data ?? [], audits: [],
+      // Pending counts for admin/super-admin work queue
+      pendingCertCount: pendingCerts.data?.length ?? 0,
+      pendingCompanyCount: pendingCompanies.data?.length ?? 0,
+      pendingListingCount: (pendingWarehouseListings.data?.length ?? 0) + (pendingServiceListings.data?.length ?? 0),
+      openDisputeCount: (disputes.data ?? []).filter((d) => d.status === 'Open' || d.status === 'UnderReview').length,
     };
   },
 
@@ -1593,20 +1666,60 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   'certifications.adminApprove': async (input: { id: string; reason?: string }) => {
+    // 1. Approve via audited RPC.
     const { error } = await supabase.rpc('admin_approve_certification', {
       p_cert_id: input.id,
       p_reason: input.reason ?? null,
     });
     if (error) throwErr(error, 'Unable to approve certification');
+
+    // 2. Queue in-app notification for the worker.
+    const { data: cert } = await supabase
+      .from('worker_certifications')
+      .select('worker_user_id, type')
+      .eq('id', input.id)
+      .maybeSingle();
+    if (cert?.worker_user_id) {
+      // Best-effort — never block approval if notification table insert fails.
+      void supabase.from('notifications').insert({
+        user_id: cert.worker_user_id,
+        kind: 'cert_approved',
+        title: 'Certification approved',
+        body: `Your ${cert.type} certification has been approved.`,
+        entity_type: 'worker_certifications',
+        entity_id: input.id,
+      });
+    }
+
     return { success: true };
   },
 
   'certifications.adminReject': async (input: { id: string; reason: string }) => {
+    // 1. Reject via audited RPC.
     const { error } = await supabase.rpc('admin_reject_certification', {
       p_cert_id: input.id,
       p_reason: input.reason,
     });
     if (error) throwErr(error, 'Unable to reject certification');
+
+    // 2. Queue in-app notification for the worker.
+    const { data: cert } = await supabase
+      .from('worker_certifications')
+      .select('worker_user_id, type')
+      .eq('id', input.id)
+      .maybeSingle();
+    if (cert?.worker_user_id) {
+      // Best-effort — never block rejection if notification table insert fails.
+      void supabase.from('notifications').insert({
+        user_id: cert.worker_user_id,
+        kind: 'cert_rejected',
+        title: 'Certification rejected',
+        body: `Your ${cert.type} certification was not approved. Reason: ${input.reason}`,
+        entity_type: 'worker_certifications',
+        entity_id: input.id,
+      });
+    }
+
     return { success: true };
   },
 
@@ -1899,6 +2012,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
     if (error) throwErr(error, 'Unable to request return');
     return { id: data as string };
+  },
+
+  // returns.advanceStatus — warehouse side only updates RMA status (Received, Restocked, Disposed).
+  // Replaces the previous direct supabase.from('return_authorizations').update() in returns.tsx.
+  // Valid next statuses: 'Received' | 'Restocked' | 'Disposed' | 'Approved' | 'Rejected'
+  'returns.advanceStatus': async (input: { rmaId: string; status: string; notes?: string }) => {
+    const ALLOWED_STATUSES = new Set(['Received', 'Restocked', 'Disposed', 'Approved', 'Rejected', 'Closed']);
+    if (!ALLOWED_STATUSES.has(input.status)) {
+      throw new Error(`returns.advanceStatus: status "${input.status}" is not valid`);
+    }
+    const patch: AnyRecord = { status: input.status };
+    if (input.notes) patch.notes = input.notes;
+    if (input.status === 'Received') patch.received_at = new Date().toISOString();
+    const { error } = await supabase
+      .from('return_authorizations')
+      .update(patch)
+      .eq('id', input.rmaId);
+    if (error) throwErr(error, 'Unable to advance RMA status');
+    return { success: true };
   },
 
   // =========================================================================

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ArrowLeft, ShieldCheck, LogIn, LogOut, MapPin, FileSignature, AlertTriangle, History } from 'lucide-react-native';
+import { ArrowLeft, ShieldCheck, LogIn, LogOut, MapPin, FileSignature, AlertTriangle, History, CheckCircle, XCircle } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -27,9 +27,41 @@ export default function DockGateStation() {
 
   const events = trpc.yard.listEvents.useQuery();
   const moves = trpc.yard.listMoves.useQuery();
+
+  /** Pending dock appointments waiting for warehouse approval (Requested status). */
+  const gatePanelQuery = trpc.operations.gatePanel.useQuery(undefined, { refetchInterval: 30000 });
+  const pendingAppointments = useMemo(
+    () => (gatePanelQuery.data ?? []).filter((a) => String(a.status) === 'Requested') as Array<{
+      id: string; driver_name?: string | null; truck_plate?: string | null;
+      appointment_type?: string; pallet_count?: number; scheduled_start?: string;
+    }>,
+    [gatePanelQuery.data],
+  );
+
+  const approveMut = trpc.operations.approveDockAppointment.useMutation({
+    onSuccess: async () => { await gatePanelQuery.refetch(); },
+  });
+  const rejectMut = trpc.operations.rejectDockAppointment.useMutation({
+    onSuccess: async () => { await gatePanelQuery.refetch(); },
+  });
+
   const recordEvent = trpc.yard.recordEvent.useMutation({
     onSuccess: async () => { await utils.yard.listEvents.invalidate(); },
   });
+
+  const handleApprove = (id: string) => {
+    Alert.alert('Approve appointment?', 'Truck will be cleared for gate entry.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Approve', onPress: () => void approveMut.mutateAsync({ appointmentId: id }).catch((e: unknown) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')) },
+    ]);
+  };
+
+  const handleReject = (id: string) => {
+    Alert.alert('Reject appointment?', 'Appointment will be cancelled.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: () => void rejectMut.mutateAsync({ appointmentId: id, reason: 'Rejected by warehouse' }).catch((e: unknown) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')) },
+    ]);
+  };
 
   const [appointmentId, setAppointmentId] = useState('');
   const [notes, setNotes] = useState('');
@@ -79,8 +111,36 @@ export default function DockGateStation() {
 
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 80 }]}
-        refreshControl={<RefreshControl refreshing={events.isFetching || moves.isFetching} onRefresh={() => { void events.refetch(); void moves.refetch(); }} tintColor={C.accent} />}
+        refreshControl={<RefreshControl refreshing={events.isFetching || moves.isFetching || gatePanelQuery.isFetching} onRefresh={() => { void events.refetch(); void moves.refetch(); void gatePanelQuery.refetch(); }} tintColor={C.accent} />}
       >
+
+        {/* Pending dock appointment approvals */}
+        {pendingAppointments.length > 0 ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: C.yellow }]}>⚠ {pendingAppointments.length} appointment{pendingAppointments.length > 1 ? 's' : ''} awaiting approval</Text>
+            {pendingAppointments.map((a) => (
+              <View key={a.id} style={styles.pendingCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingTitle}>{a.driver_name ?? a.truck_plate ?? 'Incoming truck'}</Text>
+                  <Text style={styles.pendingMeta}>
+                    {String(a.appointment_type ?? '')} · {String(a.pallet_count ?? 0)} pallets
+                    {a.scheduled_start ? ` · ${new Date(a.scheduled_start).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </Text>
+                </View>
+                <View style={styles.pendingActions}>
+                  <TouchableOpacity onPress={() => handleApprove(a.id)} style={styles.approveBtn} disabled={approveMut.isPending}>
+                    <CheckCircle size={14} color={C.white} />
+                    <Text style={styles.approveBtnText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleReject(a.id)} style={styles.rejectBtn} disabled={rejectMut.isPending}>
+                    <XCircle size={14} color={C.red} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </>
+        ) : null}
+
         <Text style={styles.sectionTitle}>Live event recorder</Text>
         <View style={styles.card}>
           <Input label="Appointment ID" value={appointmentId} onChangeText={setAppointmentId} placeholder="appt_…" />
@@ -146,4 +206,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
   rowTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
   rowMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  // Pending appointment approval cards
+  pendingCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.yellowDim, borderRadius: 12, borderWidth: 1, borderColor: C.yellow + '40', padding: 12 },
+  pendingTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  pendingMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  pendingActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  approveBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.green, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8 },
+  approveBtnText: { fontSize: 11, fontWeight: '700' as const, color: C.white },
+  rejectBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: C.redDim, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.red + '40' },
 });

@@ -1,20 +1,40 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CircleCheckBig, LogIn, LogOut, ShieldAlert, Warehouse, X } from 'lucide-react-native';
+import { CircleCheckBig, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
-import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 
-type GateStatus = 'CheckedIn' | 'AtGate' | 'AtDoor' | 'Loading' | 'Unloading' | 'Completed' | 'NoShow';
+/** Map appointment status → gate_event kind understood by gate_record_event RPC (migration 0014). */
+const STATUS_TO_KIND: Record<string, string> = {
+  Requested: 'check_in',
+  Approved:   'check_in',
+  CheckedIn:  'at_gate',
+  AtGate:     'at_door',
+  AtDoor:     'loading',
+  Loading:    'check_out',
+  Unloading:  'check_out',
+  NoShow:     'no_show',
+};
+
+/** Human label for the next action button. */
+const NEXT_LABEL: Record<string, string> = {
+  Requested: 'Check in',
+  Approved:  'Check in',
+  CheckedIn: 'Pull to gate',
+  AtGate:    'Assign door',
+  AtDoor:    'Begin loading',
+  Loading:   'Check out',
+  Unloading: 'Check out',
+};
 
 interface FormState {
-  status: GateStatus;
+  kind: string;
   driverName: string;
   truckPlate: string;
   trailerNumber: string;
@@ -23,7 +43,7 @@ interface FormState {
 }
 
 const INITIAL_FORM: FormState = {
-  status: 'CheckedIn',
+  kind: 'check_in',
   driverName: '',
   truckPlate: '',
   trailerNumber: '',
@@ -34,40 +54,51 @@ const INITIAL_FORM: FormState = {
 export default function GatePanelScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
+
+  // Search state — was previously an undeclared variable causing a runtime error.
+  const [search, setSearch] = useState<string>('');
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+
   const panelQuery = trpc.operations.gatePanel.useQuery();
-  const updateMutation = trpc.operations.checkInAppointment.useMutation({
+
+  /**
+   * All gate-staff advancement now routes through yard.recordEvent which calls
+   * gate_record_event RPC (migration 0014).  That RPC atomically:
+   *   1. Appends an append-only gate_events row.
+   *   2. Advances dock_appointments.status to the next state.
+   * This replaces the previous direct dock_appointments UPDATE (checkInAppointment).
+   */
+  const recordMutation = trpc.yard.recordEvent.useMutation({
     onSuccess: async () => {
       await utils.operations.gatePanel.invalidate();
+      await utils.yard.listEvents.invalidate();
     },
   });
 
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [form, setForm] = useState<FormState>(INITIAL_FORM);
+  /**
+   * patchVehicleInfo updates only non-status columns (driver_name, truck_plate,
+   * trailer_number, reference_number) and never touches status.
+   * This is safe to call alongside recordEvent.
+   */
+  const patchMutation = trpc.operations.patchVehicleInfo.useMutation();
 
   const stats = useMemo(() => {
     const appointments = panelQuery.data ?? [];
     return {
-      queue: appointments.length,
-      onSite: appointments.filter((item) => ['CheckedIn', 'AtGate', 'AtDoor'].includes(String(item.status))).length,
-      active: appointments.filter((item) => ['Loading', 'Unloading'].includes(String(item.status))).length,
-      completed: appointments.filter((item) => String(item.status) === 'Completed').length,
+      queue:     appointments.length,
+      onSite:    appointments.filter((it) => ['CheckedIn', 'AtGate', 'AtDoor'].includes(String(it.status))).length,
+      active:    appointments.filter((it) => ['Loading', 'Unloading'].includes(String(it.status))).length,
+      completed: appointments.filter((it) => String(it.status) === 'Completed').length,
     };
   }, [panelQuery.data]);
 
   const openForm = (appointmentId: string, currentStatus: string, driverName?: string | null, truckPlate?: string | null) => {
-    const NEXT: Record<string, GateStatus> = {
-      Requested: 'CheckedIn',
-      Approved: 'CheckedIn',
-      CheckedIn: 'AtGate',
-      AtGate: 'AtDoor',
-      AtDoor: 'Loading',
-      Loading: 'Completed',
-      Unloading: 'Completed',
-    };
+    const kind = STATUS_TO_KIND[currentStatus] ?? 'check_in';
     setActiveId(appointmentId);
     setForm({
       ...INITIAL_FORM,
-      status: NEXT[currentStatus] ?? 'CheckedIn',
+      kind,
       driverName: driverName ?? '',
       truckPlate: truckPlate ?? '',
     });
@@ -76,22 +107,37 @@ export default function GatePanelScreen() {
   const submitForm = async () => {
     if (!activeId) return;
     try {
-      await updateMutation.mutateAsync({
+      // 1. Record gate event + advance status via gate_record_event RPC.
+      await recordMutation.mutateAsync({
         appointmentId: activeId,
-        status: form.status,
-        driverName: form.driverName.trim() || null,
-        truckPlate: form.truckPlate.trim() || null,
-        trailerNumber: form.trailerNumber.trim() || null,
-        referenceNumber: form.referenceNumber.trim() || null,
-        notes: form.notes.trim() || null,
+        kind: form.kind,
+        notes: form.notes.trim() || undefined,
+        meta: {
+          driver_name:       form.driverName.trim()       || undefined,
+          truck_plate:       form.truckPlate.trim()       || undefined,
+          trailer_number:    form.trailerNumber.trim()    || undefined,
+          reference_number:  form.referenceNumber.trim()  || undefined,
+        },
       });
+
+      // 2. Persist vehicle info on the appointment row (non-status fields only).
+      if (form.driverName.trim() || form.truckPlate.trim() || form.trailerNumber.trim() || form.referenceNumber.trim()) {
+        void patchMutation.mutateAsync({
+          appointmentId: activeId,
+          driverName:      form.driverName.trim()      || null,
+          truckPlate:      form.truckPlate.trim()      || null,
+          trailerNumber:   form.trailerNumber.trim()   || null,
+          referenceNumber: form.referenceNumber.trim() || null,
+        });
+      }
+
       setActiveId(null);
     } catch (error) {
-      Alert.alert('Status update failed', error instanceof Error ? error.message : 'Unable to update gate status');
+      Alert.alert('Gate event failed', error instanceof Error ? error.message : 'Unable to advance appointment');
     }
   };
 
-  const markNoShow = async (appointmentId: string) => {
+  const markNoShow = (appointmentId: string) => {
     Alert.alert('Mark No-Show', 'Confirm no-show for this appointment?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -99,9 +145,13 @@ export default function GatePanelScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await updateMutation.mutateAsync({ appointmentId, status: 'NoShow' });
+            await recordMutation.mutateAsync({
+              appointmentId,
+              kind: 'no_show',
+              notes: 'No-show logged by gate staff',
+            });
           } catch (error) {
-            Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to update');
+            Alert.alert('Update failed', error instanceof Error ? error.message : 'Unable to mark no-show');
           }
         },
       },
@@ -109,11 +159,19 @@ export default function GatePanelScreen() {
   };
 
   if (panelQuery.isLoading) {
-    return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading gate panel" /></View>;
+    return (
+      <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
+        <ScreenFeedback state="loading" title="Loading gate panel" />
+      </View>
+    );
   }
 
   if (panelQuery.isError) {
-    return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load gate panel" onRetry={() => void panelQuery.refetch()} /></View>;
+    return (
+      <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
+        <ScreenFeedback state="error" title="Unable to load gate panel" onRetry={() => void panelQuery.refetch()} />
+      </View>
+    );
   }
 
   const allAppointments = panelQuery.data ?? [];
@@ -130,92 +188,159 @@ export default function GatePanelScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={styles.title}>Gate Staff Panel</Text>
-        <Text style={styles.subtitle}>Operational queue for dock arrivals and departures.</Text>
+        <Text style={styles.subtitle}>Approve arrivals and advance dock appointments via gate events.</Text>
 
+        {/* Stats */}
         <View style={styles.statsRow}>
-          {[
-            ['Queue', stats.queue],
-            ['On Site', stats.onSite],
-            ['Active', stats.active],
-            ['Done', stats.completed],
-          ].map(([label, value]) => (
-            <View key={String(label)} style={styles.statCard}>
+          {([['Queue', stats.queue], ['On Site', stats.onSite], ['Active', stats.active], ['Done', stats.completed]] as [string, number][]).map(([label, value]) => (
+            <View key={label} style={styles.statCard}>
               <Text style={styles.statValue}>{value}</Text>
               <Text style={styles.statLabel}>{label}</Text>
             </View>
           ))}
         </View>
 
+        {/* Search */}
+        <View style={styles.searchRow}>
+          <Search size={14} color={C.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search driver / plate / type"
+            placeholderTextColor={C.textMuted}
+            style={styles.searchInput}
+            testID="gate-search"
+          />
+          {search.length > 0 ? (
+            <TouchableOpacity onPress={() => setSearch('')}><X size={14} color={C.textMuted} /></TouchableOpacity>
+          ) : null}
+        </View>
+
         {appointments.length === 0 ? (
-          <EmptyState icon={Warehouse} title="No appointments today" description="Today's approved dock schedule will appear here automatically." />
-        ) : appointments.map((item) => {
-          const status = String(item.status);
-          const isDone = status === 'Completed' || status === 'NoShow';
-          return (
-            <Card key={String(item.id)} style={styles.itemCard}>
-              <View style={styles.rowTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{String(item.driver_name ?? item.truck_plate ?? 'Incoming vehicle')}</Text>
-                  <Text style={styles.cardMeta}>{String(item.appointment_type)} · {String(item.pallet_count)} pallets{item.dock_door ? ` · Door ${item.dock_door}` : ''}</Text>
+          <EmptyState
+            icon={Warehouse}
+            title="No appointments today"
+            description="Today's dock schedule will appear here. Only Approved appointments are shown."
+          />
+        ) : (
+          appointments.map((item) => {
+            const status = String(item.status);
+            const isDone = status === 'Completed' || status === 'NoShow' || status === 'Cancelled';
+            const nextLabel = NEXT_LABEL[status] ?? 'Advance';
+            return (
+              <Card key={String(item.id)} style={styles.itemCard}>
+                <View style={styles.rowTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardTitle}>{String(item.driver_name ?? item.truck_plate ?? 'Incoming vehicle')}</Text>
+                    <Text style={styles.cardMeta}>
+                      {String(item.appointment_type)} · {String(item.pallet_count)} pallets
+                      {item.dock_door ? ` · Door ${item.dock_door}` : ''}
+                    </Text>
+                  </View>
+                  <StatusBadge status={status} />
                 </View>
-                <StatusBadge status={status} />
-              </View>
-              <Text style={styles.cardSub}>{new Date(String(item.scheduled_start)).toLocaleString()}</Text>
-              {!isDone ? (
-                <View style={styles.btnRow}>
-                  <Button
-                    label="Advance"
-                    onPress={() => openForm(String(item.id), status, item.driver_name as string | null, item.truck_plate as string | null)}
-                    size="sm"
-                    icon={<CircleCheckBig size={14} color={C.white} />}
-                  />
-                  <Button
-                    label="No-Show"
-                    onPress={() => void markNoShow(String(item.id))}
-                    size="sm"
-                    variant="danger"
-                    icon={<ShieldAlert size={14} color={C.red} />}
-                  />
-                </View>
-              ) : null}
-            </Card>
-          );
-        })}
+                <Text style={styles.cardSub}>{new Date(String(item.scheduled_start)).toLocaleString()}</Text>
+                {!isDone ? (
+                  <View style={styles.btnRow}>
+                    <Button
+                      label={nextLabel}
+                      onPress={() => openForm(String(item.id), status, item.driver_name as string | null, item.truck_plate as string | null)}
+                      size="sm"
+                      icon={<CircleCheckBig size={14} color={C.white} />}
+                    />
+                    <Button
+                      label="No-Show"
+                      onPress={() => markNoShow(String(item.id))}
+                      size="sm"
+                      variant="danger"
+                      icon={<ShieldAlert size={14} color={C.red} />}
+                    />
+                  </View>
+                ) : null}
+              </Card>
+            );
+          })
+        )}
       </ScrollView>
 
+      {/* Advance modal */}
       <Modal visible={activeId !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setActiveId(null)}>
         <View style={[styles.modal, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Advance Appointment</Text>
+            <Text style={styles.modalTitle}>Record Gate Event</Text>
             <TouchableOpacity onPress={() => setActiveId(null)} style={styles.closeBtn}>
               <X size={18} color={C.text} />
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
-            <Text style={styles.fieldLabel}>Next status</Text>
-            <View style={styles.statusRow}>
-              {(['CheckedIn', 'AtGate', 'AtDoor', 'Loading', 'Unloading', 'Completed'] as GateStatus[]).map((s) => (
-                <TouchableOpacity key={s} onPress={() => setForm((prev) => ({ ...prev, status: s }))} style={[styles.statusChip, form.status === s && styles.statusChipActive]}>
-                  <Text style={[styles.statusChipText, form.status === s && styles.statusChipTextActive]}>{s}</Text>
+            <Text style={styles.fieldLabel}>Event kind</Text>
+            <View style={styles.kindRow}>
+              {(['check_in', 'at_gate', 'at_door', 'loading', 'unloading', 'check_out'] as const).map((k) => (
+                <TouchableOpacity
+                  key={k}
+                  onPress={() => setForm((prev) => ({ ...prev, kind: k }))}
+                  style={[styles.kindChip, form.kind === k && styles.kindChipActive]}
+                >
+                  <Text style={[styles.kindChipText, form.kind === k && styles.kindChipTextActive]}>
+                    {k.replace(/_/g, ' ')}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Input label="Driver name" value={form.driverName} onChangeText={(v) => setForm((p) => ({ ...p, driverName: v }))} placeholder="John Smith" />
-            <Input label="Truck plate" value={form.truckPlate} onChangeText={(v) => setForm((p) => ({ ...p, truckPlate: v }))} placeholder="e.g. ABC 1234" autoCapitalize="characters" />
-            <Input label="Trailer number" value={form.trailerNumber} onChangeText={(v) => setForm((p) => ({ ...p, trailerNumber: v }))} placeholder="T-12345" autoCapitalize="characters" />
-            <Input label="Reference / PO" value={form.referenceNumber} onChangeText={(v) => setForm((p) => ({ ...p, referenceNumber: v }))} placeholder="PO-1024" autoCapitalize="characters" />
-            <Input label="Notes" value={form.notes} onChangeText={(v) => setForm((p) => ({ ...p, notes: v }))} placeholder="Seal number, observations…" multiline numberOfLines={3} />
+            <Text style={[styles.fieldLabel, { marginTop: 8 }]}>Vehicle / driver info</Text>
+            <TextInput
+              value={form.driverName}
+              onChangeText={(v) => setForm((p) => ({ ...p, driverName: v }))}
+              placeholder="Driver name"
+              placeholderTextColor={C.textMuted}
+              style={styles.textInput}
+            />
+            <TextInput
+              value={form.truckPlate}
+              onChangeText={(v) => setForm((p) => ({ ...p, truckPlate: v }))}
+              placeholder="Truck plate"
+              placeholderTextColor={C.textMuted}
+              style={styles.textInput}
+              autoCapitalize="characters"
+            />
+            <TextInput
+              value={form.trailerNumber}
+              onChangeText={(v) => setForm((p) => ({ ...p, trailerNumber: v }))}
+              placeholder="Trailer number"
+              placeholderTextColor={C.textMuted}
+              style={styles.textInput}
+              autoCapitalize="characters"
+            />
+            <TextInput
+              value={form.referenceNumber}
+              onChangeText={(v) => setForm((p) => ({ ...p, referenceNumber: v }))}
+              placeholder="Reference / PO number"
+              placeholderTextColor={C.textMuted}
+              style={styles.textInput}
+              autoCapitalize="characters"
+            />
+            <TextInput
+              value={form.notes}
+              onChangeText={(v) => setForm((p) => ({ ...p, notes: v }))}
+              placeholder="Seal number, observations…"
+              placeholderTextColor={C.textMuted}
+              style={[styles.textInput, { minHeight: 72, textAlignVertical: 'top' }]}
+              multiline
+              numberOfLines={3}
+            />
 
             <Button
-              label={form.status === 'Completed' ? 'Check Out & Complete' : `Record ${form.status}`}
+              label={form.kind === 'check_out' ? 'Check Out & Complete' : `Record ${form.kind.replace(/_/g, ' ')}`}
               onPress={() => void submitForm()}
-              loading={updateMutation.isPending}
+              loading={recordMutation.isPending}
               fullWidth
               size="lg"
-              icon={form.status === 'Completed' ? <LogOut size={16} color={C.white} /> : <LogIn size={16} color={C.white} />}
             />
             <Button label="Cancel" onPress={() => setActiveId(null)} variant="ghost" fullWidth />
           </ScrollView>
@@ -230,11 +355,13 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center', padding: 20 },
   scroll: { paddingHorizontal: 20, gap: 14 },
   title: { fontSize: 24, fontWeight: '800' as const, color: C.text },
-  subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 4, marginBottom: 4 },
+  subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 4 },
   statsRow: { flexDirection: 'row', gap: 8 },
   statCard: { flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 12 },
   statValue: { fontSize: 20, fontWeight: '800' as const, color: C.text },
   statLabel: { fontSize: 10, color: C.textSecondary, marginTop: 3 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12 },
+  searchInput: { flex: 1, paddingVertical: 10, color: C.text, fontSize: 13 },
   itemCard: { gap: 10, padding: 14 },
   rowTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   cardTitle: { fontSize: 14, color: C.text, fontWeight: '700' as const },
@@ -246,10 +373,11 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   closeBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   modalBody: { padding: 20, gap: 12 },
-  fieldLabel: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statusChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
-  statusChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
-  statusChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
-  statusChipTextActive: { color: C.accent, fontWeight: '700' as const },
+  fieldLabel: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  kindChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  kindChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  kindChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  kindChipTextActive: { color: C.accent, fontWeight: '700' as const },
+  textInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14 },
 });
