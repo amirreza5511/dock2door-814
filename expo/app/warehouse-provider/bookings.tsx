@@ -36,16 +36,7 @@ export default function WPBookings() {
   const counterMutation = trpc.bookings.submitCounterOffer.useMutation({ onSuccess: invalidate });
   const completeMutation = trpc.bookings.complete.useMutation({ onSuccess: invalidate });
 
-  const createThreadMutation = trpc.messaging.createThread.useMutation();
-  const messagesQuery = trpc.messaging.listMessages.useQuery(
-    { threadId: threadId ?? '' },
-    { enabled: !!threadId },
-  );
-  const sendMsgMutation = trpc.messaging.sendMessage.useMutation({
-    onSuccess: () => void utils.messaging.listMessages.invalidate({ threadId: threadId ?? '' }),
-  });
-  const { warehouseListings, warehouseBookings, companies } = bootstrapQuery.data;
-
+  // ── State declared before hooks that close over these values ────────────────
   const [filter, setFilter] = useState<BookingStatus | 'All'>('All');
   const [selected, setSelected] = useState<WarehouseBooking | null>(null);
   const [detailModal, setDetailModal] = useState(false);
@@ -55,6 +46,17 @@ export default function WPBookings() {
   const [activeTab, setActiveTab] = useState<'details' | 'docs' | 'messages'>('details');
   const [threadId, setThreadId] = useState<string | null>(null);
   const [reviewFor, setReviewFor] = useState<WarehouseBooking | null>(null);
+
+  // ── Messaging hooks (threadId must be declared before these hooks) ─────────
+  const createThreadMutation = trpc.messaging.createThread.useMutation();
+  const messagesQuery = trpc.messaging.listMessages.useQuery(
+    { threadId: threadId ?? '' },
+    { enabled: !!threadId },
+  );
+  const sendMsgMutation = trpc.messaging.sendMessage.useMutation({
+    onSuccess: () => void utils.messaging.listMessages.invalidate({ threadId: threadId ?? '' }),
+  });
+  const { warehouseListings, warehouseBookings, companies } = bootstrapQuery.data;
 
   const myListingIds = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id), [warehouseListings, activeCompanyId]);
   const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [warehouseBookings, myListingIds]);
@@ -116,26 +118,6 @@ export default function WPBookings() {
       .catch((error: unknown) => {
         Alert.alert('Unable to complete booking', error instanceof Error ? error.message : 'Unknown error');
       });
-  };
-
-  const sendMsg = () => {
-    if (!msgText.trim() || !selected || !user) {
-      return;
-    }
-    void createRecordMutation.mutateAsync({
-      table: 'messages',
-      payload: {
-        referenceType: 'WarehouseBooking',
-        referenceId: selected.id,
-        senderUserId: user.id,
-        text: msgText.trim(),
-        createdAt: new Date().toISOString(),
-      },
-    }).then(() => {
-      setMsgText('');
-    }).catch((error: unknown) => {
-      Alert.alert('Unable to send message', error instanceof Error ? error.message : 'Unknown error');
-    });
   };
 
   // Reset tab + thread whenever a different booking is opened

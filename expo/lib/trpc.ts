@@ -335,7 +335,9 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   'bookings.respondToCounterOffer': async (input: { counterOfferId: string; action: 'accept' | 'reject'; note?: string }) => {
-    const next = input.action === 'accept' ? 'Accepted' : 'Requested';
+    // Customer accepting counter → Accepted.
+    // Customer declining counter → Declined (terminal, per booking state machine in PLAN.md 0.6).
+    const next = input.action === 'accept' ? 'Accepted' : 'Declined';
     const { error } = await supabase.rpc('transition_booking', {
       p_booking_id: input.counterOfferId,
       p_next_status: next,
@@ -886,6 +888,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
     if (error) throwErr(error, 'Unable to record gate event');
     return { success: true };
+  },
+
+  // yard.listEvents — read-only log of gate_events for an appointment or recent history.
+  // Used by gate-staff/station-dock to refresh after recording an event.
+  'yard.listEvents': async (input: { appointmentId?: string; limit?: number } | undefined) => {
+    let q = supabase
+      .from('gate_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(input?.limit ?? 100);
+    if (input?.appointmentId) q = q.eq('appointment_id', input.appointmentId);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load gate events');
+    return data ?? [];
   },
 
   // =========================================================================
@@ -1508,6 +1524,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_application_id: input.applicationId, p_rate: input.rate ?? null,
     });
     if (error) throwErr(error, 'Unable to accept applicant');
+    // Best-effort in-app notification to the worker. Never blocks the accept.
+    void (async () => {
+      const { data: app } = await supabase
+        .from('shift_applications')
+        .select('worker_user_id, shift_id')
+        .eq('id', input.applicationId)
+        .maybeSingle();
+      if (!app?.worker_user_id) return;
+      const { data: shift } = await supabase
+        .from('shift_posts').select('title').eq('id', app.shift_id).maybeSingle();
+      await supabase.from('notifications').insert({
+        user_id: app.worker_user_id,
+        kind: 'shift_accepted',
+        title: 'Application accepted! 🎉',
+        body: `You've been accepted for "${shift?.title ?? 'a shift'}". Check My Shifts to confirm attendance and clock in.`,
+        entity_type: 'shift_applications',
+        entity_id: input.applicationId,
+      });
+    })();
     return { assignmentId: data as string };
   },
   'shifts.rejectApplicant': async (input: { applicationId: string; reason?: string }) => {
@@ -1515,6 +1550,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_application_id: input.applicationId, p_reason: input.reason ?? null,
     });
     if (error) throwErr(error, 'Unable to reject');
+    // Best-effort in-app notification to the worker. Never blocks the reject.
+    void (async () => {
+      const { data: app } = await supabase
+        .from('shift_applications')
+        .select('worker_user_id, shift_id')
+        .eq('id', input.applicationId)
+        .maybeSingle();
+      if (!app?.worker_user_id) return;
+      const { data: shift } = await supabase
+        .from('shift_posts').select('title').eq('id', app.shift_id).maybeSingle();
+      await supabase.from('notifications').insert({
+        user_id: app.worker_user_id,
+        kind: 'shift_rejected',
+        title: 'Application not selected',
+        body: `Your application for "${shift?.title ?? 'a shift'}" was not selected${input.reason ? `. Reason: ${input.reason}` : '.'}`,
+        entity_type: 'shift_applications',
+        entity_id: input.applicationId,
+      });
+    })();
     return { success: true };
   },
   'shifts.clockIn': async (input: { assignmentId: string }) => {

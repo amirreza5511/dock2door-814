@@ -738,7 +738,7 @@ export default function WorkerMyShifts() {
         visible={!!reviewFor}
         onClose={() => setReviewFor(null)}
         title="Rate this employer"
-        subtitle={reviewFor ? getEmpName(getShift(reviewFor.shift_id)?.employerCompanyId ?? '') : undefined}
+        subtitle={reviewFor ? getEmpName(getShift(reviewFor.shift_id)?.employer_company_id ?? '') : undefined}
         contextKind="shift_assignment"
         contextId={reviewFor?.id ?? ''}
         targetKind="company"
