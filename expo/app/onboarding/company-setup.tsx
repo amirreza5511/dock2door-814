@@ -56,14 +56,58 @@ export default function CompanySetup() {
   const [terms, setTerms] = useState('14');
 
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [prefilled, setPrefilled] = useState(false);
 
-  // If user already has a company, skip onboarding — but NOT while we're in the middle of creating one
+  // If the user already has a company AND its profile is already complete, jump
+  // them home. Otherwise stay on this screen, prefill, and let them finish setup.
   useEffect(() => {
     if (loading) return;
-    if (memberships.length > 0 && user) {
-      router.replace(getRoleRoute(user.role) as never);
-    }
-  }, [memberships.length, user, router, loading]);
+    if (!user || memberships.length === 0) return;
+    const m = memberships[0];
+    if (prefilled) return;
+    setPrefilled(true);
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('companies')
+          .select('name,display_name,industry,city,public_bio,website,logo_url,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,billing_contact_name,billing_email,billing_phone,billing_address,billing_mode,payment_terms_days,profile_completed_at,billing_setup_completed_at')
+          .eq('id', m.companyId)
+          .maybeSingle();
+        if (data) {
+          // If the company is already fully set up, skip out.
+          if (data.profile_completed_at && data.billing_setup_completed_at) {
+            router.replace(getRoleRoute(user.role) as never);
+            return;
+          }
+          setName((data.display_name as string) || (data.name as string) || '');
+          setIndustry((data.industry as string) || '');
+          setCity((data.city as string) || '');
+          setPublicBio((data.public_bio as string) || '');
+          setWebsite((data.website as string) || '');
+          setLogoUrl((data.logo_url as string) || '');
+          setPublicEmail((data.public_contact_email as string) || '');
+          setPublicPhone((data.public_contact_phone as string) || '');
+          setShowPublicEmail(Boolean(data.show_public_contact_email));
+          setShowPublicPhone(Boolean(data.show_public_contact_phone));
+          setLegalName((data.legal_business_name as string) || '');
+          setBusinessNumber((data.business_number as string) || '');
+          setBusinessAddress((data.business_address as string) || '');
+          setAdminName((data.admin_contact_name as string) || '');
+          setAdminEmail((data.admin_contact_email as string) || '');
+          setAdminPhone((data.admin_contact_phone as string) || '');
+          setBillingName((data.billing_contact_name as string) || '');
+          setBillingEmail((data.billing_email as string) || '');
+          setBillingPhone((data.billing_phone as string) || '');
+          setBillingAddress((data.billing_address as string) || '');
+          if (data.billing_mode) setBillingMode(data.billing_mode as 'ManualInvoice' | 'StripeCheckout' | 'CardOnFile');
+          if (data.payment_terms_days != null) setTerms(String(data.payment_terms_days));
+        }
+      } catch (e) {
+        console.log('[company-setup] prefill failed', e);
+      }
+    })();
+  }, [user, memberships, router, prefilled, loading]);
 
   const companyType = user?.role ? COMPANY_TYPE_BY_ROLE[user.role] : undefined;
 
@@ -86,6 +130,7 @@ export default function CompanySetup() {
       return;
     }
     setLoading(true);
+    setSubmitError(null);
     let stepLabel = 'create company';
     let companyId: string | null = null;
     try {
@@ -188,6 +233,7 @@ export default function CompanySetup() {
       // If the company itself was created but a later step failed, we don't want to leave
       // the user trapped on this page. Send them to Company Profile so they can finish editing.
       if (companyId) {
+        setSubmitError(`Saved your company, but "${stepLabel}" failed: ${msg}. Continue from Company Profile.`);
         showError(
           'Company created — finish setup',
           `We saved your company but couldn't ${stepLabel} (${msg}). Continue from Company Profile.`,
@@ -198,6 +244,7 @@ export default function CompanySetup() {
         return;
       }
 
+      setSubmitError(`Step "${stepLabel}" failed: ${msg}`);
       showError('Could not finish setup', `Step "${stepLabel}" failed: ${msg}`);
     } finally {
       // Belt + suspenders: loading MUST clear in every code path.
@@ -339,6 +386,13 @@ export default function CompanySetup() {
                 <Button label="Continue" onPress={() => setStep('review')} fullWidth size="lg" disabled={!canContinueBilling} />
               </View>
             </View>
+          </View>
+        )}
+
+        {submitError && (
+          <View style={{ backgroundColor: C.redDim, borderColor: C.red + '60', borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700' as const, color: C.red, marginBottom: 2 }}>Something went wrong</Text>
+            <Text style={{ fontSize: 12, color: C.red, lineHeight: 17 }}>{submitError}</Text>
           </View>
         )}
 

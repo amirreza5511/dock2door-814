@@ -201,7 +201,7 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ companyId?: string; id?: string }>();
   const user = useAuthStore((s) => s.user);
-  const { activeCompanyId } = useActiveCompany();
+  const { activeCompanyId, isLoading: activeCompanyLoading, memberships } = useActiveCompany();
   // Accept `companyId` (legacy employer route) or `id` (neutral /company/[id] route),
   // or an explicit prop override when embedded by the neutral route.
   // Fall back to the active company so /employer/company-profile (no param) still works.
@@ -367,6 +367,22 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
     .slice(0, 3);
 
   const memberSince = company ? new Date(company.created_at).getFullYear() : null;
+
+  // Wait for the active-company query before declaring "not found". Without this, a fresh
+  // login flashes "Company not found" because memberships are still in flight.
+  if (!companyId && (activeCompanyLoading || memberships.length === 0)) {
+    return (
+      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <Text style={styles.loadingText}>{activeCompanyLoading ? 'Loading…' : 'No company yet. Finish setup first.'}</Text>
+        {!activeCompanyLoading && (
+          <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
+            <Text style={styles.backFallbackText}>Go to Company Setup</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  }
 
   if (profileQ.isLoading) {
     return (
