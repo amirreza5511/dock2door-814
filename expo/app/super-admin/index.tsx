@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
   Users, FileText, Clock, ChevronRight, Bell, AlertCircle,
 } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -21,7 +21,19 @@ export default function SuperAdminOverviewScreen() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
-  const dashboardQuery = trpc.admin.dashboard.useQuery();
+  const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, {
+    refetchOnMount: 'always',
+    staleTime: 0,
+  });
+
+  // Refetch every time the super admin returns to this screen so newly-created
+  // companies show up immediately in the approval queue.
+  useFocusEffect(useCallback(() => {
+    void dashboardQuery.refetch();
+    void pendingHoursQ.refetch();
+    void activeShiftsQ.refetch();
+    void notifCountQ.refetch();
+  }, [dashboardQuery, pendingHoursQ, activeShiftsQ, notifCountQ]));
 
   // Unread notifications
   const notifCountQ = useQuery({

@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Building2, ChevronLeft, Eye, Lock, CreditCard, CheckCircle } from 'lucide-react-native';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
@@ -25,6 +26,7 @@ export default function CompanySetup() {
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const { memberships, refresh, setActiveCompanyId } = useActiveCompany();
+  const qc = useQueryClient();
 
   const [step, setStep] = useState<Step>('public');
 
@@ -253,8 +255,32 @@ export default function CompanySetup() {
       // immediately (the AsyncStorage write inside is fire-and-forget).
       try { void setActiveCompanyId(companyId); } catch (e) { console.log('[company-setup] setActive skipped', e); }
 
-      // Fire-and-forget memberships refresh — DO NOT await, it can hang the UI.
-      try { void refresh(); } catch (e) { console.log('[company-setup] refresh fire-and-forget failed', e); }
+      // Pre-seed the React Query cache for the company-profile screen so it
+      // does NOT flash "Company not found" while memberships/profile fetches
+      // are still in flight. We read the just-created row directly here.
+      try {
+        const { data: fresh } = await supabase
+          .from('companies')
+          .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
+          .eq('id', companyId)
+          .maybeSingle();
+        if (fresh) {
+          qc.setQueryData(['company-profile', companyId], {
+            company: fresh,
+            shifts: [],
+            reviews: [],
+            staff: [{ id: 'self', user_id: user.id, company_role: 'Owner' }],
+          });
+        }
+      } catch (e) { console.log('[company-setup] preseed skipped', e); }
+
+      // Wait briefly (max 600ms) for memberships to refresh so the next screen has them.
+      try {
+        await Promise.race([
+          refresh(),
+          new Promise((res) => setTimeout(res, 600)),
+        ]);
+      } catch (e) { console.log('[company-setup] refresh skipped', e); }
 
       // Always clear loading and navigate, no matter what.
       setLoading(false);
