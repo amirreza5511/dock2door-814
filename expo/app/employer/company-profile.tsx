@@ -416,7 +416,7 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
               <Text style={styles.statLbl}>Avg Rating</Text>
             </View>
             <View style={[styles.stat, effectiveMode === 'private' && isMember ? null : styles.statMid]}>
-              <Text style={styles.statVal}>{totalReviews}</Text>
+              <Text style={styles.statVal}>{reviews.length}</Text>
               <Text style={styles.statLbl}>Reviews</Text>
             </View>
           </View>
