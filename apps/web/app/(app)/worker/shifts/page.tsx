@@ -88,22 +88,8 @@ export default function WorkerShiftsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["worker", "assignments"] }),
   });
 
-  const clockIn = useMutation({
-    mutationFn: async (assignmentId: string) => {
-      const { error } = await supabase.rpc("worker_clock_in", { p_assignment_id: assignmentId });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["worker", "assignments"] }),
-  });
-
-  const clockOut = useMutation({
-    mutationFn: async (assignmentId: string) => {
-      const { error } = await supabase.rpc("worker_clock_out", { p_assignment_id: assignmentId });
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["worker", "assignments"] }),
-  });
-
+  // Clock in/out is mobile-only — the mobile app captures device timestamp + (optional) location.
+  // Web shows a clear, non-actionable message instead of buttons that would partially work.
   const cols: Column<FlatAssignment>[] = [
     { key: "title", header: "Shift", render: (a) => <span className="font-medium">{a.title}</span> },
     { key: "when", header: "When", render: (a) => `${a.date ?? "—"} ${a.start_time ?? ""} → ${a.end_time ?? ""}`.trim(), sortable: true, sortValue: (a) => a.date },
@@ -130,12 +116,14 @@ export default function WorkerShiftsPage() {
           </>
         )}
         {a.status === "Scheduled" && a.worker_confirmed === true && (
-          <Button size="sm" disabled={clockIn.isPending} onClick={() => clockIn.mutate(a.id)}>Clock in</Button>
+          <span className="text-xs text-amber-600" title="Clock-in is mobile-only">Use the mobile app to clock in</span>
         )}
         {a.status === "Scheduled" && a.worker_confirmed === false && (
           <span className="text-xs text-muted-foreground">Declined</span>
         )}
-        {a.status === "InProgress" && <Button size="sm" disabled={clockOut.isPending} onClick={() => clockOut.mutate(a.id)}>Clock out</Button>}
+        {a.status === "InProgress" && (
+          <span className="text-xs text-amber-600" title="Clock-out is mobile-only">Use the mobile app to clock out</span>
+        )}
       </div>
     ) },
   ];
@@ -144,8 +132,7 @@ export default function WorkerShiftsPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">My shifts</h1>
-        <p className="text-sm text-muted-foreground">Confirm attendance first — Clock-in is only available after you confirm. Required certifications must be Approved.</p>
-        <p className="mt-1 text-xs text-amber-600">Tip: the mobile app is recommended for clock-in/out so location and timestamps are captured accurately.</p>
+        <p className="text-sm text-muted-foreground">Confirm attendance, view status, and withdraw applications here. Clock-in / clock-out is available in the mobile app only — it captures device timestamps (and location where available) at the moment you tap.</p>
       </div>
       <Card>
         <CardHeader><CardTitle>Assignments</CardTitle><CardDescription>{flat.length} total</CardDescription></CardHeader>
@@ -162,8 +149,8 @@ export default function WorkerShiftsPage() {
               { value: "completed", label: "Completed", predicate: (a) => a.status === "Completed" },
             ]}
           />
-          {(clockIn.error || clockOut.error || confirmAttendance.error) && (
-            <p className="mt-3 text-sm text-red-600">{((clockIn.error || clockOut.error || confirmAttendance.error) as Error).message}</p>
+          {confirmAttendance.error && (
+            <p className="mt-3 text-sm text-red-600">{(confirmAttendance.error as Error).message}</p>
           )}
         </CardContent>
       </Card>
