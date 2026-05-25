@@ -4,7 +4,8 @@ import {
   Platform, Modal, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, Upload, Calendar, Clock, ChevronDown, Repeat, Zap } from 'lucide-react-native';
+import { CheckCircle, Upload, Calendar, Clock, ChevronDown, Repeat, Zap, DollarSign } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '@/lib/trpc';
@@ -117,6 +118,39 @@ const pmStyles = StyleSheet.create({
 export default function CreateShift() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+
+  // Platform commission (labour) for cost preview
+  const commissionQ = useQuery({
+    queryKey: ['platform-settings', 'labour-commission'],
+    queryFn: async (): Promise<number> => {
+      const { data } = await supabase
+        .from('platform_settings')
+        .select('labour_commission_percentage')
+        .limit(1)
+        .maybeSingle();
+      const pct = (data as { labour_commission_percentage?: number } | null)?.labour_commission_percentage;
+      return typeof pct === 'number' ? pct : 15;
+    },
+    staleTime: 5 * 60_000,
+  });
+  const commissionPct: number = commissionQ.data ?? 15;
+
+  // Billing status — block paid shift posting if billing not configured
+  const billingQ = useQuery({
+    queryKey: ['company-billing', user?.companyId],
+    queryFn: async () => {
+      if (!user?.companyId) return null;
+      const { data } = await supabase
+        .from('companies')
+        .select('billing_mode, billing_email, billing_setup_completed_at')
+        .eq('id', user.companyId)
+        .maybeSingle();
+      return data as { billing_mode: string | null; billing_email: string | null; billing_setup_completed_at: string | null } | null;
+    },
+    enabled: Boolean(user?.companyId),
+    staleTime: 60_000,
+  });
+  const billingReady = Boolean(billingQ.data?.billing_setup_completed_at);
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const createShift = trpc.shifts.create.useMutation({
@@ -416,6 +450,45 @@ export default function CreateShift() {
             </View>
           </View>
         </View>
+
+        {/* Cost preview */}
+        {hourlyRate && startTime && endTime ? (() => {
+          const sh = Number(startTime.split(':')[0]) + Number(startTime.split(':')[1]) / 60;
+          const eh = Number(endTime.split(':')[0]) + Number(endTime.split(':')[1]) / 60;
+          const hours = Math.max(0, eh - sh);
+          const workers = Math.max(1, Number(workersNeeded) || 1);
+          const rate = Number(hourlyRate) || 0;
+          const labour = hours * rate * workers;
+          const fee = labour * (commissionPct / 100);
+          const total = labour + fee;
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Estimated Cost</Text>
+              <View style={{ backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14, gap: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Worker pay ({hours.toFixed(1)}h × {workers} worker{workers > 1 ? 's' : ''})</Text>
+                  <Text style={{ color: C.text, fontWeight: '600' as const }}>${labour.toFixed(2)}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: C.textMuted, fontSize: 13 }}>Platform fee ({commissionPct}%)</Text>
+                  <Text style={{ color: C.text, fontWeight: '600' as const }}>${fee.toFixed(2)}</Text>
+                </View>
+                <View style={{ height: 1, backgroundColor: C.border }} />
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: C.text, fontWeight: '700' as const }}>Estimated total charge</Text>
+                  <Text style={{ color: C.accent, fontWeight: '700' as const, fontSize: 16 }}>${total.toFixed(2)}</Text>
+                </View>
+                <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>Final charge is based on employer-confirmed hours after the shift.</Text>
+              </View>
+              {!billingReady ? (
+                <View style={{ marginTop: 10, backgroundColor: C.yellowDim, borderWidth: 1, borderColor: C.yellow + '60', borderRadius: 10, padding: 10, flexDirection: 'row', gap: 8 }}>
+                  <DollarSign size={14} color={C.yellow} />
+                  <Text style={{ color: C.yellow, fontSize: 12, flex: 1 }}>Billing not set up. Add billing details in Company Profile to receive invoices for confirmed hours.</Text>
+                </View>
+              ) : null}
+            </View>
+          );
+        })() : null}
 
         {/* PPE Requirements */}
         <View style={styles.section}>

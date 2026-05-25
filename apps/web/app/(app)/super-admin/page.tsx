@@ -22,11 +22,15 @@ export default async function SuperAdminPage() {
     pendingCompaniesRes,
     openDisputesRes,
     pendingPhotosRes,
+    unpaidInvoicesRes,
+    pendingPayoutsRes,
   ] = await Promise.all([
     supabase.from("worker_certifications").select("id", { count: "exact", head: true }).eq("status", "Pending"),
     supabase.from("companies").select("id", { count: "exact", head: true }).in("status", ["PendingApproval", "Pending"]),
     supabase.from("disputes").select("id", { count: "exact", head: true }).in("status", ["Open", "UnderReview"]),
     supabase.from("worker_profiles").select("user_id", { count: "exact", head: true }).eq("work_photo_status", "Pending"),
+    supabase.from("employer_billing_overview").select("invoice_id", { count: "exact", head: true }).neq("status", "Paid").neq("status", "Void"),
+    supabase.from("worker_earnings_overview").select("payable_id", { count: "exact", head: true }).in("status", ["Pending", "Approved"]),
   ]);
 
   const tiles: Tile[] = [
@@ -87,6 +91,13 @@ export default async function SuperAdminPage() {
       title: "Analytics",
       description: "GMV, active companies, pending applications, fill-rate.",
       href: "/super-admin/analytics",
+    },
+    {
+      title: "Billing oversight",
+      description: "Unpaid employer invoices and pending worker payouts. Mark manual payments with reason (audited).",
+      href: "/super-admin/billing",
+      badge: (unpaidInvoicesRes.count ?? 0) + (pendingPayoutsRes.count ?? 0) || undefined,
+      badgeTone: ((unpaidInvoicesRes.count ?? 0) + (pendingPayoutsRes.count ?? 0)) > 0 ? "warning" : "default",
     },
   ];
 
