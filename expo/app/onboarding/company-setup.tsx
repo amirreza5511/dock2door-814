@@ -41,36 +41,49 @@ export default function CompanySetup() {
 
     setLoading(true);
     try {
+      console.log('[company-setup] calling setup_my_company', { name: name.trim(), city: city.trim(), type: companyType });
       const { error } = await supabase.rpc('setup_my_company', {
         p_name: name.trim(),
         p_city: city.trim(),
         p_type: companyType,
       });
       if (error) throw error;
-      // Best-effort: notify admins about the new pending company. Never blocks onboarding.
+      console.log('[company-setup] setup_my_company ok');
+
+      // Best-effort admin notification — never blocks onboarding.
       void (async () => {
-        const [adminsRes, companyRes] = await Promise.all([
-          supabase.from('user_roles').select('user_id').eq('role', 'admin'),
-          supabase.from('companies').select('id, name, type')
-            .eq('owner_user_id', user.id)
-            .order('created_at', { ascending: false })
-            .limit(1).maybeSingle(),
-        ]);
-        const admins = adminsRes.data ?? [];
-        const co = companyRes.data;
-        if (!co || admins.length === 0) return;
-        await Promise.all(admins.map((a) => supabase.from('notifications').insert({
-          user_id: a.user_id,
-          kind: 'company_pending',
-          title: 'New company pending approval',
-          body: `${co.name} (${(co.type as string | null) ?? companyType}) has registered and requires your review in Compliance.`,
-          entity_type: 'companies',
-          entity_id: co.id,
-        })));
+        try {
+          const [adminsRes, companyRes] = await Promise.all([
+            supabase.from('user_roles').select('user_id').eq('role', 'admin'),
+            supabase.from('companies').select('id, name, type')
+              .eq('owner_user_id', user.id)
+              .order('created_at', { ascending: false })
+              .limit(1).maybeSingle(),
+          ]);
+          const admins = adminsRes.data ?? [];
+          const co = companyRes.data;
+          if (!co || admins.length === 0) return;
+          await Promise.all(admins.map((a) => supabase.from('notifications').insert({
+            user_id: a.user_id,
+            kind: 'company_pending',
+            title: 'New company pending approval',
+            body: `${co.name} (${(co.type as string | null) ?? companyType}) has registered and requires your review in Compliance.`,
+            entity_type: 'companies',
+            entity_id: co.id,
+          })));
+        } catch (notifyErr) {
+          console.log('[company-setup] admin notify failed (non-blocking)', notifyErr);
+        }
       })();
-      await refresh();
+
+      // Kick off membership refresh in the background — do NOT await it.
+      // The membership query can take a moment and we don't want the spinner
+      // to hang the user on this screen. The next screen reads memberships
+      // from the same query and will pick up the new row when it lands.
+      void refresh();
       router.replace(getRoleRoute(user.role) as never);
     } catch (err) {
+      console.log('[company-setup] failed', err);
       Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create company');
     } finally {
       setLoading(false);
