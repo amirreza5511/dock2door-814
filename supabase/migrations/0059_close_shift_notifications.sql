@@ -1,7 +1,7 @@
 -- 0059_close_shift_notifications.sql
 -- Adds worker notifications to employer_close_shift_post.
 -- When an employer closes a shift, notify:
---   1. Workers with non-terminal applications (Pending / Withdrawn) — shift closed before they were selected.
+--   1. Workers with non-terminal applications (Applied / Withdrawn) — shift closed before they were selected.
 --   2. Workers with assignments (any status not already Cancelled/NoShow) — shift they were scheduled on closed.
 -- Each worker is notified at most once per close (DISTINCT user).
 -- Re-declares the function with the same signature + audit behaviour from 0049,
@@ -89,7 +89,7 @@ begin
     select distinct sa.worker_user_id as user_id, 'application'::text as source
       from public.shift_applications sa
      where sa.shift_id = p_shift_id
-       and sa.status in ('Pending', 'Withdrawn')
+       and sa.status in ('Applied', 'Withdrawn')
        and sa.worker_user_id is not null
     union
     -- Workers who had an assignment on this shift (any non-terminal-at-close status)
