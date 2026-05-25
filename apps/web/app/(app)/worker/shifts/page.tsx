@@ -145,6 +145,7 @@ export default function WorkerShiftsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">My shifts</h1>
         <p className="text-sm text-muted-foreground">Confirm attendance first — Clock-in is only available after you confirm. Required certifications must be Approved.</p>
+        <p className="mt-1 text-xs text-amber-600">Tip: the mobile app is recommended for clock-in/out so location and timestamps are captured accurately.</p>
       </div>
       <Card>
         <CardHeader><CardTitle>Assignments</CardTitle><CardDescription>{flat.length} total</CardDescription></CardHeader>

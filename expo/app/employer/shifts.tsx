@@ -724,7 +724,14 @@ export default function EmployerShifts() {
               label={rejectM.isPending ? 'Rejecting…' : 'Send Rejection'}
               onPress={() => {
                 if (!rejectFor) return;
-                const reason = rejectReason.trim() || 'Not selected for this shift';
+                const reason = rejectReason.trim();
+                if (reason.length < 10) {
+                  Alert.alert(
+                    'Reason required',
+                    'Please write a specific, professional reason (min 10 characters). The worker will see this in their Applications list.',
+                  );
+                  return;
+                }
                 rejectM.mutate(
                   { applicationId: rejectFor.applicationId, reason },
                   {
@@ -773,8 +780,8 @@ export default function EmployerShifts() {
               onPress={() => {
                 if (!cancelFor) return;
                 const reason = cancelReason.trim();
-                if (reason.length < 5) {
-                  Alert.alert('Reason required', 'Please enter a specific reason (at least 5 characters) so workers understand why.');
+                if (reason.length < 10) {
+                  Alert.alert('Reason required', 'Please enter a specific reason (at least 10 characters) so workers understand why.');
                   return;
                 }
                 setStatusM.mutate(

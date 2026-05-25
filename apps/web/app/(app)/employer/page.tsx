@@ -409,6 +409,9 @@ export default function EmployerPage() {
         <Link href="/employer/calendar">
           <Button variant="outline">Labour calendar</Button>
         </Link>
+        <Link href="/employer/hours">
+          <Button variant="outline">Hours &amp; attendance</Button>
+        </Link>
       </div>
 
       {/* Reject applicant dialog — reason required */}
@@ -420,7 +423,7 @@ export default function EmployerPage() {
           </p>
           <p className="text-xs text-muted-foreground">
             The worker will be notified with this reason. Keep it professional and non-discriminatory
-            (e.g. &ldquo;Position filled&rdquo;, &ldquo;Missing required certification&rdquo;). Minimum 5 characters.
+            (e.g. &ldquo;Position filled&rdquo;, &ldquo;Missing required certification&rdquo;). Minimum 10 characters.
           </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Reason *</Label>
@@ -439,7 +442,7 @@ export default function EmployerPage() {
             <Button
               size="sm"
               variant="destructive"
-              disabled={rejectReason.trim().length < 5 || rejectApp.isPending}
+              disabled={rejectReason.trim().length < 10 || rejectApp.isPending}
               onClick={() => rejectApp.mutate({ id: rejectTarget.id, reason: rejectReason.trim() })}
             >
               {rejectApp.isPending ? "Rejecting…" : "Confirm reject"}
@@ -557,7 +560,7 @@ export default function EmployerPage() {
             Cancel shift: <span className="font-semibold">{cancelTarget.title}</span>
           </p>
           <p className="text-xs text-muted-foreground">
-            This will notify all applicants and cannot be undone. Please provide a reason.
+            This will notify all applicants and cannot be undone. Please provide a specific reason (min 10 characters).
           </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Reason *</Label>
@@ -576,7 +579,7 @@ export default function EmployerPage() {
             <Button
               size="sm"
               variant="destructive"
-              disabled={!cancelReason.trim() || closeShift.isPending}
+              disabled={cancelReason.trim().length < 10 || closeShift.isPending}
               onClick={() => closeShift.mutate({ id: cancelTarget.id, reason: cancelReason.trim() })}
             >
               {closeShift.isPending ? "Cancelling…" : "Confirm cancel"}

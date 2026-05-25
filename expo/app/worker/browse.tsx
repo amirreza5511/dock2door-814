@@ -110,7 +110,16 @@ export default function BrowseShifts() {
 
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
 
-  const available = useMemo(() => shiftPosts.filter((s) => s.status === 'Posted'), [shiftPosts]);
+  const todayStr = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0);
+    return d.toISOString().slice(0, 10);
+  }, []);
+  // Only Posted shifts whose date is today or later are applyable.
+  // Filled / Cancelled / past-date shifts are filtered out so workers never see a doomed Apply button.
+  const available = useMemo(
+    () => shiftPosts.filter((s) => s.status === 'Posted' && s.date >= todayStr),
+    [shiftPosts, todayStr],
+  );
   const filtered = useMemo(() => available.filter((s) => {
     const matchQ = s.title.toLowerCase().includes(query.toLowerCase()) || s.locationCity.toLowerCase().includes(query.toLowerCase());
     const matchCat = filterCat === 'All' || s.category === filterCat;

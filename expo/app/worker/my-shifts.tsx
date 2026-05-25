@@ -510,12 +510,14 @@ export default function WorkerMyShifts() {
                   )}
                   {app.status === 'Rejected' && (
                     <View style={[styles.statusInfo, styles.rejectedInfo]}>
-                      <AlertTriangle size={14} color={C.red} />
+                      <AlertTriangle size={16} color={C.red} />
                       <View style={{ flex: 1 }}>
                         <Text style={styles.rejectedText}>Not selected</Text>
-                        {app.rejection_reason && (
-                          <Text style={styles.rejectedReason}>{app.rejection_reason}</Text>
-                        )}
+                        <Text style={styles.rejectedReason}>
+                          {app.rejection_reason?.trim()
+                            ? app.rejection_reason
+                            : 'Not selected for this shift.'}
+                        </Text>
                       </View>
                     </View>
                   )}
@@ -809,8 +811,8 @@ const styles = StyleSheet.create({
   acceptedText: { fontSize: 13, color: C.green, fontWeight: '700' as const },
   acceptedSub: { fontSize: 12, color: C.green + 'BB' },
   rejectedInfo: { backgroundColor: C.redDim, borderRadius: 8, padding: 10 },
-  rejectedText: { fontSize: 13, color: C.red, fontWeight: '700' as const },
-  rejectedReason: { fontSize: 12, color: C.red + 'BB', marginTop: 2 },
+  rejectedText: { fontSize: 14, color: C.red, fontWeight: '800' as const },
+  rejectedReason: { fontSize: 13, color: C.red, marginTop: 4, lineHeight: 18 },
   hoursRow: { flexDirection: 'row', gap: 20, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
   hoursStat: { gap: 2 },
   hoursVal: { fontSize: 18, fontWeight: '800' as const, color: C.text },
