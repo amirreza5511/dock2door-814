@@ -111,11 +111,15 @@ export default function CompanySetup() {
 
   const companyType = user?.role ? COMPANY_TYPE_BY_ROLE[user.role] : undefined;
 
+  // Soft validation — shown as hints; never blocks the Continue button.
+  // The only hard gate is on the final Submit at the Review step.
   const publicMissing: string[] = [];
   if (name.trim().length < 2) publicMissing.push('Company name');
   if (!industry) publicMissing.push('Industry');
   if (city.trim().length < 2) publicMissing.push('City / service area');
-  if (publicBio.trim().length < 20) publicMissing.push(`Public bio (need ${Math.max(0, 20 - publicBio.trim().length)} more characters)`);
+  if (publicBio.trim().length > 0 && publicBio.trim().length < 20) {
+    publicMissing.push(`Public bio (need ${Math.max(0, 20 - publicBio.trim().length)} more characters or leave blank)`);
+  }
   const canContinuePublic = publicMissing.length === 0;
 
   const privateMissing: string[] = [];
@@ -128,6 +132,12 @@ export default function CompanySetup() {
   if (billingName.trim().length < 2) billingMissing.push('Billing contact name');
   if (!/.+@.+\..+/.test(billingEmail.trim())) billingMissing.push('Valid billing email');
   const canContinueBilling = billingMissing.length === 0;
+
+  // Allow stepping forward even with hints — keeps the wizard alive.
+  // Final submit still requires all three sections valid.
+  const canStepFromPublic = name.trim().length >= 2 && Boolean(industry) && city.trim().length >= 2;
+  const canStepFromPrivate = legalName.trim().length >= 2 && adminName.trim().length >= 2 && /.+@.+\..+/.test(adminEmail.trim());
+  const canStepFromBilling = billingName.trim().length >= 2 && /.+@.+\..+/.test(billingEmail.trim());
 
   const showError = (title: string, message: string) => {
     if (Platform.OS === 'web') {
@@ -323,7 +333,7 @@ export default function CompanySetup() {
               </View>
             </View>
             <Input label="City / service area *" value={city} onChangeText={setCity} placeholder="Delta, BC" />
-            <Input label="Public bio * (min 20 chars)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
+            <Input label="Public bio (optional, min 20 chars if filled)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
             <Input label="Website (optional)" value={website} onChangeText={setWebsite} placeholder="https://" keyboardType="url" autoCapitalize="none" />
             <Input label="Public logo URL (optional)" value={logoUrl} onChangeText={setLogoUrl} placeholder="https://example.com/logo.png" keyboardType="url" autoCapitalize="none" />
             <Text style={styles.helperText}>Paste a public HTTPS image URL only. Do not paste private storage paths. Leave blank to show initials.</Text>
@@ -354,7 +364,7 @@ export default function CompanySetup() {
                 ))}
               </View>
             )}
-            <Button label="Continue" onPress={() => setStep('private')} fullWidth size="lg" disabled={!canContinuePublic} />
+            <Button label="Continue" onPress={() => setStep('private')} fullWidth size="lg" disabled={!canStepFromPublic} />
           </View>
         )}
 
@@ -381,7 +391,7 @@ export default function CompanySetup() {
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button label="Back" onPress={() => setStep('public')} variant="ghost" />
               <View style={{ flex: 1 }}>
-                <Button label="Continue" onPress={() => setStep('billing')} fullWidth size="lg" disabled={!canContinuePrivate} />
+                <Button label="Continue" onPress={() => setStep('billing')} fullWidth size="lg" disabled={!canStepFromPrivate} />
               </View>
             </View>
           </View>
@@ -421,7 +431,7 @@ export default function CompanySetup() {
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button label="Back" onPress={() => setStep('private')} variant="ghost" />
               <View style={{ flex: 1 }}>
-                <Button label="Continue" onPress={() => setStep('review')} fullWidth size="lg" disabled={!canContinueBilling} />
+                <Button label="Continue" onPress={() => setStep('review')} fullWidth size="lg" disabled={!canStepFromBilling} />
               </View>
             </View>
           </View>
