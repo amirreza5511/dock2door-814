@@ -68,6 +68,44 @@ export default function EmployerPage() {
   const [shiftsPage, setShiftsPage] = useState(1);
   const [appsPage, setAppsPage] = useState(1);
 
+  // Company readiness — drives the dashboard's Profile / Billing / Approval card.
+  const readinessQ = useQuery({
+    queryKey: ["employer", "company-readiness"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data: m } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .eq("status", "Active")
+        .limit(1)
+        .maybeSingle();
+      if (!m?.company_id) return null;
+      const { data: c } = await supabase
+        .from("companies")
+        .select("id, name, status, industry, public_bio, legal_business_name, admin_contact_email, billing_setup_completed_at, profile_completed_at, verified_at, approval_rejection_reason, submitted_for_approval_at")
+        .eq("id", m.company_id)
+        .maybeSingle();
+      return c as null | {
+        id: string; name: string | null; status: string | null;
+        industry: string | null; public_bio: string | null; legal_business_name: string | null; admin_contact_email: string | null;
+        billing_setup_completed_at: string | null; profile_completed_at: string | null;
+        verified_at: string | null; approval_rejection_reason: string | null; submitted_for_approval_at: string | null;
+      };
+    },
+  });
+  const readiness = readinessQ.data;
+  const profileReady = Boolean(
+    readiness?.profile_completed_at ||
+      (readiness?.industry && (readiness?.public_bio?.length ?? 0) >= 20 && readiness?.legal_business_name && readiness?.admin_contact_email),
+  );
+  const billingReady = Boolean(readiness?.billing_setup_completed_at);
+  const approvalStatus = readiness?.status ?? "";
+  const verified = Boolean(readiness?.verified_at) && (approvalStatus === "Approved" || approvalStatus === "Active");
+  const blockedStatus = approvalStatus === "Rejected" || approvalStatus === "Suspended";
+  const showReadiness = Boolean(readiness) && (!profileReady || !billingReady || blockedStatus || !verified);
+
   const shiftsQ = useQuery({
     queryKey: ["employer", "shifts", shiftsPage],
     queryFn: async () => {
@@ -383,6 +421,57 @@ export default function EmployerPage() {
           <Button>+ Post shift</Button>
         </Link>
       </div>
+
+      {/* Company readiness — profile, billing, approval status */}
+      {showReadiness && (
+        <Card className={blockedStatus ? "border-destructive/40" : "border-yellow-300/60"}>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {blockedStatus ? `Company ${approvalStatus}` : "Finish setting up your company"}
+            </CardTitle>
+            <CardDescription>
+              {blockedStatus
+                ? readiness?.approval_rejection_reason || "Shift posting is disabled. Contact support to resolve."
+                : "Workers and Super Admin see this profile when reviewing your shifts. Paid shifts cannot be posted until all required pieces are in place."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2 text-sm">
+              <li className="flex items-center gap-2">
+                <span className={profileReady ? "text-green-600" : "text-muted-foreground"}>{profileReady ? "\u2713" : "\u25CB"}</span>
+                <span className={profileReady ? "" : "font-medium"}>Company profile (industry, bio, legal name, admin contact)</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className={billingReady ? "text-green-600" : "text-muted-foreground"}>{billingReady ? "\u2713" : "\u25CB"}</span>
+                <span className={billingReady ? "" : "font-medium"}>Billing setup (so invoices can be issued for confirmed hours)</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <span className={verified ? "text-green-600" : "text-muted-foreground"}>{verified ? "\u2713" : "\u25CB"}</span>
+                <span className={verified ? "" : "font-medium"}>
+                  Super Admin approval ({approvalStatus || (readiness?.submitted_for_approval_at ? "Pending" : "Not submitted")})
+                </span>
+              </li>
+            </ul>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {!profileReady && (
+                <Link href={readiness ? `/company/${readiness.id}` : "/employer"}>
+                  <Button size="sm" variant="outline">Complete company profile</Button>
+                </Link>
+              )}
+              {!billingReady && (
+                <Link href="/employer/billing">
+                  <Button size="sm" variant="outline">Set up billing</Button>
+                </Link>
+              )}
+              {readiness && (
+                <Link href={`/company/${readiness.id}`}>
+                  <Button size="sm" variant="ghost">View public worker preview</Button>
+                </Link>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats row */}
       <div className="grid gap-4 md:grid-cols-4">
