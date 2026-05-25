@@ -106,6 +106,8 @@ export default function EmployerShifts() {
   const [noShowLoading, setNoShowLoading] = useState(false);
   const [rejectFor, setRejectFor] = useState<RejectTarget | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [cancelFor, setCancelFor] = useState<ShiftPost | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   const myShifts = useMemo(
     () => shiftPosts
@@ -675,7 +677,8 @@ export default function EmployerShifts() {
                     <Button
                       label="Cancel Shift"
                       onPress={() => {
-                        setStatusM.mutate({ id: selected.id, status: 'Cancelled' });
+                        setCancelFor(selected);
+                        setCancelReason('');
                         setDetailModal(false);
                       }}
                       variant="danger"
@@ -730,6 +733,58 @@ export default function EmployerShifts() {
             <Button
               label="Cancel"
               onPress={() => { setRejectFor(null); setRejectReason(''); }}
+              variant="ghost"
+              fullWidth
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Cancel Shift Modal — real reason required, sent to all applicants/assigned workers via cancel_shift_with_reason → 0059 notifications */}
+      <Modal visible={!!cancelFor} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setCancelFor(null)}>
+        <View style={[styles.modal, { paddingBottom: 40, paddingHorizontal: 20, paddingTop: 20, gap: 14 }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.noShowModalTitle}>Cancel Shift</Text>
+          <Text style={styles.noShowModalSub}>
+            {cancelFor ? `"${cancelFor.title}" on ${cancelFor.date}.` : ''} All applicants and assigned workers will be notified with your reason. Please be specific.
+          </Text>
+          <TextInput
+            value={cancelReason}
+            onChangeText={setCancelReason}
+            placeholder="Reason (e.g. Project postponed, weather, customer cancelled)"
+            placeholderTextColor={C.textMuted}
+            style={styles.noShowInput}
+            multiline
+            numberOfLines={4}
+            autoFocus
+          />
+          <View style={{ gap: 10 }}>
+            <Button
+              label={setStatusM.isPending ? 'Cancelling…' : 'Confirm Cancellation'}
+              onPress={() => {
+                if (!cancelFor) return;
+                const reason = cancelReason.trim();
+                if (reason.length < 5) {
+                  Alert.alert('Reason required', 'Please enter a specific reason (at least 5 characters) so workers understand why.');
+                  return;
+                }
+                setStatusM.mutate(
+                  { id: cancelFor.id, status: 'Cancelled', reason },
+                  {
+                    onSuccess: () => { setCancelFor(null); setCancelReason(''); },
+                    onError: (e: Error) => Alert.alert('Unable to cancel', e.message),
+                  },
+                );
+              }}
+              loading={setStatusM.isPending}
+              variant="danger"
+              fullWidth
+              size="lg"
+              icon={<XCircle size={15} color={C.white} />}
+            />
+            <Button
+              label="Keep Shift"
+              onPress={() => { setCancelFor(null); setCancelReason(''); }}
               variant="ghost"
               fullWidth
             />
