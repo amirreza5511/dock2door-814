@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star, Globe, Building2, ExternalLink, MessageSquare } from 'lucide-react-native';
+import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -125,6 +126,17 @@ interface OwnReviewRow {
   created_at: string;
   reviewer_company_id: string | null;
   reviewer_company: { name: string } | null;
+}
+
+type ViewMode = 'mine' | 'employer' | 'public';
+
+interface PendingRatingRow {
+  assignment_id: string;
+  shift_id: string;
+  employer_company_id: string;
+  shift_title: string | null;
+  ended_at: string;
+  company_name: string | null;
 }
 
 interface PrivateInfo {
@@ -327,6 +339,11 @@ export default function WorkerProfile() {
 
   // ── Photo & cert state ───────────────────────────────────────────
   const [photoVisibility, setPhotoVisibility] = useState<'private' | 'company' | 'public'>('company');
+  const [uploadVisibility, setUploadVisibility] = useState<'private' | 'company' | 'public'>('company');
+  const [showUploadPicker, setShowUploadPicker] = useState(false);
+
+  // ── Preview mode (Private / Employer / Public) ──────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>('mine');
   const [addingCert, setAddingCert] = useState(false);
   const [certType, setCertType] = useState<CertType>('Forklift');
   const [certExpiry, setCertExpiry] = useState('');
@@ -509,7 +526,7 @@ export default function WorkerProfile() {
       if (picked.canceled || !picked.assets?.[0]) return null;
       const asset = picked.assets[0];
       const blob = await assetToBlob(asset);
-      const { data: row, error: insertErr } = await supabase.from('work_photos').insert({ worker_user_id: user.id, file_path: 'pending', caption: '', visibility: photoVisibility, moderation_status: 'pending' }).select('id').single();
+      const { data: row, error: insertErr } = await supabase.from('work_photos').insert({ worker_user_id: user.id, file_path: 'pending', caption: '', visibility: uploadVisibility, moderation_status: 'pending' }).select('id').single();
       if (insertErr || !row) throw new Error(insertErr?.message ?? 'Unable to create photo');
       const id = row.id as string;
       const path = buildWorkerPhotoPath(user.id, id, `work-${Date.now()}.jpg`);
@@ -725,6 +742,52 @@ export default function WorkerProfile() {
     return photos.filter((p) => p.visibility === 'public');
   }, [photosQuery.data, photoVisibility]);
 
+  const photoCounts = useMemo(() => {
+    const photos = photosQuery.data ?? [];
+    return {
+      private: photos.filter((p) => p.visibility === 'private').length,
+      company: photos.filter((p) => p.visibility === 'company').length,
+      public: photos.filter((p) => p.visibility === 'public').length,
+    };
+  }, [photosQuery.data]);
+
+  // ── Pending ratings: completed shifts the worker has not yet rated ──
+  const pendingRatingsQuery = useQuery({
+    queryKey: ['worker-pending-ratings', user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async (): Promise<PendingRatingRow[]> => {
+      if (!user) return [];
+      const { data: assignments } = await supabase
+        .from('shift_assignments')
+        .select('id, shift_id, employer_company_id, status, shift:shift_id(title, end_at, company:employer_company_id(name))')
+        .eq('worker_user_id', user.id)
+        .in('status', ['Completed', 'HoursConfirmed'])
+        .order('id', { ascending: false })
+        .limit(20);
+      const rows = (assignments ?? []) as Array<{ id: string; shift_id: string; employer_company_id: string; shift: { title: string | null; end_at: string | null; company: { name: string | null } | null } | null }>;
+      if (rows.length === 0) return [];
+      const { data: existing } = await supabase
+        .from('reviews')
+        .select('context_id')
+        .eq('reviewer_user_id', user.id)
+        .eq('context_kind', 'shift_assignment')
+        .in('context_id', rows.map((r) => r.id));
+      const reviewed = new Set((existing ?? []).map((e) => (e as { context_id: string }).context_id));
+      return rows
+        .filter((r) => !reviewed.has(r.id))
+        .map((r) => ({
+          assignment_id: r.id,
+          shift_id: r.shift_id,
+          employer_company_id: r.employer_company_id,
+          shift_title: r.shift?.title ?? null,
+          ended_at: r.shift?.end_at ?? '',
+          company_name: r.shift?.company?.name ?? null,
+        }))
+        .slice(0, 5);
+    },
+    staleTime: 30_000,
+  });
+
   if (bootstrapLoading && !profile) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
@@ -757,6 +820,61 @@ export default function WorkerProfile() {
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
 
+        {/* ── Preview mode tabs ── */}
+        <View style={styles.viewTabsWrap}>
+          <Text style={styles.viewTabsLabel}>Viewing your profile as:</Text>
+          <View style={styles.viewTabsRow}>
+            {([
+              { key: 'mine' as const, label: 'My View', icon: <User size={13} color={viewMode === 'mine' ? C.accent : C.textMuted} /> },
+              { key: 'employer' as const, label: 'Employer View', icon: <Building2 size={13} color={viewMode === 'employer' ? C.accent : C.textMuted} /> },
+              { key: 'public' as const, label: 'Public View', icon: <Globe size={13} color={viewMode === 'public' ? C.accent : C.textMuted} /> },
+            ]).map((t) => (
+              <TouchableOpacity key={t.key} onPress={() => setViewMode(t.key)} style={[styles.viewTab, viewMode === t.key && styles.viewTabActive]}>
+                {t.icon}
+                <Text style={[styles.viewTabText, viewMode === t.key && styles.viewTabTextActive]}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {viewMode === 'employer' && (
+            <View style={[styles.previewBanner, { backgroundColor: C.blueDim, borderColor: C.blue + '40' }]}>
+              <Building2 size={12} color={C.blue} />
+              <Text style={[styles.previewBannerText, { color: C.blue }]}>This is what employers see when reviewing your application. Private info, Government ID, bank details and tax info are never shown.</Text>
+            </View>
+          )}
+          {viewMode === 'public' && (
+            <View style={[styles.previewBanner, { backgroundColor: C.greenDim, borderColor: C.green + '40' }]}>
+              <Globe size={12} color={C.green} />
+              <Text style={[styles.previewBannerText, { color: C.green }]}>This is the public-facing profile. Only public-visible photos and approved credentials appear here.</Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── Pending rating action ── */}
+        {viewMode === 'mine' && (pendingRatingsQuery.data ?? []).length > 0 && (
+          <Card style={styles.pendingRateCard}>
+            <View style={styles.pendingRateHeader}>
+              <Star size={14} color={C.yellow} fill={C.yellow} />
+              <Text style={styles.pendingRateTitle}>Rate your recent employer{(pendingRatingsQuery.data ?? []).length > 1 ? 's' : ''}</Text>
+            </View>
+            {(pendingRatingsQuery.data ?? []).slice(0, 3).map((p) => (
+              <TouchableOpacity
+                key={p.assignment_id}
+                onPress={() => router.push('/worker/my-shifts')}
+                style={styles.pendingRateRow}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingRateShift}>{p.shift_title ?? 'Shift'}</Text>
+                  <Text style={styles.pendingRateCompany}>{p.company_name ?? 'Employer'}</Text>
+                </View>
+                <View style={styles.pendingRateBtn}>
+                  <Text style={styles.pendingRateBtnText}>Rate Now</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </Card>
+        )}
+
         {/* ── Hero ── */}
         <View style={styles.profileCard}>
           <TouchableOpacity style={styles.avatarWrap} onPress={() => uploadProfilePhotoMutation.mutate()}>
@@ -786,38 +904,69 @@ export default function WorkerProfile() {
           </View>
         </View>
 
-        {/* ── My Ratings ── */}
-        {ratingSummaryQuery.data && Number(ratingSummaryQuery.data.count) > 0 && (
-          <Card style={styles.ratingsCard}>
-            <View style={styles.ratingsHeaderRow}>
-              <Star size={15} color={C.yellow} fill={C.yellow} />
-              <Text style={styles.ratingsTitle}>My Employer Ratings</Text>
-              <Text style={styles.ratingsAvgNum}>{Number(ratingSummaryQuery.data.avg_rating).toFixed(1)}</Text>
-            </View>
-            <View style={styles.ratingsStarsRow}>
-              {[1, 2, 3, 4, 5].map((n) => (
-                <Star
-                  key={n}
-                  size={13}
-                  color={n <= Math.round(Number(ratingSummaryQuery.data!.avg_rating)) ? C.yellow : C.border}
-                  fill={n <= Math.round(Number(ratingSummaryQuery.data!.avg_rating)) ? C.yellow : 'transparent'}
-                />
-              ))}
-              <Text style={styles.ratingsCount}>{ratingSummaryQuery.data.count} review{Number(ratingSummaryQuery.data.count) === 1 ? '' : 's'}</Text>
-            </View>
-            {(ownReviewsQuery.data ?? []).map((r) => (
-              <View key={r.id} style={styles.reviewRow}>
-                <View style={styles.reviewStarsSmall}>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <Star key={n} size={10} color={n <= r.rating ? C.yellow : C.border} fill={n <= r.rating ? C.yellow : 'transparent'} />
-                  ))}
-                  <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
-                </View>
-                {r.comment ? <Text style={styles.reviewComment}>&quot;{r.comment}&quot;</Text> : null}
-                {r.reviewer_company?.name ? <Text style={styles.reviewerName}>— {r.reviewer_company.name}</Text> : null}
+        {/* ── Ratings & Reviews (always shown) ── */}
+        {(() => {
+          const count = Number(ratingSummaryQuery.data?.count ?? 0);
+          const avg = Number(ratingSummaryQuery.data?.avg_rating ?? 0);
+          const reviews = ownReviewsQuery.data ?? [];
+          return (
+            <Card style={styles.ratingsCard}>
+              <View style={styles.ratingsHeaderRow}>
+                <Star size={15} color={C.yellow} fill={C.yellow} />
+                <Text style={styles.ratingsTitle}>Ratings & Reviews</Text>
+                {count > 0 && <Text style={styles.ratingsAvgNum}>{avg.toFixed(1)}</Text>}
               </View>
-            ))}
-          </Card>
+              {count === 0 ? (
+                <Text style={styles.ratingsEmptyText}>No reviews yet. Complete shifts to build your rating.</Text>
+              ) : (
+                <>
+                  <View style={styles.ratingsStarsRow}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <Star
+                        key={n}
+                        size={13}
+                        color={n <= Math.round(avg) ? C.yellow : C.border}
+                        fill={n <= Math.round(avg) ? C.yellow : 'transparent'}
+                      />
+                    ))}
+                    <Text style={styles.ratingsCount}>{count} review{count === 1 ? '' : 's'}</Text>
+                  </View>
+                  {reviews.slice(0, 3).map((r) => (
+                    <View key={r.id} style={styles.reviewRow}>
+                      <View style={styles.reviewStarsSmall}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} size={10} color={n <= r.rating ? C.yellow : C.border} fill={n <= r.rating ? C.yellow : 'transparent'} />
+                        ))}
+                        <Text style={styles.reviewDate}>{new Date(r.created_at).toLocaleDateString()}</Text>
+                      </View>
+                      {r.comment ? <Text style={styles.reviewComment}>&quot;{r.comment}&quot;</Text> : null}
+                      {r.reviewer_company?.name ? <Text style={styles.reviewerName}>— {r.reviewer_company.name}</Text> : null}
+                    </View>
+                  ))}
+                  {count > 3 && user?.id && (
+                    <TouchableOpacity onPress={() => router.push(`/reviews/worker/${user.id}` as any)} style={styles.viewAllReviewsBtn}>
+                      <MessageSquare size={12} color={C.accent} />
+                      <Text style={styles.viewAllReviewsText}>View all {count} reviews</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </Card>
+          );
+        })()}
+
+        {/* ── Quick nav buttons ── */}
+        {viewMode === 'mine' && user?.id && (
+          <View style={styles.quickNavRow}>
+            <TouchableOpacity onPress={() => router.push(`/worker/${user.id}` as any)} style={styles.quickNavBtn} activeOpacity={0.8}>
+              <ExternalLink size={13} color={C.accent} />
+              <Text style={styles.quickNavText}>Open Public Profile</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push(`/reviews/worker/${user.id}` as any)} style={styles.quickNavBtn} activeOpacity={0.8}>
+              <MessageSquare size={13} color={C.accent} />
+              <Text style={styles.quickNavText}>All Reviews</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* ── Stats ── */}
@@ -866,7 +1015,9 @@ export default function WorkerProfile() {
         {/* ════════════════════════════════════════
             SECTION: Identity & Legal Documents
             (most important — employers and platform need these)
+            Hidden in Employer/Public preview — these are private to worker & admin.
         ════════════════════════════════════════ */}
+        {viewMode === 'mine' && (
         <View style={styles.section}>
           <View style={styles.sectionHeaderCard}>
             <Shield size={15} color={C.accent} />
@@ -940,17 +1091,43 @@ export default function WorkerProfile() {
             />
           </Card>
         </View>
+        )}
 
         {/* ════════════════════════════════════════
             SECTION: Work Certifications
+            In employer/public preview: show only Approved certs as badges.
         ════════════════════════════════════════ */}
         <View style={styles.section}>
           <SectionHeader
-            title="Work Certifications"
-            action={addingCert ? 'Cancel' : '+ Add'}
-            onAction={() => setAddingCert((v) => !v)}
+            title={viewMode === 'mine' ? 'Work Certifications' : 'Approved Qualifications'}
+            action={viewMode === 'mine' ? (addingCert ? 'Cancel' : '+ Add') : undefined}
+            onAction={viewMode === 'mine' ? () => setAddingCert((v) => !v) : undefined}
           />
 
+          {viewMode !== 'mine' && (
+            (() => {
+              const approved = workCerts.filter((c) => c.status === 'Approved');
+              if (approved.length === 0) {
+                return <Card><Text style={styles.noCertText}>No approved qualifications yet.</Text></Card>;
+              }
+              return (
+                <View style={styles.qualBadgeRow}>
+                  {approved.map((c) => (
+                    <View key={c.id} style={styles.qualBadge}>
+                      <Award size={12} color={C.green} />
+                      <Text style={styles.qualBadgeText}>{c.type}</Text>
+                      {c.expiry_date && <Text style={styles.qualBadgeExpiry}>exp. {c.expiry_date}</Text>}
+                    </View>
+                  ))}
+                </View>
+              );
+            })()
+          )}
+
+          {viewMode === 'mine' && <></>}
+          {viewMode === 'mine' && (
+
+          <>
           {addingCert && (
             <Card elevated style={styles.formGap}>
               <Text style={styles.formTitle}>Upload Certification</Text>
@@ -1001,6 +1178,8 @@ export default function WorkerProfile() {
               );
             })
           )}
+          </>
+          )}
         </View>
 
         {/* ════════════════════════════════════════
@@ -1047,56 +1226,125 @@ export default function WorkerProfile() {
 
         {/* ════════════════════════════════════════
             SECTION: Work Photos
+            In Employer view: shows company + public approved photos only.
+            In Public view: shows public approved only.
+            In My view: filterable by visibility tab + per-photo badge + upload visibility selector.
         ════════════════════════════════════════ */}
         <View style={styles.section}>
           <SectionHeader
             title="Work Photos"
-            action="+ Upload"
-            onAction={() => uploadWorkPhotoMutation.mutate()}
+            action={viewMode === 'mine' ? (showUploadPicker ? 'Cancel' : '+ Upload') : undefined}
+            onAction={viewMode === 'mine' ? () => setShowUploadPicker((v) => !v) : undefined}
           />
-          <Text style={styles.visibilityLabel}>Show &amp; upload as:</Text>
-          <View style={styles.visibilityRow}>
-            {(['private', 'company', 'public'] as const).map((v) => (
-              <TouchableOpacity
-                key={v}
-                onPress={() => setPhotoVisibility(v)}
-                style={[styles.visibilityChip, photoVisibility === v && styles.visibilityActive]}
-              >
-                <Eye size={11} color={photoVisibility === v ? C.accent : C.textMuted} />
-                <Text style={[styles.visibilityText, photoVisibility === v && styles.visibilityTextActive]}>{v}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {photoVisibility === 'company' && (
-            <Text style={styles.visibilityHint}>Showing photos visible to employers (company + public)</Text>
+
+          {viewMode === 'mine' && showUploadPicker && (
+            <Card elevated style={[styles.formGap, { marginBottom: 12 }]}>
+              <Text style={styles.formTitle}>Choose visibility for this photo</Text>
+              <View style={styles.uploadVisRow}>
+                <TouchableOpacity onPress={() => setUploadVisibility('private')} style={[styles.uploadVisChip, uploadVisibility === 'private' && styles.uploadVisChipActive]}>
+                  <Lock size={13} color={uploadVisibility === 'private' ? C.purple : C.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.uploadVisTitle, uploadVisibility === 'private' && { color: C.purple }]}>Private</Text>
+                    <Text style={styles.uploadVisSub}>Only you</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setUploadVisibility('company')} style={[styles.uploadVisChip, uploadVisibility === 'company' && styles.uploadVisChipActive]}>
+                  <Building2 size={13} color={uploadVisibility === 'company' ? C.blue : C.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.uploadVisTitle, uploadVisibility === 'company' && { color: C.blue }]}>Company</Text>
+                    <Text style={styles.uploadVisSub}>Employers you work with</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setUploadVisibility('public')} style={[styles.uploadVisChip, uploadVisibility === 'public' && styles.uploadVisChipActive]}>
+                  <Globe size={13} color={uploadVisibility === 'public' ? C.green : C.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.uploadVisTitle, uploadVisibility === 'public' && { color: C.green }]}>Public</Text>
+                    <Text style={styles.uploadVisSub}>Public profile</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+              <Button
+                label={uploadWorkPhotoMutation.isPending ? 'Uploading…' : `Upload as ${uploadVisibility}`}
+                onPress={() => { uploadWorkPhotoMutation.mutate(); setShowUploadPicker(false); }}
+                disabled={uploadWorkPhotoMutation.isPending}
+                fullWidth
+                icon={<Upload size={15} color={C.white} />}
+              />
+              <Text style={styles.hint}>Photos are reviewed by admin before becoming visible.</Text>
+            </Card>
           )}
-          {photoVisibility === 'public' && (
-            <Text style={styles.visibilityHint}>Showing photos visible to everyone (public only)</Text>
+
+          {viewMode === 'mine' && (
+            <>
+              <Text style={styles.visibilityLabel}>Show photos as:</Text>
+              <View style={styles.visibilityRow}>
+                <TouchableOpacity onPress={() => setPhotoVisibility('private')} style={[styles.visibilityChip, photoVisibility === 'private' && styles.visibilityActive]}>
+                  <Lock size={11} color={photoVisibility === 'private' ? C.accent : C.textMuted} />
+                  <Text style={[styles.visibilityText, photoVisibility === 'private' && styles.visibilityTextActive]}>All ({photosQuery.data?.length ?? 0})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPhotoVisibility('company')} style={[styles.visibilityChip, photoVisibility === 'company' && styles.visibilityActive]}>
+                  <Building2 size={11} color={photoVisibility === 'company' ? C.accent : C.textMuted} />
+                  <Text style={[styles.visibilityText, photoVisibility === 'company' && styles.visibilityTextActive]}>Employers see ({photoCounts.company + photoCounts.public})</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setPhotoVisibility('public')} style={[styles.visibilityChip, photoVisibility === 'public' && styles.visibilityActive]}>
+                  <Globe size={11} color={photoVisibility === 'public' ? C.accent : C.textMuted} />
+                  <Text style={[styles.visibilityText, photoVisibility === 'public' && styles.visibilityTextActive]}>Public ({photoCounts.public})</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.visibilityHint}>
+                {photoVisibility === 'private' && 'Showing every photo you uploaded — only you see this combined view.'}
+                {photoVisibility === 'company' && 'Showing the photos employers see when reviewing your application.'}
+                {photoVisibility === 'public' && 'Showing photos visible on your public profile.'}
+              </Text>
+            </>
           )}
-          {photoVisibility === 'private' && (
-            <Text style={styles.visibilityHint}>Showing all your photos (only you can see this view)</Text>
-          )}
-          {displayedPhotos.length === 0 ? (
-            <Card><Text style={styles.noCertText}>{photoVisibility === 'private' ? 'No work photos uploaded yet.' : `No ${photoVisibility}-visible photos yet.`}</Text></Card>
-          ) : (
-            <View style={styles.photoGrid}>
-              {displayedPhotos.map((p) => (
-                <View key={p.id} style={styles.photoCell}>
-                  {p.signed_url ? (
-                    <Image source={{ uri: p.signed_url }} style={styles.photoImage} />
-                  ) : (
-                    <View style={styles.photoPlaceholder}><Camera size={18} color={C.textMuted} /></View>
-                  )}
-                  <Text style={styles.photoMeta}>{`${p.visibility} · ${p.moderation_status}`}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+
+          {(() => {
+            const approvedOnly = (photosQuery.data ?? []).filter((p) => p.moderation_status === 'approved');
+            const employerVisible = approvedOnly.filter((p) => p.visibility === 'company' || p.visibility === 'public');
+            const publicVisible = approvedOnly.filter((p) => p.visibility === 'public');
+            const list = viewMode === 'mine' ? displayedPhotos : viewMode === 'employer' ? employerVisible : publicVisible;
+            if (list.length === 0) {
+              const emptyText =
+                viewMode === 'mine'
+                  ? (photoVisibility === 'private' ? 'No work photos uploaded yet. Tap +Upload above.' : `No ${photoVisibility === 'company' ? 'employer-visible' : 'public-visible'} photos yet. Upload a photo and set visibility to ${photoVisibility === 'company' ? 'Company' : 'Public'}.`)
+                  : viewMode === 'employer'
+                  ? 'No employer-visible photos yet.'
+                  : 'No public-visible photos yet.';
+              return <Card><Text style={styles.noCertText}>{emptyText}</Text></Card>;
+            }
+            return (
+              <View style={styles.photoGrid}>
+                {list.map((p) => {
+                  const visColor = p.visibility === 'public' ? C.green : p.visibility === 'company' ? C.blue : C.purple;
+                  const VIcon = p.visibility === 'public' ? Globe : p.visibility === 'company' ? Building2 : Lock;
+                  return (
+                    <View key={p.id} style={styles.photoCell}>
+                      {p.signed_url ? (
+                        <Image source={{ uri: p.signed_url }} style={styles.photoImage} />
+                      ) : (
+                        <View style={styles.photoPlaceholder}><Camera size={18} color={C.textMuted} /></View>
+                      )}
+                      <View style={[styles.photoVisBadge, { backgroundColor: visColor + '22' }]}>
+                        <VIcon size={9} color={visColor} />
+                        <Text style={[styles.photoVisBadgeText, { color: visColor }]}>{p.visibility}</Text>
+                      </View>
+                      {viewMode === 'mine' && (
+                        <Text style={styles.photoMeta}>{p.moderation_status}</Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })()}
         </View>
 
         {/* ════════════════════════════════════════
             SECTION: Private & Financial Information
+            Hidden entirely in Employer/Public preview — never shared.
         ════════════════════════════════════════ */}
+        {viewMode === 'mine' && (
         <View style={styles.section}>
           <TouchableOpacity
             onPress={() => setPrivateExpanded((v) => !v)}
@@ -1172,9 +1420,10 @@ export default function WorkerProfile() {
             </Card>
           )}
         </View>
+        )}
 
         {/* ════════════════════════════════════════
-            SECTION: Edit Resume (collapsed form)
+            SECTION: Edit Resume (collapsed form, My view only)
         ════════════════════════════════════════ */}
         {editing && (
           <View style={styles.section}>
@@ -1214,8 +1463,8 @@ export default function WorkerProfile() {
           </View>
         )}
 
-        {/* ── Log out ── */}
-        {!editing && (
+        {/* ── Log out (My view only) ── */}
+        {!editing && viewMode === 'mine' && (
           <View style={[styles.section, { marginTop: 8 }]}>
             <TouchableOpacity
               onPress={() => {
@@ -1368,7 +1617,55 @@ const styles = StyleSheet.create({
   reviewerName: { fontSize: 11, color: C.textMuted },
   loadingText: { fontSize: 14, color: C.textSecondary },
   visibilityLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 6 },
-  visibilityHint: { fontSize: 11, color: C.textMuted, fontStyle: 'italic' as const, marginBottom: 8 },
+  visibilityHint: { fontSize: 11, color: C.textMuted, fontStyle: 'italic' as const, marginBottom: 10 },
+
+  // Preview tabs
+  viewTabsWrap: { marginBottom: 14, gap: 8 },
+  viewTabsLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  viewTabsRow: { flexDirection: 'row' as const, gap: 6, backgroundColor: C.card, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: C.border },
+  viewTab: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 5, paddingVertical: 8, borderRadius: 8 },
+  viewTabActive: { backgroundColor: C.accentDim },
+  viewTabText: { fontSize: 12, fontWeight: '700' as const, color: C.textMuted },
+  viewTabTextActive: { color: C.accent },
+  previewBanner: { flexDirection: 'row' as const, alignItems: 'flex-start' as const, gap: 6, borderRadius: 8, padding: 10, borderWidth: 1 },
+  previewBannerText: { flex: 1, fontSize: 11, lineHeight: 16, fontWeight: '600' as const },
+
+  // Pending rating
+  pendingRateCard: { marginBottom: 14, gap: 10, backgroundColor: C.yellowDim, borderColor: C.yellow + '40', borderWidth: 1 },
+  pendingRateHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 },
+  pendingRateTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  pendingRateRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, padding: 10, backgroundColor: C.bgSecondary, borderRadius: 8, borderWidth: 1, borderColor: C.border },
+  pendingRateShift: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  pendingRateCompany: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  pendingRateBtn: { backgroundColor: C.accent, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8 },
+  pendingRateBtnText: { fontSize: 12, color: C.white, fontWeight: '700' as const },
+
+  // Quick nav
+  quickNavRow: { flexDirection: 'row' as const, gap: 8, marginBottom: 18 },
+  quickNavBtn: { flex: 1, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 6, paddingVertical: 10, backgroundColor: C.accentDim, borderRadius: 10, borderWidth: 1, borderColor: C.accent + '40' },
+  quickNavText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+
+  // Ratings empty
+  ratingsEmptyText: { fontSize: 13, color: C.textMuted, lineHeight: 18, fontStyle: 'italic' as const },
+  viewAllReviewsBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 5, paddingVertical: 8, marginTop: 4 },
+  viewAllReviewsText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+
+  // Qualification badges (employer/public view)
+  qualBadgeRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+  qualBadge: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 5, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: C.greenDim, borderRadius: 8, borderWidth: 1, borderColor: C.green + '40' },
+  qualBadgeText: { fontSize: 12, color: C.green, fontWeight: '700' as const },
+  qualBadgeExpiry: { fontSize: 10, color: C.textMuted },
+
+  // Upload visibility picker
+  uploadVisRow: { gap: 8 },
+  uploadVisChip: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, padding: 12, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  uploadVisChipActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  uploadVisTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  uploadVisSub: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+
+  // Per-photo badge
+  photoVisBadge: { position: 'absolute' as const, top: 4, left: 4, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 3, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  photoVisBadgeText: { fontSize: 9, fontWeight: '700' as const, textTransform: 'capitalize' as const },
 
   // Logout
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40' },
