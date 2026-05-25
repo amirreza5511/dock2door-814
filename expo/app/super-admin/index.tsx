@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
-  Users, FileText, Clock, ChevronRight,
+  Users, FileText, Clock, ChevronRight, Bell, AlertCircle,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Card from '@/components/ui/Card';
@@ -22,6 +22,23 @@ export default function SuperAdminOverviewScreen() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const dashboardQuery = trpc.admin.dashboard.useQuery();
+
+  // Unread notifications
+  const notifCountQ = useQuery({
+    queryKey: ['notif-unread-count', user?.id],
+    queryFn: async (): Promise<number> => {
+      if (!user?.id) return 0;
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('read', false);
+      return count ?? 0;
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+  const unreadCount = notifCountQ.data ?? 0;
 
   // Pending time entries (hours awaiting admin/employer confirmation)
   const pendingHoursQ = useQuery({
@@ -79,6 +96,38 @@ export default function SuperAdminOverviewScreen() {
   const pendingHours = pendingHoursQ.data ?? 0;
   const activeShifts = activeShiftsQ.data ?? 0;
 
+  // ── Single top priority action ────────────────────────────────────────────
+  const topAction = (() => {
+    if (openDisputeCount > 0) {
+      return {
+        type: 'error' as const,
+        title: `${openDisputeCount} open dispute${openDisputeCount > 1 ? 's' : ''}`,
+        body: 'Workers or companies are waiting for resolution.',
+        action: 'Resolve',
+        route: '/super-admin/compliance',
+      };
+    }
+    if (pendingCertCount > 0) {
+      return {
+        type: 'warning' as const,
+        title: `${pendingCertCount} worker document${pendingCertCount > 1 ? 's' : ''} pending`,
+        body: 'Workers cannot pick up shifts until their IDs and certificates are reviewed.',
+        action: 'Review',
+        route: '/super-admin/certifications',
+      };
+    }
+    if (pendingCompanyCount > 0) {
+      return {
+        type: 'warning' as const,
+        title: `${pendingCompanyCount} compan${pendingCompanyCount > 1 ? 'ies' : 'y'} awaiting approval`,
+        body: 'Employers cannot post live shifts until their company is approved.',
+        action: 'Review',
+        route: '/super-admin/companies',
+      };
+    }
+    return null;
+  })();
+
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <ScrollView
@@ -104,16 +153,62 @@ export default function SuperAdminOverviewScreen() {
               <Text style={styles.title}>Control Tower</Text>
               {user?.name ? <Text style={styles.userName}>{user.name}</Text> : null}
             </View>
-            <TouchableOpacity
-              onPress={() => void logout()}
-              style={styles.logoutBtn}
-              activeOpacity={0.8}
-              accessibilityRole="button"
-              accessibilityLabel="Log out"
-            >
-              <LogOut size={18} color={C.textMuted} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => router.push('/notifications' as never)}
+                style={styles.logoutBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Notifications"
+              >
+                <Bell size={18} color={C.text} />
+                {unreadCount > 0 && (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void logout()}
+                style={styles.logoutBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Log out"
+              >
+                <LogOut size={18} color={C.textMuted} />
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {/* ── Top Priority Action Banner ── */}
+          {topAction && (
+            <TouchableOpacity
+              onPress={() => router.push(topAction.route as never)}
+              style={[
+                styles.topActionBanner,
+                {
+                  backgroundColor: topAction.type === 'error' ? C.redDim : C.yellowDim,
+                  borderColor: (topAction.type === 'error' ? C.red : C.yellow) + '50',
+                },
+              ]}
+              activeOpacity={0.85}
+            >
+              <AlertCircle size={18} color={topAction.type === 'error' ? C.red : C.yellow} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.topActionTitle, { color: topAction.type === 'error' ? C.red : C.yellow }]}>
+                  {topAction.title}
+                </Text>
+                <Text style={[styles.topActionBody, { color: (topAction.type === 'error' ? C.red : C.yellow) + 'CC' }]}>
+                  {topAction.body}
+                </Text>
+              </View>
+              <View style={[styles.topActionBtn, { backgroundColor: (topAction.type === 'error' ? C.red : C.yellow) + '25' }]}>
+                <Text style={[styles.topActionBtnText, { color: topAction.type === 'error' ? C.red : C.yellow }]}>
+                  {topAction.action} →
+                </Text>
+              </View>
+            </TouchableOpacity>
+          )}
 
           {/* ── Platform Stats ── */}
           <View style={styles.statsRow}>
@@ -129,12 +224,20 @@ export default function SuperAdminOverviewScreen() {
             ))}
           </View>
 
-          {/* ── Attention Banner ── */}
-          {totalPending > 0 && (
+          {/* ── Attention Banner (only if no top action shown) ── */}
+          {!topAction && totalPending > 0 && (
             <View style={styles.attentionBanner}>
               <ShieldCheck size={14} color={C.red} />
               <Text style={styles.attentionText}>
                 {totalPending} item{totalPending !== 1 ? 's' : ''} need your attention
+              </Text>
+            </View>
+          )}
+          {!topAction && totalPending === 0 && (
+            <View style={[styles.attentionBanner, { backgroundColor: C.greenDim, borderColor: C.green + '40' }]}>
+              <ShieldCheck size={14} color={C.green} />
+              <Text style={[styles.attentionText, { color: C.green }]}>
+                All caught up — no pending approvals
               </Text>
             </View>
           )}
@@ -364,6 +467,13 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: C.textSecondary, marginTop: 3 },
 
   attentionBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.redDim, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: C.red + '40' },
+  topActionBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: 1, padding: 14 },
+  topActionTitle: { fontSize: 14, fontWeight: '800' as const },
+  topActionBody: { fontSize: 12, marginTop: 2, lineHeight: 17 },
+  topActionBtn: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  topActionBtnText: { fontSize: 12, fontWeight: '700' as const },
+  notifBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: C.red, borderRadius: 10, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  notifBadgeText: { fontSize: 10, fontWeight: '800' as const, color: C.white },
   attentionText: { fontSize: 13, fontWeight: '700' as const, color: C.red },
 
   sectionTitle: { fontSize: 13, fontWeight: '700' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 4, marginBottom: 4 },
