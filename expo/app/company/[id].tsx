@@ -1,22 +1,25 @@
-import { useLocalSearchParams, Redirect, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack } from 'expo-router';
 import CompanyProfileScreen from '../employer/company-profile';
 
 /**
  * Neutral company-profile route.
- * Any role (worker, employer, public) can land here.
  *
- * We render the existing CompanyProfileScreen directly (no redirect) so the
- * URL stays neutral (`/company/:id`) instead of bouncing to an employer-scoped
- * URL. The underlying screen forces Worker View for non-members
- * (`effectiveMode = isMember ? viewMode : 'worker'`), and internal sections
- * (Trust & Verification, staff count, Recent Shifts, Manage Shifts, Edit
- * Company, pending-rating CTA) are gated on `effectiveMode === 'private' && isMember`,
- * so private company data is never exposed via this route.
+ * Any role (worker, employer member, public) can land here. The underlying
+ * `CompanyProfileScreen` accepts both `id` and `companyId` search params,
+ * forces `effectiveMode = 'worker'` for non-members, and gates every internal
+ * section (Trust & Verification, staff count, Recent Shifts, Manage Shifts,
+ * Edit Company, operational stats) on `effectiveMode === 'private' && isMember`.
+ *
+ * We render the screen DIRECTLY so the URL stays neutral (`/company/:id`)
+ * instead of bouncing to `/employer/company-profile`.
  */
 export default function CompanyByIdRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  if (!id) return <Redirect href="/" />;
-  // CompanyProfileScreen reads `companyId` from search params; redirect to it
-  // with the param name it expects, while keeping the URL neutral for workers.
-  return <Redirect href={{ pathname: '/employer/company-profile', params: { companyId: id } } as any} />;
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      {/* CompanyProfileScreen now reads either `companyId` or `id` from params */}
+      <CompanyProfileScreen overrideCompanyId={id} />
+    </>
+  );
 }

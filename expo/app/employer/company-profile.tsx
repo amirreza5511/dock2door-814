@@ -131,9 +131,12 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
   );
 }
 
-export default function CompanyProfileScreen() {
+export default function CompanyProfileScreen(props: { overrideCompanyId?: string } = {}) {
   const insets = useSafeAreaInsets();
-  const { companyId } = useLocalSearchParams<{ companyId: string }>();
+  const params = useLocalSearchParams<{ companyId?: string; id?: string }>();
+  // Accept `companyId` (legacy employer route) or `id` (neutral /company/[id] route),
+  // or an explicit prop override when embedded by the neutral route.
+  const companyId = props.overrideCompanyId ?? params.companyId ?? params.id ?? '';
   const user = useAuthStore((s) => s.user);
   const [viewMode, setViewMode] = useState<CompanyViewMode>('private');
 

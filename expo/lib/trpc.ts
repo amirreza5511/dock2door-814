@@ -1202,9 +1202,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'admin.updateEntityStatus': async (input: { entity: string; id: string; status: string; reason?: string }) => {
     // Audited paths — companies, users, and listings route through SECURITY DEFINER RPCs
     // that capture before/after JSONB and write audit_logs.
-    const reason = (input.reason && input.reason.trim().length >= 5)
-      ? input.reason.trim()
-      : `${input.entity} status reviewed by admin`;
+    const isNegative = ['Suspended', 'Rejected', 'Inactive', 'Voided', 'Cancelled'].includes(input.status);
+    const trimmed = (input.reason ?? '').trim();
+    if (isNegative && trimmed.length < 5) {
+      throw new Error(`A specific reason (min 5 characters) is required when setting ${input.entity} to ${input.status}.`);
+    }
+    const reason = trimmed.length >= 5 ? trimmed : `${input.entity} status reviewed by admin`;
 
     if (input.entity === 'users') {
       const { error } = await supabase.rpc('admin_set_user_status', {
@@ -1266,11 +1269,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   // admin.setCompanyStatus routes through admin_set_company_status SECURITY DEFINER RPC (0007)
   // which asserts is_admin(), captures before/after JSONB, and writes to audit_logs.
+  // Negative statuses (Suspended / Rejected) require a real reason (min 5 chars) so the
+  // audit log + worker/employer notification is useful, not generic.
   'admin.setCompanyStatus': async (input: { companyId: string; status: string; reason?: string }) => {
+    const isNegative = ['Suspended', 'Rejected', 'Inactive'].includes(input.status);
+    const reason = (input.reason ?? '').trim();
+    if (isNegative && reason.length < 5) {
+      throw new Error('A specific reason (min 5 characters) is required when suspending or rejecting a company.');
+    }
     const { error } = await supabase.rpc('admin_set_company_status', {
       p_company_id: input.companyId,
       p_status: input.status,
-      p_reason: input.reason ?? `Status set to ${input.status} by admin`,
+      p_reason: reason || `Company status set to ${input.status} by admin`,
     });
     if (error) throwErr(error, 'Unable to update company — check admin privileges');
     return { success: true };
@@ -1278,10 +1288,15 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   // admin.setUserStatus routes through admin_set_user_status SECURITY DEFINER RPC (0007).
   'admin.setUserStatus': async (input: { userId: string; status: string; reason?: string }) => {
+    const isNegative = ['Suspended', 'Inactive', 'Rejected'].includes(input.status);
+    const reason = (input.reason ?? '').trim();
+    if (isNegative && reason.length < 5) {
+      throw new Error('A specific reason (min 5 characters) is required when suspending or deactivating a user.');
+    }
     const { error } = await supabase.rpc('admin_set_user_status', {
       p_user_id: input.userId,
       p_status: input.status,
-      p_reason: input.reason ?? `Status set to ${input.status} by admin`,
+      p_reason: reason || `User status set to ${input.status} by admin`,
     });
     if (error) throwErr(error, 'Unable to update user — check admin privileges');
     return { success: true };

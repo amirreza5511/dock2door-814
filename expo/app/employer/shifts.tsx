@@ -226,12 +226,20 @@ export default function EmployerShifts() {
 
   const handleNoShow = async () => {
     if (!noShowFor) return;
+    const reason = noShowReason.trim();
+    if (reason.length < 10) {
+      Alert.alert(
+        'Reason required',
+        'Please describe the no-show specifically (at least 10 characters). This is logged in audit and appears on the worker’s record.',
+      );
+      return;
+    }
     setNoShowLoading(true);
     try {
       const { error } = await supabase.rpc('mark_shift_no_show', {
         p_shift_id: noShowFor.shift_id,
         p_worker_user_id: noShowFor.worker_user_id,
-        p_reason: noShowReason.trim() || 'No-show recorded by employer',
+        p_reason: reason,
       });
       if (error) throw new Error(error.message);
       setNoShowFor(null);
@@ -553,8 +561,9 @@ export default function EmployerShifts() {
                               <Text style={styles.awaitingText}>⏳ Awaiting worker confirmation</Text>
                             </View>
                           )}
-                          {/* No-show button for past scheduled assignments */}
-                          {ass.status === 'Scheduled' && isShiftPast(ass.shift_id) && (
+                          {/* No-show button — only for Scheduled assignments on a past shift date.
+                              Completed / HoursConfirmed / Cancelled / NoShow / Confirmed are excluded. */}
+                          {ass.status === 'Scheduled' && isShiftPast(ass.shift_id) && !['Completed', 'HoursConfirmed', 'Cancelled', 'NoShow', 'Confirmed'].includes(ass.status) && (
                             <TouchableOpacity
                               onPress={() => { setNoShowFor(ass); setNoShowReason(''); }}
                               style={styles.noShowBtn}
@@ -804,11 +813,12 @@ export default function EmployerShifts() {
           <TextInput
             value={noShowReason}
             onChangeText={setNoShowReason}
-            placeholder="Reason (optional)…"
+            placeholder="Reason (required, min 10 chars). e.g. Did not arrive, no contact for 2h."
             placeholderTextColor={C.textMuted}
             style={styles.noShowInput}
             multiline
             numberOfLines={3}
+            autoFocus
           />
           <View style={{ gap: 10 }}>
             <Button

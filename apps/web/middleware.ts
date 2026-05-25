@@ -81,6 +81,41 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(dashUrl);
   }
 
+  // -------------------------------------------------------------------
+  // Server-side admin / super-admin route guard.
+  //
+  // Routes under /admin/* require ANY platform role (admin OR super_admin)
+  // OR profile.role IN ('Admin','SuperAdmin').
+  // Routes under /super-admin/* require super_admin specifically
+  // (or profile.role === 'SuperAdmin').
+  //
+  // RLS still enforces this on every RPC/table read, but blocking at the
+  // edge prevents the unauthorized UI shell from ever rendering and stops
+  // accidental data leaks via cached pages.
+  // -------------------------------------------------------------------
+  if (user) {
+    const isAdminRoute = pathname.startsWith("/admin");
+    const isSuperAdminRoute = pathname.startsWith("/super-admin");
+    if (isAdminRoute || isSuperAdminRoute) {
+      const [profileRes, rolesRes] = await Promise.all([
+        supabase.from("profiles").select("role").eq("id", user.id).maybeSingle(),
+        supabase.from("user_roles").select("role").eq("user_id", user.id),
+      ]);
+      const profileRole = (profileRes.data as { role?: string | null } | null)?.role ?? null;
+      const platformRoles = ((rolesRes.data ?? []) as { role: string }[]).map((r) => r.role);
+      const isAdmin = platformRoles.includes("admin") || profileRole === "Admin" || profileRole === "SuperAdmin";
+      const isSuperAdmin = platformRoles.includes("super_admin") || profileRole === "SuperAdmin";
+
+      const allowed = isSuperAdminRoute ? isSuperAdmin : (isAdmin || isSuperAdmin);
+      if (!allowed) {
+        const denyUrl = request.nextUrl.clone();
+        denyUrl.pathname = "/dashboard";
+        denyUrl.search = "?denied=1";
+        return NextResponse.redirect(denyUrl);
+      }
+    }
+  }
+
   return supabaseResponse;
 }
 
