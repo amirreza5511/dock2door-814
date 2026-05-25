@@ -158,7 +158,7 @@ export default function EmployerDashboard() {
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('read', false);
+        .is('read_at', null);
       return count ?? 0;
     },
     enabled: Boolean(user?.id),
