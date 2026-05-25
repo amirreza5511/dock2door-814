@@ -137,22 +137,39 @@ export default function CreateShift() {
   });
   const commissionPct: number = commissionQ.data ?? 15;
 
-  // Billing status — block paid shift posting if billing not configured
-  const billingQ = useQuery({
-    queryKey: ['company-billing', user?.companyId],
+  // Company readiness — block paid shift posting if billing or profile incomplete,
+  // or company status is Rejected / Suspended.
+  const companyQ = useQuery({
+    queryKey: ['company-readiness', user?.companyId],
     queryFn: async () => {
       if (!user?.companyId) return null;
       const { data } = await supabase
         .from('companies')
-        .select('billing_mode, billing_email, billing_setup_completed_at')
+        .select('status, billing_mode, billing_email, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email')
         .eq('id', user.companyId)
         .maybeSingle();
-      return data as { billing_mode: string | null; billing_email: string | null; billing_setup_completed_at: string | null } | null;
+      return data as {
+        status: string | null;
+        billing_mode: string | null;
+        billing_email: string | null;
+        billing_setup_completed_at: string | null;
+        profile_completed_at: string | null;
+        industry: string | null;
+        public_bio: string | null;
+        legal_business_name: string | null;
+        admin_contact_email: string | null;
+      } | null;
     },
     enabled: Boolean(user?.companyId),
     staleTime: 60_000,
   });
-  const billingReady = Boolean(billingQ.data?.billing_setup_completed_at);
+  const billingReady = Boolean(companyQ.data?.billing_setup_completed_at);
+  const profileReady = Boolean(
+    companyQ.data?.profile_completed_at ||
+    (companyQ.data?.industry && (companyQ.data?.public_bio?.length ?? 0) >= 20 && companyQ.data?.legal_business_name && companyQ.data?.admin_contact_email)
+  );
+  const companyStatus = companyQ.data?.status ?? '';
+  const postingBlocked = companyStatus === 'Rejected' || companyStatus === 'Suspended';
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const createShift = trpc.shifts.create.useMutation({
@@ -225,18 +242,38 @@ export default function CreateShift() {
       Alert.alert('Missing Fields', 'Please fill all required fields');
       return;
     }
-    // Block paid shift posting until company billing setup is complete.
-    // ManualInvoice mode still requires a billing contact + email to be on file.
-    if (Number(hourlyRate) > 0 && !billingReady) {
+    if (postingBlocked) {
       Alert.alert(
-        'Billing setup required',
-        'Add a billing contact and email before posting paid shifts. Invoices for confirmed hours will be issued to this contact.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Set up billing', onPress: () => router.push('/employer/billing' as any) },
-        ],
+        companyStatus === 'Suspended' ? 'Company suspended' : 'Company rejected',
+        'Your company cannot post shifts right now. Contact support to resolve account status.',
       );
       return;
+    }
+    // Block paid shift posting until company profile + billing setup are complete.
+    // ManualInvoice mode still requires a billing contact + email to be on file.
+    if (Number(hourlyRate) > 0) {
+      if (!profileReady) {
+        Alert.alert(
+          'Company profile incomplete',
+          'Complete your company profile (industry, bio, legal name, admin contact) so workers and Super Admin can see who is posting the shift.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Complete profile', onPress: () => router.push('/employer/company-profile' as any) },
+          ],
+        );
+        return;
+      }
+      if (!billingReady) {
+        Alert.alert(
+          'Billing setup required',
+          'Add a billing contact and email before posting paid shifts. Invoices for confirmed hours will be issued to this contact.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Set up billing', onPress: () => router.push('/employer/billing' as any) },
+          ],
+        );
+        return;
+      }
     }
 
     const requirements = selectedPPE.join(', ');
@@ -495,7 +532,18 @@ export default function CreateShift() {
                 </View>
                 <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>Final charge is based on employer-confirmed hours after the shift.</Text>
               </View>
-              {!billingReady ? (
+              {!profileReady ? (
+                <TouchableOpacity
+                  onPress={() => router.push('/employer/company-profile' as any)}
+                  activeOpacity={0.8}
+                  style={{ marginTop: 10, backgroundColor: C.yellowDim, borderWidth: 1, borderColor: C.yellow + '60', borderRadius: 10, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}
+                >
+                  <DollarSign size={14} color={C.yellow} />
+                  <Text style={{ color: C.yellow, fontSize: 12, flex: 1, fontWeight: '600' as const }}>
+                    Company profile incomplete. Tap to add industry, bio, legal name + admin contact — required before posting paid shifts.
+                  </Text>
+                </TouchableOpacity>
+              ) : !billingReady ? (
                 <TouchableOpacity
                   onPress={() => router.push('/employer/billing' as any)}
                   activeOpacity={0.8}
@@ -506,6 +554,13 @@ export default function CreateShift() {
                     Billing not set up. Tap to add a billing contact — required before posting paid shifts.
                   </Text>
                 </TouchableOpacity>
+              ) : null}
+              {postingBlocked ? (
+                <View style={{ marginTop: 10, backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '60', borderRadius: 10, padding: 10 }}>
+                  <Text style={{ color: C.red, fontSize: 12, fontWeight: '700' as const }}>
+                    Company is {companyStatus}. You cannot post shifts — contact support.
+                  </Text>
+                </View>
               ) : null}
             </View>
           );

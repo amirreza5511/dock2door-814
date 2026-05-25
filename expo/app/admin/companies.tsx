@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { Building2, CheckCircle, XCircle, Edit } from 'lucide-react-native';
+import { Building2, CheckCircle, XCircle, Edit, FileText, CreditCard } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/lib/supabase';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -57,30 +59,61 @@ export default function AdminCompanies() {
     setEditAddress(c.address);
     setEditCity(c.city);
     setDetailModal(true);
+    setActionMode('none');
+    setRejectReason('');
   };
+
+  // Load full profile context for the selected company so Super Admin can
+  // make an informed approval decision (industry, bio, legal name, admin
+  // contact, billing status, rejection reason).
+  const profileQ = useQuery({
+    queryKey: ['admin-company-profile', selected?.id],
+    enabled: Boolean(selected?.id && detailModal),
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('companies')
+        .select('display_name,industry,public_bio,website,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,billing_setup_completed_at,billing_mode,payment_terms_days,profile_completed_at,submitted_for_approval_at,verified_at,approval_rejection_reason')
+        .eq('id', selected!.id)
+        .maybeSingle();
+      return data as Record<string, string | null> | null;
+    },
+  });
+
+  const [rejectReason, setRejectReason] = useState('');
+  const [actionMode, setActionMode] = useState<'none' | 'reject' | 'suspend'>('none');
 
   const handleApprove = (id: string) => {
-    setStatusAuditedM.mutate({ companyId: id, status: 'Approved', reason: 'Approved by admin' }, {
-      onSuccess: () => { setDetailModal(false); Alert.alert('Company Approved', 'The company is now active on the platform.'); },
-      onError: (e: Error) => Alert.alert('Unable to approve company', e.message),
-    });
+    // Use the dedicated approval RPC so verified_at + rejection reason are
+    // cleared consistently (single source of truth for the verified badge).
+    void (async () => {
+      const { error } = await supabase.rpc('admin_set_company_approval', {
+        p_company_id: id,
+        p_status: 'Approved',
+        p_reason: null,
+      });
+      if (error) Alert.alert('Unable to approve company', error.message);
+      else { setDetailModal(false); Alert.alert('Company Approved', 'The company is now active on the platform.'); void bootstrapQuery.refetch(); }
+    })();
   };
 
-  const handleSuspend = (id: string) => {
-    Alert.alert('Suspend Company', 'This will deactivate all their listings.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Suspend',
-        style: 'destructive',
-        onPress: () => {
-          setStatusAuditedM.mutate({ companyId: id, status: 'Suspended', reason: 'Suspended by admin' }, {
-            onSuccess: () => setDetailModal(false),
-            onError: (e: Error) => Alert.alert('Unable to suspend company', e.message),
-          });
-        },
-      },
-    ]);
+  const submitNegative = (id: string, status: 'Rejected' | 'Suspended', reason: string) => {
+    if (reason.trim().length < 10) {
+      Alert.alert('Reason required', 'Please provide at least 10 characters explaining why.');
+      return;
+    }
+    void (async () => {
+      const { error } = await supabase.rpc('admin_set_company_approval', {
+        p_company_id: id,
+        p_status: status,
+        p_reason: reason.trim(),
+      });
+      if (error) Alert.alert(`Unable to ${status.toLowerCase()} company`, error.message);
+      else { setDetailModal(false); setActionMode('none'); setRejectReason(''); void bootstrapQuery.refetch(); }
+    })();
   };
+
+  const handleSuspend = (_id: string) => { setActionMode('suspend'); setRejectReason(''); };
+  const handleReject = (_id: string) => { setActionMode('reject'); setRejectReason(''); };
 
   const handleSaveEdit = (id: string) => {
     void updateCompanyMutation.mutateAsync({ id, payload: { name: editName, address: editAddress, city: editCity } }).then(() => {
@@ -186,24 +219,62 @@ export default function AdminCompanies() {
                   <Button label="Save Changes" onPress={() => handleSaveEdit(selected.id)} fullWidth icon={<Edit size={15} color={C.white} />} />
                 </View>
 
-                <Text style={styles.editSectionTitle}>Actions</Text>
-                <View style={styles.actionBtns}>
-                  {selected.status !== 'Approved' && (
-                    <Button label="Approve Company" onPress={() => handleApprove(selected.id)} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
-                  )}
-                  {selected.status !== 'Suspended' && (
-                    <Button label="Suspend Company" onPress={() => handleSuspend(selected.id)} variant="danger" fullWidth icon={<XCircle size={15} color={C.red} />} />
-                  )}
-                  {selected.status === 'Suspended' && (
-                    <Button label="Reinstate Company" onPress={() => {
-                      setStatusAuditedM.mutate({ companyId: selected.id, status: 'Approved', reason: 'Reinstated by admin' }, {
-                        onSuccess: () => setDetailModal(false),
-                        onError: (e: Error) => Alert.alert('Unable to reinstate company', e.message),
-                      });
-                    }} variant="outline" fullWidth />
-                  )}
-                  <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
+                {/* Profile context — required by Super Admin to make an informed decision */}
+                <Text style={styles.editSectionTitle}>Approval context</Text>
+                <View style={styles.contextCard}>
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Industry" value={profileQ.data?.industry} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Public bio" value={profileQ.data?.public_bio} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Website" value={profileQ.data?.website} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Legal name" value={profileQ.data?.legal_business_name} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Business #" value={profileQ.data?.business_number} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Business address" value={profileQ.data?.business_address} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Admin contact" value={(profileQ.data?.admin_contact_name ?? '') + (profileQ.data?.admin_contact_email ? ` · ${profileQ.data.admin_contact_email}` : '') + (profileQ.data?.admin_contact_phone ? ` · ${profileQ.data.admin_contact_phone}` : '')} />
+                  <ContextRow icon={<CreditCard size={13} color={profileQ.data?.billing_setup_completed_at ? C.green : C.yellow} />} label="Billing" value={profileQ.data?.billing_setup_completed_at ? `${profileQ.data?.billing_mode ?? 'ManualInvoice'} · Net ${profileQ.data?.payment_terms_days ?? 14}d` : 'Not set up'} />
+                  <ContextRow icon={<FileText size={13} color={C.textMuted} />} label="Submitted" value={profileQ.data?.submitted_for_approval_at ? new Date(profileQ.data.submitted_for_approval_at).toLocaleString() : '—'} />
+                  {profileQ.data?.approval_rejection_reason ? (
+                    <View style={{ marginTop: 8, padding: 10, borderRadius: 8, backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '40' }}>
+                      <Text style={{ fontSize: 11, color: C.red, fontWeight: '700' as const }}>Previous rejection / suspension reason</Text>
+                      <Text style={{ fontSize: 12, color: C.red, marginTop: 2 }}>{profileQ.data.approval_rejection_reason}</Text>
+                    </View>
+                  ) : null}
                 </View>
+
+                <Text style={styles.editSectionTitle}>Actions</Text>
+                {actionMode !== 'none' ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ fontSize: 12, color: C.textMuted }}>
+                      {actionMode === 'reject' ? 'Rejection reason (visible to the company, min 10 chars)' : 'Suspension reason (visible to the company, min 10 chars)'}
+                    </Text>
+                    <TextInput
+                      value={rejectReason}
+                      onChangeText={setRejectReason}
+                      placeholder="e.g. Missing valid business registration"
+                      placeholderTextColor={C.textMuted}
+                      style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14 }}
+                      multiline
+                    />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Button label={actionMode === 'reject' ? 'Confirm reject' : 'Confirm suspend'} onPress={() => submitNegative(selected.id, actionMode === 'reject' ? 'Rejected' : 'Suspended', rejectReason)} variant="danger" />
+                      <Button label="Cancel" onPress={() => { setActionMode('none'); setRejectReason(''); }} variant="ghost" />
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.actionBtns}>
+                    {selected.status !== 'Approved' && selected.status !== 'Active' && (
+                      <Button label="Approve Company" onPress={() => handleApprove(selected.id)} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
+                    )}
+                    {selected.status !== 'Rejected' && (
+                      <Button label="Reject Company" onPress={() => handleReject(selected.id)} variant="danger" fullWidth icon={<XCircle size={15} color={C.red} />} />
+                    )}
+                    {selected.status !== 'Suspended' && (
+                      <Button label="Suspend Company" onPress={() => handleSuspend(selected.id)} variant="danger" fullWidth icon={<XCircle size={15} color={C.red} />} />
+                    )}
+                    {selected.status === 'Suspended' && (
+                      <Button label="Reinstate Company" onPress={() => handleApprove(selected.id)} variant="outline" fullWidth />
+                    )}
+                    <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
+                  </View>
+                )}
               </View>
             </ScrollView>
           )}
@@ -246,4 +317,18 @@ const styles = StyleSheet.create({
   emptyWrap: { alignItems: 'center', gap: 8, paddingHorizontal: 24, paddingTop: 48 },
   emptyTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   emptySub: { fontSize: 12, color: C.textMuted, textAlign: 'center', lineHeight: 17 },
+  contextCard: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 12, gap: 8 },
+  ctxRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  ctxLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const, width: 110 },
+  ctxValue: { fontSize: 13, color: C.text, flex: 1, lineHeight: 18 },
 });
+
+function ContextRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | null | undefined }) {
+  return (
+    <View style={styles.ctxRow}>
+      <View style={{ marginTop: 2 }}>{icon}</View>
+      <Text style={styles.ctxLabel}>{label}</Text>
+      <Text style={styles.ctxValue}>{value && value.toString().trim() ? value : '—'}</Text>
+    </View>
+  );
+}

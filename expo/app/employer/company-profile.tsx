@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock, CreditCard, ChevronRight } from 'lucide-react-native';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock, CreditCard, ChevronRight, Edit3, X, Send, BadgeCheck, Briefcase } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
@@ -19,6 +19,24 @@ interface CompanyRow {
   city: string | null;
   status: string;
   created_at: string;
+  display_name: string | null;
+  industry: string | null;
+  public_bio: string | null;
+  logo_url: string | null;
+  website: string | null;
+  public_contact_email: string | null;
+  public_contact_phone: string | null;
+  legal_business_name: string | null;
+  business_number: string | null;
+  business_address: string | null;
+  admin_contact_name: string | null;
+  admin_contact_email: string | null;
+  admin_contact_phone: string | null;
+  profile_completed_at: string | null;
+  submitted_for_approval_at: string | null;
+  approval_rejection_reason: string | null;
+  verified_at: string | null;
+  billing_setup_completed_at: string | null;
 }
 
 interface ShiftRow {
@@ -51,7 +69,7 @@ async function fetchCompanyProfile(companyId: string) {
   const [companyRes, shiftsRes, reviewsRes, staffRes] = await Promise.all([
     supabase
       .from('companies')
-      .select('id,name,city,status,created_at')
+      .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
       .eq('id', companyId)
       .single(),
     supabase
@@ -236,6 +254,90 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
     return (staff ?? []).some((s) => s.user_id === user.id && (s.company_role === 'Owner' || s.company_role === 'Admin'));
   }, [staff, user]);
 
+  const qc = useQueryClient();
+  const [editOpen, setEditOpen] = useState(false);
+  const [eDisplayName, setEDisplayName] = useState('');
+  const [eIndustry, setEIndustry] = useState('');
+  const [eCity, setECity] = useState('');
+  const [eBio, setEBio] = useState('');
+  const [eWebsite, setEWebsite] = useState('');
+  const [eLegal, setELegal] = useState('');
+  const [eBizNum, setEBizNum] = useState('');
+  const [eBizAddr, setEBizAddr] = useState('');
+  const [eAdminName, setEAdminName] = useState('');
+  const [eAdminEmail, setEAdminEmail] = useState('');
+  const [eAdminPhone, setEAdminPhone] = useState('');
+
+  useEffect(() => {
+    if (!company) return;
+    setEDisplayName(company.display_name ?? company.name ?? '');
+    setEIndustry(company.industry ?? '');
+    setECity(company.city ?? '');
+    setEBio(company.public_bio ?? '');
+    setEWebsite(company.website ?? '');
+    setELegal(company.legal_business_name ?? '');
+    setEBizNum(company.business_number ?? '');
+    setEBizAddr(company.business_address ?? '');
+    setEAdminName(company.admin_contact_name ?? '');
+    setEAdminEmail(company.admin_contact_email ?? '');
+    setEAdminPhone(company.admin_contact_phone ?? '');
+  }, [company]);
+
+  const saveProfile = useMutation({
+    mutationFn: async () => {
+      if (eDisplayName.trim().length < 2) throw new Error('Company name required');
+      if (!eIndustry) throw new Error('Industry required');
+      if (eCity.trim().length < 2) throw new Error('City required');
+      if (eBio.trim().length < 20) throw new Error('Public bio must be at least 20 characters');
+      if (eLegal.trim().length < 2) throw new Error('Legal business name required');
+      if (eAdminName.trim().length < 2) throw new Error('Admin contact name required');
+      if (!/.+@.+\..+/.test(eAdminEmail.trim())) throw new Error('Valid admin email required');
+      const { error } = await supabase.rpc('company_update_profile', {
+        p_company_id: companyId,
+        p_display_name: eDisplayName.trim(),
+        p_industry: eIndustry,
+        p_city: eCity.trim(),
+        p_public_bio: eBio.trim(),
+        p_logo_url: null,
+        p_website: eWebsite.trim() || null,
+        p_public_contact_email: null,
+        p_public_contact_phone: null,
+        p_legal_business_name: eLegal.trim(),
+        p_business_number: eBizNum.trim() || null,
+        p_business_address: eBizAddr.trim() || null,
+        p_admin_contact_name: eAdminName.trim(),
+        p_admin_contact_email: eAdminEmail.trim(),
+        p_admin_contact_phone: eAdminPhone.trim() || null,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['company-profile', companyId] });
+      setEditOpen(false);
+    },
+    onError: (e: unknown) => Alert.alert('Unable to save', e instanceof Error ? e.message : 'Unknown error'),
+  });
+
+  const submitForApproval = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['company-profile', companyId] }),
+    onError: (e: unknown) => Alert.alert('Cannot submit', e instanceof Error ? e.message : 'Unknown error'),
+  });
+
+  const profileChecklist: { label: string; ok: boolean }[] = company ? [
+    { label: 'Company name', ok: Boolean((company.display_name ?? company.name)?.trim()) },
+    { label: 'Industry', ok: Boolean(company.industry?.trim()) },
+    { label: 'City / service area', ok: Boolean(company.city?.trim()) },
+    { label: 'Public bio (20+ chars)', ok: (company.public_bio?.trim().length ?? 0) >= 20 },
+    { label: 'Legal business name', ok: Boolean(company.legal_business_name?.trim()) },
+    { label: 'Admin contact', ok: Boolean(company.admin_contact_name?.trim() && company.admin_contact_email?.trim()) },
+    { label: 'Billing set up', ok: Boolean(company.billing_setup_completed_at) },
+  ] : [];
+  const profileComplete = profileChecklist.every((c) => c.ok);
+
   const recentShifts = [...shifts]
     .sort((a, b) => new Date(b.date + 'T00:00').getTime() - new Date(a.date + 'T00:00').getTime())
     .slice(0, 3);
@@ -385,14 +487,42 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
           </View>
           {effectiveMode === 'private' && isOwnerOrAdmin && (
             <View style={styles.headerActionRow}>
+              <TouchableOpacity onPress={() => setEditOpen(true)} style={styles.headerActionBtn} activeOpacity={0.8}>
+                <Edit3 size={12} color={C.accent} />
+                <Text style={styles.headerActionText}>Edit Profile</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={() => router.push('/employer/shifts' as any)} style={styles.headerActionBtn} activeOpacity={0.8}>
                 <Text style={styles.headerActionText}>Manage Shifts</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.push('/employer' as any)} style={styles.headerActionBtn} activeOpacity={0.8}>
-                <Text style={styles.headerActionText}>Edit Company</Text>
-              </TouchableOpacity>
             </View>
           )}
+          {/* Industry + verified badge (shown in all view modes when present) */}
+          {(company.industry || company.verified_at) && (
+            <View style={styles.subMetaRow}>
+              {company.industry ? (
+                <View style={styles.industryChip}>
+                  <Briefcase size={11} color={C.textMuted} />
+                  <Text style={styles.industryChipText}>{company.industry}</Text>
+                </View>
+              ) : null}
+              {company.verified_at && (company.status === 'Active' || company.status === 'Approved') ? (
+                <View style={styles.verifiedChip}>
+                  <BadgeCheck size={11} color={C.green} />
+                  <Text style={styles.verifiedChipText}>Verified</Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+          {/* Public bio shown to everyone */}
+          {company.public_bio ? (
+            <Text style={styles.publicBio}>{company.public_bio}</Text>
+          ) : effectiveMode !== 'private' ? null : null}
+          {/* Website link in public/worker views */}
+          {company.website ? (
+            <TouchableOpacity onPress={() => { /* opened by user */ }}>
+              <Text style={styles.websiteLink}>{company.website}</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Stats Row — operational stats (Shifts Posted, Fill Rate) are internal; only rating is public-safe */}
@@ -425,9 +555,54 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
           </View>
         </Card>
 
+        {/* Profile completion checklist — private view only */}
+        {effectiveMode === 'private' && isMember && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profile completion</Text>
+            <Card>
+              <View style={styles.trustList}>
+                {profileChecklist.map(({ label, ok }) => (
+                  <View key={label} style={styles.trustRow}>
+                    <CheckCircle size={15} color={ok ? C.green : C.textMuted} />
+                    <Text style={[styles.trustText, !ok && { color: C.textMuted }]}>{label}</Text>
+                  </View>
+                ))}
+              </View>
+              {!profileComplete && isOwnerOrAdmin && (
+                <TouchableOpacity onPress={() => setEditOpen(true)} style={[styles.headerActionBtn, { marginTop: 12, alignSelf: 'flex-start' }]} activeOpacity={0.8}>
+                  <Edit3 size={12} color={C.accent} />
+                  <Text style={styles.headerActionText}>Complete profile</Text>
+                </TouchableOpacity>
+              )}
+              {profileComplete && company.status !== 'Active' && company.status !== 'Approved' && isOwnerOrAdmin && !company.submitted_for_approval_at && (
+                <TouchableOpacity onPress={() => submitForApproval.mutate()} style={[styles.headerActionBtn, { marginTop: 12, alignSelf: 'flex-start', backgroundColor: C.accent, borderColor: C.accent }]} activeOpacity={0.8}>
+                  <Send size={12} color={C.white} />
+                  <Text style={[styles.headerActionText, { color: C.white }]}>Submit for approval</Text>
+                </TouchableOpacity>
+              )}
+            </Card>
+          </View>
+        )}
+
         {/* Billing setup — private view only */}
         {effectiveMode === 'private' && isMember && (
           <BillingSetupSection companyId={companyId} />
+        )}
+
+        {/* Private business info — only members in My Company view */}
+        {effectiveMode === 'private' && isMember && (company.legal_business_name || company.admin_contact_name) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Business information (private)</Text>
+            <Card>
+              <View style={{ gap: 8 }}>
+                {company.legal_business_name ? <Text style={styles.kv}><Text style={styles.kvLbl}>Legal name: </Text>{company.legal_business_name}</Text> : null}
+                {company.business_number ? <Text style={styles.kv}><Text style={styles.kvLbl}>Business #: </Text>{company.business_number}</Text> : null}
+                {company.business_address ? <Text style={styles.kv}><Text style={styles.kvLbl}>Address: </Text>{company.business_address}</Text> : null}
+                {company.admin_contact_name ? <Text style={styles.kv}><Text style={styles.kvLbl}>Admin: </Text>{company.admin_contact_name}{company.admin_contact_email ? ` · ${company.admin_contact_email}` : ''}{company.admin_contact_phone ? ` · ${company.admin_contact_phone}` : ''}</Text> : null}
+                <Text style={[styles.kvLbl, { fontSize: 10, marginTop: 4 }]}>Workers and the public never see these fields.</Text>
+              </View>
+            </Card>
+          </View>
         )}
 
         {/* Trust & Verification — only visible to company members in My Company view (contains staff count / internal verification) */}
@@ -527,6 +702,66 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
           </View>
         )}
       </ScrollView>
+
+      {/* Edit Profile modal */}
+      <Modal visible={editOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: C.bg }}>
+          <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+            <TouchableOpacity onPress={() => setEditOpen(false)} style={styles.backBtn}><X size={18} color={C.text} /></TouchableOpacity>
+            <Text style={styles.headerTitle}>Edit Company Profile</Text>
+            <View style={{ width: 36 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80, gap: 12 }} keyboardShouldPersistTaps="handled">
+            <Text style={styles.editSection}>Public (workers will see)</Text>
+            <FormField label="Company name *" value={eDisplayName} onChange={setEDisplayName} />
+            <View>
+              <Text style={styles.editLbl}>Industry *</Text>
+              <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap' }}>
+                {['Logistics', 'Warehousing', 'Manufacturing', 'Retail', 'Construction', 'Hospitality', 'Other'].map((i) => (
+                  <TouchableOpacity key={i} onPress={() => setEIndustry(i)} style={[styles.editChip, eIndustry === i && styles.editChipActive]}>
+                    <Text style={[styles.editChipText, eIndustry === i && styles.editChipTextActive]}>{i}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <FormField label="City / service area *" value={eCity} onChange={setECity} />
+            <FormField label="Public bio * (min 20 chars)" value={eBio} onChange={setEBio} multiline />
+            <FormField label="Website" value={eWebsite} onChange={setEWebsite} />
+            <Text style={styles.editSection}>Business (private)</Text>
+            <FormField label="Legal business name *" value={eLegal} onChange={setELegal} />
+            <FormField label="Business number" value={eBizNum} onChange={setEBizNum} />
+            <FormField label="Business address" value={eBizAddr} onChange={setEBizAddr} />
+            <FormField label="Admin contact name *" value={eAdminName} onChange={setEAdminName} />
+            <FormField label="Admin email *" value={eAdminEmail} onChange={setEAdminEmail} keyboardType="email-address" />
+            <FormField label="Admin phone" value={eAdminPhone} onChange={setEAdminPhone} keyboardType="phone-pad" />
+            <TouchableOpacity onPress={() => saveProfile.mutate()} disabled={saveProfile.isPending} style={[styles.saveBig, saveProfile.isPending && { opacity: 0.6 }]}>
+              <Text style={styles.saveBigText}>{saveProfile.isPending ? 'Saving…' : 'Save changes'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/employer/billing' as any)} style={[styles.headerActionBtn, { alignSelf: 'flex-start' }]} activeOpacity={0.8}>
+              <CreditCard size={12} color={C.accent} />
+              <Text style={styles.headerActionText}>Edit billing</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function FormField({ label, value, onChange, multiline, keyboardType }: { label: string; value: string; onChange: (v: string) => void; multiline?: boolean; keyboardType?: 'default' | 'email-address' | 'phone-pad' }) {
+  return (
+    <View>
+      <Text style={styles.editLbl}>{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        multiline={multiline}
+        numberOfLines={multiline ? 4 : 1}
+        keyboardType={keyboardType ?? 'default'}
+        autoCapitalize={keyboardType === 'email-address' ? 'none' : 'sentences'}
+        placeholderTextColor={C.textMuted}
+        style={[styles.editInput, multiline && { minHeight: 90, textAlignVertical: 'top' as const }]}
+      />
     </View>
   );
 }
@@ -633,10 +868,30 @@ const styles = StyleSheet.create({
   pendingRateBtnText: { fontSize: 12, color: C.white, fontWeight: '700' as const },
   // Header actions
   headerActionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  headerActionBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  headerActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   headerActionText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
   // Reviews header
   reviewHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   viewAllReviewsBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
   viewAllReviewsText: { fontSize: 11, color: C.accent, fontWeight: '600' as const },
+  subMetaRow: { flexDirection: 'row', gap: 6, marginTop: 8, justifyContent: 'center', flexWrap: 'wrap' },
+  industryChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  industryChipText: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const },
+  verifiedChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: C.greenDim, borderWidth: 1, borderColor: C.green + '40' },
+  verifiedChipText: { fontSize: 11, color: C.green, fontWeight: '700' as const },
+  publicBio: { fontSize: 13, color: C.textSecondary, lineHeight: 19, marginTop: 10, textAlign: 'center' as const, paddingHorizontal: 8 },
+  websiteLink: { fontSize: 12, color: C.accent, marginTop: 6, fontWeight: '600' as const },
+  kv: { fontSize: 13, color: C.text, lineHeight: 19 },
+  kvLbl: { color: C.textMuted },
+  editSection: { fontSize: 12, fontWeight: '700' as const, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 8 },
+  editLbl: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, marginBottom: 6 },
+  editInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14 },
+  editChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  editChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  editChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  editChipTextActive: { color: C.accent },
+  saveBig: { backgroundColor: C.accent, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 8 },
+  saveBigText: { color: C.white, fontWeight: '800' as const, fontSize: 15 },
 });
+
+// Make headerActionBtn a flex row to accommodate icons.

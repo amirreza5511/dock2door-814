@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,52 @@ export default function CreateShiftPage() {
     setForm((f) => ({ ...f, [k]: v }));
   };
 
+  // Gate posting on company profile + billing completion.
+  const readinessQ = useQuery({
+    queryKey: ["employer", "create-shift", "readiness"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data: m } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .in("company_role", ["Owner", "Staff", "Manager", "Supervisor"])
+        .eq("status", "Active")
+        .limit(1)
+        .maybeSingle();
+      if (!m?.company_id) return null;
+      const { data: c } = await supabase
+        .from("companies")
+        .select("id, status, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email")
+        .eq("id", m.company_id)
+        .maybeSingle();
+      return c as null | {
+        id: string;
+        status: string | null;
+        billing_setup_completed_at: string | null;
+        profile_completed_at: string | null;
+        industry: string | null;
+        public_bio: string | null;
+        legal_business_name: string | null;
+        admin_contact_email: string | null;
+      };
+    },
+  });
+  const readiness = readinessQ.data;
+  const profileReady = Boolean(
+    readiness?.profile_completed_at ||
+      (readiness?.industry &&
+        (readiness?.public_bio?.length ?? 0) >= 20 &&
+        readiness?.legal_business_name &&
+        readiness?.admin_contact_email)
+  );
+  const billingReady = Boolean(readiness?.billing_setup_completed_at);
+  const companyStatus = readiness?.status ?? "";
+  const postingBlocked = companyStatus === "Rejected" || companyStatus === "Suspended";
+  const paid = form.hourly_rate > 0;
+  const gateBlocked = paid && (!profileReady || !billingReady || postingBlocked);
+
   const create = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -53,6 +99,12 @@ export default function CreateShiftPage() {
         .single();
 
       if (memErr || !membership?.company_id) throw new Error("No company associated with your account.");
+
+      if (paid) {
+        if (postingBlocked) throw new Error(`Company is ${companyStatus}. Contact support.`);
+        if (!profileReady) throw new Error("Complete your company profile (industry, bio, legal name, admin contact) before posting paid shifts.");
+        if (!billingReady) throw new Error("Set up billing before posting paid shifts.");
+      }
 
       const { error } = await supabase.from("shift_posts").insert({
         employer_company_id: membership.company_id,
@@ -90,6 +142,31 @@ export default function CreateShiftPage() {
       {create.error && (
         <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {(create.error as Error).message}
+        </div>
+      )}
+
+      {paid && postingBlocked && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          Company is {companyStatus}. You cannot post shifts — contact support.
+        </div>
+      )}
+      {paid && !postingBlocked && (!profileReady || !billingReady) && (
+        <div className="rounded-md bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800 space-y-2">
+          <p className="font-medium">Cannot post paid shifts yet:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            {!profileReady && (
+              <li>
+                Company profile incomplete —{" "}
+                <Link href="/employer" className="underline">complete profile</Link> (industry, bio, legal name, admin contact).
+              </li>
+            )}
+            {!billingReady && (
+              <li>
+                Billing not set up —{" "}
+                <Link href="/employer/billing" className="underline">set up billing</Link>.
+              </li>
+            )}
+          </ul>
         </div>
       )}
 
@@ -163,10 +240,10 @@ export default function CreateShiftPage() {
       <div className="flex justify-end gap-3">
         <Link href="/employer"><Button variant="secondary">Cancel</Button></Link>
         <Button
-          disabled={!form.title || !form.date || create.isPending}
+          disabled={!form.title || !form.date || create.isPending || gateBlocked}
           onClick={() => create.mutate()}
         >
-          {create.isPending ? "Posting…" : "Post shift"}
+          {create.isPending ? "Posting…" : gateBlocked ? "Complete profile & billing to post" : "Post shift"}
         </Button>
       </div>
     </div>
