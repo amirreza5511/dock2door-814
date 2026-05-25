@@ -637,7 +637,7 @@ export default function WorkerDashboard() {
                     <Text style={styles.directionsBtnText}>Directions</Text>
                   </TouchableOpacity>
                 </View>
-                {nextShift.assignment.worker_confirmed === null && isToday(nextShift.shift.date) && (
+                {nextShift.assignment.worker_confirmed !== true && (
                   <TouchableOpacity
                     onPress={() => router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: nextShift.assignment.id } })}
                     style={styles.confirmBanner}
@@ -648,10 +648,20 @@ export default function WorkerDashboard() {
                   </TouchableOpacity>
                 )}
                 <Button
-                  label={isToday(nextShift.shift.date) ? 'Clock In' : `Available ${isToday(nextShift.shift.date) ? 'today' : 'on shift day'}`}
-                  onPress={() => clockInM.mutate({ assignmentId: nextShift.assignment.id })}
+                  label={
+                    nextShift.assignment.worker_confirmed !== true
+                      ? 'Confirm attendance first'
+                      : isToday(nextShift.shift.date) ? 'Clock In' : 'Available on shift day'
+                  }
+                  onPress={() => {
+                    if (nextShift.assignment.worker_confirmed !== true) {
+                      router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: nextShift.assignment.id } });
+                      return;
+                    }
+                    clockInM.mutate({ assignmentId: nextShift.assignment.id });
+                  }}
                   loading={clockInM.isPending}
-                  disabled={!isToday(nextShift.shift.date)}
+                  disabled={nextShift.assignment.worker_confirmed === true && !isToday(nextShift.shift.date)}
                   size="sm"
                   fullWidth
                 />
@@ -763,6 +773,7 @@ export default function WorkerDashboard() {
               { label: 'Browse Open Shifts', icon: Search, color: C.accent, path: '/worker/browse' },
               { label: 'My Shifts & Applications', icon: Clock, color: C.blue, path: '/worker/my-shifts' },
               { label: 'Documents & Certificates', icon: Shield, color: C.yellow, path: '/worker/profile' },
+              { label: 'My Reviews', icon: Star, color: C.yellow, path: '/reviews' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
             ].map(({ label, icon: Icon, color, path, badge }) => (
               <TouchableOpacity key={label} onPress={() => router.push(path as any)} style={styles.navItem}>

@@ -433,10 +433,20 @@ export default function WorkerMyShifts() {
                         );
                       })()}
                       <Button
-                        label={isToday(shift?.date ?? '') ? 'Clock In' : `Available ${formatDate(shift?.date ?? '')}`}
-                        onPress={() => clockInM.mutate({ assignmentId: ass.id })}
+                        label={
+                          ass.worker_confirmed !== true
+                            ? 'Confirm attendance first'
+                            : isToday(shift?.date ?? '') ? 'Clock In' : `Available ${formatDate(shift?.date ?? '')}`
+                        }
+                        onPress={() => {
+                          if (ass.worker_confirmed !== true) {
+                            router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: ass.id } });
+                            return;
+                          }
+                          clockInM.mutate({ assignmentId: ass.id });
+                        }}
                         loading={clockInM.isPending}
-                        disabled={!isToday(shift?.date ?? '')}
+                        disabled={ass.worker_confirmed === true && !isToday(shift?.date ?? '')}
                         fullWidth
                         size="lg"
                         icon={<LogIn size={16} color={C.white} />}
@@ -553,8 +563,8 @@ export default function WorkerMyShifts() {
             {/* Payment Notice */}
             <Card style={styles.paymentNotice}>
               <Text style={styles.paymentNoticeText}>
-                Hours shown are employer-confirmed. Payment is processed by your company’s payroll cycle.
-                Contact your employer or platform admin if you have questions about a specific payment.
+                These are your employer-approved hours and the gross amount they represent at your shift rate.
+                Payment itself is handled outside the app through your employer's payroll process.
               </Text>
             </Card>
 
@@ -578,7 +588,7 @@ export default function WorkerMyShifts() {
                     <View style={styles.earningsAmtBlock}>
                       <Text style={styles.earningsAmt}>${amount.toFixed(2)}</Text>
                       <View style={styles.earningsStatusBadge}>
-                        <Text style={styles.earningsStatusText}>Hours Confirmed</Text>
+                        <Text style={styles.earningsStatusText}>Hours approved</Text>
                       </View>
                     </View>
                   </View>

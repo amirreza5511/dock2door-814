@@ -710,8 +710,11 @@ export default function EmployerDashboard() {
           </TouchableOpacity>
           <View style={styles.navList}>
             {[
-              { label: 'My Shifts & Applications', icon: CalendarDays, color: C.blue, path: '/employer/shifts' },
+              { label: 'My Shifts', icon: CalendarDays, color: C.blue, path: '/employer/shifts' },
+              { label: stats.pendingApplicants > 0 ? `Review Applicants (${stats.pendingApplicants})` : 'Review Applicants', icon: Users, color: stats.pendingApplicants > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.pendingApplicants > 0 ? stats.pendingApplicants : undefined },
+              { label: stats.hoursToConfirmCount > 0 ? `Confirm Hours (${stats.hoursToConfirmCount})` : 'Confirm Hours', icon: Clock, color: stats.hoursToConfirmCount > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.hoursToConfirmCount > 0 ? stats.hoursToConfirmCount : undefined },
               { label: 'Company Profile', icon: Building2, color: C.accent, path: '/employer/company-profile' },
+              { label: 'Reviews', icon: Star, color: C.yellow, path: '/reviews' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
             ].map(({ label, icon: Icon, color, path, badge }) => (
               <TouchableOpacity key={label} onPress={() => router.push(path as any)} style={styles.navItem}>
