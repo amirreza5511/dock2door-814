@@ -23,7 +23,8 @@ export default function CompanySetup() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { memberships, refresh } = useActiveCompany();
+  const updateUser = useAuthStore((s) => s.updateUser);
+  const { memberships, refresh, setActiveCompanyId } = useActiveCompany();
 
   const [step, setStep] = useState<Step>('public');
 
@@ -243,12 +244,23 @@ export default function CompanySetup() {
         console.log('[company-setup] submit_for_approval skipped', e);
       }
 
-      // Fire-and-forget refresh — DO NOT await, it can hang the UI.
+      // Update the in-memory auth user so `user.companyId` is no longer stale.
+      // Without this, the next screen falls back to an old/null companyId and
+      // shows "Company not found".
+      try { updateUser({ companyId }); } catch (e) { console.log('[company-setup] updateUser skipped', e); }
+
+      // Mark this as the active company so the company-profile screen reads it
+      // immediately (the AsyncStorage write inside is fire-and-forget).
+      try { void setActiveCompanyId(companyId); } catch (e) { console.log('[company-setup] setActive skipped', e); }
+
+      // Fire-and-forget memberships refresh — DO NOT await, it can hang the UI.
       try { void refresh(); } catch (e) { console.log('[company-setup] refresh fire-and-forget failed', e); }
 
       // Always clear loading and navigate, no matter what.
       setLoading(false);
-      router.replace(getRoleRoute(user.role) as never);
+      // Route to Company Profile so the user immediately sees their pending-
+      // approval status banner and the completion checklist.
+      router.replace('/employer/company-profile' as never);
       return;
     } catch (err) {
       console.log('[company-setup] failed at', stepLabel, err);

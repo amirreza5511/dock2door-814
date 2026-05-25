@@ -73,7 +73,7 @@ async function fetchCompanyProfile(companyId: string) {
       .from('companies')
       .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
       .eq('id', companyId)
-      .single(),
+      .maybeSingle(),
     supabase
       .from('shift_posts')
       .select('id,status,title,date,hourly_rate,start_time')
@@ -407,21 +407,31 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   }
 
   if (!company) {
-    // If the row genuinely doesn't exist yet (e.g. the query raced ahead of
-    // setup_my_company's commit), retry instead of dead-ending the user.
+    // The query returned no row. Most common cause: the active-company id
+    // resolved from a stale auth-store `companyId` that points to a row the
+    // user can no longer see (deleted attempt) OR memberships are mid-refetch
+    // after a fresh company_setup commit. Auto-retry once memberships arrive.
+    const stillRefreshing = profileQ.isFetching || activeCompanyLoading;
     return (
-      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
+      <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>{profileQ.isFetching ? 'Loading…' : 'Company not found.'}</Text>
-        {!profileQ.isFetching && (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-            <TouchableOpacity onPress={() => profileQ.refetch()} style={styles.backFallback}>
-              <Text style={styles.backFallbackText}>Retry</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
-              <Text style={styles.backFallbackText}>Company setup</Text>
-            </TouchableOpacity>
-          </View>
+        <Text style={styles.loadingText}>
+          {stillRefreshing ? 'Loading your company…' : 'We couldn\u2019t load this company yet.'}
+        </Text>
+        {!stillRefreshing && (
+          <>
+            <Text style={[styles.loadingText, { fontSize: 12, color: C.textMuted, marginTop: 6, textAlign: 'center' as const }]}>
+              If you just created it, give it a moment then tap Retry. Otherwise, finish company setup.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+              <TouchableOpacity onPress={() => profileQ.refetch()} style={styles.backFallback}>
+                <Text style={styles.backFallbackText}>Retry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
+                <Text style={styles.backFallbackText}>Company setup</Text>
+              </TouchableOpacity>
+            </View>
+          </>
         )}
       </View>
     );
