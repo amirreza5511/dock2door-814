@@ -973,6 +973,9 @@ const styles = StyleSheet.create({
   editChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   editChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
   editChipTextActive: { color: C.accent },
+  editHelp: { fontSize: 11, color: C.textMuted, marginTop: 4, lineHeight: 15 },
+  editToggleRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, marginTop: 4 },
+  editToggleLabel: { fontSize: 13, fontWeight: '600' as const, color: C.text },
   saveBig: { backgroundColor: C.accent, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 8 },
   saveBigText: { color: C.white, fontWeight: '800' as const, fontSize: 15 },
 });
