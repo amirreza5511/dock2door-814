@@ -196,6 +196,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/employer", label: "Shifts & applications", icon: ClipboardList },
         { href: "/employer/create-shift", label: "Post shift", icon: Plus },
+        { href: "/employer/hours", label: "Hours & attendance", icon: ClipboardCheck },
         { href: "/employer/browse-workers", label: "Browse workers", icon: UserSearch },
         { href: "/employer/calendar", label: "Labour calendar", icon: Calendar },
       ],

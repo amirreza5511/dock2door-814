@@ -1199,86 +1199,69 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data;
   },
 
-  'admin.updateEntityStatus': async (input: { entity: string; id: string; status: string }) => {
-    // Prefer audited RPCs for companies and users; this path covers other entity types.
+  'admin.updateEntityStatus': async (input: { entity: string; id: string; status: string; reason?: string }) => {
+    // Audited paths — companies, users, and listings route through SECURITY DEFINER RPCs
+    // that capture before/after JSONB and write audit_logs.
+    const reason = (input.reason && input.reason.trim().length >= 5)
+      ? input.reason.trim()
+      : `${input.entity} status reviewed by admin`;
+
     if (input.entity === 'users') {
       const { error } = await supabase.rpc('admin_set_user_status', {
-        p_user_id: input.id,
-        p_status: input.status,
-        p_reason: `Status set to ${input.status} by admin`,
+        p_user_id: input.id, p_status: input.status, p_reason: reason,
       });
       if (error) throwErr(error, 'Unable to update user status — check admin privileges');
       return { success: true };
     }
     if (input.entity === 'companies') {
       const { error } = await supabase.rpc('admin_set_company_status', {
-        p_company_id: input.id,
-        p_status: input.status,
-        p_reason: `Status set to ${input.status} by admin`,
+        p_company_id: input.id, p_status: input.status, p_reason: reason,
       });
       if (error) throwErr(error, 'Unable to update company status — check admin privileges');
       return { success: true };
     }
-    const ENTITY_TABLE: Record<string, string> = {
-      disputes:           'disputes',
-      bookings:           'warehouse_bookings',
-      warehouse_bookings: 'warehouse_bookings',
-      warehouse_listings: 'warehouse_listings',
-      service_listings:   'service_listings',
-      service_jobs:       'service_jobs',
-      products:           'products',
-      payments:           'payments',
-      invoices:           'invoices',
-      payouts:            'payouts',
-      shift_posts:        'shift_posts',
-      shift_applications: 'shift_applications',
-      shift_assignments:  'shift_assignments',
-      dock_appointments:  'gate_events',
-    };
-    const table = ENTITY_TABLE[input.entity];
-    if (!table) throw new Error(`admin.updateEntityStatus: "${input.entity}" is not in the allowed entity list`);
-    const { error } = await supabase.from(table).update({ status: input.status }).eq('id', input.id);
-    if (error) throwErr(error, 'Unable to update status');
-    return { success: true };
+    if (input.entity === 'warehouse_listings' || input.entity === 'service_listings') {
+      const { error } = await supabase.rpc('admin_set_listing_status', {
+        p_listing_kind: input.entity === 'warehouse_listings' ? 'warehouse' : 'service',
+        p_listing_id: input.id, p_status: input.status, p_reason: reason,
+      });
+      if (error) throwErr(error, 'Unable to update listing status — check admin privileges');
+      return { success: true };
+    }
+    // Everything else is read-only here. Business state machines (shifts, bookings,
+    // service_jobs, payments, invoices, certifications, time_entries) must use their
+    // proper workflow RPCs (cancel_shift_with_reason, transition_booking,
+    // transition_service_job, admin_initiate_refund, admin_approve_certification, etc.).
+    throw new Error(
+      `"${input.entity}" is read-only here. Use the proper workflow screen — direct status updates would skip audit and state-machine checks.`,
+    );
   },
 
-  'admin.archiveEntity': async (input: { entity: string; id: string }) => {
-    // profiles: no archived_at — use admin_set_user_status('Inactive') for audit trail.
+  'admin.archiveEntity': async (input: { entity: string; id: string; reason?: string }) => {
+    const reason = (input.reason && input.reason.trim().length >= 5)
+      ? input.reason.trim()
+      : 'Archived via admin panel';
+
+    // Only users and companies have a safe audited archive path. Everything else is
+    // a business entity (booking, invoice, shift, etc.) whose lifecycle must go
+    // through its own RPC — silent archive would bypass audit and state-machine.
     if (input.entity === 'users') {
       const { error } = await supabase.rpc('admin_set_user_status', {
-        p_user_id: input.id,
-        p_status: 'Inactive',
-        p_reason: 'Archived via admin panel',
+        p_user_id: input.id, p_status: 'Inactive', p_reason: reason,
       });
       if (error) throwErr(error, 'Unable to archive user — check admin privileges');
       return { success: true };
     }
-    const ARCHIVE_TABLE: Record<string, string> = {
-      companies:          'companies',
-      disputes:           'disputes',
-      bookings:           'warehouse_bookings',
-      warehouse_bookings: 'warehouse_bookings',
-      warehouse_listings: 'warehouse_listings',
-      service_listings:   'service_listings',
-      service_jobs:       'service_jobs',
-      products:           'products',
-      payments:           'payments',
-      invoices:           'invoices',
-      payouts:            'payouts',
-      message_threads:    'chat_threads',
-      shift_posts:        'shift_posts',
-      shift_applications: 'shift_applications',
-      shift_assignments:  'shift_assignments',
-      dock_appointments:  'gate_events',
-    };
-    const table = ARCHIVE_TABLE[input.entity];
-    if (!table) throw new Error(`admin.archiveEntity: "${input.entity}" is not in the allowed entity list`);
-    // Try archived_at first; fall back to status=Inactive if the column is absent.
-    const { error } = await supabase.from(table).update({ archived_at: new Date().toISOString() }).eq('id', input.id);
-    if (error) {
-      await supabase.from(table).update({ status: 'Inactive' }).eq('id', input.id);
+    if (input.entity === 'companies') {
+      const { error } = await supabase.rpc('admin_set_company_status', {
+        p_company_id: input.id, p_status: 'Suspended', p_reason: reason,
+      });
+      if (error) throwErr(error, 'Unable to archive company — check admin privileges');
+      return { success: true };
     }
-    return { success: true };
+    throw new Error(
+      `"${input.entity}" cannot be archived from Data Manager. Use the proper workflow screen — direct archives would skip audit and state-machine checks.`,
+    );
   },
 
   // admin.setCompanyStatus routes through admin_set_company_status SECURITY DEFINER RPC (0007)
