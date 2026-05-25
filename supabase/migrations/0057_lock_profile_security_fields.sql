@@ -26,6 +26,7 @@ DROP POLICY IF EXISTS "update_own_profile" ON public.profiles;
 
 -- Re-create a narrow self-update policy that blocks security fields.
 -- WITH CHECK ensures the locked columns cannot be changed even if USING passes.
+DROP POLICY IF EXISTS "profiles_update_own_safe" ON public.profiles;
 CREATE POLICY "profiles_update_own_safe"
   ON public.profiles
   FOR UPDATE
