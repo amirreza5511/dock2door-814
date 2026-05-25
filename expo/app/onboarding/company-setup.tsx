@@ -111,9 +111,23 @@ export default function CompanySetup() {
 
   const companyType = user?.role ? COMPANY_TYPE_BY_ROLE[user.role] : undefined;
 
-  const canContinuePublic = name.trim().length >= 2 && industry && city.trim().length >= 2 && publicBio.trim().length >= 20;
-  const canContinuePrivate = legalName.trim().length >= 2 && adminName.trim().length >= 2 && /.+@.+\..+/.test(adminEmail.trim());
-  const canContinueBilling = billingName.trim().length >= 2 && /.+@.+\..+/.test(billingEmail.trim());
+  const publicMissing: string[] = [];
+  if (name.trim().length < 2) publicMissing.push('Company name');
+  if (!industry) publicMissing.push('Industry');
+  if (city.trim().length < 2) publicMissing.push('City / service area');
+  if (publicBio.trim().length < 20) publicMissing.push(`Public bio (need ${Math.max(0, 20 - publicBio.trim().length)} more characters)`);
+  const canContinuePublic = publicMissing.length === 0;
+
+  const privateMissing: string[] = [];
+  if (legalName.trim().length < 2) privateMissing.push('Legal business name');
+  if (adminName.trim().length < 2) privateMissing.push('Admin contact name');
+  if (!/.+@.+\..+/.test(adminEmail.trim())) privateMissing.push('Valid admin email');
+  const canContinuePrivate = privateMissing.length === 0;
+
+  const billingMissing: string[] = [];
+  if (billingName.trim().length < 2) billingMissing.push('Billing contact name');
+  if (!/.+@.+\..+/.test(billingEmail.trim())) billingMissing.push('Valid billing email');
+  const canContinueBilling = billingMissing.length === 0;
 
   const showError = (title: string, message: string) => {
     if (Platform.OS === 'web') {
@@ -332,6 +346,14 @@ export default function CompanySetup() {
               <Switch value={showPublicPhone} onValueChange={setShowPublicPhone} disabled={!publicPhone.trim()} />
             </View>
 
+            {!canContinuePublic && (
+              <View style={styles.missingBox}>
+                <Text style={styles.missingTitle}>Still needed to continue</Text>
+                {publicMissing.map((m) => (
+                  <Text key={m} style={styles.missingItem}>• {m}</Text>
+                ))}
+              </View>
+            )}
             <Button label="Continue" onPress={() => setStep('private')} fullWidth size="lg" disabled={!canContinuePublic} />
           </View>
         )}
@@ -348,6 +370,14 @@ export default function CompanySetup() {
             <Input label="Admin contact name *" value={adminName} onChangeText={setAdminName} placeholder="Jane Doe" />
             <Input label="Admin email *" value={adminEmail} onChangeText={setAdminEmail} placeholder="ops@acme.com" keyboardType="email-address" autoCapitalize="none" />
             <Input label="Admin phone (optional)" value={adminPhone} onChangeText={setAdminPhone} placeholder="(555) 555-1234" keyboardType="phone-pad" />
+            {!canContinuePrivate && (
+              <View style={styles.missingBox}>
+                <Text style={styles.missingTitle}>Still needed to continue</Text>
+                {privateMissing.map((m) => (
+                  <Text key={m} style={styles.missingItem}>• {m}</Text>
+                ))}
+              </View>
+            )}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button label="Back" onPress={() => setStep('public')} variant="ghost" />
               <View style={{ flex: 1 }}>
@@ -380,6 +410,14 @@ export default function CompanySetup() {
               </View>
             </View>
             <Input label="Payment terms (days)" value={terms} onChangeText={(v) => setTerms(v.replace(/[^0-9]/g, ''))} placeholder="14" keyboardType="numeric" />
+            {!canContinueBilling && (
+              <View style={styles.missingBox}>
+                <Text style={styles.missingTitle}>Still needed to continue</Text>
+                {billingMissing.map((m) => (
+                  <Text key={m} style={styles.missingItem}>• {m}</Text>
+                ))}
+              </View>
+            )}
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <Button label="Back" onPress={() => setStep('private')} variant="ghost" />
               <View style={{ flex: 1 }}>
@@ -488,4 +526,7 @@ const styles = StyleSheet.create({
   helperText: { fontSize: 11, color: C.textMuted, lineHeight: 16, marginTop: -8 },
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
   toggleLabel: { fontSize: 13, fontWeight: '600' as const, color: C.text },
+  missingBox: { backgroundColor: C.yellowDim, borderColor: C.yellow + '40', borderWidth: 1, borderRadius: 12, padding: 12, gap: 4 },
+  missingTitle: { fontSize: 12, fontWeight: '700' as const, color: C.yellow, marginBottom: 4 },
+  missingItem: { fontSize: 12, color: C.yellow, lineHeight: 17 },
 });
