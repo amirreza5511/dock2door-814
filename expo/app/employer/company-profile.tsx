@@ -1,13 +1,14 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
 
@@ -35,7 +36,15 @@ interface ReviewRow {
   created_at: string;
 }
 
-interface StaffRow { id: string; }
+interface StaffRow { id: string; user_id: string; company_role: string; }
+
+interface PendingWorkerRating {
+  assignment_id: string;
+  shift_id: string;
+  worker_user_id: string;
+  worker_name: string | null;
+  shift_title: string | null;
+}
 
 async function fetchCompanyProfile(companyId: string) {
   const [companyRes, shiftsRes, reviewsRes, staffRes] = await Promise.all([
@@ -50,23 +59,62 @@ async function fetchCompanyProfile(companyId: string) {
       .eq('employer_company_id', companyId),
     supabase
       .from('reviews')
-      .select('id,rating,comment,created_at')
+      .select('id,rating,comment,created_at,reviewer_user_id')
       .eq('target_company_id', companyId)
       .order('created_at', { ascending: false })
       .limit(10),
     supabase
       .from('company_users')
-      .select('id')
+      .select('id,user_id,company_role')
       .eq('company_id', companyId),
   ]);
 
   return {
     company: (companyRes.data ?? null) as CompanyRow | null,
     shifts: (shiftsRes.data ?? []) as ShiftRow[],
-    reviews: (reviewsRes.data ?? []) as ReviewRow[],
+    reviews: (reviewsRes.data ?? []) as (ReviewRow & { reviewer_user_id: string | null })[],
     staff: (staffRes.data ?? []) as StaffRow[],
   };
 }
+
+async function fetchPendingWorkerRatings(companyId: string, userId: string): Promise<PendingWorkerRating[]> {
+  const { data: assigns } = await supabase
+    .from('shift_assignments')
+    .select('id, shift_id, worker_user_id, status, shift:shift_id(title)')
+    .eq('employer_company_id', companyId)
+    .in('status', ['Completed', 'HoursConfirmed'])
+    .order('id', { ascending: false })
+    .limit(20);
+  const rows = (assigns ?? []) as Array<{ id: string; shift_id: string; worker_user_id: string; shift: { title: string | null } | null }>;
+  if (rows.length === 0) return [];
+  const { data: existing } = await supabase
+    .from('reviews')
+    .select('context_id')
+    .eq('reviewer_user_id', userId)
+    .eq('context_kind', 'shift_assignment')
+    .in('context_id', rows.map((r) => r.id));
+  const reviewed = new Set((existing ?? []).map((e) => (e as { context_id: string }).context_id));
+  const pending = rows.filter((r) => !reviewed.has(r.id));
+  if (pending.length === 0) return [];
+  const workerIds = Array.from(new Set(pending.map((p) => p.worker_user_id)));
+  const { data: profs } = await supabase
+    .from('worker_profiles')
+    .select('user_id, display_name')
+    .in('user_id', workerIds);
+  const nameByUser = new Map<string, string>();
+  for (const p of (profs ?? []) as Array<{ user_id: string; display_name: string | null }>) {
+    if (p.display_name) nameByUser.set(p.user_id, p.display_name);
+  }
+  return pending.slice(0, 5).map((r) => ({
+    assignment_id: r.id,
+    shift_id: r.shift_id,
+    worker_user_id: r.worker_user_id,
+    worker_name: nameByUser.get(r.worker_user_id) ?? null,
+    shift_title: r.shift?.title ?? null,
+  }));
+}
+
+type CompanyViewMode = 'private' | 'worker' | 'public';
 
 function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
   return (
@@ -86,12 +134,28 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
 export default function CompanyProfileScreen() {
   const insets = useSafeAreaInsets();
   const { companyId } = useLocalSearchParams<{ companyId: string }>();
+  const user = useAuthStore((s) => s.user);
+  const [viewMode, setViewMode] = useState<CompanyViewMode>('private');
 
   const profileQ = useQuery({
     queryKey: ['company-profile', companyId],
     queryFn: () => fetchCompanyProfile(companyId),
     enabled: Boolean(companyId),
     staleTime: 60_000,
+  });
+
+  const isMember = useMemo(() => {
+    if (!user?.id || !profileQ.data?.staff) return false;
+    return profileQ.data.staff.some((s) => s.user_id === user.id);
+  }, [user, profileQ.data]);
+
+  const effectiveMode: CompanyViewMode = isMember ? viewMode : 'worker';
+
+  const pendingRatingsQ = useQuery({
+    queryKey: ['employer-pending-worker-ratings', companyId, user?.id],
+    queryFn: () => fetchPendingWorkerRatings(companyId, user!.id),
+    enabled: Boolean(companyId && user?.id && isMember),
+    staleTime: 30_000,
   });
 
   const { company, shifts, reviews, staff } = profileQ.data ?? {
@@ -115,6 +179,11 @@ export default function CompanyProfileScreen() {
     star,
     count: reviews.filter((r) => r.rating === star).length,
   }));
+
+  const isOwnerOrAdmin = useMemo(() => {
+    if (!user?.id) return false;
+    return (staff ?? []).some((s) => s.user_id === user.id && (s.company_role === 'Owner' || s.company_role === 'Admin'));
+  }, [staff, user]);
 
   const recentShifts = [...shifts]
     .sort((a, b) => new Date(b.date + 'T00:00').getTime() - new Date(a.date + 'T00:00').getTime())
@@ -158,6 +227,95 @@ export default function CompanyProfileScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 60 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* View mode tabs (only members can preview) */}
+        {isMember && (
+          <View style={styles.viewTabsWrap}>
+            <Text style={styles.viewTabsLabel}>Viewing company profile as:</Text>
+            <View style={styles.viewTabsRow}>
+              {([
+                { key: 'private' as const, label: 'My Company', Icon: ShieldCheck },
+                { key: 'worker' as const, label: 'Worker View', Icon: Users },
+                { key: 'public' as const, label: 'Public View', Icon: Globe },
+              ]).map((t) => (
+                <TouchableOpacity key={t.key} onPress={() => setViewMode(t.key)} style={[styles.viewTab, viewMode === t.key && styles.viewTabActive]}>
+                  <t.Icon size={13} color={viewMode === t.key ? C.accent : C.textMuted} />
+                  <Text style={[styles.viewTabText, viewMode === t.key && styles.viewTabTextActive]}>{t.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {effectiveMode === 'worker' && (
+              <View style={[styles.previewBanner, { backgroundColor: C.blueDim, borderColor: C.blue + '40' }]}>
+                <Users size={12} color={C.blue} />
+                <Text style={[styles.previewBannerText, { color: C.blue }]}>This is what workers see when applying to your shifts. Internal staff, billing and contact details are never shown here.</Text>
+              </View>
+            )}
+            {effectiveMode === 'public' && (
+              <View style={[styles.previewBanner, { backgroundColor: C.greenDim, borderColor: C.green + '40' }]}>
+                <Globe size={12} color={C.green} />
+                <Text style={[styles.previewBannerText, { color: C.green }]}>Public-facing profile. Only the company name, city, rating summary and approval status are visible.</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Approval status banner — only for members */}
+        {effectiveMode === 'private' && isMember && (
+          (() => {
+            const status = company.status;
+            if (status === 'PendingApproval' || status === 'Pending') {
+              return (
+                <View style={[styles.statusBanner, { backgroundColor: C.yellowDim, borderColor: C.yellow + '60' }]}>
+                  <Clock size={14} color={C.yellow} />
+                  <Text style={[styles.statusBannerText, { color: C.yellow }]}>Waiting for Super Admin approval. You can complete your profile while we review.</Text>
+                </View>
+              );
+            }
+            if (status === 'Rejected') {
+              return (
+                <View style={[styles.statusBanner, { backgroundColor: C.redDim, borderColor: C.red + '60' }]}>
+                  <AlertTriangle size={14} color={C.red} />
+                  <Text style={[styles.statusBannerText, { color: C.red }]}>Company application was rejected. Contact support to review the reason and resubmit.</Text>
+                </View>
+              );
+            }
+            if (status === 'Suspended') {
+              return (
+                <View style={[styles.statusBanner, { backgroundColor: C.redDim, borderColor: C.red + '60' }]}>
+                  <AlertTriangle size={14} color={C.red} />
+                  <Text style={[styles.statusBannerText, { color: C.red }]}>Company is currently suspended. Shift posting is disabled. Contact support.</Text>
+                </View>
+              );
+            }
+            return null;
+          })()
+        )}
+
+        {/* Pending rating action — owner/admin only */}
+        {effectiveMode === 'private' && isMember && (pendingRatingsQ.data ?? []).length > 0 && (
+          <Card style={styles.pendingRateCard}>
+            <View style={styles.pendingRateHeader}>
+              <Star size={14} color={C.yellow} fill={C.yellow} />
+              <Text style={styles.pendingRateTitle}>Rate worker{(pendingRatingsQ.data ?? []).length > 1 ? 's' : ''} from recent shifts</Text>
+            </View>
+            {(pendingRatingsQ.data ?? []).slice(0, 3).map((p) => (
+              <TouchableOpacity
+                key={p.assignment_id}
+                onPress={() => router.push('/employer/shifts' as any)}
+                style={styles.pendingRateRow}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pendingRateShift}>{p.shift_title ?? 'Shift'}</Text>
+                  <Text style={styles.pendingRateCompany}>{p.worker_name ?? 'Worker'}</Text>
+                </View>
+                <View style={styles.pendingRateBtn}>
+                  <Text style={styles.pendingRateBtnText}>Rate Now</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </Card>
+        )}
+
         {/* Header Card */}
         <View style={styles.companyCard}>
           <View style={styles.companyIconWrap}>
@@ -174,6 +332,16 @@ export default function CompanyProfileScreen() {
             <Text style={styles.memberSince}>Member since {memberSince}</Text>
             <StatusBadge status={company.status} />
           </View>
+          {effectiveMode === 'private' && isOwnerOrAdmin && (
+            <View style={styles.headerActionRow}>
+              <TouchableOpacity onPress={() => router.push('/employer/shifts' as any)} style={styles.headerActionBtn} activeOpacity={0.8}>
+                <Text style={styles.headerActionText}>Manage Shifts</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => router.push('/employer' as any)} style={styles.headerActionBtn} activeOpacity={0.8}>
+                <Text style={styles.headerActionText}>Edit Company</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Stats Row */}
@@ -198,7 +366,8 @@ export default function CompanyProfileScreen() {
           </View>
         </Card>
 
-        {/* Trust Indicators */}
+        {/* Trust Indicators — hidden in public view */}
+        {effectiveMode !== 'public' && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trust & Verification</Text>
           <Card>
@@ -217,10 +386,19 @@ export default function CompanyProfileScreen() {
             </View>
           </Card>
         </View>
+        )}
 
         {/* Reviews */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Reviews ({reviews.length})</Text>
+          <View style={styles.reviewHeaderRow}>
+            <Text style={styles.sectionTitle}>Reviews ({reviews.length})</Text>
+            {reviews.length > 3 && companyId && (
+              <TouchableOpacity onPress={() => router.push(`/reviews/company/${companyId}` as any)} style={styles.viewAllReviewsBtn} activeOpacity={0.8}>
+                <MessageSquare size={11} color={C.accent} />
+                <Text style={styles.viewAllReviewsText}>View all</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {reviews.length > 0 && (
             <Card style={{ marginBottom: 10 }}>
               {/* Star distribution */}
@@ -245,7 +423,7 @@ export default function CompanyProfileScreen() {
           )}
           {reviews.length === 0 ? (
             <Card>
-              <Text style={styles.emptyText}>No reviews yet.</Text>
+              <Text style={styles.emptyText}>No reviews yet. Reviews appear here after workers complete shifts and rate your company.</Text>
             </Card>
           ) : (
             reviews.map((r) => (
@@ -262,8 +440,8 @@ export default function CompanyProfileScreen() {
           )}
         </View>
 
-        {/* Recent Shifts */}
-        {recentShifts.length > 0 && (
+        {/* Recent Shifts — hidden in public view */}
+        {effectiveMode !== 'public' && recentShifts.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent Shifts</Text>
             {recentShifts.map((s) => (
@@ -367,4 +545,34 @@ const styles = StyleSheet.create({
   shiftMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   shiftRight: { alignItems: 'flex-end', gap: 4 },
   shiftRate: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  // View mode tabs
+  viewTabsWrap: { marginBottom: 14 },
+  viewTabsLabel: { fontSize: 11, color: C.textMuted, marginBottom: 6, fontWeight: '600' as const },
+  viewTabsRow: { flexDirection: 'row', gap: 6 },
+  viewTab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 8, paddingHorizontal: 6, borderRadius: 10, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
+  viewTabActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  viewTabText: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const },
+  viewTabTextActive: { color: C.accent },
+  previewBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 8 },
+  previewBannerText: { fontSize: 11, lineHeight: 16, flex: 1 },
+  // Status banner
+  statusBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 10, borderWidth: 1, marginBottom: 14 },
+  statusBannerText: { fontSize: 12, lineHeight: 17, flex: 1, fontWeight: '600' as const },
+  // Pending rating
+  pendingRateCard: { marginBottom: 14, backgroundColor: C.yellowDim, borderColor: C.yellow + '40', borderWidth: 1 },
+  pendingRateHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  pendingRateTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  pendingRateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  pendingRateShift: { fontSize: 13, fontWeight: '600' as const, color: C.text },
+  pendingRateCompany: { fontSize: 11, color: C.textSecondary },
+  pendingRateBtn: { backgroundColor: C.yellow, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  pendingRateBtnText: { fontSize: 12, color: C.white, fontWeight: '700' as const },
+  // Header actions
+  headerActionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  headerActionBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  headerActionText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+  // Reviews header
+  reviewHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  viewAllReviewsBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4 },
+  viewAllReviewsText: { fontSize: 11, color: C.accent, fontWeight: '600' as const },
 });
