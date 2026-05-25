@@ -161,7 +161,7 @@ export default function WorkerMyShifts() {
       if (!user?.id) return [];
       const { data } = await supabase
         .from('shift_applications')
-        .select('id,shift_id,worker_user_id,status,applied_at')
+        .select('id,shift_id,worker_user_id,status,applied_at,rejection_reason')
         .eq('worker_user_id', user.id)
         .order('applied_at', { ascending: false });
       return (data ?? []) as AppRow[];

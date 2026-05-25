@@ -43,6 +43,12 @@ interface AppRow {
   applied_at: string;
 }
 
+interface RejectTarget {
+  applicationId: string;
+  workerName: string;
+  shiftTitle: string;
+}
+
 interface TimeEntryRow {
   id: string;
   assignment_id: string;
@@ -98,6 +104,8 @@ export default function EmployerShifts() {
   const [noShowFor, setNoShowFor] = useState<AssignmentRow | null>(null);
   const [noShowReason, setNoShowReason] = useState('');
   const [noShowLoading, setNoShowLoading] = useState(false);
+  const [rejectFor, setRejectFor] = useState<RejectTarget | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const myShifts = useMemo(
     () => shiftPosts
@@ -405,9 +413,14 @@ export default function EmployerShifts() {
                                 <CheckCircle size={16} color={C.green} />
                               </TouchableOpacity>
                               <TouchableOpacity
-                                onPress={() => rejectM.mutate({ applicationId: app.id, reason: 'Rejected by employer' }, {
-                                  onError: (e: Error) => Alert.alert('Unable to reject', e.message),
-                                })}
+                                onPress={() => {
+                                  setRejectReason('');
+                                  setRejectFor({
+                                    applicationId: app.id,
+                                    workerName: getWorkerName(app.worker_user_id),
+                                    shiftTitle: selected?.title ?? '',
+                                  });
+                                }}
                                 style={styles.rejectBtn}
                               >
                                 <XCircle size={16} color={C.red} />
@@ -674,6 +687,53 @@ export default function EmployerShifts() {
               </View>
             </ScrollView>
           )}
+        </View>
+      </Modal>
+
+      {/* Reject Applicant Modal */}
+      <Modal visible={!!rejectFor} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setRejectFor(null)}>
+        <View style={[styles.modal, { paddingBottom: 40, paddingHorizontal: 20, paddingTop: 20, gap: 14 }]}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.noShowModalTitle}>Reject Applicant</Text>
+          <Text style={styles.noShowModalSub}>
+            {rejectFor ? `${rejectFor.workerName} applied to ${rejectFor.shiftTitle || 'this shift'}.` : ''} The worker will see your reason in their Applications list, so please be professional and specific.
+          </Text>
+          <TextInput
+            value={rejectReason}
+            onChangeText={setRejectReason}
+            placeholder="Reason (e.g. Position filled, certifications not matching, scheduling conflict)"
+            placeholderTextColor={C.textMuted}
+            style={styles.noShowInput}
+            multiline
+            numberOfLines={4}
+          />
+          <View style={{ gap: 10 }}>
+            <Button
+              label={rejectM.isPending ? 'Rejecting…' : 'Send Rejection'}
+              onPress={() => {
+                if (!rejectFor) return;
+                const reason = rejectReason.trim() || 'Not selected for this shift';
+                rejectM.mutate(
+                  { applicationId: rejectFor.applicationId, reason },
+                  {
+                    onSuccess: () => { setRejectFor(null); setRejectReason(''); },
+                    onError: (e: Error) => Alert.alert('Unable to reject', e.message),
+                  },
+                );
+              }}
+              loading={rejectM.isPending}
+              variant="danger"
+              fullWidth
+              size="lg"
+              icon={<XCircle size={15} color={C.white} />}
+            />
+            <Button
+              label="Cancel"
+              onPress={() => { setRejectFor(null); setRejectReason(''); }}
+              variant="ghost"
+              fullWidth
+            />
+          </View>
         </View>
       </Modal>
 
