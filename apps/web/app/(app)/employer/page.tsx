@@ -77,22 +77,58 @@ export default function EmployerPage() {
   const appsQ = useQuery({
     queryKey: ["employer", "applications", appsPage],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      // 1) Get this user's active companies
+      const { data: memberships, error: memErr } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", user.id)
+        .eq("status", "Active");
+      if (memErr) throw memErr;
+      const companyIds = (memberships ?? []).map((m: { company_id: string }) => m.company_id);
+      if (companyIds.length === 0) return [];
+
+      // 2) Fetch shifts owned by those companies
+      const { data: shifts, error: shiftErr } = await supabase
+        .from("shift_posts")
+        .select("id, title, employer_company_id")
+        .in("employer_company_id", companyIds);
+      if (shiftErr) throw shiftErr;
+      const shiftMap = new Map<string, string>();
+      for (const s of shifts ?? []) shiftMap.set(s.id, s.title ?? "—");
+      const shiftIds = Array.from(shiftMap.keys());
+      if (shiftIds.length === 0) return [];
+
+      // 3) Fetch applications scoped to this employer's shifts
+      const { data: apps, error: appErr } = await supabase
         .from("shift_applications")
-        .select(`id, shift_id, worker_user_id, status, applied_at,
-          shift_posts!inner(title),
-          profiles!inner(name)`)
+        .select("id, shift_id, worker_user_id, status, applied_at")
+        .in("shift_id", shiftIds)
         .order("applied_at", { ascending: false })
         .range(0, appsPage * PAGE_SIZE - 1);
-      if (error) throw error;
-      return (data ?? []).map((a: any) => ({
+      if (appErr) throw appErr;
+
+      // 4) Fetch worker names manually (avoid fragile FK embedding)
+      const workerIds = Array.from(new Set((apps ?? []).map((a) => a.worker_user_id)));
+      const nameMap = new Map<string, string>();
+      if (workerIds.length > 0) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, name")
+          .in("id", workerIds);
+        for (const p of profs ?? []) nameMap.set(p.id, p.name ?? "Unknown");
+      }
+
+      return (apps ?? []).map((a) => ({
         id: a.id,
         shift_id: a.shift_id,
         worker_user_id: a.worker_user_id,
         status: a.status,
         applied_at: a.applied_at,
-        shift_title: a.shift_posts?.title ?? "—",
-        worker_name: a.profiles?.name ?? "Unknown",
+        shift_title: shiftMap.get(a.shift_id) ?? "—",
+        worker_name: nameMap.get(a.worker_user_id) ?? "Unknown",
       })) as ApplicationRow[];
     },
   });

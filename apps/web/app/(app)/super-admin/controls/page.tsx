@@ -47,11 +47,22 @@ export default function SuperAdminControlsPage() {
 
   const updateMut = useMutation({
     mutationFn: async (values: Partial<PlatformSettings>) => {
-      if (!s?.id) throw new Error("No settings row found");
-      const { error } = await supabase
-        .from("platform_settings")
-        .update(values)
-        .eq("id", s.id);
+      if (!s) throw new Error("No settings row found");
+      const { error } = await supabase.rpc("admin_update_platform_settings", {
+        p_warehouse_commission_percentage: Number(
+          values.warehouse_commission_percentage ?? s.warehouse_commission_percentage,
+        ),
+        p_service_commission_percentage: Number(
+          values.service_commission_percentage ?? s.service_commission_percentage,
+        ),
+        p_labour_commission_percentage: Number(
+          values.labour_commission_percentage ?? s.labour_commission_percentage,
+        ),
+        p_handling_fee_per_pallet_default: Number(
+          values.handling_fee_per_pallet_default ?? s.handling_fee_per_pallet_default,
+        ),
+        p_tax_mode: String(values.tax_mode ?? s.tax_mode),
+      });
       if (error) throw error;
     },
     onSuccess: () => {

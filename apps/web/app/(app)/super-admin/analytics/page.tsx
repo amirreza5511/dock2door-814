@@ -195,7 +195,8 @@ export default function SuperAdminAnalyticsPage() {
         {/* Users by role */}
         <Card>
           <CardHeader>
-            <CardTitle>Users by role</CardTitle>
+            <CardTitle>Users by app role</CardTitle>
+            <CardDescription>Signup role from profiles. Platform admin roles live in user_roles.</CardDescription>
           </CardHeader>
           <CardContent>
             {usersByRoleQ.isLoading ? (

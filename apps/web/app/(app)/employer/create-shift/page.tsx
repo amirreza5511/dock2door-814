@@ -47,7 +47,8 @@ export default function CreateShiftPage() {
         .from("company_users")
         .select("company_id")
         .eq("user_id", user.id)
-        .in("role", ["owner", "admin", "staff", "supervisor"])
+        .in("company_role", ["Owner", "Staff", "Manager", "Supervisor"])
+        .eq("status", "Active")
         .limit(1)
         .single();
 

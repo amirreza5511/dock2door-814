@@ -95,10 +95,9 @@ export default function BrowseShiftsPage() {
 
   const withdraw = useMutation({
     mutationFn: async (applicationId: string) => {
-      const { error } = await supabase
-        .from("shift_applications")
-        .update({ status: "Withdrawn" })
-        .eq("id", applicationId);
+      const { error } = await supabase.rpc("worker_withdraw_shift", {
+        p_application_id: applicationId,
+      });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["worker", "my-applications"] }),
