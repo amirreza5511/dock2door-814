@@ -26,15 +26,6 @@ export default function SuperAdminOverviewScreen() {
     staleTime: 0,
   });
 
-  // Refetch every time the super admin returns to this screen so newly-created
-  // companies show up immediately in the approval queue.
-  useFocusEffect(useCallback(() => {
-    void dashboardQuery.refetch();
-    void pendingHoursQ.refetch();
-    void activeShiftsQ.refetch();
-    void notifCountQ.refetch();
-  }, [dashboardQuery, pendingHoursQ, activeShiftsQ, notifCountQ]));
-
   // Unread notifications
   const notifCountQ = useQuery({
     queryKey: ['notif-unread-count', user?.id],
@@ -78,6 +69,15 @@ export default function SuperAdminOverviewScreen() {
     },
     staleTime: 60_000,
   });
+
+  // Refetch every time the super admin returns to this screen so newly-created
+  // companies show up immediately in the approval queue.
+  useFocusEffect(useCallback(() => {
+    void dashboardQuery.refetch();
+    void pendingHoursQ.refetch();
+    void activeShiftsQ.refetch();
+    void notifCountQ.refetch();
+  }, [dashboardQuery, pendingHoursQ, activeShiftsQ, notifCountQ]));
 
   if (dashboardQuery.isLoading) {
     return (
