@@ -9,6 +9,7 @@ import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, Me
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
 
@@ -179,10 +180,12 @@ function BillingSetupSection({ companyId }: { companyId: string }) {
 export default function CompanyProfileScreen(props: { overrideCompanyId?: string } = {}) {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ companyId?: string; id?: string }>();
+  const user = useAuthStore((s) => s.user);
+  const { activeCompanyId } = useActiveCompany();
   // Accept `companyId` (legacy employer route) or `id` (neutral /company/[id] route),
   // or an explicit prop override when embedded by the neutral route.
-  const companyId = props.overrideCompanyId ?? params.companyId ?? params.id ?? '';
-  const user = useAuthStore((s) => s.user);
+  // Fall back to the active company so /employer/company-profile (no param) still works.
+  const companyId = props.overrideCompanyId ?? params.companyId ?? params.id ?? activeCompanyId ?? user?.companyId ?? '';
   const [viewMode, setViewMode] = useState<CompanyViewMode>('private');
 
   const profileQ = useQuery({
