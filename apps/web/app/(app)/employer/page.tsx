@@ -179,6 +179,62 @@ export default function EmployerPage() {
     },
   });
 
+  // Safe worker profile (Employer View): only public/employer-safe fields.
+  // Never selects gov_id, file_path, address, bank, tax, dob, etc.
+  const workerProfileQ = useQuery({
+    queryKey: ["employer", "worker-profile", qualsFor?.workerId],
+    enabled: !!qualsFor?.workerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("worker_profiles")
+        .select("user_id, display_name, bio, skills, cities, avatar_url")
+        .eq("user_id", qualsFor!.workerId)
+        .maybeSingle();
+      if (error) throw error;
+      return data as {
+        user_id: string;
+        display_name: string | null;
+        bio: string | null;
+        skills: string[] | null;
+        cities: string[] | null;
+        avatar_url: string | null;
+      } | null;
+    },
+  });
+
+  // Rating summary (public) — average + total only.
+  const ratingQ = useQuery({
+    queryKey: ["employer", "worker-rating", qualsFor?.workerId],
+    enabled: !!qualsFor?.workerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("review_summaries")
+        .select("avg_rating, total")
+        .eq("target_kind", "worker")
+        .eq("target_id", qualsFor!.workerId)
+        .maybeSingle();
+      if (error) return { avg_rating: 0, total: 0 };
+      return (data ?? { avg_rating: 0, total: 0 }) as { avg_rating: number; total: number };
+    },
+  });
+
+  // Recent comments (no reviewer private data).
+  const reviewsQ = useQuery({
+    queryKey: ["employer", "worker-reviews", qualsFor?.workerId],
+    enabled: !!qualsFor?.workerId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("reviews")
+        .select("id, rating, comment, created_at")
+        .eq("target_kind", "worker")
+        .eq("target_user_id", qualsFor!.workerId)
+        .order("created_at", { ascending: false })
+        .limit(3);
+      if (error) throw error;
+      return (data ?? []) as { id: string; rating: number; comment: string | null; created_at: string }[];
+    },
+  });
+
   const closeShift = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
       const { error } = await supabase.rpc("cancel_shift_with_reason", {
@@ -298,7 +354,7 @@ export default function EmployerPage() {
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="outline"
             onClick={() => setQualsFor({ workerId: a.worker_user_id, workerName: a.worker_name ?? "Worker" })}>
-            Quals
+            View profile
           </Button>
           <Button size="sm" disabled={acceptApp.isPending}
             onClick={() => acceptApp.mutate(a.id)}>Accept</Button>
@@ -407,11 +463,46 @@ export default function EmployerPage() {
           >
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <h2 className="text-base font-semibold">{qualsFor.workerName}</h2>
-                <p className="text-xs text-muted-foreground">Approved qualifications only</p>
+                <h2 className="text-base font-semibold">{workerProfileQ.data?.display_name ?? qualsFor.workerName}</h2>
+                <p className="text-xs text-muted-foreground">Employer View — no private info shown</p>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setQualsFor(null)}>✕</Button>
             </div>
+
+            {/* Rating summary */}
+            <div className="mb-4 rounded-md border bg-muted/30 px-3 py-2">
+              {ratingQ.data && ratingQ.data.total > 0 ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-semibold">{Number(ratingQ.data.avg_rating).toFixed(1)}</span>
+                  <span className="text-yellow-500">{"★".repeat(Math.round(Number(ratingQ.data.avg_rating)))}{"☆".repeat(5 - Math.round(Number(ratingQ.data.avg_rating)))}</span>
+                  <span className="text-xs text-muted-foreground">({ratingQ.data.total} review{ratingQ.data.total === 1 ? "" : "s"})</span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No reviews yet.</p>
+              )}
+            </div>
+
+            {/* Bio / skills / cities — safe, public-ish fields */}
+            {workerProfileQ.data && (
+              <div className="mb-4 space-y-2 text-sm">
+                {workerProfileQ.data.bio && (
+                  <p className="text-muted-foreground">{workerProfileQ.data.bio}</p>
+                )}
+                {(workerProfileQ.data.skills ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {(workerProfileQ.data.skills ?? []).map((s) => (
+                      <Badge key={s} variant="secondary">{s}</Badge>
+                    ))}
+                  </div>
+                )}
+                {(workerProfileQ.data.cities ?? []).length > 0 && (
+                  <p className="text-xs text-muted-foreground">Cities: {(workerProfileQ.data.cities ?? []).join(", ")}</p>
+                )}
+              </div>
+            )}
+
+            {/* Approved qualifications */}
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Approved qualifications</p>
             {qualsQ.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : qualsQ.error ? (
@@ -433,6 +524,28 @@ export default function EmployerPage() {
                 ))}
               </ul>
             )}
+
+            {/* Recent comments */}
+            <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent comments</p>
+            {(reviewsQ.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No comments yet.</p>
+            ) : (
+              <ul className="space-y-2">
+                {(reviewsQ.data ?? []).map((r) => (
+                  <li key={r.id} className="rounded-md border px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-yellow-500">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</span>
+                      <span className="text-xs text-muted-foreground">{formatDate(r.created_at)}</span>
+                    </div>
+                    {r.comment && <p className="mt-1 text-muted-foreground">{r.comment}</p>}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="mt-4 border-t pt-3 text-[11px] text-muted-foreground">
+              Private worker data (Government ID, address, bank, tax, document files) is never shown here.
+            </div>
           </div>
         </div>
       )}

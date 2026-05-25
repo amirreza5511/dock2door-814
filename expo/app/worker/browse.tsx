@@ -250,7 +250,7 @@ export default function BrowseShifts() {
 
                 {/* Employer name — tappable */}
                 <TouchableOpacity
-                  onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: s.employerCompanyId } })}
+                  onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: s.employerCompanyId } })}
                   hitSlop={{ top: 4, bottom: 4, left: 0, right: 0 }}
                 >
                   <Text style={styles.employer}>{getEmployerName(s.employerCompanyId)}</Text>
@@ -333,7 +333,7 @@ export default function BrowseShifts() {
                   <TouchableOpacity
                     onPress={() => {
                       setApplyModal(false);
-                      setTimeout(() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: selected.employerCompanyId } }), 300);
+                      setTimeout(() => router.push({ pathname: '/company/[id]' as any, params: { id: selected.employerCompanyId } }), 300);
                     }}
                   >
                     <Text style={styles.modalEmployer}>{getEmployerName(selected.employerCompanyId)} →</Text>

@@ -371,7 +371,7 @@ export default function WorkerMyShifts() {
                         <Text style={styles.activePillText}>⚡ IN PROGRESS</Text>
                       </View>
                       <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                       {te?.start_timestamp && (
                         <View style={styles.timerCard}>
                           <Clock size={16} color={C.accent} />
@@ -393,7 +393,7 @@ export default function WorkerMyShifts() {
                       <View style={styles.cardTop}>
                         <View style={{ flex: 1 }}>
                           <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                          {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                          {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                         </View>
                         <StatusBadge status={ass.status} />
                       </View>
@@ -473,7 +473,7 @@ export default function WorkerMyShifts() {
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                       {shift && (
                         <View style={styles.metaRow}>
                           <Clock size={12} color={C.textMuted} />
@@ -582,7 +582,7 @@ export default function WorkerMyShifts() {
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                       {shift && <Text style={styles.meta}>{formatDate(shift.date)}</Text>}
                     </View>
                     <View style={styles.earningsAmtBlock}>
@@ -610,7 +610,7 @@ export default function WorkerMyShifts() {
               return (
                 <Card key={te.id} style={[styles.card, { gap: 6 }]}>
                   <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                  {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                  {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                   <Text style={styles.earningsPending}>
                     Clocked {clockH ? clockH.toFixed(1) : '?'}h — awaiting employer confirmation
                   </Text>
@@ -652,7 +652,7 @@ export default function WorkerMyShifts() {
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
-                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/employer/company-profile' as any, params: { companyId: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                      {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
                       {shift && (
                         <Text style={styles.meta}>{formatDate(shift.date)}</Text>
                       )}
