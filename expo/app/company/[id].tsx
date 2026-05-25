@@ -1,4 +1,4 @@
-import { useLocalSearchParams, Redirect } from 'expo-router';
+import { useLocalSearchParams, Redirect, Stack } from 'expo-router';
 import CompanyProfileScreen from '../employer/company-profile';
 
 /**
@@ -16,5 +16,7 @@ import CompanyProfileScreen from '../employer/company-profile';
 export default function CompanyByIdRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
   if (!id) return <Redirect href="/" />;
-  return <CompanyProfileScreen />;
+  // CompanyProfileScreen reads `companyId` from search params; redirect to it
+  // with the param name it expects, while keeping the URL neutral for workers.
+  return <Redirect href={{ pathname: '/employer/company-profile', params: { companyId: id } } as any} />;
 }
