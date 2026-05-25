@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle, Upload, Calendar, Clock, ChevronDown, Repeat, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
+import { useQueryClient } from '@tanstack/react-query';
 import { trpc } from '@/lib/trpc';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabase } from '@/lib/supabase';
@@ -117,8 +118,17 @@ export default function CreateShift() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const createShift = trpc.shifts.create.useMutation({
-    onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
+    onSuccess: async () => {
+      // The real bootstrap data lives under the plain ['dock','bootstrap'] key
+      // (see useDockBootstrap.ts). The tRPC utils key wouldn't match it, so we
+      // invalidate both to force the employer shifts list to refetch.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['dock', 'bootstrap'] }),
+        utils.dock.bootstrap.invalidate(),
+      ]);
+    },
   });
 
   const [title, setTitle] = useState('');
