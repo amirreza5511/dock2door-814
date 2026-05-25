@@ -205,7 +205,19 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   // Accept `companyId` (legacy employer route) or `id` (neutral /company/[id] route),
   // or an explicit prop override when embedded by the neutral route.
   // Fall back to the active company so /employer/company-profile (no param) still works.
-  const companyId = props.overrideCompanyId ?? params.companyId ?? params.id ?? activeCompanyId ?? user?.companyId ?? '';
+  // Fall back through: route param → active company → first membership → user.companyId.
+  // memberships[0] is critical: right after company creation, memberships arrive
+  // populated but activeCompanyId is still null for a tick while the provider's
+  // async useEffect reads AsyncStorage. Without this fallback the screen flashes
+  // "Company not found".
+  const companyId =
+    props.overrideCompanyId ??
+    params.companyId ??
+    params.id ??
+    activeCompanyId ??
+    memberships[0]?.companyId ??
+    user?.companyId ??
+    '';
   const [viewMode, setViewMode] = useState<CompanyViewMode>('private');
 
   const profileQ = useQuery({
@@ -370,12 +382,13 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
 
   // Wait for the active-company query before declaring "not found". Without this, a fresh
   // login flashes "Company not found" because memberships are still in flight.
-  if (!companyId && (activeCompanyLoading || memberships.length === 0)) {
+  if (!companyId) {
+    const noCompanyYet = !activeCompanyLoading && memberships.length === 0;
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>{activeCompanyLoading ? 'Loading…' : 'No company yet. Finish setup first.'}</Text>
-        {!activeCompanyLoading && (
+        <Text style={styles.loadingText}>{noCompanyYet ? 'No company yet. Finish setup first.' : 'Loading…'}</Text>
+        {noCompanyYet && (
           <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
             <Text style={styles.backFallbackText}>Go to Company Setup</Text>
           </TouchableOpacity>
@@ -394,13 +407,22 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   }
 
   if (!company) {
+    // If the row genuinely doesn't exist yet (e.g. the query raced ahead of
+    // setup_my_company's commit), retry instead of dead-ending the user.
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>Company not found.</Text>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backFallback}>
-          <Text style={styles.backFallbackText}>Go back</Text>
-        </TouchableOpacity>
+        <Text style={styles.loadingText}>{profileQ.isFetching ? 'Loading…' : 'Company not found.'}</Text>
+        {!profileQ.isFetching && (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+            <TouchableOpacity onPress={() => profileQ.refetch()} style={styles.backFallback}>
+              <Text style={styles.backFallbackText}>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
+              <Text style={styles.backFallbackText}>Company setup</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   }
