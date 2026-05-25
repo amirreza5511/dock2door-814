@@ -52,12 +52,13 @@ export default function CompanySetup() {
 
   const [loading, setLoading] = useState(false);
 
-  // If user already has a company, skip onboarding
+  // If user already has a company, skip onboarding — but NOT while we're in the middle of creating one
   useEffect(() => {
+    if (loading) return;
     if (memberships.length > 0 && user) {
       router.replace(getRoleRoute(user.role) as never);
     }
-  }, [memberships.length, user, router]);
+  }, [memberships.length, user, router, loading]);
 
   const companyType = user?.role ? COMPANY_TYPE_BY_ROLE[user.role] : undefined;
 
@@ -71,27 +72,35 @@ export default function CompanySetup() {
       return;
     }
     setLoading(true);
+    let stepLabel = 'create company';
     try {
-      // 1) Create the company shell.
-      const { error: setupErr } = await supabase.rpc('setup_my_company', {
+      // 1) Create the company shell. setup_my_company returns the new (or reused) company uuid.
+      const { data: setupData, error: setupErr } = await supabase.rpc('setup_my_company', {
         p_name: name.trim(),
         p_city: city.trim(),
         p_type: companyType,
       });
       if (setupErr) throw setupErr;
 
-      // Find the just-created company id.
-      const { data: co, error: coErr } = await supabase
-        .from('companies')
-        .select('id')
-        .eq('owner_user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (coErr || !co?.id) throw coErr ?? new Error('Company not found after setup');
-      const companyId = co.id as string;
+      // The RPC returns uuid directly. Fall back to looking up via company_users (NOT companies.owner_user_id — that column does not exist).
+      let companyId: string | null = typeof setupData === 'string' ? setupData : null;
+      if (!companyId) {
+        const { data: cu, error: cuErr } = await supabase
+          .from('company_users')
+          .select('company_id, companies!inner(id, type, created_at)')
+          .eq('user_id', user.id)
+          .eq('company_role', 'Owner')
+          .eq('status', 'Active')
+          .order('created_at', { ascending: false, foreignTable: 'companies' })
+          .limit(1)
+          .maybeSingle();
+        if (cuErr) throw cuErr;
+        companyId = (cu?.company_id as string | undefined) ?? null;
+      }
+      if (!companyId) throw new Error('Company id was not returned after creation');
 
       // 2) Full profile.
+      stepLabel = 'save profile';
       const { error: profErr } = await supabase.rpc('company_update_profile', {
         p_company_id: companyId,
         p_display_name: name.trim(),
@@ -112,6 +121,7 @@ export default function CompanySetup() {
       if (profErr) throw profErr;
 
       // 3) Billing setup.
+      stepLabel = 'save billing';
       const { error: billErr } = await supabase.rpc('company_update_billing', {
         p_company_id: companyId,
         p_contact_name: billingName.trim(),
@@ -124,17 +134,27 @@ export default function CompanySetup() {
       if (billErr) throw billErr;
 
       // 4) Submit for approval (non-fatal — profile is still saved if this fails).
+      stepLabel = 'submit for approval';
       try {
-        await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
+        const { error: subErr } = await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
+        if (subErr) console.log('[company-setup] submit_for_approval error', subErr.message);
       } catch (e) {
         console.log('[company-setup] submit_for_approval skipped', e);
       }
 
-      void refresh();
+      // Refetch memberships so the dashboard sees the new company, then navigate.
+      try { await refresh(); } catch (e) { console.log('[company-setup] refresh after create failed', e); }
+      setLoading(false);
       router.replace(getRoleRoute(user.role) as never);
+      return;
     } catch (err) {
-      console.log('[company-setup] failed', err);
-      Alert.alert('Error', err instanceof Error ? err.message : 'Failed to create company');
+      console.log('[company-setup] failed at', stepLabel, err);
+      const msg = err instanceof Error ? err.message : 'Failed to create company';
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined') window.alert(`Could not ${stepLabel}: ${msg}`);
+      } else {
+        Alert.alert('Could not finish setup', `${stepLabel}: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }
