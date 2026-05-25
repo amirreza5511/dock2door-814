@@ -57,6 +57,13 @@ export default function EmployerPage() {
   const [cancelTarget, setCancelTarget] = useState<{ id: string; title: string } | null>(null);
   const [cancelReason, setCancelReason] = useState("");
 
+  // Reject applicant state — reason required
+  const [rejectTarget, setRejectTarget] = useState<{ id: string; workerName: string; shiftTitle: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+
+  // Worker qualifications drawer
+  const [qualsFor, setQualsFor] = useState<{ workerId: string; workerName: string } | null>(null);
+
   // Pagination
   const [shiftsPage, setShiftsPage] = useState(1);
   const [appsPage, setAppsPage] = useState(1);
@@ -145,11 +152,31 @@ export default function EmployerPage() {
   });
 
   const rejectApp = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc("employer_reject_applicant", { p_application_id: id });
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await supabase.rpc("employer_reject_applicant", {
+        p_application_id: id,
+        p_reason: reason,
+      });
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["employer", "applications"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["employer", "applications"] });
+      setRejectTarget(null);
+      setRejectReason("");
+    },
+  });
+
+  // Safe approved-qualifications summary — RPC enforces caller's right to see this worker.
+  const qualsQ = useQuery({
+    queryKey: ["employer", "worker-quals", qualsFor?.workerId],
+    enabled: !!qualsFor?.workerId,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("employer_worker_qualifications_summary", {
+        p_worker_user_id: qualsFor!.workerId,
+      });
+      if (error) throw error;
+      return (data ?? []) as { cert_type: string; status: string; expiry_date: string | null }[];
+    },
   });
 
   const closeShift = useMutation({
@@ -269,10 +296,17 @@ export default function EmployerPage() {
       className: "text-right",
       render: (a) => a.status === "Applied" ? (
         <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline"
+            onClick={() => setQualsFor({ workerId: a.worker_user_id, workerName: a.worker_name ?? "Worker" })}>
+            Quals
+          </Button>
           <Button size="sm" disabled={acceptApp.isPending}
             onClick={() => acceptApp.mutate(a.id)}>Accept</Button>
-          <Button size="sm" variant="destructive" disabled={rejectApp.isPending}
-            onClick={() => rejectApp.mutate(a.id)}>Reject</Button>
+          <Button size="sm" variant="destructive"
+            onClick={() => {
+              setRejectReason("");
+              setRejectTarget({ id: a.id, workerName: a.worker_name ?? "Worker", shiftTitle: a.shift_title ?? "" });
+            }}>Reject</Button>
         </div>
       ) : null,
     },
@@ -320,6 +354,88 @@ export default function EmployerPage() {
           <Button variant="outline">Labour calendar</Button>
         </Link>
       </div>
+
+      {/* Reject applicant dialog — reason required */}
+      {rejectTarget && (
+        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 space-y-3">
+          <p className="text-sm font-medium text-destructive">
+            Reject <span className="font-semibold">{rejectTarget.workerName}</span>
+            {rejectTarget.shiftTitle ? <> for &quot;{rejectTarget.shiftTitle}&quot;</> : null}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            The worker will be notified with this reason. Keep it professional and non-discriminatory
+            (e.g. &ldquo;Position filled&rdquo;, &ldquo;Missing required certification&rdquo;). Minimum 5 characters.
+          </p>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Reason *</Label>
+            <Input
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="e.g. Position has been filled"
+              className="text-sm"
+              autoFocus
+            />
+          </div>
+          {rejectApp.error && (
+            <p className="text-xs text-destructive">{(rejectApp.error as Error).message}</p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={rejectReason.trim().length < 5 || rejectApp.isPending}
+              onClick={() => rejectApp.mutate({ id: rejectTarget.id, reason: rejectReason.trim() })}
+            >
+              {rejectApp.isPending ? "Rejecting…" : "Confirm reject"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(""); }}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Worker qualifications modal (safe summary; no file paths) */}
+      {qualsFor && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setQualsFor(null)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-md overflow-y-auto rounded-xl bg-card p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <div>
+                <h2 className="text-base font-semibold">{qualsFor.workerName}</h2>
+                <p className="text-xs text-muted-foreground">Approved qualifications only</p>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setQualsFor(null)}>✕</Button>
+            </div>
+            {qualsQ.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : qualsQ.error ? (
+              <p className="text-sm text-destructive">{(qualsQ.error as Error).message}</p>
+            ) : (qualsQ.data ?? []).length === 0 ? (
+              <p className="text-sm text-muted-foreground">No approved qualifications on file.</p>
+            ) : (
+              <ul className="space-y-2">
+                {(qualsQ.data ?? []).map((q) => (
+                  <li key={q.cert_type} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
+                    <span className="font-medium">{q.cert_type}</span>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="success">{q.status}</Badge>
+                      {q.expiry_date && (
+                        <span className="text-xs text-muted-foreground">exp. {q.expiry_date}</span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Cancel confirmation dialog */}
       {cancelTarget && (
