@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Alert, ScrollView, TouchableOpacity,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,6 +33,11 @@ export default function CompanySetup() {
   const [city, setCity] = useState('');
   const [publicBio, setPublicBio] = useState('');
   const [website, setWebsite] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [publicEmail, setPublicEmail] = useState('');
+  const [publicPhone, setPublicPhone] = useState('');
+  const [showPublicEmail, setShowPublicEmail] = useState<boolean>(false);
+  const [showPublicPhone, setShowPublicPhone] = useState<boolean>(false);
 
   // Private business
   const [legalName, setLegalName] = useState('');
@@ -66,51 +71,65 @@ export default function CompanySetup() {
   const canContinuePrivate = legalName.trim().length >= 2 && adminName.trim().length >= 2 && /.+@.+\..+/.test(adminEmail.trim());
   const canContinueBilling = billingName.trim().length >= 2 && /.+@.+\..+/.test(billingEmail.trim());
 
+  const showError = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') window.alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const handleSubmit = async () => {
+    if (loading) return;
     if (!companyType || !user) {
-      Alert.alert('Error', 'Unable to determine company type for your role');
+      showError('Error', 'Unable to determine company type for your role');
       return;
     }
     setLoading(true);
     let stepLabel = 'create company';
+    let companyId: string | null = null;
     try {
-      // 1) Create the company shell. setup_my_company returns the new (or reused) company uuid.
+      // 1) Create the company shell.
       const { data: setupData, error: setupErr } = await supabase.rpc('setup_my_company', {
         p_name: name.trim(),
         p_city: city.trim(),
         p_type: companyType,
       });
       if (setupErr) throw setupErr;
+      companyId = typeof setupData === 'string' ? setupData : null;
 
-      // The RPC returns uuid directly. Fall back to looking up via company_users (NOT companies.owner_user_id — that column does not exist).
-      let companyId: string | null = typeof setupData === 'string' ? setupData : null;
+      // Fallback: look up via company_users (companies has no owner_user_id column).
       if (!companyId) {
         const { data: cu, error: cuErr } = await supabase
           .from('company_users')
-          .select('company_id, companies!inner(id, type, created_at)')
+          .select('company_id')
           .eq('user_id', user.id)
           .eq('company_role', 'Owner')
           .eq('status', 'Active')
-          .order('created_at', { ascending: false, foreignTable: 'companies' })
+          .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
         if (cuErr) throw cuErr;
         companyId = (cu?.company_id as string | undefined) ?? null;
       }
-      if (!companyId) throw new Error('Company id was not returned after creation');
+      if (!companyId) {
+        throw new Error('Company id was not returned after creation. Please refresh and try again from Company Profile.');
+      }
 
-      // 2) Full profile.
-      stepLabel = 'save profile';
+      // 2) Profile.
+      stepLabel = 'save company profile';
+      const trimmedPublicEmail = publicEmail.trim();
+      const trimmedPublicPhone = publicPhone.trim();
       const { error: profErr } = await supabase.rpc('company_update_profile', {
         p_company_id: companyId,
         p_display_name: name.trim(),
         p_industry: industry,
         p_city: city.trim(),
         p_public_bio: publicBio.trim(),
-        p_logo_url: null,
+        p_logo_url: logoUrl.trim() || null,
         p_website: website.trim() || null,
-        p_public_contact_email: null,
-        p_public_contact_phone: null,
+        p_public_contact_email: trimmedPublicEmail || null,
+        p_public_contact_phone: trimmedPublicPhone || null,
         p_legal_business_name: legalName.trim(),
         p_business_number: businessNumber.trim() || null,
         p_business_address: businessAddress.trim() || null,
@@ -120,8 +139,21 @@ export default function CompanySetup() {
       });
       if (profErr) throw profErr;
 
-      // 3) Billing setup.
-      stepLabel = 'save billing';
+      // 2b) Save the visibility flags directly (these aren't RPC params).
+      try {
+        await supabase
+          .from('companies')
+          .update({
+            show_public_contact_email: showPublicEmail && Boolean(trimmedPublicEmail),
+            show_public_contact_phone: showPublicPhone && Boolean(trimmedPublicPhone),
+          })
+          .eq('id', companyId);
+      } catch (e) {
+        console.log('[company-setup] visibility flag update skipped', e);
+      }
+
+      // 3) Billing.
+      stepLabel = 'save billing setup';
       const { error: billErr } = await supabase.rpc('company_update_billing', {
         p_company_id: companyId,
         p_contact_name: billingName.trim(),
@@ -133,7 +165,7 @@ export default function CompanySetup() {
       });
       if (billErr) throw billErr;
 
-      // 4) Submit for approval (non-fatal — profile is still saved if this fails).
+      // 4) Submit for approval (non-fatal).
       stepLabel = 'submit for approval';
       try {
         const { error: subErr } = await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
@@ -142,20 +174,33 @@ export default function CompanySetup() {
         console.log('[company-setup] submit_for_approval skipped', e);
       }
 
-      // Refetch memberships so the dashboard sees the new company, then navigate.
-      try { await refresh(); } catch (e) { console.log('[company-setup] refresh after create failed', e); }
+      // Fire-and-forget refresh — DO NOT await, it can hang the UI.
+      try { void refresh(); } catch (e) { console.log('[company-setup] refresh fire-and-forget failed', e); }
+
+      // Always clear loading and navigate, no matter what.
       setLoading(false);
       router.replace(getRoleRoute(user.role) as never);
       return;
     } catch (err) {
       console.log('[company-setup] failed at', stepLabel, err);
-      const msg = err instanceof Error ? err.message : 'Failed to create company';
-      if (Platform.OS === 'web') {
-        if (typeof window !== 'undefined') window.alert(`Could not ${stepLabel}: ${msg}`);
-      } else {
-        Alert.alert('Could not finish setup', `${stepLabel}: ${msg}`);
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+
+      // If the company itself was created but a later step failed, we don't want to leave
+      // the user trapped on this page. Send them to Company Profile so they can finish editing.
+      if (companyId) {
+        showError(
+          'Company created — finish setup',
+          `We saved your company but couldn't ${stepLabel} (${msg}). Continue from Company Profile.`,
+        );
+        try { void refresh(); } catch {}
+        setLoading(false);
+        router.replace('/employer/company-profile' as never);
+        return;
       }
+
+      showError('Could not finish setup', `Step "${stepLabel}" failed: ${msg}`);
     } finally {
+      // Belt + suspenders: loading MUST clear in every code path.
       setLoading(false);
     }
   };
@@ -219,6 +264,27 @@ export default function CompanySetup() {
             <Input label="City / service area *" value={city} onChangeText={setCity} placeholder="Delta, BC" />
             <Input label="Public bio * (min 20 chars)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
             <Input label="Website (optional)" value={website} onChangeText={setWebsite} placeholder="https://" keyboardType="url" autoCapitalize="none" />
+            <Input label="Public logo URL (optional)" value={logoUrl} onChangeText={setLogoUrl} placeholder="https://example.com/logo.png" keyboardType="url" autoCapitalize="none" />
+            <Text style={styles.helperText}>Paste a public HTTPS image URL only. Do not paste private storage paths. Leave blank to show initials.</Text>
+
+            <Input label="Public contact email (optional)" value={publicEmail} onChangeText={setPublicEmail} placeholder="hello@acme.com" keyboardType="email-address" autoCapitalize="none" />
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Show email to workers</Text>
+                <Text style={styles.helperText}>Off by default. When on, workers and the public can see this email.</Text>
+              </View>
+              <Switch value={showPublicEmail} onValueChange={setShowPublicEmail} disabled={!publicEmail.trim()} />
+            </View>
+
+            <Input label="Public contact phone (optional)" value={publicPhone} onChangeText={setPublicPhone} placeholder="(555) 555-0100" keyboardType="phone-pad" />
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>Show phone to workers</Text>
+                <Text style={styles.helperText}>Off by default. When on, workers and the public can see this phone number.</Text>
+              </View>
+              <Switch value={showPublicPhone} onValueChange={setShowPublicPhone} disabled={!publicPhone.trim()} />
+            </View>
+
             <Button label="Continue" onPress={() => setStep('private')} fullWidth size="lg" disabled={!canContinuePublic} />
           </View>
         )}
@@ -365,4 +431,7 @@ const styles = StyleSheet.create({
   privacyNote: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   backLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', marginTop: 16, padding: 8 },
   backLinkText: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const },
+  helperText: { fontSize: 11, color: C.textMuted, lineHeight: 16, marginTop: -8 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+  toggleLabel: { fontSize: 13, fontWeight: '600' as const, color: C.text },
 });

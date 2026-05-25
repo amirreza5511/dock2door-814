@@ -53,36 +53,48 @@ export default function CreateShiftPage() {
         .limit(1)
         .maybeSingle();
       if (!m?.company_id) return null;
-      const { data: c } = await supabase
-        .from("companies")
-        .select("id, status, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email")
-        .eq("id", m.company_id)
-        .maybeSingle();
-      return c as null | {
-        id: string;
-        status: string | null;
-        billing_setup_completed_at: string | null;
-        profile_completed_at: string | null;
-        industry: string | null;
-        public_bio: string | null;
-        legal_business_name: string | null;
-        admin_contact_email: string | null;
+      const [companyRes, profileRes, billingRes, canPostRes] = await Promise.all([
+        supabase
+          .from("companies")
+          .select("id, status, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email")
+          .eq("id", m.company_id)
+          .maybeSingle(),
+        supabase.rpc("company_profile_is_complete", { p_company_id: m.company_id }),
+        supabase.rpc("company_billing_is_complete", { p_company_id: m.company_id }),
+        supabase.rpc("company_can_post_paid_shifts", { p_company_id: m.company_id }),
+      ]);
+      return {
+        row: companyRes.data as null | {
+          id: string;
+          status: string | null;
+          billing_setup_completed_at: string | null;
+          profile_completed_at: string | null;
+          industry: string | null;
+          public_bio: string | null;
+          legal_business_name: string | null;
+          admin_contact_email: string | null;
+        },
+        profileComplete: profileRes.error ? null : Boolean(profileRes.data),
+        billingComplete: billingRes.error ? null : Boolean(billingRes.data),
+        canPostPaid: canPostRes.error ? null : Boolean(canPostRes.data),
+        companyId: m.company_id as string,
       };
     },
   });
-  const readiness = readinessQ.data;
-  const profileReady = Boolean(
+  const readiness = readinessQ.data?.row ?? null;
+  const profileReady = readinessQ.data?.profileComplete ?? Boolean(
     readiness?.profile_completed_at ||
       (readiness?.industry &&
         (readiness?.public_bio?.length ?? 0) >= 20 &&
         readiness?.legal_business_name &&
         readiness?.admin_contact_email)
   );
-  const billingReady = Boolean(readiness?.billing_setup_completed_at);
+  const billingReady = readinessQ.data?.billingComplete ?? Boolean(readiness?.billing_setup_completed_at);
   const companyStatus = readiness?.status ?? "";
   const postingBlocked = companyStatus === "Rejected" || companyStatus === "Suspended";
+  const canPostPaid = readinessQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked);
   const paid = form.hourly_rate > 0;
-  const gateBlocked = paid && (!profileReady || !billingReady || postingBlocked);
+  const gateBlocked = paid && !canPostPaid;
 
   const create = useMutation({
     mutationFn: async () => {
@@ -101,9 +113,14 @@ export default function CreateShiftPage() {
       if (memErr || !membership?.company_id) throw new Error("No company associated with your account.");
 
       if (paid) {
-        if (postingBlocked) throw new Error(`Company is ${companyStatus}. Contact support.`);
-        if (!profileReady) throw new Error("Complete your company profile (industry, bio, legal name, admin contact) before posting paid shifts.");
-        if (!billingReady) throw new Error("Set up billing before posting paid shifts.");
+        // Re-check server-side at submit so we never trust stale client state.
+        const { data: canPost } = await supabase.rpc("company_can_post_paid_shifts", { p_company_id: membership.company_id });
+        if (canPost === false) {
+          if (postingBlocked) throw new Error(`Company is ${companyStatus}. Contact support.`);
+          if (!profileReady) throw new Error("Complete your company profile (industry, bio, legal name, admin contact) before posting paid shifts.");
+          if (!billingReady) throw new Error("Set up billing before posting paid shifts.");
+          throw new Error("Your company cannot post paid shifts right now. Contact support.");
+        }
       }
 
       const { error } = await supabase.from("shift_posts").insert({

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, Switch,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
@@ -26,6 +26,8 @@ interface CompanyRow {
   website: string | null;
   public_contact_email: string | null;
   public_contact_phone: string | null;
+  show_public_contact_email: boolean | null;
+  show_public_contact_phone: boolean | null;
   legal_business_name: string | null;
   business_number: string | null;
   business_address: string | null;
@@ -69,7 +71,7 @@ async function fetchCompanyProfile(companyId: string) {
   const [companyRes, shiftsRes, reviewsRes, staffRes] = await Promise.all([
     supabase
       .from('companies')
-      .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
+      .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
       .eq('id', companyId)
       .single(),
     supabase
@@ -267,6 +269,11 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   const [eAdminName, setEAdminName] = useState('');
   const [eAdminEmail, setEAdminEmail] = useState('');
   const [eAdminPhone, setEAdminPhone] = useState('');
+  const [eLogoUrl, setELogoUrl] = useState('');
+  const [ePublicEmail, setEPublicEmail] = useState('');
+  const [ePublicPhone, setEPublicPhone] = useState('');
+  const [eShowPublicEmail, setEShowPublicEmail] = useState<boolean>(false);
+  const [eShowPublicPhone, setEShowPublicPhone] = useState<boolean>(false);
 
   useEffect(() => {
     if (!company) return;
@@ -281,6 +288,11 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
     setEAdminName(company.admin_contact_name ?? '');
     setEAdminEmail(company.admin_contact_email ?? '');
     setEAdminPhone(company.admin_contact_phone ?? '');
+    setELogoUrl(company.logo_url ?? '');
+    setEPublicEmail(company.public_contact_email ?? '');
+    setEPublicPhone(company.public_contact_phone ?? '');
+    setEShowPublicEmail(Boolean(company.show_public_contact_email));
+    setEShowPublicPhone(Boolean(company.show_public_contact_phone));
   }, [company]);
 
   const saveProfile = useMutation({
@@ -298,10 +310,10 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
         p_industry: eIndustry,
         p_city: eCity.trim(),
         p_public_bio: eBio.trim(),
-        p_logo_url: null,
+        p_logo_url: eLogoUrl.trim() || null,
         p_website: eWebsite.trim() || null,
-        p_public_contact_email: null,
-        p_public_contact_phone: null,
+        p_public_contact_email: ePublicEmail.trim() || null,
+        p_public_contact_phone: ePublicPhone.trim() || null,
         p_legal_business_name: eLegal.trim(),
         p_business_number: eBizNum.trim() || null,
         p_business_address: eBizAddr.trim() || null,
@@ -310,6 +322,18 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
         p_admin_contact_phone: eAdminPhone.trim() || null,
       });
       if (error) throw error;
+      // Persist contact visibility flags directly (not RPC params).
+      try {
+        await supabase
+          .from('companies')
+          .update({
+            show_public_contact_email: eShowPublicEmail && Boolean(ePublicEmail.trim()),
+            show_public_contact_phone: eShowPublicPhone && Boolean(ePublicPhone.trim()),
+          })
+          .eq('id', companyId);
+      } catch (e) {
+        console.log('[company-profile] visibility flag update skipped', e);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['company-profile', companyId] });
@@ -727,6 +751,27 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
             <FormField label="City / service area *" value={eCity} onChange={setECity} />
             <FormField label="Public bio * (min 20 chars)" value={eBio} onChange={setEBio} multiline />
             <FormField label="Website" value={eWebsite} onChange={setEWebsite} />
+            <FormField label="Public logo URL" value={eLogoUrl} onChange={setELogoUrl} />
+            <Text style={styles.editHelp}>Paste a public HTTPS image URL only. Never paste private storage paths. Leave blank to show initials.</Text>
+
+            <FormField label="Public contact email" value={ePublicEmail} onChange={setEPublicEmail} keyboardType="email-address" />
+            <View style={styles.editToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editToggleLabel}>Show email to workers</Text>
+                <Text style={styles.editHelp}>Off by default. When on, workers and the public can see this email.</Text>
+              </View>
+              <Switch value={eShowPublicEmail} onValueChange={setEShowPublicEmail} disabled={!ePublicEmail.trim()} />
+            </View>
+
+            <FormField label="Public contact phone" value={ePublicPhone} onChange={setEPublicPhone} keyboardType="phone-pad" />
+            <View style={styles.editToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.editToggleLabel}>Show phone to workers</Text>
+                <Text style={styles.editHelp}>Off by default. When on, workers and the public can see this phone.</Text>
+              </View>
+              <Switch value={eShowPublicPhone} onValueChange={setEShowPublicPhone} disabled={!ePublicPhone.trim()} />
+            </View>
+
             <Text style={styles.editSection}>Business (private)</Text>
             <FormField label="Legal business name *" value={eLegal} onChange={setELegal} />
             <FormField label="Business number" value={eBizNum} onChange={setEBizNum} />

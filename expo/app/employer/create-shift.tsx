@@ -137,39 +137,52 @@ export default function CreateShift() {
   });
   const commissionPct: number = commissionQ.data ?? 15;
 
-  // Company readiness — block paid shift posting if billing or profile incomplete,
-  // or company status is Rejected / Suspended.
+  // Company readiness — uses server-side helpers (single source of truth) and falls back
+  // to local checks if the RPCs aren't deployed yet.
   const companyQ = useQuery({
     queryKey: ['company-readiness', user?.companyId],
     queryFn: async () => {
       if (!user?.companyId) return null;
-      const { data } = await supabase
-        .from('companies')
-        .select('status, billing_mode, billing_email, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email')
-        .eq('id', user.companyId)
-        .maybeSingle();
-      return data as {
-        status: string | null;
-        billing_mode: string | null;
-        billing_email: string | null;
-        billing_setup_completed_at: string | null;
-        profile_completed_at: string | null;
-        industry: string | null;
-        public_bio: string | null;
-        legal_business_name: string | null;
-        admin_contact_email: string | null;
-      } | null;
+      const [companyRes, profileRes, billingRes, canPostRes] = await Promise.all([
+        supabase
+          .from('companies')
+          .select('status, billing_mode, billing_email, billing_setup_completed_at, profile_completed_at, industry, public_bio, legal_business_name, admin_contact_email')
+          .eq('id', user.companyId)
+          .maybeSingle(),
+        supabase.rpc('company_profile_is_complete', { p_company_id: user.companyId }),
+        supabase.rpc('company_billing_is_complete', { p_company_id: user.companyId }),
+        supabase.rpc('company_can_post_paid_shifts', { p_company_id: user.companyId }),
+      ]);
+      return {
+        row: (companyRes.data ?? null) as {
+          status: string | null;
+          billing_mode: string | null;
+          billing_email: string | null;
+          billing_setup_completed_at: string | null;
+          profile_completed_at: string | null;
+          industry: string | null;
+          public_bio: string | null;
+          legal_business_name: string | null;
+          admin_contact_email: string | null;
+        } | null,
+        profileComplete: profileRes.error ? null : Boolean(profileRes.data),
+        billingComplete: billingRes.error ? null : Boolean(billingRes.data),
+        canPostPaid: canPostRes.error ? null : Boolean(canPostRes.data),
+      };
     },
     enabled: Boolean(user?.companyId),
     staleTime: 60_000,
   });
-  const billingReady = Boolean(companyQ.data?.billing_setup_completed_at);
-  const profileReady = Boolean(
-    companyQ.data?.profile_completed_at ||
-    (companyQ.data?.industry && (companyQ.data?.public_bio?.length ?? 0) >= 20 && companyQ.data?.legal_business_name && companyQ.data?.admin_contact_email)
+  const row = companyQ.data?.row ?? null;
+  // Prefer server-side helpers; only fall back to local logic if the RPCs failed.
+  const profileReady = companyQ.data?.profileComplete ?? Boolean(
+    row?.profile_completed_at ||
+    (row?.industry && (row?.public_bio?.length ?? 0) >= 20 && row?.legal_business_name && row?.admin_contact_email)
   );
-  const companyStatus = companyQ.data?.status ?? '';
+  const billingReady = companyQ.data?.billingComplete ?? Boolean(row?.billing_setup_completed_at);
+  const companyStatus = row?.status ?? '';
   const postingBlocked = companyStatus === 'Rejected' || companyStatus === 'Suspended';
+  const canPostPaid = companyQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked);
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
   const createShift = trpc.shifts.create.useMutation({
@@ -250,8 +263,8 @@ export default function CreateShift() {
       return;
     }
     // Block paid shift posting until company profile + billing setup are complete.
-    // ManualInvoice mode still requires a billing contact + email to be on file.
-    if (Number(hourlyRate) > 0) {
+    // Single source of truth: company_can_post_paid_shifts() server-side helper.
+    if (Number(hourlyRate) > 0 && !canPostPaid) {
       if (!profileReady) {
         Alert.alert(
           'Company profile incomplete',
@@ -274,6 +287,12 @@ export default function CreateShift() {
         );
         return;
       }
+      // Helper says not allowed but profile + billing look complete — status must be the blocker.
+      Alert.alert(
+        'Cannot post paid shifts',
+        `Your company cannot post paid shifts right now (status: ${companyStatus || 'unknown'}). Contact support.`,
+      );
+      return;
     }
 
     const requirements = selectedPPE.join(', ');
