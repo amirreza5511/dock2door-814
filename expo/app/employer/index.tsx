@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   CalendarDays, Users, Clock, CheckCircle, LogOut, Bell,
-  ChevronRight, AlertCircle, Plus, Star, Building2, XCircle,
+  ChevronRight, AlertCircle, Plus, Star, Building2, XCircle, UserCircle2,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -383,6 +383,9 @@ export default function EmployerDashboard() {
               </View>
             )}
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push('/employer/account' as any)} style={styles.iconBtn}>
+            <UserCircle2 size={18} color={C.text} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.iconBtn}>
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>
@@ -713,6 +716,7 @@ export default function EmployerDashboard() {
               { label: 'My Shifts', icon: CalendarDays, color: C.blue, path: '/employer/shifts' },
               { label: stats.pendingApplicants > 0 ? `Review Applicants (${stats.pendingApplicants})` : 'Review Applicants', icon: Users, color: stats.pendingApplicants > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.pendingApplicants > 0 ? stats.pendingApplicants : undefined },
               { label: stats.hoursToConfirmCount > 0 ? `Confirm Hours (${stats.hoursToConfirmCount})` : 'Confirm Hours', icon: Clock, color: stats.hoursToConfirmCount > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.hoursToConfirmCount > 0 ? stats.hoursToConfirmCount : undefined },
+              { label: 'My Account', icon: UserCircle2, color: C.blue, path: '/employer/account' },
               { label: 'Company Profile', icon: Building2, color: C.accent, path: '/employer/company-profile' },
               { label: 'Reviews', icon: Star, color: C.yellow, path: '/reviews' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
