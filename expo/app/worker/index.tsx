@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   MapPin, Clock, Search, ChevronRight, AlertCircle, Bell,
-  Navigation, CheckCircle, Shield, Award, Star, XCircle,
+  Navigation, CheckCircle, Shield, Award, Star, XCircle, DollarSign,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';

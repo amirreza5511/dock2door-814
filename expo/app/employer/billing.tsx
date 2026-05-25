@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity, RefreshControl, Linking, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity, RefreshControl, Linking, Platform, TextInput } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, FileText, CheckCircle2, Clock, AlertCircle, CreditCard } from 'lucide-react-native';
+import { ArrowLeft, FileText, CheckCircle2, Clock, AlertCircle, CreditCard, Edit3 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
@@ -21,10 +21,80 @@ interface InvoiceRow {
   paid_at: string | null;
 }
 
+interface CompanyBilling {
+  billing_contact_name: string | null;
+  billing_email: string | null;
+  billing_phone: string | null;
+  billing_address: string | null;
+  billing_mode: 'ManualInvoice' | 'CardOnFile' | 'StripeCheckout' | null;
+  payment_terms_days: number | null;
+  billing_setup_completed_at: string | null;
+}
+
 export default function EmployerBillingScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+
+  const companyQ = useQuery({
+    queryKey: ['employer-billing-company', user?.companyId],
+    enabled: Boolean(user?.companyId),
+    queryFn: async (): Promise<CompanyBilling | null> => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('billing_contact_name,billing_email,billing_phone,billing_address,billing_mode,payment_terms_days,billing_setup_completed_at')
+        .eq('id', user!.companyId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as CompanyBilling | null;
+    },
+  });
+
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [mode, setMode] = useState<'ManualInvoice' | 'CardOnFile' | 'StripeCheckout'>('ManualInvoice');
+  const [terms, setTerms] = useState('14');
+
+  useEffect(() => {
+    const c = companyQ.data;
+    if (!c) return;
+    setName(c.billing_contact_name ?? '');
+    setEmail(c.billing_email ?? '');
+    setPhone(c.billing_phone ?? '');
+    setAddress(c.billing_address ?? '');
+    setMode((c.billing_mode ?? 'ManualInvoice'));
+    setTerms(String(c.payment_terms_days ?? 14));
+  }, [companyQ.data]);
+
+  const saveSetup = useMutation({
+    mutationFn: async () => {
+      if (!user?.companyId) throw new Error('No company');
+      if (name.trim().length < 2) throw new Error('Billing contact name required');
+      if (!/.+@.+\..+/.test(email.trim())) throw new Error('Valid billing email required');
+      const { error } = await supabase.rpc('company_update_billing', {
+        p_company_id: user.companyId,
+        p_contact_name: name.trim(),
+        p_email: email.trim(),
+        p_phone: phone.trim() || null,
+        p_address: address.trim() || null,
+        p_billing_mode: mode,
+        p_payment_terms_days: Math.max(0, Math.min(90, Number(terms) || 14)),
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['employer-billing-company', user?.companyId] });
+      qc.invalidateQueries({ queryKey: ['company-billing', user?.companyId] });
+      qc.invalidateQueries({ queryKey: ['company-billing-status', user?.companyId] });
+      setEditing(false);
+    },
+    onError: (e: unknown) => Alert.alert('Unable to save', e instanceof Error ? e.message : 'Unknown error'),
+  });
+
+  const setup = Boolean(companyQ.data?.billing_setup_completed_at);
 
   const invoicesQ = useQuery({
     queryKey: ['employer-invoices', user?.companyId],
@@ -77,6 +147,58 @@ export default function EmployerBillingScreen() {
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 60 }}
         refreshControl={<RefreshControl refreshing={invoicesQ.isRefetching} onRefresh={() => invoicesQ.refetch()} tintColor={C.text} />}
       >
+        {/* Billing setup */}
+        <View style={[styles.setupCard, { backgroundColor: setup ? C.greenDim : C.yellowDim, borderColor: (setup ? C.green : C.yellow) + '50' }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[styles.setupTitle, { color: setup ? C.green : C.yellow }]}>
+              {setup ? 'Billing set up' : 'Billing not set up'}
+            </Text>
+            {!editing && (
+              <TouchableOpacity onPress={() => setEditing(true)} style={styles.editBtn}>
+                <Edit3 size={12} color={setup ? C.green : C.yellow} />
+                <Text style={[styles.editBtnText, { color: setup ? C.green : C.yellow }]}>
+                  {setup ? 'Edit' : 'Set up'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          {!editing ? (
+            setup && companyQ.data ? (
+              <View style={{ marginTop: 8, gap: 4 }}>
+                <Text style={styles.setupRow}>Contact: <Text style={{ color: C.text }}>{companyQ.data.billing_contact_name}</Text></Text>
+                <Text style={styles.setupRow}>Email: <Text style={{ color: C.text }}>{companyQ.data.billing_email}</Text></Text>
+                {companyQ.data.billing_phone ? <Text style={styles.setupRow}>Phone: <Text style={{ color: C.text }}>{companyQ.data.billing_phone}</Text></Text> : null}
+                <Text style={styles.setupRow}>Mode: <Text style={{ color: C.text }}>{companyQ.data.billing_mode}</Text> · Net {companyQ.data.payment_terms_days ?? 14} days</Text>
+              </View>
+            ) : (
+              <Text style={[styles.setupRow, { marginTop: 6 }]}>Required before posting paid shifts. Invoices for confirmed hours will be sent to this contact.</Text>
+            )
+          ) : (
+            <View style={{ marginTop: 10, gap: 8 }}>
+              <TextInput value={name} onChangeText={setName} placeholder="Billing contact name *" placeholderTextColor={C.textMuted} style={styles.setupInput} />
+              <TextInput value={email} onChangeText={setEmail} placeholder="Billing email *" placeholderTextColor={C.textMuted} keyboardType="email-address" autoCapitalize="none" style={styles.setupInput} />
+              <TextInput value={phone} onChangeText={setPhone} placeholder="Phone (optional)" placeholderTextColor={C.textMuted} keyboardType="phone-pad" style={styles.setupInput} />
+              <TextInput value={address} onChangeText={setAddress} placeholder="Billing address (optional)" placeholderTextColor={C.textMuted} style={styles.setupInput} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['ManualInvoice', 'StripeCheckout', 'CardOnFile'] as const).map((m) => (
+                  <TouchableOpacity key={m} onPress={() => setMode(m)} style={[styles.modeChip, mode === m && styles.modeChipActive]}>
+                    <Text style={[styles.modeChipText, mode === m && styles.modeChipTextActive]}>{m === 'ManualInvoice' ? 'Manual' : m === 'StripeCheckout' ? 'Stripe' : 'Card on file'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput value={terms} onChangeText={(v) => setTerms(v.replace(/[^0-9]/g, ''))} placeholder="Payment terms (days)" placeholderTextColor={C.textMuted} keyboardType="numeric" style={styles.setupInput} />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                <TouchableOpacity onPress={() => saveSetup.mutate()} disabled={saveSetup.isPending} style={[styles.saveBtn, saveSetup.isPending && { opacity: 0.6 }]}>
+                  <Text style={styles.saveBtnText}>{saveSetup.isPending ? 'Saving…' : 'Save'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEditing(false)} style={styles.cancelBtn}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+
         <View style={[styles.summary, { backgroundColor: unpaid.length > 0 ? C.yellowDim : C.greenDim, borderColor: (unpaid.length > 0 ? C.yellow : C.green) + '40' }]}>
           <Text style={[styles.summaryLabel, { color: unpaid.length > 0 ? C.yellow : C.green }]}>{unpaid.length > 0 ? 'Outstanding balance' : 'All caught up'}</Text>
           <Text style={[styles.summaryValue, { color: unpaid.length > 0 ? C.yellow : C.green }]}>${unpaidTotal.toFixed(2)}</Text>
@@ -161,4 +283,18 @@ const styles = StyleSheet.create({
   cardValue: { color: C.text, fontSize: 16, fontWeight: '700' as const },
   payBtn: { marginTop: 12, backgroundColor: C.accent, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   payBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' as const },
+  setupCard: { borderWidth: 1, borderRadius: 14, padding: 14, marginBottom: 16 },
+  setupTitle: { fontSize: 14, fontWeight: '700' as const },
+  setupRow: { color: C.textMuted, fontSize: 12, lineHeight: 18 },
+  editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.bg },
+  editBtnText: { fontSize: 11, fontWeight: '700' as const },
+  setupInput: { backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14 },
+  modeChip: { flex: 1, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.bg, alignItems: 'center' },
+  modeChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  modeChipText: { color: C.textMuted, fontSize: 12, fontWeight: '600' as const },
+  modeChipTextActive: { color: C.accent },
+  saveBtn: { flex: 1, backgroundColor: C.accent, paddingVertical: 11, borderRadius: 10, alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontWeight: '700' as const, fontSize: 14 },
+  cancelBtn: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: C.border, alignItems: 'center' },
+  cancelBtnText: { color: C.textMuted, fontWeight: '600' as const, fontSize: 14 },
 });

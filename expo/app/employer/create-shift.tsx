@@ -8,6 +8,7 @@ import { CheckCircle, Upload, Calendar, Clock, ChevronDown, Repeat, Zap, DollarS
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabase } from '@/lib/supabase';
@@ -117,6 +118,7 @@ const pmStyles = StyleSheet.create({
 
 export default function CreateShift() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
   // Platform commission (labour) for cost preview
@@ -221,6 +223,19 @@ export default function CreateShift() {
   const handleSubmit = async () => {
     if (!title || !address || !city || !date || !startTime || !endTime || !hourlyRate) {
       Alert.alert('Missing Fields', 'Please fill all required fields');
+      return;
+    }
+    // Block paid shift posting until company billing setup is complete.
+    // ManualInvoice mode still requires a billing contact + email to be on file.
+    if (Number(hourlyRate) > 0 && !billingReady) {
+      Alert.alert(
+        'Billing setup required',
+        'Add a billing contact and email before posting paid shifts. Invoices for confirmed hours will be issued to this contact.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Set up billing', onPress: () => router.push('/employer/billing' as any) },
+        ],
+      );
       return;
     }
 
@@ -481,10 +496,16 @@ export default function CreateShift() {
                 <Text style={{ color: C.textMuted, fontSize: 11, marginTop: 4 }}>Final charge is based on employer-confirmed hours after the shift.</Text>
               </View>
               {!billingReady ? (
-                <View style={{ marginTop: 10, backgroundColor: C.yellowDim, borderWidth: 1, borderColor: C.yellow + '60', borderRadius: 10, padding: 10, flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  onPress={() => router.push('/employer/billing' as any)}
+                  activeOpacity={0.8}
+                  style={{ marginTop: 10, backgroundColor: C.yellowDim, borderWidth: 1, borderColor: C.yellow + '60', borderRadius: 10, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}
+                >
                   <DollarSign size={14} color={C.yellow} />
-                  <Text style={{ color: C.yellow, fontSize: 12, flex: 1 }}>Billing not set up. Add billing details in Company Profile to receive invoices for confirmed hours.</Text>
-                </View>
+                  <Text style={{ color: C.yellow, fontSize: 12, flex: 1, fontWeight: '600' as const }}>
+                    Billing not set up. Tap to add a billing contact — required before posting paid shifts.
+                  </Text>
+                </TouchableOpacity>
               ) : null}
             </View>
           );

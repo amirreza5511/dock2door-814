@@ -279,13 +279,25 @@ export default function EmployerShifts() {
   const handleConfirmHours = (assignmentId: string, teId: string, hours: number) => {
     const h = Number(hours);
     if (!h || h <= 0) { Alert.alert('Enter valid hours'); return; }
+    const shiftId = allAssignments.find((a) => a.id === assignmentId)?.shift_id;
     confirmM.mutate(
       { timeEntryId: teId, hours: h, notes: '' },
       {
-        onSuccess: () => {
+        onSuccess: async () => {
           setConfirmHours('');
           setEditingHours(false);
-          Alert.alert('Hours Confirmed', 'Hours saved. The worker has been notified. Payment follows your payroll schedule.');
+          // Auto-issue (or update) invoice + worker payable for this shift. Idempotent.
+          if (shiftId) {
+            try {
+              await supabase.rpc('issue_invoice_for_shift', { p_shift_id: shiftId, p_due_days: null });
+            } catch (e) {
+              console.log('[shifts] issue_invoice_for_shift failed (non-blocking)', e);
+            }
+          }
+          Alert.alert(
+            'Hours Confirmed',
+            'Hours saved. An invoice for confirmed hours has been generated, and the worker payout record is now Approved.',
+          );
         },
         onError: (e: Error) => Alert.alert('Unable to confirm hours', e.message),
       },

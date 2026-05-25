@@ -172,16 +172,25 @@ export default function EmployerHoursPage() {
   });
 
   const confirmMut = useMutation({
-    mutationFn: async ({ id, hours, notes }: { id: string; hours: number; notes: string }) => {
+    mutationFn: async ({ id, hours, notes, shiftId }: { id: string; hours: number; notes: string; shiftId?: string }) => {
       const { error } = await supabase.rpc("employer_confirm_hours", {
         p_time_entry_id: id,
         p_hours: hours,
         p_notes: notes,
       });
       if (error) throw error;
+      // Auto-issue invoice + worker payable record. Idempotent — safe if already issued.
+      if (shiftId) {
+        const { error: invErr } = await supabase.rpc("issue_invoice_for_shift", {
+          p_shift_id: shiftId,
+          p_due_days: null,
+        });
+        if (invErr) console.warn("[hours] issue_invoice_for_shift", invErr.message);
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["employer", "hours-pending"] });
+      qc.invalidateQueries({ queryKey: ["employer", "invoices"] });
       setConfirmTarget(null);
       setConfirmHours("");
       setConfirmNotes("");
@@ -334,7 +343,7 @@ export default function EmployerHoursPage() {
                 <Button
                   size="sm"
                   disabled={!confirmHours || Number(confirmHours) <= 0 || confirmMut.isPending}
-                  onClick={() => confirmMut.mutate({ id: confirmTarget.id, hours: Number(confirmHours), notes: confirmNotes.trim() })}
+                  onClick={() => confirmMut.mutate({ id: confirmTarget.id, hours: Number(confirmHours), notes: confirmNotes.trim(), shiftId: confirmTarget.shift_id })}
                 >
                   {confirmMut.isPending ? "Confirming…" : "Confirm hours"}
                 </Button>

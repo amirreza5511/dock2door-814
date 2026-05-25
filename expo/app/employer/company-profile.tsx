@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock, CreditCard, ChevronRight } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
@@ -127,6 +127,51 @@ function StarRow({ rating, size = 14 }: { rating: number; size?: number }) {
           fill={n <= Math.round(rating) ? C.yellow : 'transparent'}
         />
       ))}
+    </View>
+  );
+}
+
+function BillingSetupSection({ companyId }: { companyId: string }) {
+  const q = useQuery({
+    queryKey: ['company-billing-status', companyId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('companies')
+        .select('billing_mode, billing_email, billing_contact_name, billing_setup_completed_at')
+        .eq('id', companyId)
+        .maybeSingle();
+      return data as { billing_mode: string | null; billing_email: string | null; billing_contact_name: string | null; billing_setup_completed_at: string | null } | null;
+    },
+    enabled: Boolean(companyId),
+    staleTime: 30_000,
+  });
+  const setup = Boolean(q.data?.billing_setup_completed_at);
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 10 }}>Billing</Text>
+      <TouchableOpacity
+        onPress={() => router.push('/employer/billing' as any)}
+        activeOpacity={0.85}
+        style={{
+          flexDirection: 'row', alignItems: 'center', gap: 10,
+          padding: 14, borderRadius: 12, borderWidth: 1,
+          backgroundColor: setup ? C.greenDim : C.yellowDim,
+          borderColor: (setup ? C.green : C.yellow) + '50',
+        }}
+      >
+        <CreditCard size={18} color={setup ? C.green : C.yellow} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '700' as const, color: setup ? C.green : C.yellow }}>
+            {setup ? 'Billing set up' : 'Billing not set up'}
+          </Text>
+          <Text style={{ fontSize: 11, color: (setup ? C.green : C.yellow) + 'cc', marginTop: 2 }}>
+            {setup
+              ? `${q.data?.billing_mode ?? 'ManualInvoice'} · ${q.data?.billing_email ?? ''}`
+              : 'Required before posting paid shifts. Add a billing contact + email.'}
+          </Text>
+        </View>
+        <ChevronRight size={16} color={setup ? C.green : C.yellow} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -376,6 +421,11 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
             </View>
           </View>
         </Card>
+
+        {/* Billing setup — private view only */}
+        {effectiveMode === 'private' && isMember && (
+          <BillingSetupSection companyId={companyId} />
+        )}
 
         {/* Trust & Verification — only visible to company members in My Company view (contains staff count / internal verification) */}
         {effectiveMode === 'private' && isMember && (

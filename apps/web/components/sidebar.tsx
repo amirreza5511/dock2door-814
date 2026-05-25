@@ -93,6 +93,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/super-admin/analytics", label: "Analytics", icon: BarChart3 },
         { href: "/super-admin/controls", label: "Controls", icon: Shield },
         { href: "/super-admin/data-manager", label: "Data manager", icon: Database },
+        { href: "/super-admin/billing", label: "Billing oversight", icon: CreditCard },
       ],
     });
   }
@@ -198,6 +199,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/employer", label: "Shifts & applications", icon: ClipboardList },
         { href: "/employer/create-shift", label: "Post shift", icon: Plus },
         { href: "/employer/hours", label: "Hours & attendance", icon: ClipboardCheck },
+        { href: "/employer/billing", label: "Billing & invoices", icon: CreditCard },
         { href: "/employer/browse-workers", label: "Browse workers", icon: UserSearch },
         { href: "/employer/calendar", label: "Labour calendar", icon: Calendar },
       ],
