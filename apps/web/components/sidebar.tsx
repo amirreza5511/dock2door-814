@@ -185,6 +185,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/worker", label: "Overview", icon: LayoutDashboard },
         { href: "/worker/browse-shifts", label: "Browse shifts", icon: Search },
         { href: "/worker/shifts", label: "My shifts", icon: ClipboardList },
+        { href: "/worker/availability", label: "Availability", icon: Calendar },
         { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
       ],
     });

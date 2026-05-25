@@ -1361,29 +1361,19 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const { data } = await supabase.from('platform_settings').select('*').order('updated_at', { ascending: false }).limit(1).maybeSingle();
     return data ?? { id: null, data: {}, updated_at: null };
   },
-  'admin.updatePlatformSettings': async (input: { data: AnyRecord }, ctx) => {
-    const { data: existing } = await supabase.from('platform_settings').select('id').limit(1).maybeSingle();
-    if (existing) {
-      await supabase.from('platform_settings').update({
-        warehouse_commission_percentage: input.data.warehouseCommissionPercentage ?? 8,
-        service_commission_percentage: input.data.serviceCommissionPercentage ?? 20,
-        labour_commission_percentage: input.data.labourCommissionPercentage ?? 15,
-        handling_fee_per_pallet_default: input.data.handlingFeePerPalletDefault ?? 12,
-        tax_mode: input.data.taxMode ?? 'GST+PST',
-        updated_at: new Date().toISOString(),
-        updated_by: ctx.user.id,
-      }).eq('id', existing.id);
-      return { id: existing.id };
-    }
-    const { data } = await supabase.from('platform_settings').insert({
-      warehouse_commission_percentage: input.data.warehouseCommissionPercentage ?? 8,
-      service_commission_percentage: input.data.serviceCommissionPercentage ?? 20,
-      labour_commission_percentage: input.data.labourCommissionPercentage ?? 15,
-      handling_fee_per_pallet_default: input.data.handlingFeePerPalletDefault ?? 12,
-      tax_mode: input.data.taxMode ?? 'GST+PST',
-      updated_by: ctx.user.id,
-    }).select().single();
-    return { id: data?.id ?? null };
+  // admin.updatePlatformSettings — audited via admin_update_platform_settings RPC.
+  // No direct UPDATE/INSERT on platform_settings (would bypass require_admin + audit_logs).
+  'admin.updatePlatformSettings': async (input: { data: AnyRecord }) => {
+    const { error } = await supabase.rpc('admin_update_platform_settings', {
+      p_warehouse_commission_percentage: Number(input.data.warehouseCommissionPercentage ?? 8),
+      p_service_commission_percentage: Number(input.data.serviceCommissionPercentage ?? 20),
+      p_labour_commission_percentage: Number(input.data.labourCommissionPercentage ?? 15),
+      p_handling_fee_per_pallet_default: Number(input.data.handlingFeePerPalletDefault ?? 12),
+      p_tax_mode: String(input.data.taxMode ?? 'GST+PST'),
+    });
+    if (error) throwErr(error, 'Unable to update platform settings — admin only');
+    const { data: row } = await supabase.from('platform_settings').select('id').limit(1).maybeSingle();
+    return { id: row?.id ?? null };
   },
 
   // =========================================================================
@@ -1519,9 +1509,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // InProgress / Posted → provider_set_shift_status (0050)
   'shifts.setStatus': async (input: { id: string; status: string; reason?: string }) => {
     if (input.status === 'Cancelled') {
+      const reason = (input.reason ?? '').trim();
+      if (reason.length < 5) throw new Error('Cancellation reason required (min 5 characters) — workers will see this.');
       const { error } = await supabase.rpc('cancel_shift_with_reason', {
         p_shift_id: input.id,
-        p_reason: input.reason ?? 'Cancelled by company',
+        p_reason: reason,
       });
       if (error) throwErr(error, 'Unable to cancel shift');
     } else if (input.status === 'Completed') {
@@ -1572,8 +1564,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to apply');
     return { id: data as string };
   },
+  // shifts.withdraw — routed through worker_withdraw_shift (0060) which verifies ownership,
+  // gates valid status (Applied only), writes audit, and notifies the employer.
   'shifts.withdraw': async (input: { applicationId: string }) => {
-    const { error } = await supabase.from('shift_applications').update({ status: 'Withdrawn' }).eq('id', input.applicationId);
+    const { error } = await supabase.rpc('worker_withdraw_shift', { p_application_id: input.applicationId });
     if (error) throwErr(error, 'Unable to withdraw');
     return { success: true };
   },
