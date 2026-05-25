@@ -366,8 +366,8 @@ export default function CompanyProfileScreen() {
           </View>
         </Card>
 
-        {/* Trust Indicators — hidden in public view */}
-        {effectiveMode !== 'public' && (
+        {/* Trust & Verification — only visible to company members in My Company view (contains staff count / internal verification) */}
+        {effectiveMode === 'private' && isMember && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trust & Verification</Text>
           <Card>
@@ -440,8 +440,8 @@ export default function CompanyProfileScreen() {
           )}
         </View>
 
-        {/* Recent Shifts — hidden in public view */}
-        {effectiveMode !== 'public' && recentShifts.length > 0 && (
+        {/* Recent Shifts — internal operational history, only visible to company members in My Company view */}
+        {effectiveMode === 'private' && isMember && recentShifts.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Recent Shifts</Text>
             {recentShifts.map((s) => (
