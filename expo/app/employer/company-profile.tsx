@@ -344,24 +344,32 @@ export default function CompanyProfileScreen() {
           )}
         </View>
 
-        {/* Stats Row */}
+        {/* Stats Row — operational stats (Shifts Posted, Fill Rate) are internal; only rating is public-safe */}
         <Card style={styles.statsCard}>
           <View style={styles.statsRow}>
-            <View style={styles.stat}>
-              <Text style={styles.statVal}>{totalPosted}</Text>
-              <Text style={styles.statLbl}>Shifts Posted</Text>
-            </View>
-            <View style={[styles.stat, styles.statMid]}>
-              <Text style={[styles.statVal, { color: fillRate > 70 ? C.green : fillRate > 40 ? C.yellow : C.red }]}>
-                {fillRate}%
-              </Text>
-              <Text style={styles.statLbl}>Fill Rate</Text>
-            </View>
+            {effectiveMode === 'private' && isMember && (
+              <>
+                <View style={styles.stat}>
+                  <Text style={styles.statVal}>{totalPosted}</Text>
+                  <Text style={styles.statLbl}>Shifts Posted</Text>
+                </View>
+                <View style={[styles.stat, styles.statMid]}>
+                  <Text style={[styles.statVal, { color: fillRate > 70 ? C.green : fillRate > 40 ? C.yellow : C.red }]}>
+                    {fillRate}%
+                  </Text>
+                  <Text style={styles.statLbl}>Fill Rate</Text>
+                </View>
+              </>
+            )}
             <View style={styles.stat}>
               <Text style={[styles.statVal, { color: avgRating > 0 ? C.yellow : C.textMuted }]}>
                 {avgRating > 0 ? avgRating.toFixed(1) : '—'} ★
               </Text>
               <Text style={styles.statLbl}>Avg Rating</Text>
+            </View>
+            <View style={[styles.stat, effectiveMode === 'private' && isMember ? null : styles.statMid]}>
+              <Text style={styles.statVal}>{totalReviews}</Text>
+              <Text style={styles.statLbl}>Reviews</Text>
             </View>
           </View>
         </Card>
