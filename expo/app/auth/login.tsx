@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, WifiOff } from 'lucide-react-native';
+import { DEMO_ACCOUNTS, type DemoAccount } from '@/constants/demo-accounts';
 import { useAuthStore } from '@/store/auth';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -26,10 +27,12 @@ export default function Login() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const login = useAuthStore((s) => s.login);
+  const demoLogin = useAuthStore((s) => s.demoLogin);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [demoLoadingRole, setDemoLoadingRole] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   const handleLogin = async () => {
@@ -51,10 +54,21 @@ export default function Login() {
     }
   };
 
-  const fillDemo = (e: string, p: string) => {
-    setEmail(e);
-    setPassword(p);
+  const handleDemoLogin = async (account: DemoAccount) => {
+    setEmail(account.email);
+    setPassword(account.password);
     setError('');
+    setDemoLoadingRole(account.role);
+    try {
+      const result = await demoLogin(account);
+      if (result.success) {
+        console.log('[Login] Demo success, auth guard will redirect', { role: account.role });
+      } else {
+        setError(result.error ?? 'Demo login failed');
+      }
+    } finally {
+      setDemoLoadingRole(null);
+    }
   };
 
   return (
@@ -141,23 +155,22 @@ export default function Login() {
         <View style={styles.demoSection}>
           <Text style={styles.demoLabel}>QUICK DEMO LOGIN</Text>
           <View style={styles.demoGrid}>
-            {[
-              ['Admin', 'admin@dock2door.ca', 'admin123'],
-              ['Customer', 'customer@freshmart.ca', 'password'],
-              ['Warehouse', 'provider@vandc.ca', 'password'],
-              ['Service', 'service@deltadev.ca', 'password'],
-              ['Employer', 'employer@deltalog.ca', 'password'],
-              ['Worker', 'worker.marcus@gmail.com', 'password'],
-            ].map(([role, e, p]) => (
-              <TouchableOpacity
-                key={role}
-                onPress={() => fillDemo(e, p)}
-                style={styles.demoChip}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.demoChipText}>{role}</Text>
-              </TouchableOpacity>
-            ))}
+            {DEMO_ACCOUNTS.map((account) => {
+              const isLoadingDemo = demoLoadingRole === account.role;
+              return (
+                <TouchableOpacity
+                  key={account.role}
+                  onPress={() => void handleDemoLogin(account)}
+                  disabled={Boolean(demoLoadingRole) || loading}
+                  style={[styles.demoChip, isLoadingDemo && styles.demoChipActive]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.demoChipText, isLoadingDemo && styles.demoChipTextActive]}>
+                    {isLoadingDemo ? 'Signing in…' : account.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </ScrollView>
@@ -198,5 +211,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card, borderRadius: 8,
     borderWidth: 1, borderColor: C.border,
   },
+  demoChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   demoChipText: { fontSize: 13, color: C.textSecondary, fontWeight: '500' as const },
+  demoChipTextActive: { color: C.accent, fontWeight: '700' as const },
 });

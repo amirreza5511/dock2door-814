@@ -108,9 +108,9 @@ function AuthGuard() {
         destination = '/';
       }
     } else if (isPublic) {
-      destination = user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
+      destination = user.role === 'SuperAdmin' ? '/super-admin' : user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
     } else if (!SHARED_SEGMENTS.includes(root) && !canAccessSegment(user.role, root, Boolean(user.isPlatformAdmin))) {
-      destination = user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
+      destination = user.role === 'SuperAdmin' ? '/super-admin' : user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
     }
 
     if (!destination || destination === pathname) {

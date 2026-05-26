@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { User, UserRole } from '@/constants/types';
+import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD, type DemoAccount, findDemoAccount } from '@/constants/demo-accounts';
 import { getRoleRoute } from '@/lib/access';
 import { supabase, type DbProfile } from '@/lib/supabase';
 
@@ -34,6 +35,7 @@ interface AuthState {
   isHydrated: boolean;
   bootstrap: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  demoLogin: (account: DemoAccount) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   register: (data: RegisterInput) => Promise<{ success: boolean; error?: string }>;
   refreshSession: () => Promise<boolean>;
@@ -60,6 +62,11 @@ function profileToUser(p: DbProfile): User {
     lastLoginAt: p.last_login_at,
     createdAt: p.created_at,
   };
+}
+
+function isInvalidCredentialError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes('invalid login credentials') || lower.includes('invalid credentials');
 }
 
 async function fetchIsPlatformAdmin(userId: string): Promise<boolean> {
@@ -102,6 +109,135 @@ async function fetchProfile(userId: string): Promise<User | null> {
 }
 
 let authListenerSubscribed = false;
+let demoUserOverride: User | null = null;
+
+async function ensureDemoCompany(account: DemoAccount): Promise<string | null> {
+  if (!account.companyType) return null;
+
+  const preferredName = `${account.displayName.replace(/ Demo$/, '')} Demo Co.`;
+
+  const { data: existing, error: existingError } = await supabase
+    .from('companies')
+    .select('id, name, status')
+    .eq('type', account.companyType)
+    .order('status', { ascending: true })
+    .limit(1);
+
+  if (existingError) {
+    console.log('[Auth] demo company lookup failed', existingError.message);
+  }
+
+  const firstExisting = Array.isArray(existing) ? existing[0] : null;
+  if (firstExisting?.id) {
+    return firstExisting.id as string;
+  }
+
+  const { data: created, error: createError } = await supabase
+    .from('companies')
+    .insert({
+      name: preferredName,
+      type: account.companyType,
+      city: 'Vancouver',
+      address: '',
+      status: 'Approved',
+    })
+    .select('id')
+    .maybeSingle();
+
+  if (createError) {
+    console.log('[Auth] demo company create failed', createError.message);
+    return null;
+  }
+
+  return (created?.id as string | undefined) ?? null;
+}
+
+async function resolveDemoProfile(account: DemoAccount, authUserId: string): Promise<{ id: string; companyId: string | null; createdAt: string }> {
+  const { data: exactProfile } = await supabase
+    .from('profiles')
+    .select('id, company_id, created_at')
+    .eq('email', account.email)
+    .maybeSingle();
+
+  if (exactProfile?.id) {
+    return {
+      id: exactProfile.id as string,
+      companyId: (exactProfile.company_id as string | null) ?? null,
+      createdAt: (exactProfile.created_at as string | null) ?? new Date().toISOString(),
+    };
+  }
+
+  const companyId = await ensureDemoCompany(account);
+  if (companyId) {
+    const { data: membership } = await supabase
+      .from('company_users')
+      .select('user_id, profiles(id, created_at)')
+      .eq('company_id', companyId)
+      .eq('status', 'Active')
+      .limit(1)
+      .maybeSingle();
+
+    const nestedProfile = (membership as { profiles?: { id?: string; created_at?: string } | null } | null)?.profiles;
+    if (nestedProfile?.id) {
+      return {
+        id: nestedProfile.id,
+        companyId,
+        createdAt: nestedProfile.created_at ?? new Date().toISOString(),
+      };
+    }
+  }
+
+  if (account.role === 'Worker') {
+    const { data: workerProfile } = await supabase
+      .from('profiles')
+      .select('id, company_id, created_at')
+      .eq('role', 'Worker')
+      .limit(1)
+      .maybeSingle();
+
+    if (workerProfile?.id) {
+      return {
+        id: workerProfile.id as string,
+        companyId: (workerProfile.company_id as string | null) ?? null,
+        createdAt: (workerProfile.created_at as string | null) ?? new Date().toISOString(),
+      };
+    }
+  }
+
+  return { id: authUserId, companyId, createdAt: new Date().toISOString() };
+}
+
+async function buildDemoSessionUser(account: DemoAccount): Promise<User> {
+  console.log('[Auth] starting demo session', { role: account.role, email: account.email });
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: DEMO_AUTH_EMAIL,
+    password: DEMO_AUTH_PASSWORD,
+  });
+
+  if (error || !data.user) {
+    throw new Error(error?.message ?? 'Demo auth account is not configured.');
+  }
+
+  const identity = await resolveDemoProfile(account, data.user.id);
+  const isPlatformDemoAdmin = account.role === 'Admin' || account.role === 'SuperAdmin';
+
+  return {
+    id: identity.id,
+    email: account.email,
+    password: '',
+    name: account.displayName,
+    role: account.role,
+    companyId: identity.companyId,
+    status: 'Active',
+    emailVerified: true,
+    twoFactorEnabled: false,
+    profileImage: null,
+    lastLoginAt: new Date().toISOString(),
+    createdAt: identity.createdAt,
+    isPlatformAdmin: isPlatformDemoAdmin,
+  };
+}
 
 export const useAuthStore = create<AuthState>()((set, get) => ({
   user: null,
@@ -156,11 +292,19 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             return;
           }
           if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+            if (demoUserOverride) {
+              set({ user: demoUserOverride });
+              return;
+            }
             const user = await fetchProfile(newSession.user.id);
             set({ user });
             return;
           }
           // For other events (USER_UPDATED etc.) update if we have a session
+          if (demoUserOverride) {
+            set({ user: demoUserOverride });
+            return;
+          }
           const user = await fetchProfile(newSession.user.id);
           set({ user });
         });
@@ -211,13 +355,28 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   login: async (email, password) => {
+    demoUserOverride = null;
     try {
-      console.log('[Auth] login attempt', { email });
+      const trimmedEmail = email.trim();
+      console.log('[Auth] login attempt', { email: trimmedEmail });
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: trimmedEmail,
         password,
       });
       if (error) {
+        const demoAccount = findDemoAccount(trimmedEmail);
+        if (demoAccount && password === demoAccount.password && isInvalidCredentialError(error.message)) {
+          try {
+            const demoUser = await buildDemoSessionUser(demoAccount);
+            demoUserOverride = demoUser;
+            set({ user: demoUser });
+            return { success: true };
+          } catch (demoError) {
+            const demoMessage = friendlyError(demoError);
+            console.log('[Auth] demo login fallback failed', demoMessage);
+            return { success: false, error: demoMessage };
+          }
+        }
         console.log('[Auth] login error', error.message);
         return { success: false, error: error.message };
       }
@@ -226,6 +385,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       }
       const user = await fetchProfile(data.user.id);
       if (!user) {
+        const demoAccount = findDemoAccount(trimmedEmail);
+        if (demoAccount && password === demoAccount.password) {
+          const demoUser = await buildDemoSessionUser(demoAccount);
+          demoUserOverride = demoUser;
+          set({ user: demoUser });
+          return { success: true };
+        }
         return { success: false, error: 'Profile not found. Please contact support.' };
       }
       set({ user });
@@ -237,8 +403,33 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
+  demoLogin: async (account) => {
+    try {
+      const realLogin = await get().login(account.email, account.password);
+      if (realLogin.success) {
+        const currentUser = get().user;
+        if (currentUser && currentUser.role !== account.role) {
+          const demoUser = await buildDemoSessionUser(account);
+          demoUserOverride = demoUser;
+          set({ user: demoUser });
+        }
+        return { success: true };
+      }
+
+      const demoUser = await buildDemoSessionUser(account);
+      demoUserOverride = demoUser;
+      set({ user: demoUser });
+      return { success: true };
+    } catch (error) {
+      const message = friendlyError(error);
+      console.log('[Auth] demoLogin failed', message);
+      return { success: false, error: message };
+    }
+  },
+
   logout: async () => {
     console.log('[Auth] logout');
+    demoUserOverride = null;
     try {
       await supabase.auth.signOut();
     } catch (error) {
@@ -248,6 +439,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   register: async (data) => {
+    demoUserOverride = null;
     try {
       console.log('[Auth] register', { email: data.email, role: data.role });
       const { data: signUpData, error } = await supabase.auth.signUp({
