@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, Alert, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Building2, CheckCircle, XCircle, Edit, FileText, CreditCard } from 'lucide-react-native';
@@ -176,8 +176,9 @@ export default function AdminCompanies() {
           </View>
         )}
         {filtered.map((c) => (
-          <TouchableOpacity key={c.id} onPress={() => openDetail(c)} activeOpacity={0.85}>
-            <Card style={styles.card}>
+          <Card key={c.id} style={styles.card}>
+            {/* Tappable area for detail view */}
+            <Pressable onPress={() => openDetail(c)} android_ripple={{ color: C.border }}>
               <View style={styles.cardTop}>
                 <View style={[styles.typeIcon, { backgroundColor: TYPE_COLORS[c.type] + '20' }]}>
                   <Building2 size={18} color={TYPE_COLORS[c.type]} />
@@ -192,14 +193,29 @@ export default function AdminCompanies() {
                 <Text style={styles.metaText}>{c.address}</Text>
                 <Text style={styles.listingsCount}>{getListingsCount(c.id)} listings</Text>
               </View>
-              {c.status === 'PendingApproval' && (
-                <View style={styles.pendingActions}>
-                  <Button label="Approve" onPress={() => handleApprove(c.id)} size="sm" icon={<CheckCircle size={13} color={C.white} />} />
-                  <Button label="Reject" onPress={() => handleSuspend(c.id)} variant="danger" size="sm" icon={<XCircle size={13} color={C.red} />} />
-                </View>
-              )}
-            </Card>
-          </TouchableOpacity>
+            </Pressable>
+            {/* Pending action buttons — outside the Pressable so they get their own touch responder */}
+            {c.status === 'PendingApproval' && (
+              <View style={styles.pendingActions}>
+                <TouchableOpacity
+                  style={styles.inlineBtn}
+                  onPress={() => handleApprove(c.id)}
+                  activeOpacity={0.75}
+                >
+                  <CheckCircle size={13} color={C.white} />
+                  <Text style={styles.inlineBtnText}>Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.inlineBtn, styles.inlineBtnDanger]}
+                  onPress={() => { openDetail(c); }}
+                  activeOpacity={0.75}
+                >
+                  <XCircle size={13} color={C.red} />
+                  <Text style={[styles.inlineBtnText, { color: C.red }]}>Review / Reject</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </Card>
         ))}
       </ScrollView>
 
@@ -309,6 +325,9 @@ const styles = StyleSheet.create({
   metaText: { fontSize: 12, color: C.textMuted, flex: 1 },
   listingsCount: { fontSize: 12, color: C.accent, fontWeight: '600' as const },
   pendingActions: { flexDirection: 'row', gap: 10, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
+  inlineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8 },
+  inlineBtnDanger: { backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '60' },
+  inlineBtnText: { fontSize: 13, fontWeight: '600' as const, color: C.white },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
   modalBody: { padding: 20, gap: 14 },
