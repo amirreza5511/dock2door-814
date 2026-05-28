@@ -114,14 +114,16 @@ export default function CompanySetup() {
 
   const companyType = user?.role ? COMPANY_TYPE_BY_ROLE[user.role] : undefined;
 
-  // Soft validation — shown as hints; never blocks the Continue button.
-  // The only hard gate is on the final Submit at the Review step.
+  // Validation — shown as hints on each step; the final Submit gate requires all to pass.
   const publicMissing: string[] = [];
-  if (name.trim().length < 2) publicMissing.push('Company name');
-  if (!industry) publicMissing.push('Industry');
-  if (city.trim().length < 2) publicMissing.push('City / service area');
-  if (publicBio.trim().length > 0 && publicBio.trim().length < 20) {
-    publicMissing.push(`Public bio (need ${Math.max(0, 20 - publicBio.trim().length)} more characters or leave blank)`);
+  if (name.trim().length < 2) publicMissing.push('Company name (required)');
+  if (!industry) publicMissing.push('Industry (select one)');
+  if (city.trim().length < 2) publicMissing.push('City / service area (required)');
+  // Bio is required by the DB (company_profile_is_complete checks it). Make that explicit here.
+  if (publicBio.trim().length === 0) {
+    publicMissing.push('Public bio (required, min 20 characters)');
+  } else if (publicBio.trim().length < 20) {
+    publicMissing.push(`Public bio (${20 - publicBio.trim().length} more characters needed)`);
   }
   const canContinuePublic = publicMissing.length === 0;
 
@@ -237,13 +239,17 @@ export default function CompanySetup() {
       });
       if (billErr) throw billErr;
 
-      // 4) Submit for approval (non-fatal).
+      // 4) Submit for approval.
       stepLabel = 'submit for approval';
-      try {
-        const { error: subErr } = await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
-        if (subErr) console.log('[company-setup] submit_for_approval error', subErr.message);
-      } catch (e) {
-        console.log('[company-setup] submit_for_approval skipped', e);
+      const { error: subErr } = await supabase.rpc('company_submit_for_approval', { p_company_id: companyId });
+      if (subErr) {
+        // Don't block navigation — company row exists with PendingApproval status from step 1.
+        // But surface the message so the user knows to complete their profile.
+        console.log('[company-setup] submit_for_approval error', subErr.message);
+        setSubmitError(
+          `Company created! However, approval submission failed: ${subErr.message}. ` +
+          'Please complete your profile (especially Public Bio) from Company Profile to trigger re-submission.'
+        );
       }
 
       // Update the in-memory auth user so `user.companyId` is no longer stale.
@@ -371,7 +377,7 @@ export default function CompanySetup() {
               </View>
             </View>
             <Input label="City / service area *" value={city} onChangeText={setCity} placeholder="Delta, BC" />
-            <Input label="Public bio (optional, min 20 chars if filled)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
+            <Input label="Public bio * (min 20 characters — required for approval)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
             <Input label="Website (optional)" value={website} onChangeText={setWebsite} placeholder="https://" keyboardType="url" autoCapitalize="none" />
             <Input label="Public logo URL (optional)" value={logoUrl} onChangeText={setLogoUrl} placeholder="https://example.com/logo.png" keyboardType="url" autoCapitalize="none" />
             <Text style={styles.helperText}>Paste a public HTTPS image URL only. Do not paste private storage paths. Leave blank to show initials.</Text>

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, RefreshControl, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
@@ -39,10 +39,14 @@ export default function AdminCompanies() {
     void bootstrapQuery.refetch();
   }, [bootstrapQuery]));
 
-  const initialFilter: CompanyStatus | 'All' = useMemo(() => (
-    companies.some((c) => c.status === 'PendingApproval') ? 'PendingApproval' : 'All'
-  ), [companies]);
-  const [filter, setFilter] = useState<CompanyStatus | 'All'>(initialFilter);
+  const [filter, setFilter] = useState<CompanyStatus | 'All'>('All');
+  // Auto-switch to the Pending filter whenever new pending companies arrive
+  // (useState initial value is only read once, so we need an effect).
+  useEffect(() => {
+    if (companies.some((c) => c.status === 'PendingApproval')) {
+      setFilter((prev) => prev === 'All' ? 'PendingApproval' : prev);
+    }
+  }, [companies.length, companies]);
   const [selected, setSelected] = useState<Company | null>(null);
   const [detailModal, setDetailModal] = useState(false);
   const [editName, setEditName] = useState('');
