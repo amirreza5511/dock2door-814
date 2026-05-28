@@ -90,8 +90,17 @@ async function fetchCompanyProfile(companyId: string) {
       .eq('company_id', companyId),
   ]);
 
+  // Null here almost always means the is_member_of() RLS check has not yet caught
+  // up to the company_users row that setup_my_company just inserted (PostgREST
+  // connection-pool timing gap). Throwing causes React Query to retry with backoff.
+  if (!companyRes.data) {
+    const detail = companyRes.error?.message ?? 'company row not visible yet (RLS/timing)';
+    console.log('[fetchCompanyProfile] null for', companyId, '-', detail);
+    throw new Error(detail);
+  }
+
   return {
-    company: (companyRes.data ?? null) as CompanyRow | null,
+    company: companyRes.data as CompanyRow,
     shifts: (shiftsRes.data ?? []) as ShiftRow[],
     reviews: (reviewsRes.data ?? []) as (ReviewRow & { reviewer_user_id: string | null })[],
     staff: (staffRes.data ?? []) as StaffRow[],
@@ -205,11 +214,7 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
   // Accept `companyId` (legacy employer route) or `id` (neutral /company/[id] route),
   // or an explicit prop override when embedded by the neutral route.
   // Fall back to the active company so /employer/company-profile (no param) still works.
-  // Fall back through: route param → active company → first membership → user.companyId.
-  // memberships[0] is critical: right after company creation, memberships arrive
-  // populated but activeCompanyId is still null for a tick while the provider's
-  // async useEffect reads AsyncStorage. Without this fallback the screen flashes
-  // "Company not found".
+  // Fall back through: route param -> active company -> first membership -> user.companyId.
   const companyId =
     props.overrideCompanyId ??
     params.companyId ??
@@ -224,7 +229,13 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
     queryKey: ['company-profile', companyId],
     queryFn: () => fetchCompanyProfile(companyId),
     enabled: Boolean(companyId),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    // Retry generously: right after setup_my_company the is_member_of() RLS check
+    // may not yet see the new company_users row (PostgREST connection-pool timing).
+    // Each retry waits longer before trying again.
+    retry: 6,
+    retryDelay: (attempt) => Math.min(attempt * 1500, 8000),
+    refetchOnMount: 'always' as const,
   });
 
   const isMember = useMemo(() => {
@@ -380,14 +391,13 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
 
   const memberSince = company ? new Date(company.created_at).getFullYear() : null;
 
-  // Wait for the active-company query before declaring "not found". Without this, a fresh
-  // login flashes "Company not found" because memberships are still in flight.
+  // Wait for the active-company query before declaring "not found".
   if (!companyId) {
     const noCompanyYet = !activeCompanyLoading && memberships.length === 0;
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>{noCompanyYet ? 'No company yet. Finish setup first.' : 'Loading…'}</Text>
+        <Text style={styles.loadingText}>{noCompanyYet ? 'No company yet. Finish setup first.' : 'Loading...'}</Text>
         {noCompanyYet && (
           <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
             <Text style={styles.backFallbackText}>Go to Company Setup</Text>
@@ -397,42 +407,39 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
     );
   }
 
-  if (profileQ.isLoading) {
+  // Show loading while the query is in-flight OR while React Query is between
+  // retry attempts — never flash the error UI mid-retry.
+  const isStillTrying =
+    profileQ.isLoading ||
+    profileQ.isFetching ||
+    (profileQ.isError && profileQ.failureCount < 6);
+
+  if (isStillTrying && !company) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>Loading…</Text>
+        <Text style={styles.loadingText}>Loading your company...</Text>
       </View>
     );
   }
 
   if (!company) {
-    // The query returned no row. Most common cause: the active-company id
-    // resolved from a stale auth-store `companyId` that points to a row the
-    // user can no longer see (deleted attempt) OR memberships are mid-refetch
-    // after a fresh company_setup commit. Auto-retry once memberships arrive.
-    const stillRefreshing = profileQ.isFetching || activeCompanyLoading;
+    // All retries exhausted and still no data.
     return (
       <View style={[styles.root, { backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.loadingText}>
-          {stillRefreshing ? 'Loading your company…' : 'We couldn\u2019t load this company yet.'}
+        <Text style={styles.loadingText}>We could not load this company.</Text>
+        <Text style={[styles.loadingText, { fontSize: 12, color: C.textMuted, marginTop: 6, textAlign: 'center' as const }]}>
+          If you just created it, tap Retry. Otherwise, finish company setup.
         </Text>
-        {!stillRefreshing && (
-          <>
-            <Text style={[styles.loadingText, { fontSize: 12, color: C.textMuted, marginTop: 6, textAlign: 'center' as const }]}>
-              If you just created it, give it a moment then tap Retry. Otherwise, finish company setup.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
-              <TouchableOpacity onPress={() => profileQ.refetch()} style={styles.backFallback}>
-                <Text style={styles.backFallbackText}>Retry</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
-                <Text style={styles.backFallbackText}>Company setup</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
+          <TouchableOpacity onPress={() => profileQ.refetch()} style={styles.backFallback}>
+            <Text style={styles.backFallbackText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.replace('/onboarding/company-setup' as never)} style={styles.backFallback}>
+            <Text style={styles.backFallbackText}>Company setup</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -677,7 +684,7 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
           </View>
         )}
 
-        {/* Trust & Verification — only visible to company members in My Company view (contains staff count / internal verification) */}
+        {/* Trust & Verification — only visible to company members in My Company view */}
         {effectiveMode === 'private' && isMember && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trust & Verification</Text>
@@ -828,7 +835,7 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
             <FormField label="Admin email *" value={eAdminEmail} onChange={setEAdminEmail} keyboardType="email-address" />
             <FormField label="Admin phone" value={eAdminPhone} onChange={setEAdminPhone} keyboardType="phone-pad" />
             <TouchableOpacity onPress={() => saveProfile.mutate()} disabled={saveProfile.isPending} style={[styles.saveBig, saveProfile.isPending && { opacity: 0.6 }]}>
-              <Text style={styles.saveBigText}>{saveProfile.isPending ? 'Saving…' : 'Save changes'}</Text>
+              <Text style={styles.saveBigText}>{saveProfile.isPending ? 'Saving...' : 'Save changes'}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/employer/billing' as any)} style={[styles.headerActionBtn, { alignSelf: 'flex-start' }]} activeOpacity={0.8}>
               <CreditCard size={12} color={C.accent} />
@@ -989,5 +996,3 @@ const styles = StyleSheet.create({
   saveBig: { backgroundColor: C.accent, paddingVertical: 13, borderRadius: 12, alignItems: 'center', marginTop: 8 },
   saveBigText: { color: C.white, fontWeight: '800' as const, fontSize: 15 },
 });
-
-// Make headerActionBtn a flex row to accommodate icons.
