@@ -22,8 +22,7 @@ export default function SuperAdminOverviewScreen() {
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const dashboardQuery = trpc.admin.dashboard.useQuery(undefined, {
-    refetchOnMount: 'always',
-    staleTime: 0,
+    staleTime: 30_000,
   });
 
   // Unread notifications
@@ -72,11 +71,12 @@ export default function SuperAdminOverviewScreen() {
 
   // Refetch every time the super admin returns to this screen so newly-created
   // companies show up immediately in the approval queue.
+  // Guard: skip if any fetch is already in flight to avoid advisory lock contention.
   useFocusEffect(useCallback(() => {
-    void dashboardQuery.refetch();
-    void pendingHoursQ.refetch();
-    void activeShiftsQ.refetch();
-    void notifCountQ.refetch();
+    if (!dashboardQuery.isFetching) void dashboardQuery.refetch();
+    if (!pendingHoursQ.isFetching) void pendingHoursQ.refetch();
+    if (!activeShiftsQ.isFetching) void activeShiftsQ.refetch();
+    if (!notifCountQ.isFetching) void notifCountQ.refetch();
   }, [dashboardQuery, pendingHoursQ, activeShiftsQ, notifCountQ]));
 
   if (dashboardQuery.isLoading) {
