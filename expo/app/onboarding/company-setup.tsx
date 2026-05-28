@@ -290,9 +290,9 @@ export default function CompanySetup() {
 
       // Always clear loading and navigate, no matter what.
       setLoading(false);
-      // Route to Company Profile so the user immediately sees their pending-
-      // approval status banner and the completion checklist.
-      router.replace('/employer/company-profile' as never);
+      // Pass companyId as a param so the profile screen resolves it directly
+      // without depending on async activeCompanyId / membership state.
+      router.replace(`/employer/company-profile?companyId=${companyId}` as never);
       return;
     } catch (err) {
       console.log('[company-setup] failed at', stepLabel, err);
@@ -308,7 +308,7 @@ export default function CompanySetup() {
         );
         try { void refresh(); } catch {}
         setLoading(false);
-        router.replace('/employer/company-profile' as never);
+        router.replace(`/employer/company-profile?companyId=${companyId}` as never);
         return;
       }
 
