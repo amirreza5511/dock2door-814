@@ -438,20 +438,42 @@ export default function WorkerProfile() {
     }
   };
 
+  /** Encrypt a PII field via the DB's encrypt_pii helper. Returns null for empty input. */
+  const encryptField = async (value: string | null): Promise<string | null> => {
+    if (!value) return null;
+    const { data, error } = await supabase.rpc('encrypt_pii', { p_value: value });
+    if (error) throw new Error(`Encryption failed: ${error.message}`);
+    return data as string;
+  };
+
   const savePrivateInfo = async () => {
     if (!user) return;
     setSavingPrivate(true);
     try {
+      // Encrypt sensitive PII fields before storing
+      const [sinEnc, bankAccountEnc, bankTransitEnc, bankInstitutionEnc] = await Promise.all([
+        encryptField(sin || null),
+        encryptField(bankAccount || null),
+        encryptField(bankTransit || null),
+        encryptField(bankInstitution || null),
+      ]);
+
       const payload: Record<string, unknown> = {
         user_id: user.id,
         date_of_birth: dob || null,
         gender: gender || null,
         work_permit_status: workPermit || null,
+        // Plaintext columns kept for migration safety (dropped in a future migration)
         sin_number: sin || null,
         bank_institution_number: bankInstitution || null,
         bank_transit_number: bankTransit || null,
         bank_account_number: bankAccount || null,
         bank_account_holder_name: bankHolder || null,
+        // Encrypted columns (pgcrypto-backed)
+        sin_number_enc: sinEnc,
+        bank_account_number_enc: bankAccountEnc,
+        bank_transit_number_enc: bankTransitEnc,
+        bank_institution_number_enc: bankInstitutionEnc,
         address_line1: addressLine1 || null,
         address_line2: addressLine2 || null,
         city: addressCity || null,

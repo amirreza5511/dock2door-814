@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+type Role = "Customer" | "WarehouseProvider" | "ServiceProvider" | "Employer" | "TruckingCompany";
+
+const ROLES: { value: Role; label: string }[] = [
+  { value: "Customer", label: "Customer" },
+  { value: "WarehouseProvider", label: "Warehouse Provider" },
+  { value: "ServiceProvider", label: "Service Provider" },
+  { value: "Employer", label: "Employer" },
+  { value: "TruckingCompany", label: "Trucking Company" },
+];
+
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
@@ -15,6 +25,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [selectedRole, setSelectedRole] = useState<Role>("Customer");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -32,9 +43,19 @@ function LoginForm() {
         router.replace(next);
         router.refresh();
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { role: selectedRole },
+          },
+        });
         if (error) throw error;
-        setInfo("Account created. Check your inbox if email confirmation is required, then sign in.");
+        if (selectedRole !== "Customer") {
+          setInfo("Account created. You'll be prompted to set up your company after signing in.");
+        } else {
+          setInfo("Account created. Check your inbox if email confirmation is required, then sign in.");
+        }
         setMode("signin");
       }
     } catch (err) {
@@ -67,6 +88,30 @@ function LoginForm() {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} required value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
+
+            {mode === "signup" && (
+              <div>
+                <Label>Account type</Label>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {ROLES.map((r) => (
+                    <button
+                      key={r.value}
+                      type="button"
+                      onClick={() => setSelectedRole(r.value)}
+                      className={[
+                        "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                        selectedRole === r.value
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border bg-background text-muted-foreground hover:border-primary/50 hover:text-foreground",
+                      ].join(" ")}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {error && <p className="text-sm text-red-600">{error}</p>}
             {info && <p className="text-sm text-emerald-600">{info}</p>}
             <Button type="submit" className="w-full" disabled={busy}>
