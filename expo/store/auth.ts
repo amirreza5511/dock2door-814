@@ -430,12 +430,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   logout: async () => {
     console.log('[Auth] logout');
     demoUserOverride = null;
+    // Clear local session first so the UI redirects immediately, even if the
+    // network sign-out stalls (preview sandbox can block the request).
+    set({ user: null });
     try {
       await supabase.auth.signOut();
     } catch (error) {
       console.log('[Auth] logout failed', error);
     }
-    set({ user: null });
   },
 
   register: async (data) => {
