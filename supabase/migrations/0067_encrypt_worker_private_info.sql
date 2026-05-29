@@ -14,14 +14,22 @@ alter table public.worker_private_info
 
 -- Create helper functions
 create or replace function public.encrypt_pii(p_value text)
-returns bytea language sql security definer set search_path = public, extensions as $
+returns bytea
+language sql
+security definer
+set search_path = public, extensions
+as $func$
   select extensions.pgp_sym_encrypt(p_value, current_setting('app.pii_key', true))
-$;
+$func$;
 
 create or replace function public.decrypt_pii(p_value bytea)
-returns text language sql security definer set search_path = public, extensions as $
+returns text
+language sql
+security definer
+set search_path = public, extensions
+as $func$
   select extensions.pgp_sym_decrypt(p_value, current_setting('app.pii_key', true))
-$;
+$func$;
 
 -- Grant execute on helpers to authenticated role
 grant execute on function public.encrypt_pii(text) to authenticated;
