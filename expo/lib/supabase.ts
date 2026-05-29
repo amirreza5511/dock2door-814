@@ -122,12 +122,40 @@ const webStorage = {
 const safeUrl = SUPABASE_URL;
 const safeKey = SUPABASE_ANON_KEY;
 
+// ---------------------------------------------------------------------------
+// In-process auth lock (no "steal").
+//
+// Supabase's default lock uses the Web Locks API (navigator.locks). Under
+// concurrency — e.g. admin.dashboard fires 8 parallel queries, each of which
+// touches the auth session — the navigator lock can be *stolen* by a newer
+// acquirer, which aborts the in-flight call and surfaces as:
+//   "Lock broken by another request with the 'steal' option".
+//
+// Replacing it with a simple promise-chain serializes all auth operations in
+// this JS context without ever stealing, eliminating the contention error
+// while keeping token refresh correct.
+// ---------------------------------------------------------------------------
+let authLockChain: Promise<unknown> = Promise.resolve();
+const inProcessLock = async <R>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<R>,
+): Promise<R> => {
+  const run = authLockChain.then(() => fn(), () => fn());
+  authLockChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+};
+
 export const supabase = createClient(safeUrl, safeKey, {
   auth: {
     storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    lock: inProcessLock,
   },
 });
 
