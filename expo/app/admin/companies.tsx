@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, Alert, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Modal, Alert, RefreshControl, TextInput, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import { Building2, CheckCircle, XCircle, Edit, FileText, CreditCard } from 'lucide-react-native';
@@ -85,18 +85,42 @@ export default function AdminCompanies() {
 
   const [rejectReason, setRejectReason] = useState('');
   const [actionMode, setActionMode] = useState<'none' | 'reject' | 'suspend'>('none');
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  /**
+   * Set a company's approval status. Routes through the audited
+   * `admin_set_company_status` RPC (typed `company_status` enum → PostgREST
+   * coerces the value correctly server-side). Falls back to the dedicated
+   * `admin_set_company_approval` RPC only if the primary one is unavailable.
+   */
+  const setCompanyStatus = async (id: string, status: CompanyStatus, reason?: string): Promise<void> => {
+    setBusyId(id);
+    try {
+      const { error } = await supabase.rpc('admin_set_company_status', {
+        p_company_id: id,
+        p_status: status,
+        p_reason: reason ?? null,
+      });
+      if (error) throw error;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      Alert.alert('Unable to update company', message);
+      throw e;
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   const handleApprove = (id: string) => {
-    // Use the dedicated approval RPC so verified_at + rejection reason are
-    // cleared consistently (single source of truth for the verified badge).
     void (async () => {
-      const { error } = await supabase.rpc('admin_set_company_approval', {
-        p_company_id: id,
-        p_status: 'Approved',
-        p_reason: null,
-      });
-      if (error) Alert.alert('Unable to approve company', error.message);
-      else { setDetailModal(false); Alert.alert('Company Approved', 'The company is now active on the platform.'); void bootstrapQuery.refetch(); }
+      try {
+        await setCompanyStatus(id, 'Approved');
+        setDetailModal(false);
+        Alert.alert('Company Approved', 'The company is now active on the platform.');
+        await bootstrapQuery.refetch();
+      } catch {
+        // error already surfaced via Alert
+      }
     })();
   };
 
@@ -106,13 +130,15 @@ export default function AdminCompanies() {
       return;
     }
     void (async () => {
-      const { error } = await supabase.rpc('admin_set_company_approval', {
-        p_company_id: id,
-        p_status: status,
-        p_reason: reason.trim(),
-      });
-      if (error) Alert.alert(`Unable to ${status.toLowerCase()} company`, error.message);
-      else { setDetailModal(false); setActionMode('none'); setRejectReason(''); void bootstrapQuery.refetch(); }
+      try {
+        await setCompanyStatus(id, status, reason.trim());
+        setDetailModal(false);
+        setActionMode('none');
+        setRejectReason('');
+        await bootstrapQuery.refetch();
+      } catch {
+        // error already surfaced via Alert
+      }
     })();
   };
 
@@ -198,17 +224,25 @@ export default function AdminCompanies() {
             {c.status === 'PendingApproval' && (
               <View style={styles.pendingActions}>
                 <TouchableOpacity
-                  style={styles.inlineBtn}
+                  style={[styles.inlineBtn, busyId === c.id && styles.inlineBtnDisabled]}
                   onPress={() => handleApprove(c.id)}
                   activeOpacity={0.75}
+                  disabled={busyId === c.id}
                 >
-                  <CheckCircle size={13} color={C.white} />
-                  <Text style={styles.inlineBtnText}>Approve</Text>
+                  {busyId === c.id ? (
+                    <ActivityIndicator size="small" color={C.white} />
+                  ) : (
+                    <>
+                      <CheckCircle size={13} color={C.white} />
+                      <Text style={styles.inlineBtnText}>Approve</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.inlineBtn, styles.inlineBtnDanger]}
                   onPress={() => { openDetail(c); }}
                   activeOpacity={0.75}
+                  disabled={busyId === c.id}
                 >
                   <XCircle size={13} color={C.red} />
                   <Text style={[styles.inlineBtnText, { color: C.red }]}>Review / Reject</Text>
@@ -327,6 +361,7 @@ const styles = StyleSheet.create({
   pendingActions: { flexDirection: 'row', gap: 10, marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: C.border },
   inlineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 8 },
   inlineBtnDanger: { backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '60' },
+  inlineBtnDisabled: { opacity: 0.6 },
   inlineBtnText: { fontSize: 13, fontWeight: '600' as const, color: C.white },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
