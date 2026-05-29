@@ -1,5 +1,5 @@
--- Enable pgcrypto
-create extension if not exists pgcrypto;
+-- Enable pgcrypto (Supabase installs extensions into the "extensions" schema)
+create extension if not exists pgcrypto with schema extensions;
 
 -- Add encrypted columns alongside existing ones
 alter table public.worker_private_info
@@ -14,14 +14,14 @@ alter table public.worker_private_info
 
 -- Create helper functions
 create or replace function public.encrypt_pii(p_value text)
-returns bytea language sql security definer set search_path = public as $$
-  select pgp_sym_encrypt(p_value, current_setting('app.pii_key', true))
-$$;
+returns bytea language sql security definer set search_path = public, extensions as $
+  select extensions.pgp_sym_encrypt(p_value, current_setting('app.pii_key', true))
+$;
 
 create or replace function public.decrypt_pii(p_value bytea)
-returns text language sql security definer set search_path = public as $$
-  select pgp_sym_decrypt(p_value, current_setting('app.pii_key', true))
-$$;
+returns text language sql security definer set search_path = public, extensions as $
+  select extensions.pgp_sym_decrypt(p_value, current_setting('app.pii_key', true))
+$;
 
 -- Grant execute on helpers to authenticated role
 grant execute on function public.encrypt_pii(text) to authenticated;
