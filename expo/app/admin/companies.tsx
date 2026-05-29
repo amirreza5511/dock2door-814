@@ -23,6 +23,26 @@ const TYPE_COLORS: Record<CompanyType, string> = {
   TruckingCompany: C.purple,
 };
 
+/**
+ * Approval intents the UI exposes. These are NOT the DB enum — the
+ * `company_status` enum only has `PendingApproval | Approved | Suspended`
+ * (no `Active`, no `Rejected`). `toEnumStatus` collapses every intent down to
+ * a real enum value so the server-side `::company_status` cast can never throw
+ * `invalid input value for enum company_status: "Active"`.
+ */
+type ApprovalAction = 'Approve' | 'Reinstate' | 'Reject' | 'Suspend';
+
+const toEnumStatus = (action: ApprovalAction): CompanyStatus => {
+  switch (action) {
+    case 'Approve':
+    case 'Reinstate':
+      return 'Approved';
+    case 'Reject':
+    case 'Suspend':
+      return 'Suspended';
+  }
+};
+
 export default function AdminCompanies() {
   const insets = useSafeAreaInsets();
   const bootstrapQuery = useDockBootstrapData();
@@ -88,20 +108,39 @@ export default function AdminCompanies() {
   const [busyId, setBusyId] = useState<string | null>(null);
 
   /**
-   * Set a company's approval status. Routes through the audited
-   * `admin_set_company_status` RPC (typed `company_status` enum → PostgREST
-   * coerces the value correctly server-side). Falls back to the dedicated
-   * `admin_set_company_approval` RPC only if the primary one is unavailable.
+   * Set a company's approval status.
+   *
+   * IMPORTANT: the `company_status` enum only has three values —
+   * `PendingApproval | Approved | Suspended`. There is NO `Active` and NO
+   * `Rejected`. Sending those to a `::company_status` cast throws
+   * `invalid input value for enum company_status: "Active"`. So we normalise
+   * every approval intent down to a real enum value before hitting the DB:
+   *   Approve / Reinstate / Active → Approved
+   *   Reject / Suspend             → Suspended
+   *
+   * We try `admin_set_company_approval` first (it also stores
+   * `approval_rejection_reason` for the company to see), and fall back to
+   * `admin_set_company_status` if that RPC isn't deployed. Both receive an
+   * already-valid enum value, so the cast can never fail.
    */
-  const setCompanyStatus = async (id: string, status: CompanyStatus, reason?: string): Promise<void> => {
+  const setCompanyStatus = async (id: string, action: ApprovalAction, reason?: string): Promise<void> => {
+    const enumStatus = toEnumStatus(action);
     setBusyId(id);
     try {
-      const { error } = await supabase.rpc('admin_set_company_status', {
+      const approvalCall = await supabase.rpc('admin_set_company_approval', {
         p_company_id: id,
-        p_status: status,
+        p_status: enumStatus,
         p_reason: reason ?? null,
       });
-      if (error) throw error;
+      if (approvalCall.error) {
+        // Fall back to the core enum RPC (always deployed since 0007).
+        const statusCall = await supabase.rpc('admin_set_company_status', {
+          p_company_id: id,
+          p_status: enumStatus,
+          p_reason: reason ?? null,
+        });
+        if (statusCall.error) throw statusCall.error;
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unknown error';
       Alert.alert('Unable to update company', message);
@@ -114,7 +153,7 @@ export default function AdminCompanies() {
   const handleApprove = (id: string) => {
     void (async () => {
       try {
-        await setCompanyStatus(id, 'Approved');
+        await setCompanyStatus(id, 'Approve');
         setDetailModal(false);
         Alert.alert('Company Approved', 'The company is now active on the platform.');
         await bootstrapQuery.refetch();
@@ -124,7 +163,7 @@ export default function AdminCompanies() {
     })();
   };
 
-  const submitNegative = (id: string, status: 'Rejected' | 'Suspended', reason: string) => {
+  const submitNegative = (id: string, status: 'Reject' | 'Suspend', reason: string) => {
     if (reason.trim().length < 10) {
       Alert.alert('Reason required', 'Please provide at least 10 characters explaining why.');
       return;
@@ -308,13 +347,13 @@ export default function AdminCompanies() {
                       multiline
                     />
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                      <Button label={actionMode === 'reject' ? 'Confirm reject' : 'Confirm suspend'} onPress={() => submitNegative(selected.id, actionMode === 'reject' ? 'Rejected' : 'Suspended', rejectReason)} variant="danger" />
+                      <Button label={actionMode === 'reject' ? 'Confirm reject' : 'Confirm suspend'} onPress={() => submitNegative(selected.id, actionMode === 'reject' ? 'Reject' : 'Suspend', rejectReason)} variant="danger" />
                       <Button label="Cancel" onPress={() => { setActionMode('none'); setRejectReason(''); }} variant="ghost" />
                     </View>
                   </View>
                 ) : (
                   <View style={styles.actionBtns}>
-                    {selected.status !== 'Approved' && selected.status !== 'Active' && (
+                    {selected.status !== 'Approved' && (
                       <Button label="Approve Company" onPress={() => handleApprove(selected.id)} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
                     )}
                     {selected.status !== 'Rejected' && (
@@ -324,7 +363,7 @@ export default function AdminCompanies() {
                       <Button label="Suspend Company" onPress={() => handleSuspend(selected.id)} variant="danger" fullWidth icon={<XCircle size={15} color={C.red} />} />
                     )}
                     {selected.status === 'Suspended' && (
-                      <Button label="Reinstate Company" onPress={() => handleApprove(selected.id)} variant="outline" fullWidth />
+                      <Button label="Reinstate Company" onPress={() => { void setCompanyStatus(selected.id, 'Reinstate').then(() => { setDetailModal(false); void bootstrapQuery.refetch(); }).catch(() => {}); }} variant="outline" fullWidth />
                     )}
                     <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                   </View>
