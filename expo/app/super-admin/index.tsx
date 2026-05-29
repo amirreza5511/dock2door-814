@@ -11,7 +11,6 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
-import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import { useAuthStore } from '@/store/auth';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
@@ -153,8 +152,6 @@ export default function SuperAdminOverviewScreen() {
           />
         }
       >
-        <ResponsiveContainer padded={false}>
-
           {/* ── Header ── */}
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
@@ -455,7 +452,6 @@ export default function SuperAdminOverviewScreen() {
             </Card>
           ))}
 
-        </ResponsiveContainer>
       </ScrollView>
     </View>
   );
