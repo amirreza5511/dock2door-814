@@ -19,9 +19,13 @@ export default function AdminDashboard() {
   const bootstrapQuery = useDockBootstrapData();
   const { companies, users, warehouseListings, serviceListings, shiftPosts, warehouseBookings, disputes, payments, workerCertifications } = bootstrapQuery.data;
 
+  // Depend on the stable `refetch` fn, not the whole query object (which is a
+  // new reference every render → would cause an infinite focus-refetch loop).
+  const refetchBootstrap = bootstrapQuery.refetch;
+
   useFocusEffect(useCallback(() => {
-    void bootstrapQuery.refetch();
-  }, [bootstrapQuery]));
+    void refetchBootstrap();
+  }, [refetchBootstrap]));
 
   const stats = useMemo(() => ({
     pendingCompanies: companies.filter((c) => c.status === 'PendingApproval').length,

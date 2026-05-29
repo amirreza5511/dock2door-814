@@ -54,10 +54,15 @@ export default function AdminCompanies() {
     onSuccess: async () => { await utils.dock.bootstrap.invalidate(); },
   });
   const { companies, warehouseListings, serviceListings } = bootstrapQuery.data;
+  // IMPORTANT: depend on the stable `refetch` fn, NOT the whole query object.
+  // `useDockBootstrapData()` returns a fresh `{...query, data}` object every
+  // render, so depending on it here would re-fire the focus effect on every
+  // render → infinite refetch storm (frozen taps + auth-lock "steal" errors).
+  const refetchBootstrap = bootstrapQuery.refetch;
 
   useFocusEffect(useCallback(() => {
-    void bootstrapQuery.refetch();
-  }, [bootstrapQuery]));
+    void refetchBootstrap();
+  }, [refetchBootstrap]));
 
   const [filter, setFilter] = useState<CompanyStatus | 'All'>('All');
   // Auto-switch to the Pending filter whenever new pending companies arrive
