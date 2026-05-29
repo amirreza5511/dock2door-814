@@ -123,31 +123,29 @@ const safeUrl = SUPABASE_URL;
 const safeKey = SUPABASE_ANON_KEY;
 
 // ---------------------------------------------------------------------------
-// In-process auth lock (no "steal").
+// Auth lock — pass-through (no Web Locks, no serialization).
 //
 // Supabase's default lock uses the Web Locks API (navigator.locks). Under
-// concurrency — e.g. admin.dashboard fires 8 parallel queries, each of which
-// touches the auth session — the navigator lock can be *stolen* by a newer
-// acquirer, which aborts the in-flight call and surfaces as:
+// concurrency — e.g. admin.dashboard / bootstrap fire many parallel queries,
+// each of which touches the auth session — the navigator lock can be *stolen*
+// by a newer acquirer, which aborts the in-flight call and surfaces as:
 //   "Lock broken by another request with the 'steal' option".
 //
-// Replacing it with a simple promise-chain serializes all auth operations in
-// this JS context without ever stealing, eliminating the contention error
-// while keeping token refresh correct.
+// A previous attempt serialized every auth op through a single promise chain.
+// That removed the steal error but introduced a worse failure: it has NO
+// timeout, so if any one token fetch stalls (network is blocked in the preview
+// sandbox) the entire chain deadlocks and every subsequent query / RPC hangs
+// forever — making approvals, reviews and data loads appear completely dead.
+//
+// React Native has no navigator.locks anyway, so the correct, safe choice is a
+// pass-through lock: just run the operation. No Web Locks (so no "steal"
+// error) and no serialization (so it can never deadlock).
 // ---------------------------------------------------------------------------
-let authLockChain: Promise<unknown> = Promise.resolve();
-const inProcessLock = async <R>(
+const passthroughLock = async <R>(
   _name: string,
   _acquireTimeout: number,
   fn: () => Promise<R>,
-): Promise<R> => {
-  const run = authLockChain.then(() => fn(), () => fn());
-  authLockChain = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
-};
+): Promise<R> => fn();
 
 export const supabase = createClient(safeUrl, safeKey, {
   auth: {
@@ -155,7 +153,7 @@ export const supabase = createClient(safeUrl, safeKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
-    lock: inProcessLock,
+    lock: passthroughLock,
   },
 });
 
