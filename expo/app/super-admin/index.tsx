@@ -70,13 +70,21 @@ export default function SuperAdminOverviewScreen() {
 
   // Refetch every time the super admin returns to this screen so newly-created
   // companies show up immediately in the approval queue.
-  // Guard: skip if any fetch is already in flight to avoid advisory lock contention.
+  // IMPORTANT: depend ONLY on the stable `refetch` fns. The query objects are a
+  // fresh reference every render, so depending on them re-fires this focus
+  // effect on every render → infinite refetch loop that pins the JS thread and
+  // freezes every tap on the screen.
+  const refetchDashboard = dashboardQuery.refetch;
+  const refetchPendingHours = pendingHoursQ.refetch;
+  const refetchActiveShifts = activeShiftsQ.refetch;
+  const refetchNotifCount = notifCountQ.refetch;
+
   useFocusEffect(useCallback(() => {
-    if (!dashboardQuery.isFetching) void dashboardQuery.refetch();
-    if (!pendingHoursQ.isFetching) void pendingHoursQ.refetch();
-    if (!activeShiftsQ.isFetching) void activeShiftsQ.refetch();
-    if (!notifCountQ.isFetching) void notifCountQ.refetch();
-  }, [dashboardQuery, pendingHoursQ, activeShiftsQ, notifCountQ]));
+    void refetchDashboard();
+    void refetchPendingHours();
+    void refetchActiveShifts();
+    void refetchNotifCount();
+  }, [refetchDashboard, refetchPendingHours, refetchActiveShifts, refetchNotifCount]));
 
   if (dashboardQuery.isLoading) {
     return (
