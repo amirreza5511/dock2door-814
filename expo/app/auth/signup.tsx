@@ -23,7 +23,6 @@ const ROLES: { role: UserRole; label: string; desc: string }[] = [
   { role: 'TruckingCompany', label: 'Trucking Company', desc: 'Manage drivers, fleet, and appointments' },
   { role: 'Driver', label: 'Driver', desc: 'View assigned jobs and upload PODs' },
   { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
-  { role: 'SuperAdmin', label: 'Super Admin', desc: 'Control platform-wide operations' },
 ];
 
 export default function Signup() {
