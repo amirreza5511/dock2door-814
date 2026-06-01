@@ -102,8 +102,8 @@ export default function EmployerPage() {
   );
   const billingReady = Boolean(readiness?.billing_setup_completed_at);
   const approvalStatus = readiness?.status ?? "";
-  const verified = Boolean(readiness?.verified_at) && (approvalStatus === "Approved" || approvalStatus === "Active");
-  const blockedStatus = approvalStatus === "Rejected" || approvalStatus === "Suspended";
+  const verified = Boolean(readiness?.verified_at) && approvalStatus === "Approved";
+  const blockedStatus = approvalStatus === "Suspended";
   const showReadiness = Boolean(readiness) && (!profileReady || !billingReady || blockedStatus || !verified);
 
   const shiftsQ = useQuery({

@@ -530,7 +530,7 @@ export default function WorkerProfile() {
       return path;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: [['dock', 'bootstrap'], { type: 'query' }] });
+      await queryClient.invalidateQueries({ queryKey: ['dock', 'bootstrap'] });
       await queryClient.invalidateQueries({ queryKey: ['worker-profile-photo', user?.id] });
       Alert.alert('Profile photo updated');
     },

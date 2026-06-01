@@ -251,11 +251,11 @@ export default function EmployerDashboard() {
       };
     }
 
-    // 2. Company rejected or suspended
-    if (company.status === 'Rejected' || company.status === 'Suspended') {
+    // 2. Company suspended
+    if (company.status === 'Suspended') {
       return {
         type: 'error',
-        title: company.status === 'Suspended' ? 'Company suspended' : 'Company application rejected',
+        title: 'Company suspended',
         body: 'Contact support to resolve your account status.',
         action: 'View Status',
         route: '/employer/company-profile',
@@ -366,10 +366,10 @@ export default function EmployerDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && (
             <View style={styles.companyRow}>
-              <Building2 size={12} color={company.status === 'Active' ? C.accent : C.yellow} />
-              <Text style={[styles.company, { color: company.status === 'Active' ? C.accent : C.yellow }]}>
+              <Building2 size={12} color={company.status === 'Approved' ? C.accent : C.yellow} />
+              <Text style={[styles.company, { color: company.status === 'Approved' ? C.accent : C.yellow }]}>
                 {company.name}
-                {company.status !== 'Active' ? ` · ${company.status}` : ''}
+                {company.status !== 'Approved' ? ` · ${company.status}` : ''}
               </Text>
             </View>
           )}

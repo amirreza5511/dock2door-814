@@ -1157,7 +1157,9 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
     const table = ENTITY_TABLE[input.entity];
     if (!table) throw new Error(`admin.listEntity: "${input.entity}" is not in the allowed entity list`);
-    const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false }).limit(200);
+    // gate_events is append-only and ordered by occurred_at (it has no created_at column).
+    const orderColumn = table === 'gate_events' ? 'occurred_at' : 'created_at';
+    const { data, error } = await supabase.from(table).select('*').order(orderColumn, { ascending: false }).limit(200);
     if (error) return [];
     return data ?? [];
   },

@@ -181,7 +181,7 @@ export default function CreateShift() {
   );
   const billingReady = companyQ.data?.billingComplete ?? Boolean(row?.billing_setup_completed_at);
   const companyStatus = row?.status ?? '';
-  const postingBlocked = companyStatus === 'Rejected' || companyStatus === 'Suspended';
+  const postingBlocked = companyStatus === 'Suspended';
   const canPostPaid = companyQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked);
   const utils = trpc.useUtils();
   const queryClient = useQueryClient();
@@ -257,7 +257,7 @@ export default function CreateShift() {
     }
     if (postingBlocked) {
       Alert.alert(
-        companyStatus === 'Suspended' ? 'Company suspended' : 'Company rejected',
+        'Company suspended',
         'Your company cannot post shifts right now. Contact support to resolve account status.',
       );
       return;

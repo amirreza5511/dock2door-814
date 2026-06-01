@@ -199,7 +199,7 @@ export function useDockData(): DockDataState {
   const state = useBootstrapState();
 
   const invalidate = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: [['dock', 'bootstrap'], { type: 'query' }] });
+    await queryClient.invalidateQueries({ queryKey: ['dock', 'bootstrap'] });
   }, [queryClient]);
 
   const createRecordMutation = trpc.dock.createRecord.useMutation({ onSuccess: () => void invalidate() });

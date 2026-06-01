@@ -91,7 +91,7 @@ export default function CreateShiftPage() {
   );
   const billingReady = readinessQ.data?.billingComplete ?? Boolean(readiness?.billing_setup_completed_at);
   const companyStatus = readiness?.status ?? "";
-  const postingBlocked = companyStatus === "Rejected" || companyStatus === "Suspended";
+  const postingBlocked = companyStatus === "Suspended";
   const canPostPaid = readinessQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked);
   const paid = form.hourly_rate > 0;
   const gateBlocked = paid && !canPostPaid;
