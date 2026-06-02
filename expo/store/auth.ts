@@ -88,24 +88,31 @@ async function fetchIsPlatformAdmin(userId: string): Promise<boolean> {
 }
 
 async function fetchProfile(userId: string): Promise<User | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
 
-  if (error) {
-    console.log('[Auth] fetchProfile error', error.message);
+    if (error) {
+      console.log('[Auth] fetchProfile error', error.message);
+      return null;
+    }
+    if (!data) {
+      console.log('[Auth] no profile row found for user', userId);
+      return null;
+    }
+    const user = profileToUser(data as DbProfile);
+    user.isPlatformAdmin = await fetchIsPlatformAdmin(userId);
+    console.log('[Auth] fetched profile', { userId, role: user.role, isPlatformAdmin: user.isPlatformAdmin });
+    return user;
+  } catch (e) {
+    // Network failure (e.g. "Failed to fetch" when offline / sandboxed) must
+    // never escape as an unhandled rejection. Treat as "no profile yet".
+    console.log('[Auth] fetchProfile failed', e instanceof Error ? e.message : String(e));
     return null;
   }
-  if (!data) {
-    console.log('[Auth] no profile row found for user', userId);
-    return null;
-  }
-  const user = profileToUser(data as DbProfile);
-  user.isPlatformAdmin = await fetchIsPlatformAdmin(userId);
-  console.log('[Auth] fetched profile', { userId, role: user.role, isPlatformAdmin: user.isPlatformAdmin });
-  return user;
 }
 
 let authListenerSubscribed = false;
@@ -275,8 +282,37 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
       if (!authListenerSubscribed) {
         authListenerSubscribed = true;
-        supabase.auth.onAuthStateChange(async (event, newSession) => {
-          console.log('[Auth] onAuthStateChange', event);
+        supabase.auth.onAuthStateChange((event, newSession) => {
+          // Run the (async) handler in a self-contained, fully-guarded task so a
+          // network rejection can never escape this callback as an unhandled
+          // promise rejection (which surfaces as "TypeError: Failed to fetch").
+          void handleAuthStateChange(event, newSession).catch((e) => {
+            console.log('[Auth] onAuthStateChange handler failed', e instanceof Error ? e.message : String(e));
+          });
+        });
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message.toLowerCase() : '';
+      if (
+        msg.includes('refresh token not found') ||
+        msg.includes('invalid refresh token') ||
+        msg.includes('token has expired') ||
+        msg.includes('jwt expired')
+      ) {
+        console.log('[Auth] stale session caught in catch, clearing');
+        try { await supabase.auth.signOut(); } catch {}
+        set({ user: null, isHydrated: true });
+        return;
+      }
+      console.log('[Auth] bootstrap failed', error);
+      set({ user: null, isHydrated: true });
+    }
+
+    async function handleAuthStateChange(
+      event: Parameters<Parameters<typeof supabase.auth.onAuthStateChange>[0]>[0],
+      newSession: Parameters<Parameters<typeof supabase.auth.onAuthStateChange>[0]>[1],
+    ): Promise<void> {
+      console.log('[Auth] onAuthStateChange', event);
 
           // TOKEN_REFRESH_FAILED = stale/revoked refresh token stored in AsyncStorage.
           // Sign out silently so the user lands on the login screen cleanly.
@@ -307,23 +343,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           }
           const user = await fetchProfile(newSession.user.id);
           set({ user });
-        });
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message.toLowerCase() : '';
-      if (
-        msg.includes('refresh token not found') ||
-        msg.includes('invalid refresh token') ||
-        msg.includes('token has expired') ||
-        msg.includes('jwt expired')
-      ) {
-        console.log('[Auth] stale session caught in catch, clearing');
-        try { await supabase.auth.signOut(); } catch {}
-        set({ user: null, isHydrated: true });
-        return;
-      }
-      console.log('[Auth] bootstrap failed', error);
-      set({ user: null, isHydrated: true });
     }
   },
 
