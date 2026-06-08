@@ -2180,30 +2180,30 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'wms.listLocations': async (_input, ctx) => {
     if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
     const q = supabase.from('warehouse_locations').select('*').is('archived_at', null).order('zone').order('aisle');
-    const { data, error } = isAdmin(ctx.user.role) ? await q : await q.eq('company_id', ctx.user.companyId!);
+    const { data, error } = isAdmin(ctx.user.role) ? await q : await q.eq('warehouse_company_id', ctx.user.companyId!);
     if (error) throwErr(error, 'Unable to load locations');
     return data ?? [];
   },
   'wms.createLocation': async (input: AnyRecord, ctx) => {
     if (!ctx.user.companyId) throw new Error('Company context required');
     const { data, error } = await supabase.from('warehouse_locations').insert({
-      company_id: ctx.user.companyId,
+      warehouse_company_id: ctx.user.companyId,
       listing_id: input.listingId ?? null,
+      code: input.code ?? input.label ?? '',
       zone: input.zone ?? '',
       aisle: input.aisle ?? '',
       rack: input.rack ?? '',
       level: input.level ?? '',
       bin: input.bin ?? '',
-      label: input.label ?? '',
     }).select().single();
     if (error) throwErr(error, 'Unable to create location');
     return { id: data!.id };
   },
   'wms.listStockLevels': async (input: { variantId?: string; locationId?: string } | undefined, ctx) => {
-    let q = supabase.from('stock_levels').select('*, product_variants(sku,name), warehouse_locations(label,zone,aisle,bin)').order('updated_at', { ascending: false }).limit(500);
+    let q = supabase.from('stock_levels').select('*, product_variants(sku,name), warehouse_locations(code,zone,aisle,bin)').order('updated_at', { ascending: false }).limit(500);
     if (input?.variantId) q = q.eq('variant_id', input.variantId);
     if (input?.locationId) q = q.eq('location_id', input.locationId);
-    if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('company_id', ctx.user.companyId);
+    if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('warehouse_company_id', ctx.user.companyId);
     const { data, error } = await q;
     if (error) throwErr(error, 'Unable to load stock');
     return data ?? [];
@@ -2239,10 +2239,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
   'wms.listCycleCounts': async (_input, ctx) => {
-    const q = supabase.from('cycle_counts').select('*').order('created_at', { ascending: false }).limit(200);
+    const q = supabase.from('cycle_counts').select('*').order('counted_at', { ascending: false }).limit(200);
     const { data, error } = isAdmin(ctx.user.role)
       ? await q
-      : ctx.user.companyId ? await q.eq('company_id', ctx.user.companyId) : { data: [], error: null };
+      : ctx.user.companyId ? await q.eq('warehouse_company_id', ctx.user.companyId) : { data: [], error: null };
     if (error) throwErr(error, 'Unable to load cycle counts');
     return data ?? [];
   },
