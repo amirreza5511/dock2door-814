@@ -29,7 +29,7 @@ export default function WarehouseProviderDashboard() {
   const myBookings = useMemo(() => warehouseBookings.filter((b) => myListingIds.includes(b.listingId)), [warehouseBookings, myListingIds]);
 
   const stats = useMemo(() => ({
-    activeListings: myListings.filter((l) => l.status === 'Available').length,
+    activeListings: myListings.filter((l) => l.status === 'Available' || l.status === 'Active').length,
     pendingBookings: myBookings.filter((b) => b.status === 'Requested').length,
     activeBookings: myBookings.filter((b) => ['Confirmed', 'InProgress'].includes(b.status)).length,
     revenue: payments.filter((p) => p.referenceType === 'WarehouseBooking' && myListingIds.some((id) => myBookings.find((b) => b.id === p.referenceId && b.listingId === id))).reduce((sum, p) => sum + p.netAmount, 0),

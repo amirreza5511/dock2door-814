@@ -55,7 +55,7 @@ export default function Warehouses() {
   const [submitting, setSubmitting] = useState(false);
 
   const available = useMemo(() =>
-    warehouseListings.filter((l) => l.status === 'Available'),
+    warehouseListings.filter((l) => l.status === 'Available' || l.status === 'Active'),
     [warehouseListings]
   );
 

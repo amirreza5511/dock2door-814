@@ -58,7 +58,7 @@ export default function AdminBookingRoutingScreen() {
     const booking = warehouseBookings.find((b) => b.id === routeFor);
     if (!booking) return warehouseListings;
     return warehouseListings
-      .filter((l) => l.status === 'Available' && l.availablePalletCapacity >= booking.palletsRequested)
+      .filter((l) => (l.status === 'Available' || l.status === 'Active') && l.availablePalletCapacity >= booking.palletsRequested)
       .slice(0, 20);
   }, [routeFor, warehouseBookings, warehouseListings]);
 
