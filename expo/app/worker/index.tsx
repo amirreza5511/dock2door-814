@@ -17,6 +17,7 @@ import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
+import WorldSwitcher from '@/components/WorldSwitcher';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -464,6 +465,7 @@ export default function WorkerDashboard() {
           <Text style={styles.name}>{profile?.displayName ?? user?.name ?? 'Worker'}</Text>
         </View>
         <View style={styles.headerRight}>
+          <WorldSwitcher />
           <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.notifBtn}>
             <Bell size={18} color={C.text} />
             {unreadCount > 0 && (

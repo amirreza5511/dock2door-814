@@ -11,6 +11,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import WorldSwitcher from '@/components/WorldSwitcher';
 
 export default function CustomerDashboard() {
   const insets = useSafeAreaInsets();
@@ -58,9 +59,12 @@ export default function CustomerDashboard() {
           <Text style={styles.name}>{user?.name}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn">
-          <LogOut size={18} color={C.textMuted} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <WorldSwitcher />
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn">
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -186,6 +190,7 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 13, color: C.textSecondary },
   name: { fontSize: 22, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
   company: { fontSize: 13, color: C.accent, fontWeight: '600' as const, marginTop: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoutBtn: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: C.card, borderWidth: 1, borderColor: C.border,

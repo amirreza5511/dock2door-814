@@ -10,6 +10,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import WorldSwitcher from '@/components/WorldSwitcher';
 
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
@@ -72,9 +73,12 @@ export default function AdminDashboard() {
           </View>
           <Text style={styles.name}>{user?.name}</Text>
         </View>
-        <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
-          <LogOut size={18} color={C.textMuted} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <WorldSwitcher />
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -253,6 +257,7 @@ const styles = StyleSheet.create({
   adminBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.redDim, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start', marginBottom: 4 },
   adminBadgeText: { fontSize: 11, color: C.red, fontWeight: '700' as const },
   name: { fontSize: 22, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingTop: 20 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 20, marginBottom: 24 },

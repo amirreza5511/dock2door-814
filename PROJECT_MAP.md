@@ -37,6 +37,26 @@ queries/RPCs.
 
 ---
 
+## 1b. Domain (world) layer
+
+The app is grouped into two **worlds** plus a shared **Admin** layer. This is pure
+UI/routing grouping — no backend, RLS, or access-rule impact. Source of truth:
+`expo/lib/access.ts` (`DOMAIN_BY_ROLE`, `LABOUR_ROLES`, `LOGISTICS_ROLES`, `ADMIN_ROLES`,
+`visibleDomains()`, `domainForSegment()`, `ENABLE_DOMAINS` flag).
+
+- **Labour** → `Worker`, `Employer`.
+- **Logistics & Warehousing** → `Customer`, `WarehouseProvider`, `ServiceProvider`, `TruckingCompany`, `GateStaff`, `Driver` (Fulfillment is a feature area here).
+- **Shared Admin (both worlds)** → `Admin`, `SuperAdmin`.
+
+Key files:
+- `expo/providers/CurrentWorldProvider.tsx` — session-only active world (not persisted; re-inferred from route via `domainForSegment`).
+- `expo/components/WorldSwitcher.tsx` — header pill, shown only when `visibleDomains(user).length > 1` (dual-role users + admins). Placed in `worker/employer/customer/admin` home headers.
+- Post-login routing: `expo/app/_layout.tsx` `resolveHome()` (world-aware, behind `ENABLE_DOMAINS`).
+- Landing & sign-up grouped by world: `expo/app/index.tsx`, `expo/app/auth/signup.tsx`.
+- Web parity (landing/middleware/switcher in `apps/web`) is NOT done yet.
+
+---
+
 ## 2. Role map
 
 Mobile path = `expo/app/<role>/`. Web path = `apps/web/app/(app)/<role>/`.

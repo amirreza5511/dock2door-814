@@ -7,10 +7,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/auth';
-import { canAccessSegment, getRoleRoute } from '@/lib/access';
+import { canAccessSegment, DOMAIN_BY_ROLE, ENABLE_DOMAINS, getRoleRoute, visibleDomains } from '@/lib/access';
 import { trpc, trpcClient } from '@/lib/trpc';
 import C from '@/constants/colors';
 import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
+import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -108,9 +109,9 @@ function AuthGuard() {
         destination = '/';
       }
     } else if (isPublic) {
-      destination = user.role === 'SuperAdmin' ? '/super-admin' : user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
+      destination = resolveHome(user);
     } else if (!SHARED_SEGMENTS.includes(root) && !canAccessSegment(user.role, root, Boolean(user.isPlatformAdmin))) {
-      destination = user.role === 'SuperAdmin' ? '/super-admin' : user.isPlatformAdmin ? '/admin' : getRoleRoute(user.role);
+      destination = resolveHome(user);
     }
 
     if (!destination || destination === pathname) {
@@ -123,6 +124,27 @@ function AuthGuard() {
   }, [isHydrated, isNavigationReady, pathname, router, segments, user]);
 
   return null;
+}
+
+/**
+ * Computes the post-login landing route. World-aware when ENABLE_DOMAINS is on:
+ * single-world users go to their role home, admins go to the shared admin layer.
+ * Falls back to the original role-based redirect when the flag is off.
+ */
+function resolveHome(user: NonNullable<ReturnType<typeof useAuthStore.getState>['user']>): string {
+  const adminHome = user.role === 'SuperAdmin' ? '/super-admin' : user.isPlatformAdmin ? '/admin' : null;
+  if (!ENABLE_DOMAINS) {
+    return adminHome ?? getRoleRoute(user.role);
+  }
+  if (adminHome) {
+    return adminHome;
+  }
+  // Non-admin roles always belong to exactly one world; route to that role's home.
+  const worlds = visibleDomains(user);
+  if (worlds.length > 0 && DOMAIN_BY_ROLE[user.role]) {
+    return getRoleRoute(user.role);
+  }
+  return getRoleRoute(user.role);
 }
 
 function RootLayoutNav() {
@@ -180,14 +202,16 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <ActiveCompanyProvider>
-          <SafeAreaProvider>
-            <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
-              <StatusBar style="light" />
-              <RootLayoutNav />
-              <BootstrapController />
-              <AuthGuard />
-            </GestureHandlerRootView>
-          </SafeAreaProvider>
+          <CurrentWorldProvider>
+            <SafeAreaProvider>
+              <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
+                <StatusBar style="light" />
+                <RootLayoutNav />
+                <BootstrapController />
+                <AuthGuard />
+              </GestureHandlerRootView>
+            </SafeAreaProvider>
+          </CurrentWorldProvider>
         </ActiveCompanyProvider>
       </trpc.Provider>
     </QueryClientProvider>

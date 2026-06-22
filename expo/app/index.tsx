@@ -8,27 +8,50 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
-  MapPin, TrendingUp, Clock, Star,
+  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 
-const FEATURES = [
+type WorldDef = {
+  key: 'labour' | 'logistics';
+  badge: string;
+  color: string;
+  bg: string;
+  icon: typeof HardHat;
+  title: string;
+  desc: string;
+  bullets: { icon: typeof Users; label: string; sub: string }[];
+};
+
+const WORLDS: WorldDef[] = [
   {
-    icon: Warehouse, color: C.blue, bg: C.blueDim,
-    title: 'Warehouse Space', subtitle: 'Dry · Chill · Frozen',
-    desc: 'Book pallet storage at facilities worldwide — dry, chill, and frozen.',
+    key: 'labour',
+    badge: 'Domain 1',
+    color: C.purple,
+    bg: C.purpleDim,
+    icon: HardHat,
+    title: 'Labour',
+    desc: 'Connect the people who need work with the businesses who need crews.',
+    bullets: [
+      { icon: Clock, label: 'Employers', sub: 'Post & fill shifts fast' },
+      { icon: Users, label: 'Workers', sub: 'Find shifts that fit you' },
+    ],
   },
   {
-    icon: Wrench, color: C.accent, bg: C.accentDim,
-    title: 'Industrial Services', subtitle: 'On-demand crew',
-    desc: 'Devanning, forklift ops, local trucking — booked by the hour.',
-  },
-  {
-    icon: Users, color: C.green, bg: C.greenDim,
-    title: 'Day Labour', subtitle: 'Shift marketplace',
-    desc: 'Post shifts or find work. General, driver, forklift & high-reach.',
+    key: 'logistics',
+    badge: 'Domain 2',
+    color: C.accent,
+    bg: C.accentDim,
+    icon: Boxes,
+    title: 'Logistics & Warehousing',
+    desc: 'Warehouse space, industrial services, trucking and fulfillment in one place.',
+    bullets: [
+      { icon: Warehouse, label: 'Warehouse Space', sub: 'Dry · Chill · Frozen' },
+      { icon: Wrench, label: 'Industrial Services', sub: 'On-demand crews' },
+      { icon: Truck, label: 'Trucking & Fulfillment', sub: 'Move and ship goods' },
+    ],
   },
 ];
 
@@ -135,22 +158,35 @@ export default function Landing() {
           ))}
         </View>
 
-        {/* Features */}
+        {/* Two worlds */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>PLATFORM MODULES</Text>
-          <Text style={styles.sectionTitle}>Everything logistics,{'\n'}one place.</Text>
+          <Text style={styles.sectionLabel}>TWO WORLDS, ONE PLATFORM</Text>
+          <Text style={styles.sectionTitle}>Pick the world{'\n'}you work in.</Text>
 
-          {FEATURES.map((f) => (
-            <View key={f.title} style={styles.featureCard}>
-              <View style={[styles.featureIconWrap, { backgroundColor: f.bg }]}>
-                <f.icon size={22} color={f.color} />
-              </View>
-              <View style={styles.featureText}>
-                <View style={styles.featureTitleRow}>
-                  <Text style={styles.featureTitle}>{f.title}</Text>
-                  <Text style={styles.featureSubtitle}>{f.subtitle}</Text>
+          {WORLDS.map((w) => (
+            <View key={w.key} style={[styles.worldCard, { borderColor: w.color }]}>
+              <View style={styles.worldHeaderRow}>
+                <View style={[styles.worldIconWrap, { backgroundColor: w.bg }]}>
+                  <w.icon size={24} color={w.color} />
                 </View>
-                <Text style={styles.featureDesc}>{f.desc}</Text>
+                <View style={styles.worldHeaderText}>
+                  <Text style={[styles.worldBadge, { color: w.color }]}>{w.badge}</Text>
+                  <Text style={styles.worldTitle}>{w.title}</Text>
+                </View>
+              </View>
+              <Text style={styles.worldDesc}>{w.desc}</Text>
+              <View style={styles.worldBullets}>
+                {w.bullets.map((b) => (
+                  <View key={b.label} style={styles.worldBullet}>
+                    <View style={[styles.worldBulletIcon, { backgroundColor: w.bg }]}>
+                      <b.icon size={15} color={w.color} />
+                    </View>
+                    <View style={styles.featureText}>
+                      <Text style={styles.worldBulletLabel}>{b.label}</Text>
+                      <Text style={styles.worldBulletSub}>{b.sub}</Text>
+                    </View>
+                  </View>
+                ))}
               </View>
             </View>
           ))}
@@ -293,6 +329,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6, paddingVertical: 2,
   },
   featureDesc: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  worldCard: {
+    backgroundColor: C.card, borderRadius: 16,
+    borderWidth: 1, padding: 18, marginBottom: 14,
+  },
+  worldHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14 },
+  worldIconWrap: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  worldHeaderText: { flex: 1 },
+  worldBadge: { fontSize: 11, fontWeight: '700' as const, letterSpacing: 1, marginBottom: 2, textTransform: 'uppercase' as const },
+  worldTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text, letterSpacing: -0.5 },
+  worldDesc: { fontSize: 13, color: C.textSecondary, lineHeight: 20, marginBottom: 14 },
+  worldBullets: { gap: 8 },
+  worldBullet: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  worldBulletIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  worldBulletLabel: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  worldBulletSub: { fontSize: 12, color: C.textSecondary },
   rolesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   roleCard: {
     width: (width - 48 - 10) / 2,

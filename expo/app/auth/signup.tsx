@@ -12,18 +12,26 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import type { UserRole } from '@/constants/types';
-import { COMPANY_REQUIRED_ROLES, getRoleRoute } from '@/lib/access';
+import { COMPANY_REQUIRED_ROLES, type Domain, DOMAIN_LABELS, getRoleRoute } from '@/lib/access';
 
-const ROLES: { role: UserRole; label: string; desc: string }[] = [
-  { role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
-  { role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
-  { role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
-  { role: 'Employer', label: 'Employer', desc: 'Post and manage work shifts' },
-  { role: 'Worker', label: 'Worker', desc: 'Find and apply for shifts' },
-  { role: 'TruckingCompany', label: 'Trucking Company', desc: 'Manage drivers, fleet, and appointments' },
-  { role: 'Driver', label: 'Driver', desc: 'View assigned jobs and upload PODs' },
-  { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
-];
+type RoleOption = { role: UserRole; label: string; desc: string };
+
+const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
+  labour: [
+    { role: 'Employer', label: 'Employer', desc: 'Post and manage work shifts' },
+    { role: 'Worker', label: 'Worker', desc: 'Find and apply for shifts' },
+  ],
+  logistics: [
+    { role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
+    { role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
+    { role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
+    { role: 'TruckingCompany', label: 'Trucking Company', desc: 'Manage drivers, fleet, and appointments' },
+    { role: 'Driver', label: 'Driver', desc: 'View assigned jobs and upload PODs' },
+    { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
+  ],
+};
+
+const WORLD_ORDER: Domain[] = ['labour', 'logistics'];
 
 export default function Signup() {
   const router = useRouter();
@@ -102,28 +110,33 @@ export default function Signup() {
 
           <View>
             <Text style={styles.roleLabel}>Your Role</Text>
-            <View style={styles.rolesGrid}>
-              {ROLES.map((r) => {
-                const selected = selectedRole === r.role;
-                return (
-                  <TouchableOpacity
-                    key={r.role}
-                    onPress={() => setSelectedRole(r.role)}
-                    style={[styles.roleCard, selected && styles.roleCardSelected]}
-                    activeOpacity={0.8}
-                    testID={`role-${r.role}`}
-                  >
-                    {selected && (
-                      <View style={styles.checkIcon}>
-                        <Check size={12} color={C.white} />
-                      </View>
-                    )}
-                    <Text style={[styles.roleTitle, selected && styles.roleTitleSelected]}>{r.label}</Text>
-                    <Text style={styles.roleDesc}>{r.desc}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {WORLD_ORDER.map((world) => (
+              <View key={world} style={styles.worldGroup}>
+                <Text style={styles.worldHeading}>{DOMAIN_LABELS[world]}</Text>
+                <View style={styles.rolesGrid}>
+                  {ROLES_BY_WORLD[world].map((r) => {
+                    const selected = selectedRole === r.role;
+                    return (
+                      <TouchableOpacity
+                        key={r.role}
+                        onPress={() => setSelectedRole(r.role)}
+                        style={[styles.roleCard, selected && styles.roleCardSelected]}
+                        activeOpacity={0.8}
+                        testID={`role-${r.role}`}
+                      >
+                        {selected && (
+                          <View style={styles.checkIcon}>
+                            <Check size={12} color={C.white} />
+                          </View>
+                        )}
+                        <Text style={[styles.roleTitle, selected && styles.roleTitleSelected]}>{r.label}</Text>
+                        <Text style={styles.roleDesc}>{r.desc}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -159,6 +172,8 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 16, color: C.textSecondary },
   form: { gap: 16 },
   roleLabel: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, marginBottom: 10, letterSpacing: 0.3 },
+  worldGroup: { marginBottom: 18 },
+  worldHeading: { fontSize: 11, fontWeight: '700' as const, color: C.accent, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' as const },
   rolesGrid: { gap: 8 },
   roleCard: {
     padding: 14, borderRadius: 12,
