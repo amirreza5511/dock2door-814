@@ -110,9 +110,9 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
                   <Truck size={16} color={acc.is_active ? C.green : C.textMuted} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.cardTitle}>{s?.name ?? acc.carrier_code} {acc.display_name ? `\u00b7 ${acc.display_name}` : ''}</Text>
+                  <Text style={styles.cardTitle}>{s?.name ?? acc.carrier_code}{acc.display_name ? ` · ${acc.display_name}` : ''}</Text>
                   <Text style={styles.meta}>
-                    {acc.mode.toUpperCase()} · {s?.mode ?? '-'} · {acc.account_number || 'no account#'} · secret: {acc.credentials_secret_ref || 'unset'}
+                    {acc.account_number ? `Account ${acc.account_number}` : 'No account number'} · {acc.is_active ? (acc.credentials_secret_ref ? 'Activated' : 'Pending activation') : 'Disabled'}
                   </Text>
                   {acc.last_error ? <Text style={styles.err}>{acc.last_error}</Text> : null}
                 </View>
@@ -124,12 +124,11 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
         })}
 
         <Card style={styles.helpCard}>
-          <Text style={styles.helpTitle}>How credentials work</Text>
+          <Text style={styles.helpTitle}>How it works</Text>
           <Text style={styles.helpText}>
-            For security, API keys and OAuth secrets never live in the client. Set a Supabase Edge Function secret per carrier
-            (e.g. `EASYPOST_API_KEY`, `SHIPPO_API_KEY`, `CANADA_POST_CREDENTIALS`, `UPS_CREDENTIALS`, `DHL_CREDENTIALS`, `FEDEX_CREDENTIALS`)
-            and reference its name in the &quot;Secret env name&quot; field below. Direct carriers expect a JSON value such as
-            {`{"username":"...","password":"...","customer_number":"..."}`} or {`{"client_id":"...","client_secret":"..."}`}
+            1. Tap Add and pick your carrier (Canada Post, UPS, DHL, FedEx, EasyPost, or Shippo).{'\n'}
+            2. Enter your account number and save — it appears in the list above right away.{'\n'}
+            3. We securely connect your account on our servers; once it shows “Activated” you can rate-shop and print labels. No API keys to handle yourself.
           </Text>
         </Card>
 
@@ -165,9 +164,8 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
               ))}
             </View>
 
-            <Input label="Display name" value={editing?.display_name ?? ''} onChangeText={(t) => setEditing((e) => ({ ...e, display_name: t }))} />
-            <Input label="Account number" value={editing?.account_number ?? ''} onChangeText={(t) => setEditing((e) => ({ ...e, account_number: t }))} autoCapitalize="none" />
-            <Input label="Secret env name (Supabase)" placeholder="e.g. UPS_CREDENTIALS" value={editing?.credentials_secret_ref ?? ''} onChangeText={(t) => setEditing((e) => ({ ...e, credentials_secret_ref: t }))} autoCapitalize="none" />
+            <Input label="Display name" placeholder="e.g. Main UPS account" value={editing?.display_name ?? ''} onChangeText={(t) => setEditing((e) => ({ ...e, display_name: t }))} />
+            <Input label="Account number" placeholder="Your carrier account number" value={editing?.account_number ?? ''} onChangeText={(t) => setEditing((e) => ({ ...e, account_number: t }))} autoCapitalize="none" />
 
             <Text style={styles.fieldLabel}>Mode</Text>
             <View style={styles.chipRow}>
