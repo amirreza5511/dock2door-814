@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Clock } from 'lucide-react-native';
@@ -85,7 +85,13 @@ export default function WorkerAvailability() {
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
       <Text style={styles.title}>My Availability</Text>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={availQ.isRefetching} onRefresh={() => availQ.refetch()} tintColor={C.accent} colors={[C.accent]} />
+        }
+      >
         <CalendarView
           events={events}
           initialMode="week"

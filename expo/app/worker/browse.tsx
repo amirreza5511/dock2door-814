@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  Alert, Modal, Linking,
+  Alert, Modal, Linking, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle } from 'lucide-react-native';
@@ -90,9 +90,23 @@ export default function BrowseShifts() {
       return (data ?? []) as AppRow[];
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const myApps = appsQ.data ?? [];
+
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        appsQ.refetch(),
+        utils.dock.bootstrap.invalidate(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Company reviews for star ratings
   const reviewsQ = useQuery({
@@ -211,6 +225,9 @@ export default function BrowseShifts() {
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
+        }
       >
         {filtered.length === 0 && (
           <View style={styles.empty}>
