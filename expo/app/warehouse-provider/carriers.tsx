@@ -18,7 +18,7 @@ export default function ProviderCarriersScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.back}><ArrowLeft size={20} color={C.text} /></TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Shipping Carriers</Text>
-          <Text style={styles.sub}>{activeCompany?.companyName ?? 'No company'} \u00b7 connect Canada Post, UPS, DHL, FedEx, EasyPost, Shippo</Text>
+          <Text style={styles.sub}>{activeCompany?.companyName ?? 'No company'} · connect Canada Post, UPS, DHL, FedEx, EasyPost, Shippo</Text>
         </View>
       </View>
       <CarrierAccountsManager scope="company" companyId={activeCompany?.companyId ?? null} />

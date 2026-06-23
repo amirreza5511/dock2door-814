@@ -112,7 +112,7 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{s?.name ?? acc.carrier_code} {acc.display_name ? `\u00b7 ${acc.display_name}` : ''}</Text>
                   <Text style={styles.meta}>
-                    {acc.mode.toUpperCase()} \u00b7 {s?.mode ?? '-'} \u00b7 {acc.account_number || 'no account#'} \u00b7 secret: {acc.credentials_secret_ref || 'unset'}
+                    {acc.mode.toUpperCase()} · {s?.mode ?? '-'} · {acc.account_number || 'no account#'} · secret: {acc.credentials_secret_ref || 'unset'}
                   </Text>
                   {acc.last_error ? <Text style={styles.err}>{acc.last_error}</Text> : null}
                 </View>
@@ -138,7 +138,7 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
           {supported.map((s) => (
             <View key={s.code} style={styles.supportRow}>
               <Text style={styles.supportName}>{s.name}</Text>
-              <Text style={styles.supportMeta}>{s.mode} \u00b7 needs {s.requires.join(', ')}</Text>
+              <Text style={styles.supportMeta}>{s.mode} · needs {s.requires.join(', ')}</Text>
             </View>
           ))}
         </Card>

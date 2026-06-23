@@ -90,7 +90,7 @@ export default function RateShopScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>Shipment</Text>
                 <Text style={styles.cardMeta}>
-                  {Number(detail.shipment.weight_kg ?? 0).toFixed(2)} kg \u00b7 {detail.shipment.length_cm}\u00d7{detail.shipment.width_cm}\u00d7{detail.shipment.height_cm} cm
+                  {Number(detail.shipment.weight_kg ?? 0).toFixed(2)} kg · {detail.shipment.length_cm}×{detail.shipment.width_cm}×{detail.shipment.height_cm} cm
                 </Text>
                 <Text style={styles.cardMeta}>
                   {(detail.shipment.ship_from?.city ?? '\u2013')} \u2192 {(detail.shipment.ship_to?.city ?? '\u2013')}

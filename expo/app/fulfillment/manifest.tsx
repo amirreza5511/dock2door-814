@@ -146,9 +146,9 @@ export default function ManifestScreen() {
                 {m.status === 'Failed' ? <AlertTriangle size={16} color={C.red} /> : <CheckCircle size={16} color={C.green} />}
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{m.carrier_code} \u00b7 {m.shipment_count} shipments</Text>
+                <Text style={styles.cardTitle}>{m.carrier_code} · {m.shipment_count} shipments</Text>
                 <Text style={styles.cardMeta}>
-                  {m.manifest_number || (m.status === 'Failed' ? m.failed_reason : 'No number')} \u00b7 {new Date(m.created_at).toLocaleString()}
+                  {m.manifest_number || (m.status === 'Failed' ? m.failed_reason : 'No number')} · {new Date(m.created_at).toLocaleString()}
                 </Text>
               </View>
               <StatusBadge status={m.status} />
