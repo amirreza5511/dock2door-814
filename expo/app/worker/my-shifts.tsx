@@ -198,14 +198,17 @@ export default function WorkerMyShifts() {
     refetchInterval: 20_000,
   });
 
-  const myAssignments = assignmentsQ.data ?? [];
-  const myApps = appsQ.data ?? [];
+  const assignmentsData = assignmentsQ.data;
+  const appsData = appsQ.data;
+  const myAssignments = useMemo<AssignmentRow[]>(() => assignmentsData ?? [], [assignmentsData]);
+  const myApps = useMemo<AppRow[]>(() => appsData ?? [], [appsData]);
+  const assignmentIds = useMemo<string[]>(() => myAssignments.map((a) => a.id), [myAssignments]);
 
   const timeEntriesQ = useQuery({
-    queryKey: ['myshifts-timeentries', user?.id],
+    queryKey: ['myshifts-timeentries', user?.id, assignmentIds],
     queryFn: async (): Promise<TimeEntryRow[]> => {
-      if (!user?.id || myAssignments.length === 0) return [];
-      const ids = myAssignments.map((a) => a.id);
+      if (!user?.id || assignmentIds.length === 0) return [];
+      const ids = assignmentIds;
       const { data } = await supabase
         .from('time_entries')
         .select('id,assignment_id,start_timestamp,end_timestamp,employer_confirmed_hours,employer_notes')
