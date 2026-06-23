@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -178,7 +178,8 @@ export default function WorkerMyShifts() {
       return (data ?? []) as AssignmentRow[];
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const appsQ = useQuery({
@@ -193,7 +194,8 @@ export default function WorkerMyShifts() {
       return (data ?? []) as AppRow[];
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const myAssignments = assignmentsQ.data ?? [];
@@ -211,9 +213,24 @@ export default function WorkerMyShifts() {
       return (data ?? []) as TimeEntryRow[];
     },
     enabled: Boolean(user?.id) && myAssignments.length > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const myTimeEntries = timeEntriesQ.data ?? [];
+
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        assignmentsQ.refetch(),
+        appsQ.refetch(),
+        timeEntriesQ.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // Fetch shift posts for all assignment shift IDs
   const allShiftIds = useMemo(
@@ -376,6 +393,9 @@ export default function WorkerMyShifts() {
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
+        }
       >
         {/* ─── Active Tab ─── */}
         {tab === 'Active' && (

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -135,7 +135,8 @@ export default function EmployerShifts() {
       return (data ?? []) as AssignmentRow[];
     },
     enabled: Boolean(user?.companyId),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const appsQ = useQuery({
@@ -152,7 +153,8 @@ export default function EmployerShifts() {
       return (data ?? []) as AppRow[];
     },
     enabled: Boolean(user?.companyId),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const teQ = useQuery({
@@ -167,7 +169,8 @@ export default function EmployerShifts() {
       return (data ?? []) as TimeEntryRow[];
     },
     enabled: (assignmentsQ.data?.length ?? 0) > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   // Worker reviews for inline rating display
@@ -187,6 +190,21 @@ export default function EmployerShifts() {
   const allApps = appsQ.data ?? [];
   const allTEs = teQ.data ?? [];
   const workerReviews = workerReviewsQ.data ?? [];
+
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        assignmentsQ.refetch(),
+        appsQ.refetch(),
+        teQ.refetch(),
+        utils.dock.bootstrap.invalidate(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const getApplicants = (shiftId: string) => allApps.filter((a) => a.shift_id === shiftId);
   const getAssignments = (shiftId: string) => allAssignments.filter((a) => a.shift_id === shiftId);
@@ -380,6 +398,9 @@ export default function EmployerShifts() {
       <ScrollView
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
+        }
       >
         {filteredShifts.length === 0 && (
           <View style={styles.empty}><Text style={styles.emptyText}>No shifts here</Text></View>

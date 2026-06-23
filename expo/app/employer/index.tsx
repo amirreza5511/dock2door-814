@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -112,7 +112,8 @@ export default function EmployerDashboard() {
       return (data ?? []) as EmpAssRow[];
     },
     enabled: myShiftIds.length > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const allAssignments = assignsQ.data ?? [];
 
@@ -129,7 +130,8 @@ export default function EmployerDashboard() {
       return (data ?? []) as EmpAppRow[];
     },
     enabled: myShiftIds.length > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const allApps = appsQ.data ?? [];
 
@@ -146,7 +148,8 @@ export default function EmployerDashboard() {
       return (data ?? []) as EmpTERow[];
     },
     enabled: allAssignments.length > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const allTEs = teQ.data ?? [];
 
@@ -163,9 +166,26 @@ export default function EmployerDashboard() {
       return count ?? 0;
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const unreadCount = notifCountQ.data ?? 0;
+
+  const [refreshing, setRefreshing] = React.useState<boolean>(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        bootstrapQuery.refetch(),
+        assignsQ.refetch(),
+        appsQ.refetch(),
+        teQ.refetch(),
+        notifCountQ.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // ── Review tracking ───────────────────────────────────────────────────────
   const reviewableIds = useMemo(
@@ -398,6 +418,9 @@ export default function EmployerDashboard() {
         style={{ flex: 1 }}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
+        }
       >
         {/* ── Priority Action Banner ── */}
         {priorityAction && (() => {

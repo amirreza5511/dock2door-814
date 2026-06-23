@@ -324,7 +324,11 @@ export function useDockBootstrapData() {
   const query = useQuery({
     queryKey: ['dock', 'bootstrap'],
     queryFn: fetchBootstrap,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    // Auto-refresh in the background so cross-actor changes (a worker applying,
+    // an employer accepting, clock-in/out) surface without leaving the screen.
+    refetchInterval: 20_000,
+    refetchOnMount: true,
   });
 
   const data = useMemo<BootstrapData>(() => query.data ?? EMPTY_DATA, [query.data]);

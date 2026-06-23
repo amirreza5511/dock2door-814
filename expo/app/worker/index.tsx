@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Linking, Alert, ActivityIndicator,
+  Linking, Alert, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -173,7 +173,8 @@ export default function WorkerDashboard() {
       return (data ?? []) as AssignmentRow[];
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   // ── Applications ─────────────────────────────────────────────────────────
@@ -189,7 +190,8 @@ export default function WorkerDashboard() {
       return (data ?? []) as AppRow[];
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
 
   const myAssignments = assignmentsQ.data ?? [];
@@ -208,7 +210,8 @@ export default function WorkerDashboard() {
       return (data ?? []) as TimeEntryRow[];
     },
     enabled: Boolean(user?.id) && myAssignments.length > 0,
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const myTimeEntries = timeEntriesQ.data ?? [];
 
@@ -225,9 +228,26 @@ export default function WorkerDashboard() {
       return count ?? 0;
     },
     enabled: Boolean(user?.id),
-    staleTime: 30_000,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
   });
   const unreadCount = notifCountQ.data ?? 0;
+
+  const [refreshing, setRefreshing] = React.useState<boolean>(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        bootstrapQuery.refetch(),
+        assignmentsQ.refetch(),
+        appsQ.refetch(),
+        timeEntriesQ.refetch(),
+        notifCountQ.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   // ── Profile + certs ──────────────────────────────────────────────────────
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
@@ -510,6 +530,9 @@ export default function WorkerDashboard() {
         style={{ flex: 1 }}
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
+        }
       >
         {/* ── Critical Action Banner ── */}
         {criticalAction && (() => {
