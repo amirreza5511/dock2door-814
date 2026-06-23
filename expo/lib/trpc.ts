@@ -591,6 +591,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
+  // Lists every variant for the company (joined through products), so WMS can
+  // receive brand-new SKUs that aren't in stock yet — not just already-stocked ones.
+  'inventory.listAllVariants': async (_input, ctx) => {
+    if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
+    let q = supabase
+      .from('product_variants')
+      .select('id, sku, name, barcode, product_id, products!inner(company_id, name)')
+      .order('sku', { ascending: true });
+    if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('products.company_id', ctx.user.companyId);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load variants');
+    return data ?? [];
+  },
+
   'inventory.upsertVariant': async (input: { id?: string; productId: string; sku: string; barcode?: string | null; name?: string }) => {
     if (input.id) {
       const { error } = await supabase.from('product_variants').update({

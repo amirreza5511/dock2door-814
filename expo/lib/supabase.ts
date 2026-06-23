@@ -163,6 +163,58 @@ console.log('[supabase] client initialized', {
 });
 
 // ---------------------------------------------------------------------------
+// Benign auth-error swallow guard
+//
+// On web, the client's background auto-refresh tick can fire BEFORE our auth
+// store has a chance to validate the session. When localStorage holds a stale /
+// revoked refresh token, that tick throws an AuthApiError
+// ("Invalid Refresh Token: Refresh Token Not Found") from deep inside the
+// supabase internals. Nothing awaits that promise, so it escapes as an
+// unhandled rejection and surfaces as a fatal red-screen runtime overlay —
+// even though it's harmless (we already clear the session and route to login).
+//
+// This listener catches that one specific class of benign auth error, clears
+// the stale local session, and prevents it from bubbling up as fatal.
+// ---------------------------------------------------------------------------
+const isBenignRefreshTokenError = (reason: unknown): boolean => {
+  const msg = (
+    reason instanceof Error ? reason.message : String(reason ?? '')
+  ).toLowerCase();
+  return (
+    msg.includes('refresh token not found') ||
+    msg.includes('invalid refresh token') ||
+    msg.includes('refresh_token_not_found') ||
+    msg.includes('token has expired') ||
+    msg.includes('jwt expired')
+  );
+};
+
+const clearStaleLocalSession = async (): Promise<void> => {
+  try {
+    await supabase.auth.signOut({ scope: 'local' });
+  } catch {
+    try {
+      const storage = Platform.OS === 'web' ? webStorage : AsyncStorage;
+      const keys = [
+        `sb-${SUPABASE_URL.replace(/https?:\/\//, '').split('.')[0]}-auth-token`,
+        'supabase.auth.token',
+      ];
+      await Promise.allSettled(keys.map((k) => storage.removeItem(k)));
+    } catch {}
+  }
+};
+
+if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    if (isBenignRefreshTokenError(e?.reason)) {
+      console.log('[supabase] swallowing benign stale-refresh-token rejection');
+      e.preventDefault();
+      void clearStaleLocalSession();
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Early TOKEN_REFRESH_FAILED guard
 // Registered immediately on client creation so it fires even before any
 // screen mounts or the auth store's own listener is set up.

@@ -112,7 +112,7 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardTitle}>{s?.name ?? acc.carrier_code}{acc.display_name ? ` · ${acc.display_name}` : ''}</Text>
                   <Text style={styles.meta}>
-                    {acc.account_number ? `Account ${acc.account_number}` : 'No account number'} · {acc.is_active ? (acc.credentials_secret_ref ? 'Activated' : 'Pending activation') : 'Disabled'}
+                    {acc.account_number ? `Account ${acc.account_number}` : 'No account number'} · {acc.mode === 'live' ? 'Live' : 'Test'} · {acc.is_active ? (acc.last_verified_at ? 'Verified' : 'Active') : 'Disabled'}
                   </Text>
                   {acc.last_error ? <Text style={styles.err}>{acc.last_error}</Text> : null}
                 </View>
@@ -133,13 +133,15 @@ export default function CarrierAccountsManager({ scope, companyId }: Props) {
         </Card>
 
         <Card style={styles.helpCard}>
-          <Text style={styles.helpTitle}>Supported carriers</Text>
-          {supported.map((s) => (
-            <View key={s.code} style={styles.supportRow}>
-              <Text style={styles.supportName}>{s.name}</Text>
-              <Text style={styles.supportMeta}>{s.mode} · needs {s.requires.join(', ')}</Text>
-            </View>
-          ))}
+          <Text style={styles.helpTitle}>Carriers you can connect</Text>
+          <View style={styles.supportWrap}>
+            {supported.map((s) => (
+              <View key={s.code} style={styles.supportChip}>
+                <Truck size={12} color={C.textSecondary} />
+                <Text style={styles.supportName}>{s.name}</Text>
+              </View>
+            ))}
+          </View>
         </Card>
       </ScrollView>
 
@@ -212,9 +214,9 @@ const styles = StyleSheet.create({
   helpCard: { padding: 14, gap: 6 },
   helpTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
   helpText: { fontSize: 11, color: C.textSecondary, lineHeight: 16 },
-  supportRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  supportWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  supportChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.cardElevated },
   supportName: { fontSize: 12, fontWeight: '600' as const, color: C.text },
-  supportMeta: { fontSize: 11, color: C.textMuted },
 
   modalRoot: { flex: 1, backgroundColor: C.overlay, justifyContent: 'flex-end' },
   modalCard: { backgroundColor: C.card, borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, gap: 12, maxHeight: '92%' },

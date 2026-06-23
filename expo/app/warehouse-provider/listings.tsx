@@ -12,6 +12,7 @@ import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ListingStatus, WarehouseListing } from '@/constants/types';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
+import { parseListingRates, encodeListingRates, DEFAULT_RATES, type ListingRates } from '@/lib/listingRates';
 
 export default function WPListings() {
   const insets = useSafeAreaInsets();
@@ -33,6 +34,13 @@ export default function WPListings() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editModal, setEditModal] = useState(false);
   const [editData, setEditData] = useState<Partial<WarehouseListing>>({});
+  const [editRates, setEditRates] = useState<ListingRates>({ ...DEFAULT_RATES });
+  const [editDisplayNotes, setEditDisplayNotes] = useState<string>('');
+
+  const setRate = (key: keyof ListingRates, v: string) => {
+    const n = Number(v);
+    setEditRates((r) => ({ ...r, [key]: Number.isFinite(n) && n >= 0 ? n : 0 }));
+  };
 
   const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId), [warehouseListings, activeCompanyId]);
 
@@ -48,14 +56,20 @@ export default function WPListings() {
 
   const openEdit = (l: WarehouseListing) => {
     setEditingId(l.id);
+    const { rates, displayNotes } = parseListingRates(l.notes);
+    setEditRates(rates);
+    setEditDisplayNotes(displayNotes);
     setEditData({
       name: l.name,
+      address: l.address,
+      city: l.city,
       storageRatePerPallet: l.storageRatePerPallet,
       inboundHandlingFeePerPallet: l.inboundHandlingFeePerPallet,
       outboundHandlingFeePerPallet: l.outboundHandlingFeePerPallet,
       availablePalletCapacity: l.availablePalletCapacity,
+      minPallets: l.minPallets,
+      maxPallets: l.maxPallets,
       receivingHours: l.receivingHours,
-      notes: l.notes,
     });
     setEditModal(true);
   };
@@ -66,12 +80,16 @@ export default function WPListings() {
       await updateMutation.mutateAsync({
         id: editingId,
         name: editData.name,
+        address: editData.address,
+        city: editData.city,
         storageRatePerPallet: editData.storageRatePerPallet !== undefined ? Number(editData.storageRatePerPallet) : undefined,
         inboundHandlingFeePerPallet: editData.inboundHandlingFeePerPallet !== undefined ? Number(editData.inboundHandlingFeePerPallet) : undefined,
         outboundHandlingFeePerPallet: editData.outboundHandlingFeePerPallet !== undefined ? Number(editData.outboundHandlingFeePerPallet) : undefined,
         availablePalletCapacity: editData.availablePalletCapacity !== undefined ? Number(editData.availablePalletCapacity) : undefined,
+        minPallets: editData.minPallets !== undefined ? Number(editData.minPallets) : undefined,
+        maxPallets: editData.maxPallets !== undefined ? Number(editData.maxPallets) : undefined,
         receivingHours: editData.receivingHours,
-        notes: editData.notes,
+        notes: encodeListingRates(editDisplayNotes, editRates),
       });
       setEditModal(false);
     } catch (error) {
@@ -168,13 +186,39 @@ export default function WPListings() {
             <Text style={styles.modalTitle}>Edit Listing</Text>
             <View style={styles.formGap}>
               <Input label="Listing Name" value={editData.name ?? ''} onChangeText={(v) => setEditData((d) => ({ ...d, name: v }))} />
+              <Input label="Address" value={editData.address ?? ''} onChangeText={(v) => setEditData((d) => ({ ...d, address: v }))} />
+              <Input label="City" value={editData.city ?? ''} onChangeText={(v) => setEditData((d) => ({ ...d, city: v }))} />
+
+              <Text style={styles.groupLabel}>Storage & handling</Text>
               <Input label="Storage Rate ($/pallet)" value={String(editData.storageRatePerPallet ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, storageRatePerPallet: Number(v) }))} keyboardType="numeric" />
-              <Input label="Inbound Handling Fee ($/pallet)" value={String(editData.inboundHandlingFeePerPallet ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, inboundHandlingFeePerPallet: Number(v) }))} keyboardType="numeric" />
-              <Input label="Outbound Handling Fee ($/pallet)" value={String(editData.outboundHandlingFeePerPallet ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, outboundHandlingFeePerPallet: Number(v) }))} keyboardType="numeric" />
+              <View style={styles.twoCol}>
+                <Input label="Inbound ($/pallet)" value={String(editData.inboundHandlingFeePerPallet ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, inboundHandlingFeePerPallet: Number(v) }))} keyboardType="numeric" containerStyle={styles.flex1} />
+                <Input label="Outbound ($/pallet)" value={String(editData.outboundHandlingFeePerPallet ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, outboundHandlingFeePerPallet: Number(v) }))} keyboardType="numeric" containerStyle={styles.flex1} />
+              </View>
+              <View style={styles.twoCol}>
+                <Input label="Min Pallets" value={String(editData.minPallets ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, minPallets: Number(v) }))} keyboardType="numeric" containerStyle={styles.flex1} />
+                <Input label="Max Pallets" value={String(editData.maxPallets ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, maxPallets: Number(v) }))} keyboardType="numeric" containerStyle={styles.flex1} />
+              </View>
               <Input label="Available Pallet Capacity" value={String(editData.availablePalletCapacity ?? '')} onChangeText={(v) => setEditData((d) => ({ ...d, availablePalletCapacity: Number(v) }))} keyboardType="numeric" />
+
+              <Text style={styles.groupLabel}>Offloading & add-on rates</Text>
+              <View style={styles.twoCol}>
+                <Input label="20' Container ($)" value={String(editRates.c20)} onChangeText={(v) => setRate('c20', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+                <Input label="40' Container ($)" value={String(editRates.c40)} onChangeText={(v) => setRate('c40', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+              </View>
+              <View style={styles.twoCol}>
+                <Input label="5-Ton Truck ($)" value={String(editRates.t5)} onChangeText={(v) => setRate('t5', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+                <Input label="Gate Fee ($)" value={String(editRates.gate)} onChangeText={(v) => setRate('gate', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+              </View>
+              <View style={styles.twoCol}>
+                <Input label="Labour ($/hour)" value={String(editRates.labour)} onChangeText={(v) => setRate('labour', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+                <Input label="Special Unload/Load ($)" value={String(editRates.special)} onChangeText={(v) => setRate('special', v)} keyboardType="numeric" containerStyle={styles.flex1} />
+              </View>
+
+              <Text style={styles.groupLabel}>Facility</Text>
               <Input label="Receiving Hours" value={editData.receivingHours ?? ''} onChangeText={(v) => setEditData((d) => ({ ...d, receivingHours: v }))} />
-              <Input label="Notes" value={editData.notes ?? ''} onChangeText={(v) => setEditData((d) => ({ ...d, notes: v }))} multiline numberOfLines={3} />
-              <Button label="Save Changes" onPress={saveEdit} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
+              <Input label="Notes (shown to customers)" value={editDisplayNotes} onChangeText={setEditDisplayNotes} multiline numberOfLines={3} />
+              <Button label="Save Changes" onPress={saveEdit} loading={updateMutation.isPending} fullWidth size="lg" icon={<CheckCircle size={16} color={C.white} />} />
               <Button label="Cancel" onPress={() => setEditModal(false)} variant="ghost" fullWidth />
             </View>
           </ScrollView>
@@ -209,4 +253,7 @@ const styles = StyleSheet.create({
   modalBody: { padding: 20 },
   modalTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 20 },
   formGap: { gap: 14 },
+  groupLabel: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6, marginTop: 8 },
+  twoCol: { flexDirection: 'row', gap: 12 },
+  flex1: { flex: 1 },
 });

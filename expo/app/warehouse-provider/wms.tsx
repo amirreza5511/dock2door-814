@@ -32,6 +32,7 @@ export default function WmsOperationsScreen() {
   const stock = trpc.wms.listStockLevels.useQuery();
   const receipts = trpc.wms.listReceipts.useQuery();
   const counts = trpc.wms.listCycleCounts.useQuery();
+  const allVariants = trpc.inventory.listAllVariants.useQuery();
 
   const createLocation = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
   const receive = trpc.wms.receive.useMutation({
@@ -71,6 +72,12 @@ export default function WmsOperationsScreen() {
   );
   const variantOptions = useMemo<PickerOption[]>(() => {
     const seen = new Map<string, PickerOption>();
+    // Every catalog variant first, so brand-new SKUs (not yet in stock) are receivable.
+    for (const v of (allVariants.data ?? []) as { id: string; sku?: string; name?: string }[]) {
+      if (!v.id || seen.has(v.id)) continue;
+      seen.set(v.id, { id: v.id, label: v.sku ?? v.id.slice(0, 8), sub: v.name ?? undefined });
+    }
+    // Then anything already in stock (covers variants from other sources).
     for (const s of stockList) {
       if (!s.variant_id || seen.has(s.variant_id)) continue;
       seen.set(s.variant_id, {
@@ -80,7 +87,15 @@ export default function WmsOperationsScreen() {
       });
     }
     return Array.from(seen.values());
-  }, [stockList]);
+  }, [allVariants.data, stockList]);
+
+  /** On-hand qty for a variant at a location, summed across lots, from live stock levels. */
+  const lookupOnHand = (variantId: string, locationId: string): number => {
+    if (!variantId || !locationId) return 0;
+    return stockList
+      .filter((s) => s.variant_id === variantId && s.location_id === locationId)
+      .reduce((sum, s) => sum + Number(s.on_hand ?? 0), 0);
+  };
 
   const manualAdjust = (variantId: string, locationId: string, delta: number) => {
     Alert.alert(
@@ -315,7 +330,7 @@ export default function WmsOperationsScreen() {
               label="Bin location"
               value={countForm.locationId}
               options={locationOptions}
-              onSelect={(v) => setCountForm({ ...countForm, locationId: v })}
+              onSelect={(v) => setCountForm((f) => ({ ...f, locationId: v, systemQty: String(lookupOnHand(f.variantId, v)) }))}
               placeholder="Select a bin"
               searchPlaceholder="Search bin…"
               emptyText="No bins yet."
@@ -324,17 +339,20 @@ export default function WmsOperationsScreen() {
               label="SKU"
               value={countForm.variantId}
               options={variantOptions}
-              onSelect={(v) => setCountForm({ ...countForm, variantId: v })}
+              onSelect={(v) => setCountForm((f) => ({ ...f, variantId: v, systemQty: String(lookupOnHand(v, f.locationId)) }))}
               placeholder="Select a SKU"
               searchPlaceholder="Search SKU or name…"
-              emptyText="No SKUs in stock yet."
+              emptyText="No SKUs found. Add products in Inventory first."
             />
+            {countForm.variantId && countForm.locationId ? (
+              <Text style={styles.wizardSub}>System shows {countForm.systemQty || '0'} on hand here — just enter your physical count next.</Text>
+            ) : null}
             <Button label="Next" onPress={() => setCountForm({ ...countForm, step: 2 })} fullWidth />
           </>
         ) : countForm.step === 2 ? (
           <>
             <Text style={styles.wizardTitle}>Step 2 · Physical count</Text>
-            <Input label="System quantity" value={countForm.systemQty} onChangeText={(v) => setCountForm({ ...countForm, systemQty: v })} keyboardType="numeric" />
+            <Input label="System quantity (auto-filled)" value={countForm.systemQty} onChangeText={(v) => setCountForm({ ...countForm, systemQty: v })} keyboardType="numeric" />
             <Input label="Counted quantity" value={countForm.countedQty} onChangeText={(v) => setCountForm({ ...countForm, countedQty: v })} keyboardType="numeric" />
             {countForm.countedQty && countForm.systemQty ? (
               <View style={[styles.varianceBox, { backgroundColor: diff === 0 ? C.greenDim : C.red + '15', borderColor: diff === 0 ? C.green : C.red }]}>
