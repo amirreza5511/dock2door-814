@@ -54,6 +54,14 @@ export default function MessageThread() {
     },
   });
   const markReadMutation = trpc.messaging.markThreadRead.useMutation();
+  // Hold latest mutation/utils in refs so realtime + mark-read effects don't
+  // re-run on every render (these objects get a fresh identity each render,
+  // which previously caused an infinite subscribe/mark-read loop that flooded
+  // the network and surfaced as "Failed to fetch").
+  const markReadRef = useRef(markReadMutation);
+  markReadRef.current = markReadMutation;
+  const utilsRef = useRef(utils);
+  utilsRef.current = utils;
   const callContactQuery = trpc.messaging.threadCallContact.useQuery(
     { threadId: threadId ?? '' },
     { enabled: Boolean(threadId) },
@@ -125,9 +133,9 @@ export default function MessageThread() {
 
   useEffect(() => {
     if (threadId) {
-      void markReadMutation.mutateAsync({ threadId }).catch(() => undefined);
+      void markReadRef.current.mutateAsync({ threadId }).catch(() => undefined);
     }
-  }, [threadId, markReadMutation]);
+  }, [threadId]);
 
   useEffect(() => {
     if (!threadId) return;
@@ -138,9 +146,9 @@ export default function MessageThread() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'thread_messages', filter: `thread_id=eq.${threadId}` },
         () => {
-          void utils.messaging.listMessages.invalidate({ threadId });
-          void utils.messaging.listThreads.invalidate();
-          void markReadMutation.mutateAsync({ threadId }).catch(() => undefined);
+          void utilsRef.current.messaging.listMessages.invalidate({ threadId });
+          void utilsRef.current.messaging.listThreads.invalidate();
+          void markReadRef.current.mutateAsync({ threadId }).catch(() => undefined);
         },
       )
       .subscribe();
@@ -148,7 +156,7 @@ export default function MessageThread() {
       console.log('[thread-realtime] unsubscribing', threadId);
       void supabase.removeChannel(channel);
     };
-  }, [threadId, utils, markReadMutation]);
+  }, [threadId]);
 
   useEffect(() => {
     if (messagesQuery.data && messagesQuery.data.length > 0) {
