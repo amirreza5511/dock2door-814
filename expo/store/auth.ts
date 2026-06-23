@@ -463,10 +463,14 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     demoUserOverride = null;
     try {
       console.log('[Auth] register', { email: data.email, role: data.role });
+      const emailRedirectTo = typeof window !== 'undefined' && window.location
+        ? `${window.location.origin}/auth/confirm`
+        : undefined;
       const { data: signUpData, error } = await supabase.auth.signUp({
         email: data.email.trim(),
         password: data.password,
         options: {
+          emailRedirectTo,
           data: {
             name: data.name,
             role: data.role,

@@ -1,14 +1,24 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Alert, Share, Platform, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight, Star } from 'lucide-react-native';
+import * as Contacts from 'expo-contacts';
+import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight, Star, UserPlus, Send, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+
+interface ContactRow {
+  id: string;
+  name: string;
+  phone: string | null;
+}
+
+const INVITE_MESSAGE =
+  'Join me on Dock2Door to pick up paid shifts and manage your work. Download the app to get started.';
 
 interface RatingSummary { target_id: string; count: number; avg_rating: number; }
 
@@ -61,6 +71,58 @@ export default function BrowseWorkers() {
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [skillFilter, setSkillFilter] = useState<SkillFilter>('All');
+  const [inviteOpen, setInviteOpen] = useState<boolean>(false);
+  const [contactsLoading, setContactsLoading] = useState<boolean>(false);
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [contactSearch, setContactSearch] = useState('');
+  const [contactsDenied, setContactsDenied] = useState<boolean>(false);
+
+  const openInvite = useCallback(async () => {
+    setInviteOpen(true);
+    setContactsDenied(false);
+    if (contacts.length > 0) return;
+    setContactsLoading(true);
+    try {
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== 'granted') {
+        setContactsDenied(true);
+        return;
+      }
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.Name, Contacts.Fields.PhoneNumbers],
+      });
+      const rows: ContactRow[] = (data ?? [])
+        .filter((c) => Boolean(c.name))
+        .map((c) => ({
+          id: c.id ?? c.name ?? Math.random().toString(36),
+          name: c.name ?? 'Unknown',
+          phone: c.phoneNumbers?.[0]?.number ?? null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setContacts(rows);
+    } catch {
+      setContactsDenied(true);
+    } finally {
+      setContactsLoading(false);
+    }
+  }, [contacts.length]);
+
+  const sendInvite = useCallback(async (contact: ContactRow) => {
+    try {
+      const firstName = contact.name.split(' ')[0] ?? 'there';
+      await Share.share({
+        message: `Hi ${firstName}! ${INVITE_MESSAGE}`,
+      });
+    } catch (e) {
+      Alert.alert('Unable to send invite', e instanceof Error ? e.message : 'Please try again.');
+    }
+  }, []);
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q));
+  }, [contacts, contactSearch]);
 
   const workersQuery = useQuery({
     queryKey: ['employer-browse-workers'],
@@ -96,10 +158,14 @@ export default function BrowseWorkers() {
           <View style={styles.headerIcon}>
             <Users size={20} color={C.accent} />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Find Workers</Text>
             <Text style={styles.sub}>{filtered.length} active workers</Text>
           </View>
+          <TouchableOpacity onPress={() => void openInvite()} style={styles.inviteBtn} activeOpacity={0.85}>
+            <UserPlus size={15} color={C.accent} />
+            <Text style={styles.inviteBtnText}>Invite</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.searchBar}>
@@ -209,6 +275,74 @@ export default function BrowseWorkers() {
           ))}
         </ScrollView>
       )}
+
+      {/* Invite from Contacts */}
+      <Modal visible={inviteOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setInviteOpen(false)}>
+        <View style={[styles.modal, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle}>Invite from Contacts</Text>
+              <Text style={styles.modalSub}>Invite workers and teammates to Dock2Door.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setInviteOpen(false)} style={styles.closeBtn}>
+              <X size={18} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {!contactsLoading && !contactsDenied && contacts.length > 0 && (
+            <View style={[styles.searchBar, { marginHorizontal: 16, marginBottom: 8 }]}>
+              <Search size={16} color={C.textMuted} />
+              <TextInput
+                style={styles.searchInput}
+                value={contactSearch}
+                onChangeText={setContactSearch}
+                placeholder="Search contacts…"
+                placeholderTextColor={C.textMuted}
+              />
+            </View>
+          )}
+
+          {contactsLoading ? (
+            <View style={styles.empty}>
+              <ActivityIndicator color={C.accent} />
+              <Text style={styles.emptyText}>Loading contacts…</Text>
+            </View>
+          ) : contactsDenied ? (
+            <View style={styles.empty}>
+              <Users size={40} color={C.textMuted} />
+              <Text style={styles.emptyTitle}>Contacts unavailable</Text>
+              <Text style={styles.emptyText}>
+                {Platform.OS === 'web'
+                  ? 'Contacts access isn’t available on web. Open the app on your phone to invite from contacts.'
+                  : 'Enable Contacts access for Dock2Door in Settings to invite people you know.'}
+              </Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
+              {filteredContacts.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyText}>No contacts found.</Text>
+                </View>
+              ) : filteredContacts.map((c) => (
+                <View key={c.id} style={styles.contactRow}>
+                  <View style={styles.contactAvatar}>
+                    <Text style={styles.contactAvatarText}>{c.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.contactName}>{c.name}</Text>
+                    {c.phone ? <Text style={styles.contactPhone}>{c.phone}</Text> : null}
+                  </View>
+                  <TouchableOpacity onPress={() => void sendInvite(c)} style={styles.sendBtn} activeOpacity={0.85}>
+                    <Send size={13} color={C.white} />
+                    <Text style={styles.sendBtnText}>Invite</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -250,4 +384,19 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
   emptyText: { fontSize: 13, color: C.textSecondary, textAlign: 'center' },
+  inviteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentDim, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: C.accent + '50' },
+  inviteBtnText: { fontSize: 13, color: C.accent, fontWeight: '700' as const },
+  modal: { flex: 1, backgroundColor: C.bg },
+  modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
+  modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text },
+  modalSub: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
+  contactAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  contactAvatarText: { fontSize: 16, fontWeight: '800' as const, color: C.accent },
+  contactName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  contactPhone: { fontSize: 12, color: C.textMuted, marginTop: 1 },
+  sendBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accent, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  sendBtnText: { fontSize: 12, color: C.white, fontWeight: '700' as const },
 });
