@@ -1168,6 +1168,21 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { threadId: data as string };
   },
 
+  // Opens (or reuses) the caller's direct conversation with the dock2door support team.
+  'messaging.openSupportThread': async () => {
+    const { data, error } = await supabase.rpc('open_support_thread');
+    if (error) throwErr(error, 'Unable to contact support');
+    return { threadId: data as string };
+  },
+
+  // Returns the counterpart's name + phone for an in-app tap-to-call button.
+  'messaging.threadCallContact': async (input: { threadId: string }) => {
+    const { data, error } = await supabase.rpc('thread_call_contact', { p_thread_id: input.threadId });
+    if (error) throwErr(error, 'Unable to load contact');
+    const row = Array.isArray(data) ? (data[0] as { name?: string; phone?: string } | undefined) : null;
+    return { name: row?.name ?? null, phone: (row?.phone ?? '').trim() || null };
+  },
+
   'messaging.getThread': async (input: { threadId: string }) => {
     const { data, error } = await supabase.from('chat_threads').select('*').eq('id', input.threadId).maybeSingle();
     if (error || !data) throw new Error('Thread not found');

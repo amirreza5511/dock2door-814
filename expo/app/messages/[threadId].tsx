@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Paperclip, Send, X } from 'lucide-react-native';
+import { ArrowLeft, Paperclip, Send, X, Phone } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import AttachmentList, { type AttachmentItem } from '@/components/ui/AttachmentList';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -54,6 +54,25 @@ export default function MessageThread() {
     },
   });
   const markReadMutation = trpc.messaging.markThreadRead.useMutation();
+  const callContactQuery = trpc.messaging.threadCallContact.useQuery(
+    { threadId: threadId ?? '' },
+    { enabled: Boolean(threadId) },
+  );
+
+  const handleCall = async () => {
+    const phone = callContactQuery.data?.phone;
+    if (!phone) {
+      Alert.alert('No phone number', 'This contact has not shared a phone number you can call.');
+      return;
+    }
+    const url = `tel:${phone.replace(/[^+0-9]/g, '')}`;
+    const ok = await Linking.canOpenURL(url).catch(() => false);
+    if (!ok) {
+      Alert.alert('Unable to call', 'Calling is not available on this device.');
+      return;
+    }
+    await Linking.openURL(url);
+  };
 
   const [text, setText] = useState<string>('');
   const [pendingAttachments, setPendingAttachments] = useState<{ id: string; name: string; url: string | null }[]>([]);
@@ -191,6 +210,11 @@ export default function MessageThread() {
           <Text style={styles.title} numberOfLines={1}>{thread?.subject ?? thread?.scope ?? 'Conversation'}</Text>
           {thread?.booking_id ? <Text style={styles.sub}>Booking #{thread.booking_id.slice(0, 8).toUpperCase()}</Text> : null}
         </View>
+        {callContactQuery.data?.phone ? (
+          <TouchableOpacity onPress={() => void handleCall()} style={styles.callBtn} testID="thread-call">
+            <Phone size={18} color={C.white} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top + 60}>
@@ -260,6 +284,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', padding: 20 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  callBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 17, fontWeight: '800' as const, color: C.text },
   sub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   msgs: { padding: 16, gap: 8 },
