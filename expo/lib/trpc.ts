@@ -1043,13 +1043,75 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error || !data) throw new Error('Invoice not found');
     return data;
   },
-  'payments.updateInvoiceStatus': async (input: { id: string; status: string }, ctx) => {
+  'payments.updateInvoiceStatus': async (input: { id: string; status: string; method?: string }, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Only admins can change invoice status');
     if (!input.id) throw new Error('Invoice id required');
     const now = new Date().toISOString();
+
+    const { data: inv, error: invErr } = await supabase.from('invoices').select('*').eq('id', input.id).maybeSingle();
+    if (invErr || !inv) throw new Error('Invoice not found');
+
+    // Marking an invoice as Paid must also record a real payment so the
+    // reconciliation (Collected vs Payments) stays balanced. This covers
+    // manual / cash / bank-transfer collections that never went through Stripe.
+    if (input.status === 'Paid') {
+      if (inv.status === 'Paid') throw new Error('This invoice is already marked paid.');
+      if (inv.status === 'Void') throw new Error('A voided invoice cannot be paid.');
+
+      // Guard against double-counting: if a payment already exists (e.g. Stripe
+      // captured it), just reconcile the invoice status without a second row.
+      const { data: existing } = await supabase
+        .from('payments').select('id').eq('invoice_id', input.id).limit(1);
+      if (existing && existing.length > 0) {
+        const { error } = await supabase.from('invoices')
+          .update({ status: 'Paid', paid_at: now }).eq('id', input.id);
+        if (error) throwErr(error, 'Unable to update invoice');
+        return { success: true, reconciledExisting: true };
+      }
+
+      const gross = Number(inv.total_amount ?? 0);
+      const commission = Number(inv.commission_amount ?? 0);
+      const net = Math.max(0, gross - commission);
+      const currency = String(inv.currency ?? 'CAD');
+      const method = input.method ?? 'manual';
+
+      const { data: pay, error: payErr } = await supabase.from('payments').insert({
+        invoice_id: inv.id,
+        booking_id: inv.booking_id ?? null,
+        customer_company_id: inv.customer_company_id ?? null,
+        provider_company_id: inv.provider_company_id ?? null,
+        gross_amount: gross,
+        commission_amount: commission,
+        net_amount: net,
+        currency,
+        status: 'Captured',
+        payment_method: method,
+        authorized_at: now,
+        captured_at: now,
+      }).select('id').single();
+      if (payErr) throwErr(payErr, 'Unable to record payment');
+
+      const { error: updErr } = await supabase.from('invoices')
+        .update({ status: 'Paid', paid_at: now, payment_id: pay!.id }).eq('id', input.id);
+      if (updErr) throwErr(updErr, 'Unable to update invoice');
+
+      // Queue a payout to the provider for the net amount.
+      if (inv.provider_company_id) {
+        await supabase.from('payouts').insert({
+          company_id: inv.provider_company_id,
+          payment_id: pay!.id,
+          gross_amount: gross,
+          commission_amount: commission,
+          net_amount: net,
+          currency,
+          status: 'Pending',
+        });
+      }
+      return { success: true, paymentId: pay!.id };
+    }
+
     const patch: AnyRecord = { status: input.status };
     if (input.status === 'Issued') patch.issued_at = now;
-    else if (input.status === 'Paid') patch.paid_at = now;
     else if (input.status === 'Void') patch.voided_at = now;
     const { error } = await supabase.from('invoices').update(patch).eq('id', input.id);
     if (error) throwErr(error, 'Unable to update invoice');

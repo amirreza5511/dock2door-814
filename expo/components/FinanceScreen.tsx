@@ -252,7 +252,8 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
     const payments = (paymentsQuery.data ?? []) as PaymentItem[];
     const invoices = (invoicesQuery.data ?? []) as InvoiceItem[];
     const payouts = (payoutsQuery.data ?? []) as PayoutItem[];
-    const paid = payments.filter((p) => p.status === 'Paid').reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+    const settledStatuses = ['Paid', 'Captured'];
+    const paid = payments.filter((p) => settledStatuses.includes(String(p.status))).reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
     const outstanding = invoices.filter((i) => i.status !== 'Paid' && i.status !== 'Void').reduce((s, i) => s + Number(i.total_amount ?? 0), 0);
     const pendingPayouts = payouts.filter((p) => p.status !== 'Paid').reduce((s, p) => s + Number(p.amount ?? 0), 0);
     const refunded = payments.filter((p) => p.status === 'Refunded' || p.status === 'PartiallyRefunded').reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
@@ -272,14 +273,31 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
     }
   };
 
-  const updateInvoiceStatus = async (id: string, status: 'Issued' | 'Paid' | 'Void') => {
+  const updateInvoiceStatus = async (id: string, status: 'Issued' | 'Paid' | 'Void', method?: string) => {
     try {
-      await invoiceStatusMutation.mutateAsync({ id, status });
-      await invoicesQuery.refetch();
+      await invoiceStatusMutation.mutateAsync({ id, status, method });
+      await Promise.all([invoicesQuery.refetch(), paymentsQuery.refetch(), payoutsQuery.refetch()]);
       if (selectedId === id) await invoiceDetailQuery.refetch();
+      if (status === 'Paid') Alert.alert('Payment recorded', 'The invoice is marked paid and a matching payment was logged.');
     } catch (error) {
       Alert.alert('Unable to update invoice', error instanceof Error ? error.message : 'Unknown error');
     }
+  };
+
+  const markInvoicePaid = (id: string) => {
+    const choose = (method: string) => void updateInvoiceStatus(id, 'Paid', method);
+    if (Platform.OS === 'web') {
+      const input = window.prompt('Payment method? Type: cash, bank_transfer, cheque, or other', 'cash');
+      if (!input) return;
+      choose(input.trim().toLowerCase().replace(/\s+/g, '_') || 'manual');
+      return;
+    }
+    Alert.alert('Record payment', 'How was this invoice paid?', [
+      { text: 'Cash', onPress: () => choose('cash') },
+      { text: 'Bank transfer', onPress: () => choose('bank_transfer') },
+      { text: 'Cheque', onPress: () => choose('cheque') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const openInvoiceHtml = (html: string) => {
@@ -449,7 +467,7 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
                   {showAdmin ? (
                     <>
                       <Button label="Mark Issued" variant="ghost" onPress={() => void updateInvoiceStatus(String(selectedInvoice.id), 'Issued')} loading={invoiceStatusMutation.isPending} />
-                      <Button label="Mark Paid" onPress={() => void updateInvoiceStatus(String(selectedInvoice.id), 'Paid')} loading={invoiceStatusMutation.isPending} />
+                      <Button label="Mark Paid" onPress={() => markInvoicePaid(String(selectedInvoice.id))} loading={invoiceStatusMutation.isPending} />
                       <Button label="Void" variant="danger" onPress={() => void updateInvoiceStatus(String(selectedInvoice.id), 'Void')} loading={invoiceStatusMutation.isPending} />
                     </>
                   ) : null}
