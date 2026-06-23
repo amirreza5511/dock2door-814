@@ -29,6 +29,21 @@ export default function MessagesList() {
     onError: (error) => Alert.alert('Unable to contact support', error.message),
   });
 
+  const allThreads = (threadsQuery.data as ThreadRow[] | undefined) ?? [];
+  // The Support conversation is represented by the dedicated card below, so it
+  // must never also appear as a separate row — otherwise it looks like you
+  // started a chat with yourself.
+  const supportThread = allThreads.find((t) => t.scope === 'Support') ?? null;
+  const conversationThreads = allThreads.filter((t) => t.scope !== 'Support');
+
+  const openSupport = () => {
+    if (supportThread) {
+      router.push(`/messages/${supportThread.id}` as never);
+      return;
+    }
+    supportM.mutate(undefined);
+  };
+
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -43,14 +58,20 @@ export default function MessagesList() {
       </View>
 
       <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 40 }]} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity onPress={() => supportM.mutate(undefined)} disabled={supportM.isPending} activeOpacity={0.85} testID="contact-support">
+        <TouchableOpacity onPress={openSupport} disabled={supportM.isPending} activeOpacity={0.85} testID="contact-support">
           <Card style={styles.supportCard}>
             <View style={styles.supportIcon}>
               <LifeBuoy size={18} color={C.accent} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.supportTitle}>Contact dock2door Support</Text>
-              <Text style={styles.supportSub}>{supportM.isPending ? 'Opening…' : 'Chat directly with our team'}</Text>
+              <Text style={styles.supportTitle}>dock2door Support</Text>
+              <Text style={styles.supportSub} numberOfLines={1}>
+                {supportM.isPending
+                  ? 'Opening…'
+                  : supportThread
+                    ? (supportThread.last_message ?? 'Chat directly with our team')
+                    : 'Chat directly with our team'}
+              </Text>
             </View>
           </Card>
         </TouchableOpacity>
@@ -59,9 +80,9 @@ export default function MessagesList() {
           <ScreenFeedback state="loading" title="Loading threads" />
         ) : threadsQuery.isError ? (
           <ScreenFeedback state="error" title="Unable to load threads" onRetry={() => void threadsQuery.refetch()} />
-        ) : (threadsQuery.data as ThreadRow[] | undefined ?? []).length === 0 ? (
+        ) : conversationThreads.length === 0 ? (
           <EmptyState icon={MessageCircle} title="No conversations yet" description="Messages linked to your bookings and disputes will appear here." />
-        ) : (threadsQuery.data as ThreadRow[]).map((thread) => (
+        ) : conversationThreads.map((thread) => (
           <TouchableOpacity
             key={thread.id}
             onPress={() => router.push(`/messages/${thread.id}` as never)}
