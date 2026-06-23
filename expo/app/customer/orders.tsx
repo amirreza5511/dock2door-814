@@ -13,13 +13,9 @@ import { trpc } from '@/lib/trpc';
 interface OrderRow {
   id: string;
   booking_id: string;
-  reference: string;
+  reference_code: string;
   status: string;
-  ship_to: string;
-  picked_at: string | null;
-  packed_at: string | null;
-  shipped_at: string | null;
-  completed_at: string | null;
+  ship_to_address: string;
   created_at: string;
 }
 
@@ -40,28 +36,29 @@ export default function CustomerOrders() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const query = trpc.fulfillment.listMyOrders.useQuery();
+  const result = query.data as { orders?: OrderRow[]; items?: OrderItemRow[]; shipments?: ShipmentRow[] } | undefined;
 
-  const orders = useMemo<OrderRow[]>(() => (query.data?.orders ?? []) as OrderRow[], [query.data]);
+  const orders = useMemo<OrderRow[]>(() => (result?.orders ?? []) as OrderRow[], [result]);
   const itemsByOrder = useMemo(() => {
     const map = new Map<string, OrderItemRow[]>();
-    const items = (query.data?.items ?? []) as OrderItemRow[];
+    const items = (result?.items ?? []) as OrderItemRow[];
     for (const it of items) {
       const arr = map.get(it.order_id) ?? [];
       arr.push(it);
       map.set(it.order_id, arr);
     }
     return map;
-  }, [query.data]);
+  }, [result]);
   const shipmentByOrder = useMemo(() => {
     const map = new Map<string, ShipmentRow>();
-    const shipments = (query.data?.shipments ?? []) as ShipmentRow[];
+    const shipments = (result?.shipments ?? []) as ShipmentRow[];
     for (const s of shipments) map.set(s.order_id, s);
     return map;
-  }, [query.data]);
+  }, [result]);
 
   const stats = useMemo(() => ({
-    pending: orders.filter((o) => o.status === 'Pending').length,
-    inProgress: orders.filter((o) => ['Picked', 'Packed'].includes(o.status)).length,
+    pending: orders.filter((o) => o.status === 'Received').length,
+    inProgress: orders.filter((o) => ['Picking', 'Packed'].includes(o.status)).length,
     shipped: orders.filter((o) => o.status === 'Shipped').length,
     completed: orders.filter((o) => o.status === 'Completed').length,
   }), [orders]);
@@ -77,7 +74,7 @@ export default function CustomerOrders() {
   if (query.isError) {
     return (
       <View style={[styles.root, styles.centered]}>
-        <ScreenFeedback state="error" title="Unable to load orders" description={query.error?.message} onRetry={() => void query.refetch()} />
+        <ScreenFeedback state="error" title="Unable to load orders" description={(query.error as Error | null)?.message} onRetry={() => void query.refetch()} />
       </View>
     );
   }
@@ -122,19 +119,19 @@ export default function CustomerOrders() {
                       <Box size={16} color={C.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.ref}>{order.reference}</Text>
+                      <Text style={styles.ref}>{order.reference_code || `Order ${order.id.slice(0, 8)}`}</Text>
                       <Text style={styles.meta}>{items.length} line{items.length === 1 ? '' : 's'} · {totalUnits} units · {new Date(order.created_at).toLocaleDateString()}</Text>
                     </View>
                     <StatusBadge status={order.status} />
                   </View>
 
-                  {order.ship_to ? <Text style={styles.shipTo}>Ship to: {order.ship_to}</Text> : null}
+                  {order.ship_to_address ? <Text style={styles.shipTo}>Ship to: {order.ship_to_address}</Text> : null}
 
                   <View style={styles.timeline}>
-                    <TimelineStep active={Boolean(order.picked_at)} label="Picked" />
-                    <TimelineStep active={Boolean(order.packed_at)} label="Packed" />
-                    <TimelineStep active={Boolean(order.shipped_at)} label="Shipped" />
-                    <TimelineStep active={Boolean(order.completed_at)} label="Done" />
+                    <TimelineStep active={['Picking', 'Packed', 'Shipped', 'Completed'].includes(order.status)} label="Picked" />
+                    <TimelineStep active={['Packed', 'Shipped', 'Completed'].includes(order.status)} label="Packed" />
+                    <TimelineStep active={['Shipped', 'Completed'].includes(order.status)} label="Shipped" />
+                    <TimelineStep active={order.status === 'Completed'} label="Done" />
                   </View>
 
                   <View style={styles.footer}>

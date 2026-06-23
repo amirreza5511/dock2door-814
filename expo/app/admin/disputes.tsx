@@ -270,7 +270,7 @@ export default function AdminDisputes() {
                   </View>
                 )}
 
-                {false && selected.status !== 'Resolved' && (
+                {false && selected?.status !== 'Resolved' && (
                   <View style={styles.resolveSection}>
                     <Text style={styles.resolveSectionTitle}>Resolve Dispute</Text>
 

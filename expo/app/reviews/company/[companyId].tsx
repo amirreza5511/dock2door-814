@@ -45,7 +45,7 @@ export default function CompanyReviewsScreen() {
           <View style={styles.summaryIcon}><Building2 size={20} color={C.accent} /></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.summaryNumber}>{Number(summary.avg_rating ?? 0).toFixed(1)}</Text>
-            <StarRating value={Math.round(Number(summary.avg_rating ?? 0))} readonly size={16} />
+            <StarRating value={Math.round(Number(summary.avg_rating ?? 0))} readOnly size={16} />
             <Text style={styles.summaryCount}>{summary.count ?? 0} review{Number(summary.count) === 1 ? '' : 's'}</Text>
           </View>
         </Card>
@@ -55,7 +55,7 @@ export default function CompanyReviewsScreen() {
         ) : reviews.map((r) => (
           <Card key={r.id} style={styles.reviewCard}>
             <View style={styles.reviewTop}>
-              <StarRating value={r.rating} readonly size={14} />
+              <StarRating value={r.rating} readOnly size={14} />
               <Text style={styles.dateText}>{new Date(r.createdAt).toLocaleDateString()}</Text>
             </View>
             {r.comment ? <Text style={styles.comment}>"{r.comment}"</Text> : null}

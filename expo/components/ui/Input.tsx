@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, TextInput, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, TextInput, Text, StyleSheet, TouchableOpacity, ViewStyle, StyleProp } from 'react-native';
 import { Eye, EyeOff } from 'lucide-react-native';
 import C from '@/constants/colors';
 
@@ -16,17 +16,18 @@ interface Props {
   error?: string;
   editable?: boolean;
   testID?: string;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
 export default function Input({
   label, value, onChangeText, placeholder, secureTextEntry,
   keyboardType = 'default', autoCapitalize = 'sentences',
-  multiline, numberOfLines, error, editable = true, testID,
+  multiline, numberOfLines, error, editable = true, testID, containerStyle,
 }: Props) {
   const [show, setShow] = useState(false);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <View style={[styles.inputWrap, error && styles.inputError, !editable && styles.inputDisabled]}>
         <TextInput

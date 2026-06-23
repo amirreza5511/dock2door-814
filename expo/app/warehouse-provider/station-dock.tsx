@@ -31,7 +31,7 @@ export default function DockGateStation() {
   /** Pending dock appointments waiting for warehouse approval (Requested status). */
   const gatePanelQuery = trpc.operations.gatePanel.useQuery(undefined, { refetchInterval: 30000 });
   const pendingAppointments = useMemo(
-    () => (gatePanelQuery.data ?? []).filter((a) => String(a.status) === 'Requested') as Array<{
+    () => (gatePanelQuery.data ?? []).filter((a: any) => String(a.status) === 'Requested') as Array<{
       id: string; driver_name?: string | null; truck_plate?: string | null;
       appointment_type?: string; pallet_count?: number; scheduled_start?: string;
     }>,
@@ -176,7 +176,7 @@ export default function DockGateStation() {
         <Text style={styles.sectionTitle}>Yard moves</Text>
         {moveList.length === 0 ? (
           <EmptyState icon={MapPin} title="No yard moves" />
-        ) : moveList.slice(0, 20).map((m) => (
+        ) : moveList.slice(0, 20).map((m: any) => (
           <View key={m.id} style={styles.row}>
             <MapPin size={14} color={C.purple} />
             <View style={{ flex: 1 }}>

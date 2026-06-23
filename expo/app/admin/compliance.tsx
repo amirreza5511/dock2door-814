@@ -132,7 +132,7 @@ const rm = StyleSheet.create({
   input: { borderWidth: 1, borderColor: C.border, borderRadius: 8, padding: 10, color: C.text, backgroundColor: C.bg, minHeight: 80, textAlignVertical: 'top', fontSize: 14 },
   buttons: { flexDirection: 'row', gap: 10, marginTop: 16 },
   btn: { flex: 1, paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  btnCancel: { backgroundColor: C.bgTertiary ?? C.border },
+  btnCancel: { backgroundColor: C.border },
   btnCancelText: { color: C.text, fontWeight: '600' as const },
   btnConfirm: { backgroundColor: C.accent },
   btnConfirmText: { color: C.white, fontWeight: '700' as const },

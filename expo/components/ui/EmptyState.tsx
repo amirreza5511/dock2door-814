@@ -7,7 +7,7 @@ import C from '@/constants/colors';
 interface EmptyStateProps {
   icon: LucideIcon;
   title: string;
-  description: string;
+  description?: string;
   actionLabel?: string;
   onAction?: () => void;
   testID?: string;
@@ -20,7 +20,7 @@ export default function EmptyState({ icon: Icon, title, description, actionLabel
         <Icon size={24} color={C.textMuted} />
       </View>
       <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
+      {description ? <Text style={styles.description}>{description}</Text> : null}
       {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" /> : null}
     </View>
   );

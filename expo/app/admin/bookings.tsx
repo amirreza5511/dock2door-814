@@ -28,7 +28,7 @@ export default function AdminBookingRoutingScreen() {
   const [routeNotes, setRouteNotes] = useState('');
   const [routing, setRouting] = useState(false);
 
-  const providers = useMemo(() => companies.filter((c) => c.type === 'warehouse_provider'), [companies]);
+  const providers = useMemo(() => companies.filter((c) => c.type === 'WarehouseProvider'), [companies]);
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();

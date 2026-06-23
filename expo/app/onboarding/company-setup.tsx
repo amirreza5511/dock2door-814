@@ -378,8 +378,8 @@ export default function CompanySetup() {
             </View>
             <Input label="City / service area *" value={city} onChangeText={setCity} placeholder="Delta, BC" />
             <Input label="Public bio * (min 20 characters — required for approval)" value={publicBio} onChangeText={setPublicBio} placeholder="Tell workers what you do, what shifts feel like, parking, dress code…" multiline numberOfLines={4} />
-            <Input label="Website (optional)" value={website} onChangeText={setWebsite} placeholder="https://" keyboardType="url" autoCapitalize="none" />
-            <Input label="Public logo URL (optional)" value={logoUrl} onChangeText={setLogoUrl} placeholder="https://example.com/logo.png" keyboardType="url" autoCapitalize="none" />
+            <Input label="Website (optional)" value={website} onChangeText={setWebsite} placeholder="https://" autoCapitalize="none" />
+            <Input label="Public logo URL (optional)" value={logoUrl} onChangeText={setLogoUrl} placeholder="https://example.com/logo.png" autoCapitalize="none" />
             <Text style={styles.helperText}>Paste a public HTTPS image URL only. Do not paste private storage paths. Leave blank to show initials.</Text>
 
             <Input label="Public contact email (optional)" value={publicEmail} onChangeText={setPublicEmail} placeholder="hello@acme.com" keyboardType="email-address" autoCapitalize="none" />

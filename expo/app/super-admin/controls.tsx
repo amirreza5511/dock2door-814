@@ -41,8 +41,8 @@ export default function SuperAdminControlsScreen() {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load controls" onRetry={() => void dashboardQuery.refetch()} /></View>;
   }
 
-  const pendingCompanies = (dashboardQuery.data?.companies ?? []).filter((item) => String(item.status) === 'PendingApproval');
-  const activeUsers = (dashboardQuery.data?.users ?? []).filter((item) => String(item.status) === 'Active').slice(0, 8);
+  const pendingCompanies = (dashboardQuery.data?.companies ?? []).filter((item: any) => String(item.status) === 'PendingApproval');
+  const activeUsers = (dashboardQuery.data?.users ?? []).filter((item: any) => String(item.status) === 'Active').slice(0, 8);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}> 
@@ -51,7 +51,7 @@ export default function SuperAdminControlsScreen() {
         <Text style={styles.subtitle}>High-trust actions using protected backend routes.</Text>
 
         <Text style={styles.sectionTitle}>Pending companies</Text>
-        {pendingCompanies.map((company) => (
+        {pendingCompanies.map((company: any) => (
           <Card key={String(company.id)} style={styles.itemCard}>
             <View style={styles.itemIcon}><Building2 size={16} color={C.blue} /></View>
             <View style={{ flex: 1 }}>
@@ -64,7 +64,7 @@ export default function SuperAdminControlsScreen() {
         ))}
 
         <Text style={styles.sectionTitle}>Suspend users</Text>
-        {activeUsers.map((entry) => (
+        {activeUsers.map((entry: any) => (
           <Card key={String(entry.id)} style={styles.itemCard}>
             <View style={[styles.itemIcon, { backgroundColor: C.redDim }]}><UserCog size={16} color={C.red} /></View>
             <View style={{ flex: 1 }}>

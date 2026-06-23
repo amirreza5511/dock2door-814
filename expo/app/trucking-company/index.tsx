@@ -26,10 +26,10 @@ export default function TruckingCompanyDashboard() {
     const trucks = dashboardQuery.data?.trucks ?? [];
 
     return {
-      appointmentsToday: appointments.filter((item) => String(item.scheduled_start).slice(0, 10) === new Date().toISOString().slice(0, 10)).length,
+      appointmentsToday: appointments.filter((item: any) => String(item.scheduled_start).slice(0, 10) === new Date().toISOString().slice(0, 10)).length,
       activeDrivers: drivers.length,
       fleetUnits: trucks.length,
-      loadingNow: appointments.filter((item) => ['AtDoor', 'Loading', 'Unloading'].includes(String(item.status))).length,
+      loadingNow: appointments.filter((item: any) => ['AtDoor', 'Loading', 'Unloading'].includes(String(item.status))).length,
     };
   }, [dashboardQuery.data]);
 
@@ -109,7 +109,7 @@ export default function TruckingCompanyDashboard() {
         </View>
         {appointments.length === 0 ? (
           <EmptyState icon={CalendarClock} title="No appointments yet" description="Create the first delivery or pickup slot for your team." actionLabel="Create appointment" onAction={() => router.push('/trucking-company/appointments' as never)} />
-        ) : appointments.slice(0, 5).map((item) => (
+        ) : appointments.slice(0, 5).map((item: any) => (
           <Card key={String(item.id)} style={styles.listCard}>
             <View style={styles.listTop}>
               <View style={styles.listTitleWrap}>
@@ -128,7 +128,7 @@ export default function TruckingCompanyDashboard() {
         </View>
         {drivers.length === 0 ? (
           <EmptyState icon={Users} title="No drivers added" description="Add your dispatch team to make assignments usable." actionLabel="Open fleet" onAction={() => router.push('/trucking-company/fleet' as never)} />
-        ) : drivers.slice(0, 4).map((item) => (
+        ) : drivers.slice(0, 4).map((item: any) => (
           <Card key={String(item.id)} style={styles.driverCard}>
             <View style={styles.driverIcon}><Users size={16} color={C.green} /></View>
             <View style={{ flex: 1 }}>

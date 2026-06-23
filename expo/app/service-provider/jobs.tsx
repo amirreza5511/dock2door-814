@@ -32,6 +32,10 @@ export default function SPJobs() {
   const [detailModal, setDetailModal] = useState(false);
   const [reviewFor, setReviewFor] = useState<ServiceJob | null>(null);
 
+  const myListingIds = useMemo(() => serviceListings.filter((l) => l.companyId === user?.companyId).map((l) => l.id), [serviceListings, user]);
+  const myJobs = useMemo(() => serviceJobs.filter((j) => myListingIds.includes(j.serviceId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [serviceJobs, myListingIds]);
+  const filtered = useMemo(() => filter === 'All' ? myJobs : myJobs.filter((j) => j.status === filter), [myJobs, filter]);
+
   const completedJobIds = useMemo(() => myJobs.filter((j) => j.status === 'Completed').map((j) => j.id), [myJobs]);
   const myReviewsQuery = trpc.reviews.listMineByContext.useQuery(
     { contextKind: 'service_job', contextIds: completedJobIds },
@@ -41,10 +45,6 @@ export default function SPJobs() {
     () => new Set(((myReviewsQuery.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
     [myReviewsQuery.data],
   );
-
-  const myListingIds = useMemo(() => serviceListings.filter((l) => l.companyId === user?.companyId).map((l) => l.id), [serviceListings, user]);
-  const myJobs = useMemo(() => serviceJobs.filter((j) => myListingIds.includes(j.serviceId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [serviceJobs, myListingIds]);
-  const filtered = useMemo(() => filter === 'All' ? myJobs : myJobs.filter((j) => j.status === filter), [myJobs, filter]);
 
   const getCustomer = (cid: string) => companies.find((c) => c.id === cid)?.name ?? cid;
 

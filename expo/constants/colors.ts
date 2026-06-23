@@ -19,6 +19,9 @@ const C = {
   yellow: '#F59E0B',
   yellowDim: '#F59E0B20',
 
+  orange: '#F97316',
+  orangeDim: '#F9731620',
+
   red: '#EF4444',
   redDim: '#EF444420',
 

@@ -87,9 +87,9 @@ export default function GatePanelScreen() {
     const appointments = panelQuery.data ?? [];
     return {
       queue:     appointments.length,
-      onSite:    appointments.filter((it) => ['CheckedIn', 'AtGate', 'AtDoor'].includes(String(it.status))).length,
-      active:    appointments.filter((it) => ['Loading', 'Unloading'].includes(String(it.status))).length,
-      completed: appointments.filter((it) => String(it.status) === 'Completed').length,
+      onSite:    appointments.filter((it: any) => ['CheckedIn', 'AtGate', 'AtDoor'].includes(String(it.status))).length,
+      active:    appointments.filter((it: any) => ['Loading', 'Unloading'].includes(String(it.status))).length,
+      completed: appointments.filter((it: any) => String(it.status) === 'Completed').length,
     };
   }, [panelQuery.data]);
 
@@ -178,7 +178,7 @@ export default function GatePanelScreen() {
   const appointments = (() => {
     const q = search.trim().toLowerCase();
     if (!q) return allAppointments;
-    return allAppointments.filter((it) => {
+    return allAppointments.filter((it: any) => {
       const hay = [it.driver_name, it.truck_plate, it.trailer_number, it.reference_number, it.appointment_type, it.dock_door]
         .map((v) => (v == null ? '' : String(v).toLowerCase()))
         .join(' ');
@@ -228,7 +228,7 @@ export default function GatePanelScreen() {
             description="Today's dock schedule will appear here. Only Approved appointments are shown."
           />
         ) : (
-          appointments.map((item) => {
+          appointments.map((item: any) => {
             const status = String(item.status);
             const isDone = status === 'Completed' || status === 'NoShow' || status === 'Cancelled';
             const nextLabel = NEXT_LABEL[status] ?? 'Advance';

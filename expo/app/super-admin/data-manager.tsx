@@ -89,7 +89,7 @@ export default function SuperAdminDataManagerScreen() {
    */
   const resolveStatusValue = (intent: 'approve' | 'active' | 'suspend'): string => {
     const isSuspend = intent === 'suspend';
-    switch (entity) {
+    switch (entity as string) {
       // company_status: 'PendingApproval' | 'Approved' | 'Suspended' (NO 'Active')
       case 'companies':
         return isSuspend ? 'Suspended' : 'Approved';

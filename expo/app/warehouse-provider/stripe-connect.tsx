@@ -91,7 +91,7 @@ export default function StripeConnectScreen() {
   }, [companyQuery.data]);
 
   if (!companyId) {
-    return <View style={[styles.root, styles.centered]}><ScreenFeedback state="empty" title="Select an active company" /></View>;
+    return <View style={[styles.root, styles.centered]}><ScreenFeedback state="error" title="Select an active company" /></View>;
   }
   if (companyQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading payout setup" /></View>;

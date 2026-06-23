@@ -138,7 +138,7 @@ export default function ManifestScreen() {
 
         <Text style={styles.sectionTitle}>History</Text>
         {manifests.length === 0 ? (
-          <EmptyState icon={ClipboardList} title="No manifests yet" />
+          <EmptyState icon={ClipboardList} title="No manifests yet" description="Closed-out carrier manifests will appear here." />
         ) : manifests.map((m) => (
           <Card key={m.id} style={styles.card}>
             <View style={styles.row}>

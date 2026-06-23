@@ -99,7 +99,7 @@ export default function SPListings() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardCat}>{CATEGORY_LABELS[l.category] ?? l.category}</Text>
-                <Text style={styles.cardDetail}>{(l.coverageArea ?? []).join(' · ') || l.city}</Text>
+                <Text style={styles.cardDetail}>{(l.coverageArea ?? []).join(' · ') || (l as { city?: string }).city || ''}</Text>
               </View>
               <StatusBadge status={l.status} />
             </View>

@@ -20,6 +20,26 @@ interface InventorySelection {
   quantity: number;
 }
 
+interface FInventory { id: string; sku: string; name: string; quantity: number }
+interface FOrderItem { id: string; order_id: string; sku: string; name: string; quantity: number }
+interface FOrder {
+  id: string;
+  reference_code: string;
+  ship_to_address: string;
+  notes: string;
+  status: string;
+  created_at: string;
+}
+interface FShipment { id: string; order_id: string; tracking_code: string }
+interface BookingData {
+  booking: { id: string; status: string; data?: { status?: unknown } | null };
+  role: 'customer' | 'provider';
+  inventory: FInventory[];
+  orders: FOrder[];
+  orderItems: FOrderItem[];
+  shipments: FShipment[];
+}
+
 export default function FulfillmentScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -51,26 +71,26 @@ export default function FulfillmentScreen() {
   const [orderNotes, setOrderNotes] = useState('');
   const [selection, setSelection] = useState<Record<string, string>>({});
 
-  const data = query.data;
+  const data = query.data as BookingData | undefined;
   const role = data?.role ?? 'customer';
   const isProvider = role === 'provider';
 
   const orderItemsByOrder = useMemo(() => {
-    const map = new Map<string, typeof data extends { orderItems: infer T } ? T : never>();
+    const map = new Map<string, FOrderItem[]>();
     if (!data) return map;
     for (const item of data.orderItems) {
-      const arr = (map.get(item.order_id) as typeof data.orderItems | undefined) ?? [];
+      const arr = map.get(item.order_id) ?? [];
       arr.push(item);
-      map.set(item.order_id, arr as never);
+      map.set(item.order_id, arr);
     }
     return map;
   }, [data]);
 
   const shipmentByOrder = useMemo(() => {
-    const map = new Map<string, typeof data extends { shipments: (infer T)[] } ? T : never>();
+    const map = new Map<string, FShipment>();
     if (!data) return map;
     for (const s of data.shipments) {
-      map.set(s.order_id, s as never);
+      map.set(s.order_id, s);
     }
     return map;
   }, [data]);
@@ -150,7 +170,7 @@ export default function FulfillmentScreen() {
         <ScreenFeedback
           state="error"
           title="Unable to load fulfillment"
-          description={query.error?.message}
+          description={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
         />
       </View>
@@ -226,7 +246,7 @@ export default function FulfillmentScreen() {
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.itemSku}>{inv.sku}</Text>
-                      {inv.description ? <Text style={styles.itemDesc}>{inv.description}</Text> : null}
+                      {inv.name ? <Text style={styles.itemDesc}>{inv.name}</Text> : null}
                     </View>
                     <View style={styles.qtyBox}>
                       <Text style={styles.qtyValue}>{inv.quantity}</Text>
@@ -287,8 +307,8 @@ export default function FulfillmentScreen() {
               <EmptyState icon={ClipboardList} title="No orders yet" description={isProvider ? 'Customer has not created any orders.' : 'Create your first outbound order above.'} />
             ) : (
               data.orders.map((order) => {
-                const items = (orderItemsByOrder.get(order.id) as typeof data.orderItems | undefined) ?? [];
-                const shipment = shipmentByOrder.get(order.id) as typeof data.shipments[number] | undefined;
+                const items = orderItemsByOrder.get(order.id) ?? [];
+                const shipment = shipmentByOrder.get(order.id);
                 return (
                   <Card key={order.id} style={[styles.orderCard, order.status === 'Exception' && styles.orderCardException]}>
                     {order.status === 'Exception' ? (
@@ -302,20 +322,20 @@ export default function FulfillmentScreen() {
                         <Box size={16} color={C.accent} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.orderRef}>{order.reference}</Text>
+                        <Text style={styles.orderRef}>{order.reference_code || `Order ${order.id.slice(0, 8)}`}</Text>
                         <Text style={styles.orderMeta}>{items.length} line{items.length === 1 ? '' : 's'} · {new Date(order.created_at).toLocaleString()}</Text>
                       </View>
                       <StatusBadge status={order.status} />
                     </View>
 
-                    {order.ship_to ? <Text style={styles.orderShip}>Ship to: {order.ship_to}</Text> : null}
+                    {order.ship_to_address ? <Text style={styles.orderShip}>Ship to: {order.ship_to_address}</Text> : null}
                     {order.notes ? <Text style={styles.orderNotes}>{order.notes}</Text> : null}
 
                     <View style={styles.itemList}>
                       {items.map((it) => {
-                        const itAny = it as { id: string; sku: string; quantity: number; picked_at?: string | null; packed_at?: string | null };
-                        const picked = Boolean(itAny.picked_at) || ['Picked', 'Packed', 'Shipped', 'Completed'].includes(order.status);
-                        const packed = Boolean(itAny.packed_at) || ['Packed', 'Shipped', 'Completed'].includes(order.status);
+                        const itAny = it;
+                        const picked = ['Picking', 'Packed', 'Shipped', 'Completed'].includes(order.status);
+                        const packed = ['Packed', 'Shipped', 'Completed'].includes(order.status);
                         return (
                           <View key={itAny.id} style={styles.itemLine} testID={`item-line-${itAny.id}`}>
                             <View style={styles.itemDots}>
@@ -330,10 +350,10 @@ export default function FulfillmentScreen() {
                     </View>
 
                     <View style={styles.timeline}>
-                      <TimelineDot active={Boolean(order.picked_at)} label="Picked" timestamp={order.picked_at} />
-                      <TimelineDot active={Boolean(order.packed_at)} label="Packed" timestamp={order.packed_at} />
-                      <TimelineDot active={Boolean(order.shipped_at)} label="Shipped" timestamp={order.shipped_at} />
-                      <TimelineDot active={Boolean(order.completed_at)} label="Completed" timestamp={order.completed_at} />
+                      <TimelineDot active={['Picking', 'Packed', 'Shipped', 'Completed'].includes(order.status)} label="Picked" />
+                      <TimelineDot active={['Packed', 'Shipped', 'Completed'].includes(order.status)} label="Packed" />
+                      <TimelineDot active={['Shipped', 'Completed'].includes(order.status)} label="Shipped" />
+                      <TimelineDot active={order.status === 'Completed'} label="Completed" />
                     </View>
 
                     {shipment ? (
@@ -345,17 +365,17 @@ export default function FulfillmentScreen() {
 
                     {isProvider ? (
                       <View style={styles.actionsRow}>
-                        {order.status === 'Pending' ? (
-                          <Button label="Mark Picked" onPress={() => void pickOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={pickOrder.isPending && pickOrder.variables?.orderId === order.id} size="sm" icon={<CheckCircle size={14} color={C.white} />} />
+                        {order.status === 'Received' ? (
+                          <Button label="Mark Picked" onPress={() => void pickOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={pickOrder.isPending && (pickOrder.variables as { orderId?: string } | undefined)?.orderId === order.id} size="sm" icon={<CheckCircle size={14} color={C.white} />} />
                         ) : null}
-                        {order.status === 'Picked' ? (
-                          <Button label="Mark Packed" onPress={() => void packOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={packOrder.isPending && packOrder.variables?.orderId === order.id} size="sm" icon={<Box size={14} color={C.white} />} />
+                        {order.status === 'Picking' ? (
+                          <Button label="Mark Packed" onPress={() => void packOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={packOrder.isPending && (packOrder.variables as { orderId?: string } | undefined)?.orderId === order.id} size="sm" icon={<Box size={14} color={C.white} />} />
                         ) : null}
                         {order.status === 'Packed' ? (
-                          <Button label="Ship" onPress={() => void shipOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={shipOrder.isPending && shipOrder.variables?.orderId === order.id} size="sm" icon={<Truck size={14} color={C.white} />} />
+                          <Button label="Ship" onPress={() => void shipOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={shipOrder.isPending && (shipOrder.variables as { orderId?: string } | undefined)?.orderId === order.id} size="sm" icon={<Truck size={14} color={C.white} />} />
                         ) : null}
                         {order.status === 'Shipped' ? (
-                          <Button label="Mark Completed" onPress={() => void completeOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={completeOrder.isPending && completeOrder.variables?.orderId === order.id} size="sm" icon={<CheckCircle size={14} color={C.white} />} />
+                          <Button label="Mark Completed" onPress={() => void completeOrder.mutateAsync({ orderId: order.id }).catch((e: unknown) => Alert.alert('Error', e instanceof Error ? e.message : 'Failed'))} loading={completeOrder.isPending && (completeOrder.variables as { orderId?: string } | undefined)?.orderId === order.id} size="sm" icon={<CheckCircle size={14} color={C.white} />} />
                         ) : null}
                         {order.status === 'Completed' ? (
                           <View style={styles.completeBanner}>
@@ -383,7 +403,7 @@ export default function FulfillmentScreen() {
   );
 }
 
-function TimelineDot({ active, label, timestamp }: { active: boolean; label: string; timestamp: string | null }) {
+function TimelineDot({ active, label, timestamp }: { active: boolean; label: string; timestamp?: string | null }) {
   return (
     <View style={styles.timelineStep}>
       <View style={[styles.timelineDot, active && styles.timelineDotActive]} />

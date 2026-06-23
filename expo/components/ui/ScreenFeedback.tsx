@@ -8,17 +8,19 @@ interface ScreenFeedbackProps {
   state: 'loading' | 'error';
   title?: string;
   description?: string;
+  message?: string;
   onRetry?: () => void;
   testID?: string;
 }
 
-export default function ScreenFeedback({ state, title, description, onRetry, testID }: ScreenFeedbackProps) {
+export default function ScreenFeedback({ state, title, description, message, onRetry, testID }: ScreenFeedbackProps) {
+  const body = description ?? message;
   if (state === 'loading') {
     return (
       <View style={styles.root} testID={testID ?? 'screen-loading'}>
         <ActivityIndicator size="small" color={C.accent} />
         <Text style={styles.title}>{title ?? 'Loading'}</Text>
-        <Text style={styles.description}>{description ?? 'Fetching the latest live data.'}</Text>
+        <Text style={styles.description}>{body ?? 'Fetching the latest live data.'}</Text>
       </View>
     );
   }
@@ -29,7 +31,7 @@ export default function ScreenFeedback({ state, title, description, onRetry, tes
         <AlertTriangle size={22} color={C.red} />
       </View>
       <Text style={styles.title}>{title ?? 'Something went wrong'}</Text>
-      <Text style={styles.description}>{description ?? 'Please try again.'}</Text>
+      <Text style={styles.description}>{body ?? 'Please try again.'}</Text>
       {onRetry ? <Button label="Retry" onPress={onRetry} variant="secondary" /> : null}
     </View>
   );

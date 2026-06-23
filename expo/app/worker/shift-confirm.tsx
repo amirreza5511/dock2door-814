@@ -77,7 +77,7 @@ export default function ShiftConfirmScreen() {
         if (co) setCompanyName(co.name);
       }
 
-      return data as AssignmentDetail | null;
+      return data as unknown as AssignmentDetail | null;
     },
     enabled: Boolean(assignmentId),
     staleTime: 30_000,

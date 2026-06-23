@@ -8,9 +8,10 @@ interface Props {
   style?: object;
   elevated?: boolean;
   noPad?: boolean;
+  testID?: string;
 }
 
-export default function Card({ children, onPress, style, elevated, noPad }: Props) {
+export default function Card({ children, onPress, style, elevated, noPad, testID }: Props) {
   const cardStyle = [
     styles.card,
     elevated && styles.elevated,
@@ -27,13 +28,13 @@ export default function Card({ children, onPress, style, elevated, noPad }: Prop
 
   if (onPress) {
     return (
-      <TouchableOpacity testID="card" activeOpacity={0.8} onPress={onPress} style={cardStyle}>
+      <TouchableOpacity testID={testID ?? 'card'} activeOpacity={0.8} onPress={onPress} style={cardStyle}>
         {safeChildren}
       </TouchableOpacity>
     );
   }
 
-  return <View style={cardStyle}>{safeChildren}</View>;
+  return <View style={cardStyle} testID={testID}>{safeChildren}</View>;
 }
 
 const styles = StyleSheet.create({

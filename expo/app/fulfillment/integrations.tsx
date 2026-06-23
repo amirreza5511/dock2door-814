@@ -333,7 +333,7 @@ export default function IntegrationsScreen() {
 
         <Text style={styles.sectionTitle}>Channel orders ({(channelOrders.data ?? []).length})</Text>
         {(channelOrders.data ?? []).length === 0 ? (
-          <EmptyState icon={ShoppingBag} title="No imported orders yet" />
+          <EmptyState icon={ShoppingBag} title="No imported orders yet" description="Orders synced from Shopify or Amazon will appear here." />
         ) : (channelOrders.data ?? []).slice(0, 30).map((o) => {
           const push = o.push_status ?? 'not_required';
           const pushColor = push === 'synced' ? C.green : push === 'failed' ? C.red : push === 'pending' ? C.orange : C.textMuted;
@@ -378,7 +378,7 @@ export default function IntegrationsScreen() {
 
         <Text style={styles.sectionTitle}>Recent sync logs</Text>
         {(logs.data ?? []).length === 0 ? (
-          <EmptyState icon={RefreshCw} title="No logs yet" />
+          <EmptyState icon={RefreshCw} title="No logs yet" description="Sync activity from connected channels will show up here." />
         ) : (logs.data ?? []).map((l) => (
           <View key={l.id} style={styles.logRow}>
             {l.result === 'ok' ? <CheckCircle2 size={13} color={C.green} /> : l.result === 'error' ? <AlertTriangle size={13} color={C.red} /> : <RefreshCw size={13} color={C.orange} />}
@@ -409,7 +409,7 @@ export default function IntegrationsScreen() {
               <TouchableOpacity onPress={() => setShowShopify(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
-              <Input label="Shop domain" value={shopDomain} onChangeText={setShopDomain} placeholder="my-store.myshopify.com" autoCapitalize="none" autoCorrect={false} />
+              <Input label="Shop domain" value={shopDomain} onChangeText={setShopDomain} placeholder="my-store.myshopify.com" autoCapitalize="none" />
               <Text style={styles.helpText}>You will be redirected to Shopify to install the app and grant access.</Text>
               <Button label="Continue to Shopify" onPress={() => startShopify.mutate()} loading={startShopify.isPending} fullWidth icon={<Plus size={15} color={C.white} />} />
             </View>

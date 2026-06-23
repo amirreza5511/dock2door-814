@@ -124,7 +124,7 @@ export default function CustomerInventory() {
   if (productsQuery.isError) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
-        <ScreenFeedback state="error" title="Unable to load inventory" description={productsQuery.error?.message} onRetry={() => void productsQuery.refetch()} />
+        <ScreenFeedback state="error" title="Unable to load inventory" description={(productsQuery.error as Error | null)?.message} onRetry={() => void productsQuery.refetch()} />
       </View>
     );
   }

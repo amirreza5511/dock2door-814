@@ -361,7 +361,7 @@ export default function AdminCompanies() {
                     {selected.status !== 'Approved' && (
                       <Button label="Approve Company" onPress={() => handleApprove(selected.id)} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
                     )}
-                    {selected.status !== 'Rejected' && (
+                    {String(selected.status) !== 'Rejected' && (
                       <Button label="Reject Company" onPress={() => handleReject(selected.id)} variant="danger" fullWidth icon={<XCircle size={15} color={C.red} />} />
                     )}
                     {selected.status !== 'Suspended' && (

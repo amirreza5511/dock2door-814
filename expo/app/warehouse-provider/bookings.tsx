@@ -334,7 +334,7 @@ export default function WPBookings() {
                           showsVerticalScrollIndicator={false}
                           contentContainerStyle={{ gap: 8 }}
                         >
-                          {(messagesQuery.data ?? []).map((m) => {
+                          {(messagesQuery.data ?? []).map((m: any) => {
                             const isMine = (m as { sender_user_id?: string }).sender_user_id === user?.id;
                             const body = (m as { body?: string }).body ?? '';
                             const ts = (m as { created_at?: string }).created_at ?? '';

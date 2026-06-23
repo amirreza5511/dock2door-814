@@ -432,7 +432,7 @@ export default function SuperAdminOverviewScreen() {
 
           {/* ── Recent Companies ── */}
           <Text style={styles.sectionTitle}>Recent Companies</Text>
-          {(data?.companies ?? []).slice(0, 5).map((company) => (
+          {(data?.companies ?? []).slice(0, 5).map((company: any) => (
             <Card key={String(company.id)} style={styles.itemCard}>
               <View style={[styles.itemIcon, { backgroundColor: C.blueDim }]}>
                 <Building2 size={14} color={C.blue} />
@@ -447,7 +447,7 @@ export default function SuperAdminOverviewScreen() {
 
           {/* ── Recent Users ── */}
           <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Recent Users</Text>
-          {(data?.users ?? []).slice(0, 5).map((entry) => (
+          {(data?.users ?? []).slice(0, 5).map((entry: any) => (
             <Card key={String(entry.id)} style={styles.itemCard}>
               <View style={[styles.itemIcon, { backgroundColor: C.greenDim }]}>
                 <Users size={14} color={C.green} />

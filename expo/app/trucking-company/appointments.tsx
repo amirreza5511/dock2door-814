@@ -65,7 +65,7 @@ export default function DispatcherBoardScreen() {
 
   const grouped = useMemo(() => {
     const normalized = search.trim().toLowerCase();
-    const rows = appointments.filter((a) => {
+    const rows = appointments.filter((a: any) => {
       if (!normalized) return true;
       return JSON.stringify(a).toLowerCase().includes(normalized);
     });
@@ -222,7 +222,7 @@ export default function DispatcherBoardScreen() {
             <ScrollView contentContainerStyle={[styles.columnBody, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
               {grouped[col.key].length === 0 ? (
                 <View style={styles.columnEmpty}><Text style={styles.columnEmptyText}>Empty</Text></View>
-              ) : grouped[col.key].map((item) => {
+              ) : grouped[col.key].map((item: any) => {
                 const id = String(item.id);
                 const driver = String(item.driver_name ?? '');
                 const plate = String(item.truck_plate ?? '');

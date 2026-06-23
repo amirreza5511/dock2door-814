@@ -115,7 +115,7 @@ async function fetchPendingWorkerRatings(companyId: string, userId: string): Pro
     .in('status', ['Completed', 'HoursConfirmed'])
     .order('id', { ascending: false })
     .limit(20);
-  const rows = (assigns ?? []) as Array<{ id: string; shift_id: string; worker_user_id: string; shift: { title: string | null } | null }>;
+  const rows = (assigns ?? []) as unknown as Array<{ id: string; shift_id: string; worker_user_id: string; shift: { title: string | null } | null }>;
   if (rows.length === 0) return [];
   const { data: existing } = await supabase
     .from('reviews')

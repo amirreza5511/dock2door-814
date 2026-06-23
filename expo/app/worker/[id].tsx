@@ -86,7 +86,7 @@ async function fetchWorkerById(userId: string) {
     profile: (profileRes.data ?? null) as WorkerPublic | null,
     certs: (certsRes.data ?? []) as CertRow[],
     photos: (photosRes.data ?? []) as PhotoRow[],
-    reviews: (reviewsRes.data ?? []) as ReviewRow[],
+    reviews: (reviewsRes.data ?? []) as unknown as ReviewRow[],
     assignments: (assignmentsRes.data ?? []) as AssignmentCountRow[],
     availability,
   };

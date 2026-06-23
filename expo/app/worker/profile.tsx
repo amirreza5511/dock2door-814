@@ -40,7 +40,7 @@ async function readLocalFileAsBlob(uri: string, mimeType: string): Promise<Blob>
   try {
     // expo-file-system reliably reads file:// URIs on both iOS and Android
     const base64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
     const byteString = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
     const buf = new Uint8Array(byteString.length);
@@ -296,7 +296,7 @@ export default function WorkerProfile() {
         .eq('target_user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(5);
-      return (data ?? []) as OwnReviewRow[];
+      return (data ?? []) as unknown as OwnReviewRow[];
     },
     staleTime: 30_000,
   });
@@ -786,7 +786,7 @@ export default function WorkerProfile() {
         .in('status', ['Completed', 'HoursConfirmed'])
         .order('id', { ascending: false })
         .limit(20);
-      const rows = (assignments ?? []) as Array<{ id: string; shift_id: string; employer_company_id: string; shift: { title: string | null; end_at: string | null; company: { name: string | null } | null } | null }>;
+      const rows = (assignments ?? []) as unknown as Array<{ id: string; shift_id: string; employer_company_id: string; shift: { title: string | null; end_at: string | null; company: { name: string | null } | null } | null }>;
       if (rows.length === 0) return [];
       const { data: existing } = await supabase
         .from('reviews')

@@ -18,7 +18,9 @@ import {
   useQuery,
   useQueryClient,
   type UseMutationOptions,
+  type UseMutationResult,
   type UseQueryOptions,
+  type UseQueryResult,
 } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 
@@ -623,10 +625,21 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { orders: orders ?? [], items: items ?? [], shipments: [] };
   },
 
-  'fulfillment.getBooking': async (input: { bookingId: string }) => {
+  'fulfillment.getBooking': async (input: { bookingId: string }, ctx) => {
     const { data: booking, error } = await supabase
       .from('warehouse_bookings').select('*').eq('id', input.bookingId).maybeSingle();
     if (error || !booking) throw new Error('Booking not found');
+    // Determine if the viewer is the warehouse provider (listing owner) or the customer.
+    let providerCompanyId: string | null = null;
+    if (booking.listing_id) {
+      const { data: listing } = await supabase
+        .from('warehouse_listings').select('company_id').eq('id', booking.listing_id).maybeSingle();
+      providerCompanyId = listing?.company_id ?? null;
+    }
+    const role: 'customer' | 'provider' =
+      ctx.user.companyId && providerCompanyId && ctx.user.companyId === providerCompanyId
+        ? 'provider'
+        : 'customer';
     const { data: inventory } = await supabase
       .from('booking_inventory').select('*').eq('booking_id', input.bookingId);
     const { data: orders } = await supabase
@@ -638,7 +651,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       : { data: [] };
     return {
       booking: { ...mapWarehouseBooking(booking), company_id: booking.customer_company_id },
-      role: 'customer' as const,
+      role,
       inventory: inventory ?? [],
       orders: orders ?? [],
       orderItems: items ?? [],
@@ -2217,21 +2230,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
   'wms.receive': async (input: { receiptId?: string; variantId: string; locationId: string; quantity: number; lotCode?: string; reference?: string }) => {
+    // NOTE: param names/order must match the SQL signature exactly
+    // wms_receive(p_receipt_id, p_variant_id, p_location_id, p_lot_code, p_expiry, p_qty)
     const { data, error } = await supabase.rpc('wms_receive', {
       p_receipt_id: input.receiptId ?? null,
       p_variant_id: input.variantId,
       p_location_id: input.locationId,
-      p_quantity: input.quantity,
       p_lot_code: input.lotCode ?? null,
-      p_reference: input.reference ?? '',
+      p_expiry: null,
+      p_qty: input.quantity,
     });
     if (error) throwErr(error, 'Unable to record receipt');
     return { movementId: data as string };
   },
   'wms.adjust': async (input: { variantId: string; locationId: string; delta: number; reason: string }) => {
+    // wms_adjust(p_variant_id, p_location_id, p_lot_id, p_delta, p_reason)
     const { error } = await supabase.rpc('wms_adjust', {
       p_variant_id: input.variantId,
       p_location_id: input.locationId,
+      p_lot_id: null,
       p_delta: input.delta,
       p_reason: input.reason,
     });
@@ -2250,24 +2267,6 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // =========================================================================
   // YARD / GATE / POD
   // =========================================================================
-  'yard.listEvents': async (input: { appointmentId?: string } | undefined, ctx) => {
-    let q = supabase.from('gate_events').select('*').order('occurred_at', { ascending: false }).limit(200);
-    if (input?.appointmentId) q = q.eq('appointment_id', input.appointmentId);
-    else if (!isAdmin(ctx.user.role) && ctx.user.companyId) q = q.eq('warehouse_company_id', ctx.user.companyId);
-    const { data, error } = await q;
-    if (error) throwErr(error, 'Unable to load gate events');
-    return data ?? [];
-  },
-  'yard.recordEvent': async (input: { appointmentId: string; kind: string; notes?: string; meta?: AnyRecord }) => {
-    const { data, error } = await supabase.rpc('gate_record_event', {
-      p_appointment_id: input.appointmentId,
-      p_kind: input.kind,
-      p_notes: input.notes ?? '',
-      p_meta: input.meta ?? {},
-    });
-    if (error) throwErr(error, 'Unable to record gate event');
-    return { id: data as string };
-  },
   'yard.listMoves': async (_input, ctx) => {
     const q = supabase.from('yard_moves').select('*').order('created_at', { ascending: false }).limit(200);
     const { data, error } = isAdmin(ctx.user.role)
@@ -2363,22 +2362,25 @@ function callProcedure(ns: string, proc: string, input: unknown): Promise<unknow
     });
 }
 
-type QueryHookInput<T> = [T] | [T, Partial<UseQueryOptions<unknown, Error>>] | [];
-type MutationHook = (options?: UseMutationOptions<unknown, Error, any>) => ReturnType<typeof useMutation>;
+// The 32 screens were written against a typed tRPC client and access query data
+// loosely (e.g. `data ?? []` then `.map`/`.filter`, and `onError: (e: Error)`).
+// Typing the shim hook results as `any` preserves that exact call surface.
+type QueryHookInput<T> = [T] | [T, Partial<UseQueryOptions<any, any>>] | [];
+type MutationHook = (options?: UseMutationOptions<any, any, any>) => UseMutationResult<any, any, any>;
 
 function makeProcedureHandlers(ns: string, proc: string) {
   return {
     useQuery: (...args: QueryHookInput<unknown>) => {
       const input = args[0];
-      const options = (args[1] ?? {}) as Partial<UseQueryOptions<unknown, Error>>;
-      return useQuery({
+      const options = (args[1] ?? {}) as Partial<UseQueryOptions<any, any>>;
+      return useQuery<any, any>({
         queryKey: ['trpc', ns, proc, input ?? null],
         queryFn: () => callProcedure(ns, proc, input),
         ...options,
       });
     },
-    useMutation: ((options?: UseMutationOptions<unknown, Error, any>) =>
-      useMutation<unknown, Error, any>({
+    useMutation: ((options?: UseMutationOptions<any, any, any>) =>
+      useMutation<any, any, any>({
         mutationFn: (input: unknown) => callProcedure(ns, proc, input),
         ...options,
       })) as MutationHook,
@@ -2386,7 +2388,7 @@ function makeProcedureHandlers(ns: string, proc: string) {
 }
 
 type ProcProxy = {
-  useQuery: (input?: unknown, options?: Partial<UseQueryOptions<unknown, Error>>) => ReturnType<typeof useQuery>;
+  useQuery: (input?: unknown, options?: Partial<UseQueryOptions<any, any>>) => UseQueryResult<any, any>;
   useMutation: MutationHook;
   invalidate: (input?: unknown) => Promise<void>;
 };

@@ -141,7 +141,6 @@ export default function ReturnsScreen() {
                   size="sm"
                   onPress={() => void updateRmaStatus(r.id, 'Received', 'restock')}
                   icon={<PackageCheck size={14} color={C.white} />}
-                  testID={`restock-${r.id}`}
                 />
                 <Button
                   label="Dispose"
@@ -152,7 +151,6 @@ export default function ReturnsScreen() {
                     { text: 'Dispose', style: 'destructive', onPress: () => void updateRmaStatus(r.id, 'Closed', 'dispose') },
                   ])}
                   icon={<Trash2 size={14} color={C.red} />}
-                  testID={`dispose-${r.id}`}
                 />
               </View>
             </Card>
