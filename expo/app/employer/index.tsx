@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   CalendarDays, Users, Clock, CheckCircle, LogOut, Bell,
-  ChevronRight, AlertCircle, Plus, Star, Building2, XCircle, UserCircle2, DollarSign, Sparkles,
+  ChevronRight, AlertCircle, Plus, Star, Building2, XCircle, UserCircle2, DollarSign, Sparkles, MessageCircle,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -746,6 +746,7 @@ export default function EmployerDashboard() {
               { label: 'Billing & Invoices', icon: DollarSign, color: C.green, path: '/employer/billing' },
               { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },
               { label: 'Reviews', icon: Star, color: C.yellow, path: '/reviews' },
+              { label: 'Messages', icon: MessageCircle, color: C.blue, path: '/messages' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
             ].map(({ label, icon: Icon, color, path, badge }) => (
               <TouchableOpacity key={label} onPress={() => router.push(path as any)} style={styles.navItem}>

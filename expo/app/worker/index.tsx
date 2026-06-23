@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  MapPin, Clock, Search, ChevronRight, AlertCircle, Bell,
+  MapPin, Clock, Search, ChevronRight, AlertCircle, Bell, MessageCircle,
   Navigation, CheckCircle, Shield, Award, Star, XCircle, DollarSign, Sparkles,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -826,6 +826,7 @@ export default function WorkerDashboard() {
               { label: 'Documents & Certificates', icon: Shield, color: C.yellow, path: '/worker/profile' },
               { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },
               { label: 'My Reviews', icon: Star, color: C.yellow, path: '/reviews' },
+              { label: 'Messages', icon: MessageCircle, color: C.blue, path: '/messages' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
             ].map(({ label, icon: Icon, color, path, badge }) => (
               <TouchableOpacity key={label} onPress={() => router.push(path as any)} style={styles.navItem}>

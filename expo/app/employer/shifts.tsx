@@ -795,18 +795,56 @@ export default function EmployerShifts() {
                 )}
 
                 <View style={styles.actionBtns}>
-                  {selected.status === 'Posted' && (
-                    <Button
-                      label="Cancel Shift"
-                      onPress={() => {
-                        setCancelFor(selected);
-                        setCancelReason('');
-                        setDetailModal(false);
-                      }}
-                      variant="danger"
-                      fullWidth
-                    />
-                  )}
+                  {(() => {
+                    const ass = getAssignments(selected.id);
+                    const TERMINAL = ['Completed', 'HoursConfirmed', 'Confirmed', 'Cancelled', 'NoShow'];
+                    const allResolved = ass.length > 0 && ass.every((a) => TERMINAL.includes(a.status));
+                    // Complete/Close is only valid once every worker is in a terminal state.
+                    // Routes through shifts.setStatus → employer_close_shift_post (0049/0059),
+                    // which re-validates assignment states server-side.
+                    const canComplete = ['Filled', 'InProgress'].includes(selected.status) && allResolved;
+                    // Cancel is safe for any pre-terminal shift — cancel_shift_with_reason (0024)
+                    // cancels all non-Completed assignments regardless of shift state.
+                    const canCancel = ['Posted', 'Filled', 'InProgress'].includes(selected.status);
+                    return (
+                      <>
+                        {canComplete && (
+                          <Button
+                            label="Complete Shift"
+                            onPress={() => {
+                              setStatusM.mutate(
+                                { id: selected.id, status: 'Completed', reason: 'Shift completed by employer' },
+                                {
+                                  onSuccess: () => { setDetailModal(false); Alert.alert('Shift completed', 'This shift is now closed.'); },
+                                  onError: (e: Error) => Alert.alert('Unable to complete', e.message),
+                                },
+                              );
+                            }}
+                            loading={setStatusM.isPending}
+                            fullWidth
+                            icon={<CheckCircle size={15} color={C.white} />}
+                          />
+                        )}
+                        {['Filled', 'InProgress'].includes(selected.status) && !allResolved && (
+                          <Text style={styles.completeHint}>
+                            Confirm hours or mark no-show for every worker before completing this shift.
+                          </Text>
+                        )}
+                        {canCancel && (
+                          <Button
+                            label="Cancel Shift"
+                            onPress={() => {
+                              setCancelFor(selected);
+                              setCancelReason('');
+                              setDetailModal(false);
+                            }}
+                            variant="danger"
+                            fullWidth
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>
               </View>
@@ -1053,6 +1091,7 @@ const styles = StyleSheet.create({
   confirmedBox: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   confirmedText: { fontSize: 13, color: C.green, fontWeight: '600' as const },
   actionBtns: { gap: 10 },
+  completeHint: { fontSize: 12, color: C.textMuted, lineHeight: 17, textAlign: 'center' as const, paddingHorizontal: 8 },
   rateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   rateBtnText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
   noShowBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: C.redDim, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: C.red + '40' },

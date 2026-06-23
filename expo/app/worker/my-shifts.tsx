@@ -131,7 +131,18 @@ export default function WorkerMyShifts() {
   const [gpsChecking, setGpsChecking] = useState<boolean>(false);
   const clockInM = trpc.shifts.clockIn.useMutation({
     onSuccess: async () => { await invalidate(); Alert.alert('Clocked in!', 'Shift started.'); },
-    onError: (e: Error) => Alert.alert('Unable to clock in', e.message),
+    onError: (e: Error) => {
+      // worker_clock_in (0008) raises a clear message naming the required cert,
+      // e.g. "Approved Forklift certification required to start this shift".
+      // Surface it verbatim plus guidance on how to get unblocked.
+      const isCert = /certification/i.test(e.message);
+      Alert.alert(
+        isCert ? 'Certification required' : 'Unable to clock in',
+        isCert
+          ? `${e.message}\n\nAdd this certification on your Profile and wait for admin approval, then try again.`
+          : e.message,
+      );
+    },
   });
 
   /** Verify the worker is at the worksite (GPS) before clocking in. */
@@ -152,7 +163,10 @@ export default function WorkerMyShifts() {
       }
       clockInM.mutate({ assignmentId });
     } catch (e) {
-      Alert.alert('Location check failed', e instanceof Error ? e.message : 'Could not verify your location.');
+      Alert.alert(
+        'Location check failed',
+        `${e instanceof Error ? e.message : 'Could not verify your location.'}\n\nEnable location for this app, or ask your employer to manually clock you in.`,
+      );
     } finally {
       setGpsChecking(false);
     }
