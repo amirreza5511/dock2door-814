@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Users, CheckCircle, XCircle, Clock, Star, ChevronDown, ChevronUp,
-  Award, User, AlertTriangle, AlertCircle,
+  Award, User, AlertTriangle, AlertCircle, LogIn, LogOut as LogOutIcon,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -108,6 +108,7 @@ export default function EmployerShifts() {
   const [rejectReason, setRejectReason] = useState('');
   const [cancelFor, setCancelFor] = useState<ShiftPost | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [clockBusyId, setClockBusyId] = useState<string | null>(null);
 
   const myShifts = useMemo(
     () => shiftPosts
@@ -275,6 +276,54 @@ export default function EmployerShifts() {
     () => new Set(((myReviewsQ.data as { contextId: string }[] | undefined) ?? []).map((r) => r.contextId)),
     [myReviewsQ.data],
   );
+
+  /**
+   * Employer manually records a worker's clock-in for shifts where the worker
+   * couldn't clock in themselves (e.g. forgot, no phone). Writes a real time
+   * entry and flips the assignment to InProgress. Allowed by RLS for the
+   * shift's employer company.
+   */
+  const employerClockIn = async (assignmentId: string) => {
+    setClockBusyId(assignmentId);
+    try {
+      const { error: teErr } = await supabase
+        .from('time_entries')
+        .insert({ assignment_id: assignmentId, start_timestamp: new Date().toISOString() });
+      if (teErr) throw new Error(teErr.message);
+      const { error: aErr } = await supabase
+        .from('shift_assignments')
+        .update({ status: 'InProgress' })
+        .eq('id', assignmentId);
+      if (aErr) throw new Error(aErr.message);
+      await invalidate();
+    } catch (e) {
+      Alert.alert('Unable to clock in worker', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setClockBusyId(null);
+    }
+  };
+
+  /** Employer manually records a worker's clock-out (closes the open time entry). */
+  const employerClockOut = async (assignmentId: string, teId: string) => {
+    setClockBusyId(assignmentId);
+    try {
+      const { error: teErr } = await supabase
+        .from('time_entries')
+        .update({ end_timestamp: new Date().toISOString() })
+        .eq('id', teId);
+      if (teErr) throw new Error(teErr.message);
+      const { error: aErr } = await supabase
+        .from('shift_assignments')
+        .update({ status: 'Completed' })
+        .eq('id', assignmentId);
+      if (aErr) throw new Error(aErr.message);
+      await invalidate();
+    } catch (e) {
+      Alert.alert('Unable to clock out worker', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setClockBusyId(null);
+    }
+  };
 
   const handleConfirmHours = (assignmentId: string, teId: string, hours: number) => {
     const h = Number(hours);
@@ -583,6 +632,37 @@ export default function EmployerShifts() {
                               <AlertCircle size={13} color={C.red} />
                               <Text style={styles.noShowBtnText}>Mark No-Show</Text>
                             </TouchableOpacity>
+                          )}
+
+                          {/* Manual clock-in: worker hasn't started a time entry yet */}
+                          {(!te || !te.start_timestamp) && !['Cancelled', 'NoShow'].includes(ass.status) && (
+                            <Button
+                              label="Clock In Worker"
+                              onPress={() => void employerClockIn(ass.id)}
+                              loading={clockBusyId === ass.id}
+                              size="sm"
+                              variant="outline"
+                              fullWidth
+                              icon={<LogIn size={14} color={C.accent} />}
+                            />
+                          )}
+
+                          {/* Manual clock-out: worker is clocked in but hasn't clocked out */}
+                          {te && te.start_timestamp && !te.end_timestamp && (
+                            <View style={styles.timeConfirmBox}>
+                              <View style={styles.clockRecord}>
+                                <Clock size={13} color={C.accent} />
+                                <Text style={styles.clockText}>Clocked in at {fmtTs(te.start_timestamp)}</Text>
+                              </View>
+                              <Button
+                                label="Clock Out Worker"
+                                onPress={() => void employerClockOut(ass.id, te.id)}
+                                loading={clockBusyId === ass.id}
+                                size="sm"
+                                fullWidth
+                                icon={<LogOutIcon size={14} color={C.white} />}
+                              />
+                            </View>
                           )}
 
                           {/* Time entry + confirmation */}

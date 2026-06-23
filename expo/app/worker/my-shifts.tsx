@@ -17,6 +17,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
+import { checkAtSite, SITE_RADIUS_METERS } from '@/lib/geo';
 
 type ViewTab = 'Active' | 'Applications' | 'History' | 'Earnings';
 
@@ -127,10 +128,35 @@ export default function WorkerMyShifts() {
     ]);
   };
 
+  const [gpsChecking, setGpsChecking] = useState<boolean>(false);
   const clockInM = trpc.shifts.clockIn.useMutation({
     onSuccess: async () => { await invalidate(); Alert.alert('Clocked in!', 'Shift started.'); },
     onError: (e: Error) => Alert.alert('Unable to clock in', e.message),
   });
+
+  /** Verify the worker is at the worksite (GPS) before clocking in. */
+  const clockInWithGps = async (assignmentId: string, address: string, city: string) => {
+    if (gpsChecking || clockInM.isPending) return;
+    setGpsChecking(true);
+    try {
+      const siteLabel = `${address}, ${city}`;
+      const result = await checkAtSite(siteLabel);
+      if (!result.withinRange && result.distanceMeters != null) {
+        const meters = Math.round(result.distanceMeters);
+        const away = meters > 1000 ? `${(meters / 1000).toFixed(1)} km` : `${meters} m`;
+        Alert.alert(
+          'You are not at the worksite',
+          `You appear to be about ${away} from ${siteLabel}. You must be within ${SITE_RADIUS_METERS} m of the site to clock in. Move closer and try again.`,
+        );
+        return;
+      }
+      clockInM.mutate({ assignmentId });
+    } catch (e) {
+      Alert.alert('Location check failed', e instanceof Error ? e.message : 'Could not verify your location.');
+    } finally {
+      setGpsChecking(false);
+    }
+  };
   const clockOutM = trpc.shifts.clockOut.useMutation({
     onSuccess: async () => { await invalidate(); Alert.alert('Shift ended', 'Awaiting employer to confirm your hours.'); },
     onError: (e: Error) => Alert.alert('Unable to clock out', e.message),
@@ -443,9 +469,9 @@ export default function WorkerMyShifts() {
                             router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: ass.id } });
                             return;
                           }
-                          clockInM.mutate({ assignmentId: ass.id });
+                          void clockInWithGps(ass.id, shift?.location_address ?? '', shift?.location_city ?? '');
                         }}
-                        loading={clockInM.isPending}
+                        loading={clockInM.isPending || gpsChecking}
                         disabled={ass.worker_confirmed === true && !isToday(shift?.date ?? '')}
                         fullWidth
                         size="lg"

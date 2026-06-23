@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   MapPin, Clock, Search, ChevronRight, AlertCircle, Bell,
-  Navigation, CheckCircle, Shield, Award, Star, XCircle, DollarSign,
+  Navigation, CheckCircle, Shield, Award, Star, XCircle, DollarSign, Sparkles,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -18,6 +18,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import { checkAtSite, SITE_RADIUS_METERS } from '@/lib/geo';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -123,10 +124,35 @@ export default function WorkerDashboard() {
     ]);
   };
 
+  const [gpsChecking, setGpsChecking] = React.useState<boolean>(false);
   const clockInM = trpc.shifts.clockIn.useMutation({
     onSuccess: invalidateAll,
     onError: (e: Error) => Alert.alert('Unable to clock in', e.message),
   });
+
+  /** Verify the worker is at the worksite (GPS) before clocking in. */
+  const clockInWithGps = async (assignmentId: string, address: string, city: string) => {
+    if (gpsChecking || clockInM.isPending) return;
+    setGpsChecking(true);
+    try {
+      const site = `${address}, ${city}`;
+      const result = await checkAtSite(site);
+      if (!result.withinRange && result.distanceMeters != null) {
+        const meters = Math.round(result.distanceMeters);
+        const away = meters > 1000 ? `${(meters / 1000).toFixed(1)} km` : `${meters} m`;
+        Alert.alert(
+          'You are not at the worksite',
+          `You appear to be about ${away} from ${site}. You must be within ${SITE_RADIUS_METERS} m of the site to clock in. Move closer and try again.`,
+        );
+        return;
+      }
+      clockInM.mutate({ assignmentId });
+    } catch (e) {
+      Alert.alert('Location check failed', e instanceof Error ? e.message : 'Could not verify your location.');
+    } finally {
+      setGpsChecking(false);
+    }
+  };
   const clockOutM = trpc.shifts.clockOut.useMutation({
     onSuccess: async () => {
       await invalidateAll();
@@ -660,9 +686,9 @@ export default function WorkerDashboard() {
                       router.push({ pathname: '/worker/shift-confirm' as any, params: { assignmentId: nextShift.assignment.id } });
                       return;
                     }
-                    clockInM.mutate({ assignmentId: nextShift.assignment.id });
+                    void clockInWithGps(nextShift.assignment.id, nextShift.shift.locationAddress, nextShift.shift.locationCity);
                   }}
-                  loading={clockInM.isPending}
+                  loading={clockInM.isPending || gpsChecking}
                   disabled={nextShift.assignment.worker_confirmed === true && !isToday(nextShift.shift.date)}
                   size="sm"
                   fullWidth
@@ -775,6 +801,7 @@ export default function WorkerDashboard() {
               { label: 'Browse Open Shifts', icon: Search, color: C.accent, path: '/worker/browse' },
               { label: 'My Shifts & Applications', icon: Clock, color: C.blue, path: '/worker/my-shifts' },
               { label: 'Documents & Certificates', icon: Shield, color: C.yellow, path: '/worker/profile' },
+              { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },
               { label: 'My Reviews', icon: Star, color: C.yellow, path: '/reviews' },
               { label: 'Notifications', icon: Bell, color: unreadCount > 0 ? C.red : C.textMuted, path: '/notifications', badge: unreadCount > 0 ? unreadCount : undefined },
             ].map(({ label, icon: Icon, color, path, badge }) => (
