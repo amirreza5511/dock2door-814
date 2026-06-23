@@ -161,6 +161,15 @@ export default function WmsOperationsScreen() {
       Alert.alert('Missing info', 'Variant, from, to and quantity are required.');
       return;
     }
+    if (xferForm.fromLocation.trim() === xferForm.toLocation.trim()) {
+      Alert.alert('Same location', 'Source and destination bins must be different.');
+      return;
+    }
+    const available = lookupOnHand(xferForm.variantId.trim(), xferForm.fromLocation.trim());
+    if (qty > available) {
+      Alert.alert('Not enough stock', `Only ${available} unit${available === 1 ? '' : 's'} on hand at the source bin. Reduce the quantity or receive more first.`);
+      return;
+    }
     try {
       await adjust.mutateAsync({ variantId: xferForm.variantId.trim(), locationId: xferForm.fromLocation.trim(), delta: -qty, reason: `transfer_out:${xferForm.toLocation.trim()}` });
       await adjust.mutateAsync({ variantId: xferForm.variantId.trim(), locationId: xferForm.toLocation.trim(), delta: qty, reason: `transfer_in:${xferForm.fromLocation.trim()}` });
@@ -289,6 +298,9 @@ export default function WmsOperationsScreen() {
             emptyText="No bins yet."
           />
           <Input label="Quantity" value={xferForm.quantity} onChangeText={(v) => setXferForm({ ...xferForm, quantity: v })} keyboardType="numeric" />
+          {xferForm.variantId && xferForm.fromLocation ? (
+            <Text style={styles.wizardSub}>{lookupOnHand(xferForm.variantId, xferForm.fromLocation)} on hand at the source bin.</Text>
+          ) : null}
           <Button label="Next" onPress={() => setXferForm({ ...xferForm, step: 2 })} fullWidth />
         </>
       ) : (

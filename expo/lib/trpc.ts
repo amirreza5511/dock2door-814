@@ -1010,8 +1010,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // PAYMENTS
   // =========================================================================
   'payments.list': async (_input, ctx) => {
-    const q = supabase.from('payments').select('*').order('created_at', { ascending: false });
-    const { data, error } = isAdmin(ctx.user.role) ? await q : await q;
+    let q = supabase.from('payments').select('*').order('created_at', { ascending: false });
+    if (!isAdmin(ctx.user.role)) {
+      if (!ctx.user.companyId) return [];
+      q = q.or(`provider_company_id.eq.${ctx.user.companyId},customer_company_id.eq.${ctx.user.companyId}`);
+    }
+    const { data, error } = await q;
     if (error) throwErr(error, 'Unable to load payments');
     return data ?? [];
   },
@@ -1020,8 +1024,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error || !data) throw new Error('Payment not found');
     return data;
   },
-  'payments.listInvoices': async () => {
-    const { data, error } = await supabase.from('invoices').select('*').order('created_at', { ascending: false });
+  'payments.listInvoices': async (_input, ctx) => {
+    let q = supabase.from('invoices').select('*').order('created_at', { ascending: false });
+    if (!isAdmin(ctx.user.role)) {
+      if (!ctx.user.companyId) return [];
+      q = q.or(`provider_company_id.eq.${ctx.user.companyId},customer_company_id.eq.${ctx.user.companyId}`);
+    }
+    const { data, error } = await q;
     if (error) throwErr(error, 'Unable to load invoices');
     return data ?? [];
   },
@@ -1034,7 +1043,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error || !data) throw new Error('Invoice not found');
     return data;
   },
-  'payments.updateInvoiceStatus': async () => ({ success: true }),
+  'payments.updateInvoiceStatus': async (input: { id: string; status: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Only admins can change invoice status');
+    if (!input.id) throw new Error('Invoice id required');
+    const now = new Date().toISOString();
+    const patch: AnyRecord = { status: input.status };
+    if (input.status === 'Issued') patch.issued_at = now;
+    else if (input.status === 'Paid') patch.paid_at = now;
+    else if (input.status === 'Void') patch.voided_at = now;
+    const { error } = await supabase.from('invoices').update(patch).eq('id', input.id);
+    if (error) throwErr(error, 'Unable to update invoice');
+    return { success: true };
+  },
   'payments.listPayouts': async (_input, ctx) => {
     const q = supabase.from('payouts').select('*').is('archived_at', null).order('created_at', { ascending: false });
     const { data, error } = isAdmin(ctx.user.role)
