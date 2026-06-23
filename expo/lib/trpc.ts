@@ -1238,12 +1238,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       if (error) throwErr(error, 'Unable to update company status — check admin privileges');
       return { success: true };
     }
-    if (input.entity === 'warehouse_listings' || input.entity === 'service_listings') {
+    if (input.entity === 'warehouse_listings') {
       const { error } = await supabase.rpc('admin_set_listing_status', {
-        p_listing_kind: input.entity === 'warehouse_listings' ? 'warehouse' : 'service',
         p_listing_id: input.id, p_status: input.status, p_reason: reason,
       });
       if (error) throwErr(error, 'Unable to update listing status — check admin privileges');
+      return { success: true };
+    }
+    if (input.entity === 'service_listings') {
+      const { error } = await supabase.rpc('admin_set_service_listing_status', {
+        p_listing_id: input.id, p_status: input.status, p_reason: reason,
+      });
+      if (error) throwErr(error, 'Unable to update service listing status — check admin privileges');
       return { success: true };
     }
     // Everything else is read-only here. Business state machines (shifts, bookings,
