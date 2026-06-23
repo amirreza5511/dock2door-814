@@ -37,7 +37,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   demoLogin: (account: DemoAccount) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  register: (data: RegisterInput) => Promise<{ success: boolean; error?: string }>;
+  register: (data: RegisterInput) => Promise<{ success: boolean; error?: string; needsEmailConfirmation?: boolean }>;
   refreshSession: () => Promise<boolean>;
   updateUser: (updates: Partial<User>) => void;
   sendPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
@@ -493,10 +493,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         return { success: true };
       }
 
-      return {
-        success: true,
-        error: 'Please verify your email before signing in.',
-      };
+      // No session => Supabase requires email confirmation before sign-in.
+      // Do NOT navigate into the app (there is no session yet); the signup
+      // screen shows a "check your email" state instead.
+      return { success: true, needsEmailConfirmation: true };
     } catch (error) {
       const message = friendlyError(error);
       console.log('[Auth] register failed', message);

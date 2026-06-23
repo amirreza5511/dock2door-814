@@ -6,7 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Check } from 'lucide-react-native';
+import { ArrowLeft, Check, MailCheck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -46,6 +46,7 @@ export default function Signup() {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
   const handleRegister = async () => {
     setError('');
@@ -60,6 +61,10 @@ export default function Signup() {
       const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim() });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
+      } else if (result.needsEmailConfirmation) {
+        // No session yet — email must be confirmed first. Show a clear
+        // "check your email" state instead of navigating into a dead session.
+        setConfirmEmailSent(true);
       } else {
         if (COMPANY_REQUIRED_ROLES.includes(selectedRole)) {
           router.replace('/onboarding/company-setup' as never);
@@ -71,6 +76,34 @@ export default function Signup() {
       setLoading(false);
     }
   };
+
+  if (confirmEmailSent) {
+    return (
+      <View style={[styles.confirmWrap, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
+        <LinearGradient colors={['#0D1E35', C.bg]} style={styles.heroBg} />
+        <View style={styles.confirmIcon}>
+          <MailCheck size={36} color={C.accent} />
+        </View>
+        <Text style={styles.confirmTitle}>Check your email</Text>
+        <Text style={styles.confirmBody}>
+          We sent a confirmation link to{'\n'}
+          <Text style={styles.confirmEmail}>{email.trim()}</Text>
+        </Text>
+        <Text style={styles.confirmHint}>
+          Tap the link in that email to verify your account, then come back and sign in.
+        </Text>
+        <Button
+          label="Go to Sign In"
+          onPress={() => router.replace('/auth/login' as never)}
+          fullWidth
+          size="lg"
+        />
+        <TouchableOpacity onPress={() => setConfirmEmailSent(false)} style={styles.confirmBackBtn}>
+          <Text style={styles.switchLink}>Use a different email</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -190,6 +223,13 @@ const styles = StyleSheet.create({
   roleTitleSelected: { color: C.accent },
   roleDesc: { fontSize: 12, color: C.textSecondary },
   error: { fontSize: 13, color: C.red, textAlign: 'center' },
+  confirmWrap: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
+  confirmIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  confirmTitle: { fontSize: 28, fontWeight: '800' as const, color: C.text, letterSpacing: -0.6, marginBottom: 12, textAlign: 'center' as const },
+  confirmBody: { fontSize: 16, color: C.textSecondary, textAlign: 'center' as const, lineHeight: 24, marginBottom: 16 },
+  confirmEmail: { color: C.text, fontWeight: '700' as const },
+  confirmHint: { fontSize: 14, color: C.textSecondary, textAlign: 'center' as const, lineHeight: 21, marginBottom: 32 },
+  confirmBackBtn: { marginTop: 20, alignItems: 'center' as const },
   switchRow: { flexDirection: 'row', justifyContent: 'center' },
   switchText: { fontSize: 14, color: C.textSecondary },
   switchLink: { fontSize: 14, color: C.accent, fontWeight: '600' as const },
