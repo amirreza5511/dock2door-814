@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { DEFAULT_RATES, encodeListingRates } from '@/lib/listingRates';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
@@ -97,6 +98,19 @@ export default function CreateListing() {
   const [insurance, setInsurance] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
+  // Provider-defined add-on rates (offloading / gate / labour / special handling).
+  const [rateC20, setRateC20] = useState<string>(String(DEFAULT_RATES.c20));
+  const [rateC40, setRateC40] = useState<string>(String(DEFAULT_RATES.c40));
+  const [rateT5, setRateT5] = useState<string>(String(DEFAULT_RATES.t5));
+  const [rateGate, setRateGate] = useState<string>(String(DEFAULT_RATES.gate));
+  const [rateLabour, setRateLabour] = useState<string>(String(DEFAULT_RATES.labour));
+  const [rateSpecial, setRateSpecial] = useState<string>(String(DEFAULT_RATES.special));
+
+  const toRate = (v: string, fallback: number): number => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+  };
+
   const handleSubmit = async (submitForApproval: boolean) => {
     if (!name || !address || !city || !capacity || !rate) {
       Alert.alert('Missing Fields', 'Please fill in all required fields');
@@ -107,6 +121,14 @@ export default function CreateListing() {
       return;
     }
     try {
+      const notesWithRates = encodeListingRates(notes, {
+        c20: toRate(rateC20, DEFAULT_RATES.c20),
+        c40: toRate(rateC40, DEFAULT_RATES.c40),
+        t5: toRate(rateT5, DEFAULT_RATES.t5),
+        gate: toRate(rateGate, DEFAULT_RATES.gate),
+        labour: toRate(rateLabour, DEFAULT_RATES.labour),
+        special: toRate(rateSpecial, DEFAULT_RATES.special),
+      });
       const created = await createMutation.mutateAsync({
         companyId: activeCompany.companyId,
         name,
@@ -123,7 +145,7 @@ export default function CreateListing() {
         receivingHours,
         accessRestrictions: access,
         insuranceRequirements: insurance,
-        notes,
+        notes: notesWithRates,
         status: 'Draft',
       });
 
@@ -271,6 +293,37 @@ export default function CreateListing() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Offloading & Add-on Rates</Text>
+          <Text style={styles.sectionHint}>Set the prices customers pay for offloading and extra services. Leave defaults if unsure.</Text>
+          <View style={[styles.formGap, { marginTop: 12 }]}>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Input label="20' Container ($)" value={rateC20} onChangeText={setRateC20} keyboardType="numeric" placeholder="250" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Input label="40' Container ($)" value={rateC40} onChangeText={setRateC40} keyboardType="numeric" placeholder="400" />
+              </View>
+            </View>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Input label="5-Ton Truck ($)" value={rateT5} onChangeText={setRateT5} keyboardType="numeric" placeholder="150" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Input label="Gate Fee ($)" value={rateGate} onChangeText={setRateGate} keyboardType="numeric" placeholder="45" />
+              </View>
+            </View>
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <Input label="Labour ($/hour)" value={rateLabour} onChangeText={setRateLabour} keyboardType="numeric" placeholder="38" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Input label="Special Unload/Load ($)" value={rateSpecial} onChangeText={setRateSpecial} keyboardType="numeric" placeholder="120" />
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Facility Details</Text>
           <View style={styles.formGap}>
             <Input label="Receiving Hours" value={receivingHours} onChangeText={setReceivingHours} placeholder="Mon–Fri 07:00–17:00" />
@@ -315,6 +368,7 @@ const styles = StyleSheet.create({
   scroll: { padding: 20 },
   section: { marginBottom: 28 },
   sectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 12 },
+  sectionHint: { fontSize: 12, color: C.textMuted, marginTop: -6, marginBottom: 2, lineHeight: 17 },
   formGap: { gap: 12 },
   row: { flexDirection: 'row', gap: 12 },
   optionRow: { flexDirection: 'row', gap: 10 },

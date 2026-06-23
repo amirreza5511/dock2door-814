@@ -12,8 +12,10 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import CalendarField from '@/components/ui/CalendarField';
+import TimeField, { formatTimeLabel } from '@/components/ui/TimeField';
 import C from '@/constants/colors';
 import type { WarehouseType } from '@/constants/types';
+import { parseListingRates } from '@/lib/listingRates';
 import { trpc } from '@/lib/trpc';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 
@@ -29,18 +31,14 @@ const TYPE_COLORS: Record<WarehouseType, string> = {
   Frozen: '#6EE7F7',
 };
 
-/** Standard offloading rates (per unit) for inbound containers / trucks. */
-const OFFLOAD_OPTIONS = [
-  { key: 'c20', label: "20' Container", sub: 'Offload', rate: 250 },
-  { key: 'c40', label: "40' Container", sub: 'Offload', rate: 400 },
-  { key: 't5', label: '5-Ton Truck', sub: 'Offload', rate: 150 },
-] as const;
+type OffloadKey = 'c20' | 'c40' | 't5';
 
-type OffloadKey = (typeof OFFLOAD_OPTIONS)[number]['key'];
+const OFFLOAD_META: { key: OffloadKey; label: string; sub: string }[] = [
+  { key: 'c20', label: "20' Container", sub: 'Offload' },
+  { key: 'c40', label: "40' Container", sub: 'Offload' },
+  { key: 't5', label: '5-Ton Truck', sub: 'Offload' },
+];
 
-const GATE_FEE = 45;
-const LABOUR_RATE_PER_HOUR = 38;
-const SPECIAL_HANDLING_FEE = 120;
 const MIN_CHARGE_DAYS = 7;
 
 function SummaryRow({ label, value }: { label: string; value: number }) {
@@ -74,6 +72,8 @@ export default function Warehouses() {
   const [pallets, setPallets] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [inTime, setInTime] = useState('');
+  const [outTime, setOutTime] = useState('');
   const [notes, setNotes] = useState('');
   const [handling, setHandling] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -105,6 +105,13 @@ export default function Warehouses() {
   const listing = useMemo(() => warehouseListings.find((l) => l.id === selectedListing), [warehouseListings, selectedListing]);
   const listingCompany = useMemo(() => companies.find((c) => c.id === listing?.companyId), [companies, listing]);
 
+  // Provider-defined rates + clean (de-encoded) notes for this listing.
+  const { rates, displayNotes } = useMemo(() => parseListingRates(listing?.notes), [listing?.notes]);
+  const offloadOptions = useMemo(
+    () => OFFLOAD_META.map((o) => ({ ...o, rate: rates[o.key] })),
+    [rates],
+  );
+
   const breakdown = useMemo(() => {
     if (!listing || !pallets || !startDate || !endDate) return null;
     const rawDays = (new Date(endDate).getTime() - new Date(startDate).getTime()) / 86400000;
@@ -118,14 +125,14 @@ export default function Warehouses() {
     else if (listing.storageTerm === 'Weekly') storage = p * listing.storageRatePerPallet * Math.ceil(chargeableDays / 7);
 
     const handlingCost = handling ? p * (listing.inboundHandlingFeePerPallet + listing.outboundHandlingFeePerPallet) : 0;
-    const offloadCost = OFFLOAD_OPTIONS.reduce((sum, opt) => sum + offload[opt.key] * opt.rate, 0);
-    const gateCost = gateFee ? GATE_FEE : 0;
-    const labourCost = Math.max(0, Number(labourHours) || 0) * LABOUR_RATE_PER_HOUR;
-    const specialCost = specialHandling ? SPECIAL_HANDLING_FEE : 0;
+    const offloadCost = offloadOptions.reduce((sum, opt) => sum + offload[opt.key] * opt.rate, 0);
+    const gateCost = gateFee ? rates.gate : 0;
+    const labourCost = Math.max(0, Number(labourHours) || 0) * rates.labour;
+    const specialCost = specialHandling ? rates.special : 0;
 
     const total = storage + handlingCost + offloadCost + gateCost + labourCost + specialCost;
     return { chargeableDays, storage, handlingCost, offloadCost, gateCost, labourCost, specialCost, total };
-  }, [listing, pallets, startDate, endDate, handling, offload, gateFee, labourHours, specialHandling]);
+  }, [listing, pallets, startDate, endDate, handling, offload, offloadOptions, gateFee, labourHours, specialHandling, rates]);
 
   const estimatedPrice = breakdown?.total ?? null;
 
@@ -146,18 +153,29 @@ export default function Warehouses() {
     }
     setSubmitting(true);
     try {
-      // Fold the add-on charges into a structured note so the provider sees the request.
+      // Build a clearly itemized request summary so the provider sees exactly
+      // what was requested, including times and each priced add-on line.
+      const sections: string[] = [];
+      if (notes.trim()) sections.push(notes.trim());
+
+      const scheduleLines: string[] = [];
+      if (inTime) scheduleLines.push(`In time: ${formatTimeLabel(inTime)}`);
+      if (outTime) scheduleLines.push(`Out time: ${formatTimeLabel(outTime)}`);
+      if (scheduleLines.length) sections.push(`Schedule:\n- ${scheduleLines.join('\n- ')}`);
+
       const addonLines: string[] = [];
-      OFFLOAD_OPTIONS.forEach((opt) => {
-        if (offload[opt.key] > 0) addonLines.push(`${opt.label} offload x${offload[opt.key]} ($${opt.rate} ea)`);
+      offloadOptions.forEach((opt) => {
+        if (offload[opt.key] > 0) addonLines.push(`${opt.label} offload x${offload[opt.key]} ($${opt.rate} ea = $${offload[opt.key] * opt.rate})`);
       });
-      if (gateFee) addonLines.push(`Gate fee ($${GATE_FEE})`);
+      if (gateFee) addonLines.push(`Gate fee ($${rates.gate})`);
       const lh = Math.max(0, Number(labourHours) || 0);
-      if (lh > 0) addonLines.push(`Labour ${lh}h ($${LABOUR_RATE_PER_HOUR}/h)`);
-      if (specialHandling) addonLines.push(`Special unload/load ($${SPECIAL_HANDLING_FEE})`);
-      const fullNotes = [notes.trim(), addonLines.length ? `Add-ons: ${addonLines.join(', ')}` : '']
-        .filter(Boolean)
-        .join('\n');
+      if (lh > 0) addonLines.push(`Labour ${lh}h ($${rates.labour}/h = $${lh * rates.labour})`);
+      if (specialHandling) addonLines.push(`Special unload/load ($${rates.special})`);
+      if (addonLines.length) sections.push(`Add-ons:\n- ${addonLines.join('\n- ')}`);
+
+      if (breakdown) sections.push(`Estimated total: $${breakdown.total.toLocaleString()}`);
+
+      const fullNotes = sections.join('\n\n');
 
       await createBookingMutation.mutateAsync({
         listingId: listing.id,
@@ -173,6 +191,8 @@ export default function Warehouses() {
       setPallets('');
       setStartDate('');
       setEndDate('');
+      setInTime('');
+      setOutTime('');
       setNotes('');
       setHandling(false);
       setOffload({ c20: 0, c40: 0, t5: 0 });
@@ -338,9 +358,9 @@ export default function Warehouses() {
                   ))}
                 </View>
 
-                {listing.notes ? (
+                {displayNotes ? (
                   <View style={styles.notesBox}>
-                    <Text style={styles.notesText}>{listing.notes}</Text>
+                    <Text style={styles.notesText}>{displayNotes}</Text>
                   </View>
                 ) : null}
 
@@ -358,6 +378,15 @@ export default function Warehouses() {
                   </View>
                   <Text style={styles.minChargeHint}>Minimum 1-week (7-day) storage charge applies.</Text>
 
+                  <View style={styles.dateRow}>
+                    <View style={styles.dateCol}>
+                      <TimeField label="In time" value={inTime} onChange={setInTime} placeholder="Select" testID="booking-in-time" />
+                    </View>
+                    <View style={styles.dateCol}>
+                      <TimeField label="Out time" value={outTime} onChange={setOutTime} placeholder="Select" testID="booking-out-time" />
+                    </View>
+                  </View>
+
                   <TouchableOpacity onPress={() => setHandling(!handling)} style={[styles.checkbox, handling && styles.checkboxActive]}>
                     <View style={[styles.checkboxDot, handling && styles.checkboxDotActive]} />
                     <Text style={styles.checkboxLabel}>Include handling (in / out)</Text>
@@ -365,7 +394,7 @@ export default function Warehouses() {
 
                   {/* Container & truck offloading */}
                   <Text style={styles.sectionLabel}>Container & Trailer Offloading</Text>
-                  {OFFLOAD_OPTIONS.map((opt) => (
+                  {offloadOptions.map((opt) => (
                     <View key={opt.key} style={styles.offloadRow}>
                       <View style={styles.offloadInfo}>
                         <Text style={styles.offloadLabel}>{opt.label}</Text>
@@ -387,12 +416,12 @@ export default function Warehouses() {
                   <Text style={styles.sectionLabel}>Additional Services</Text>
                   <TouchableOpacity onPress={() => setGateFee(!gateFee)} style={[styles.checkbox, gateFee && styles.checkboxActive]}>
                     <View style={[styles.checkboxDot, gateFee && styles.checkboxDotActive]} />
-                    <Text style={styles.checkboxLabel}>Gate fee (${GATE_FEE})</Text>
+                    <Text style={styles.checkboxLabel}>Gate fee (${rates.gate})</Text>
                   </TouchableOpacity>
-                  <Input label={`Labour hours ($${LABOUR_RATE_PER_HOUR}/hour)`} value={labourHours} onChangeText={setLabourHours} keyboardType="numeric" placeholder="0" />
+                  <Input label={`Labour hours ($${rates.labour}/hour)`} value={labourHours} onChangeText={setLabourHours} keyboardType="numeric" placeholder="0" />
                   <TouchableOpacity onPress={() => setSpecialHandling(!specialHandling)} style={[styles.checkbox, specialHandling && styles.checkboxActive]}>
                     <View style={[styles.checkboxDot, specialHandling && styles.checkboxDotActive]} />
-                    <Text style={styles.checkboxLabel}>Special unloading / loading (${SPECIAL_HANDLING_FEE})</Text>
+                    <Text style={styles.checkboxLabel}>Special unloading / loading (${rates.special})</Text>
                   </TouchableOpacity>
 
                   <Input label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="Any special requirements…" multiline numberOfLines={3} />

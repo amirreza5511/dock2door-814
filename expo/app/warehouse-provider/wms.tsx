@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Archive, CheckCircle2, ClipboardCheck, MapPin, Minus, Move, PackageOpen, Plus, Scan, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import PickerField, { PickerOption } from '@/components/ui/PickerField';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -59,6 +60,27 @@ export default function WmsOperationsScreen() {
     if (!s) return stockList;
     return stockList.filter((r) => JSON.stringify(r).toLowerCase().includes(s));
   }, [stockList, stockSearch]);
+
+  const locationOptions = useMemo<PickerOption[]>(
+    () => locList.map((l) => ({
+      id: l.id,
+      label: l.label || `${l.zone}-${l.aisle}-${l.rack}-${l.bin}`,
+      sub: `Zone ${l.zone || '—'} · Aisle ${l.aisle || '—'} · Bin ${l.bin || '—'}`,
+    })),
+    [locList],
+  );
+  const variantOptions = useMemo<PickerOption[]>(() => {
+    const seen = new Map<string, PickerOption>();
+    for (const s of stockList) {
+      if (!s.variant_id || seen.has(s.variant_id)) continue;
+      seen.set(s.variant_id, {
+        id: s.variant_id,
+        label: s.product_variants?.sku ?? s.variant_id.slice(0, 8),
+        sub: s.product_variants?.name ?? undefined,
+      });
+    }
+    return Array.from(seen.values());
+  }, [stockList]);
 
   const manualAdjust = (variantId: string, locationId: string, delta: number) => {
     Alert.alert(
@@ -184,7 +206,15 @@ export default function WmsOperationsScreen() {
       ) : recvForm.step === 2 ? (
         <>
           <Text style={styles.wizardTitle}>Step 2 · Scan SKU & lot</Text>
-          <Input label="Variant / SKU ID" value={recvForm.variantId} onChangeText={(v) => setRecvForm({ ...recvForm, variantId: v })} placeholder="variant_…" />
+          <PickerField
+            label="SKU"
+            value={recvForm.variantId}
+            options={variantOptions}
+            onSelect={(v) => setRecvForm({ ...recvForm, variantId: v })}
+            placeholder="Select a SKU"
+            searchPlaceholder="Search SKU or name…"
+            emptyText="No SKUs in stock yet. Add products in Inventory first."
+          />
           <Input label="Lot / batch code" value={recvForm.lot} onChangeText={(v) => setRecvForm({ ...recvForm, lot: v })} placeholder="LOT-2026-04" autoCapitalize="characters" />
           <Input label="Quantity" value={recvForm.quantity} onChangeText={(v) => setRecvForm({ ...recvForm, quantity: v })} keyboardType="numeric" placeholder="48" />
           <View style={styles.navRow}>
@@ -195,18 +225,15 @@ export default function WmsOperationsScreen() {
       ) : (
         <>
           <Text style={styles.wizardTitle}>Step 3 · Putaway location</Text>
-          <Input label="Location ID" value={recvForm.locationId} onChangeText={(v) => setRecvForm({ ...recvForm, locationId: v })} placeholder="location_…" />
-          {locList.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
-              {locList.slice(0, 12).map((l) => (
-                <TouchableOpacity key={l.id} onPress={() => setRecvForm({ ...recvForm, locationId: l.id })} style={[styles.quickPick, recvForm.locationId === l.id && styles.quickPickActive]}>
-                  <MapPin size={13} color={recvForm.locationId === l.id ? C.accent : C.textMuted} />
-                  <Text style={styles.quickPickTitle}>{l.label || `${l.zone}-${l.aisle}-${l.bin}`}</Text>
-                  <Text style={styles.quickPickMeta}>Zone {l.zone || '—'}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : null}
+          <PickerField
+            label="Bin location"
+            value={recvForm.locationId}
+            options={locationOptions}
+            onSelect={(v) => setRecvForm({ ...recvForm, locationId: v })}
+            placeholder="Select a bin"
+            searchPlaceholder="Search bin, zone, aisle…"
+            emptyText="No bins yet. Create one in the Locations tab."
+          />
           <View style={styles.navRow}>
             <Button label="Back" onPress={() => setRecvForm({ ...recvForm, step: 2 })} variant="secondary" />
             <Button label="Receive & putaway" onPress={() => void submitReceive()} loading={receive.isPending} icon={<CheckCircle2 size={15} color={C.white} />} />
@@ -228,25 +255,39 @@ export default function WmsOperationsScreen() {
       {xferForm.step === 1 ? (
         <>
           <Text style={styles.wizardTitle}>Step 1 · What & from where?</Text>
-          <Input label="Variant / SKU ID" value={xferForm.variantId} onChangeText={(v) => setXferForm({ ...xferForm, variantId: v })} placeholder="variant_…" />
-          <Input label="From location" value={xferForm.fromLocation} onChangeText={(v) => setXferForm({ ...xferForm, fromLocation: v })} placeholder="location_…" />
+          <PickerField
+            label="SKU"
+            value={xferForm.variantId}
+            options={variantOptions}
+            onSelect={(v) => setXferForm({ ...xferForm, variantId: v })}
+            placeholder="Select a SKU"
+            searchPlaceholder="Search SKU or name…"
+            emptyText="No SKUs in stock yet."
+          />
+          <PickerField
+            label="From location"
+            value={xferForm.fromLocation}
+            options={locationOptions}
+            onSelect={(v) => setXferForm({ ...xferForm, fromLocation: v })}
+            placeholder="Select source bin"
+            searchPlaceholder="Search bin…"
+            emptyText="No bins yet."
+          />
           <Input label="Quantity" value={xferForm.quantity} onChangeText={(v) => setXferForm({ ...xferForm, quantity: v })} keyboardType="numeric" />
           <Button label="Next" onPress={() => setXferForm({ ...xferForm, step: 2 })} fullWidth />
         </>
       ) : (
         <>
           <Text style={styles.wizardTitle}>Step 2 · To where?</Text>
-          <Input label="Destination location" value={xferForm.toLocation} onChangeText={(v) => setXferForm({ ...xferForm, toLocation: v })} placeholder="location_…" />
-          {locList.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
-              {locList.slice(0, 12).map((l) => (
-                <TouchableOpacity key={l.id} onPress={() => setXferForm({ ...xferForm, toLocation: l.id })} style={[styles.quickPick, xferForm.toLocation === l.id && styles.quickPickActive]}>
-                  <MapPin size={13} color={xferForm.toLocation === l.id ? C.accent : C.textMuted} />
-                  <Text style={styles.quickPickTitle}>{l.label || `${l.zone}-${l.aisle}-${l.bin}`}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : null}
+          <PickerField
+            label="Destination location"
+            value={xferForm.toLocation}
+            options={locationOptions}
+            onSelect={(v) => setXferForm({ ...xferForm, toLocation: v })}
+            placeholder="Select destination bin"
+            searchPlaceholder="Search bin…"
+            emptyText="No bins yet."
+          />
           <View style={styles.navRow}>
             <Button label="Back" onPress={() => setXferForm({ ...xferForm, step: 1 })} variant="secondary" />
             <Button label="Transfer" onPress={() => void submitTransfer()} loading={adjust.isPending} icon={<Move size={15} color={C.white} />} />
@@ -270,8 +311,24 @@ export default function WmsOperationsScreen() {
         {countForm.step === 1 ? (
           <>
             <Text style={styles.wizardTitle}>Step 1 · Pick location to count</Text>
-            <Input label="Location ID" value={countForm.locationId} onChangeText={(v) => setCountForm({ ...countForm, locationId: v })} placeholder="location_…" />
-            <Input label="Variant / SKU" value={countForm.variantId} onChangeText={(v) => setCountForm({ ...countForm, variantId: v })} placeholder="variant_…" />
+            <PickerField
+              label="Bin location"
+              value={countForm.locationId}
+              options={locationOptions}
+              onSelect={(v) => setCountForm({ ...countForm, locationId: v })}
+              placeholder="Select a bin"
+              searchPlaceholder="Search bin…"
+              emptyText="No bins yet."
+            />
+            <PickerField
+              label="SKU"
+              value={countForm.variantId}
+              options={variantOptions}
+              onSelect={(v) => setCountForm({ ...countForm, variantId: v })}
+              placeholder="Select a SKU"
+              searchPlaceholder="Search SKU or name…"
+              emptyText="No SKUs in stock yet."
+            />
             <Button label="Next" onPress={() => setCountForm({ ...countForm, step: 2 })} fullWidth />
           </>
         ) : countForm.step === 2 ? (
