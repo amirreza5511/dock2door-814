@@ -72,6 +72,14 @@ export default function CreateListing() {
       ]);
     },
   });
+  const setStatusMutation = trpc.warehouses.setListingStatus.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.warehouses.listMine.invalidate(),
+        utils.dock.bootstrap.invalidate(),
+      ]);
+    },
+  });
 
   const [name, setName] = useState<string>('');
   const [address, setAddress] = useState<string>('');
@@ -89,7 +97,7 @@ export default function CreateListing() {
   const [insurance, setInsurance] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (submitForApproval: boolean) => {
     if (!name || !address || !city || !capacity || !rate) {
       Alert.alert('Missing Fields', 'Please fill in all required fields');
       return;
@@ -99,7 +107,7 @@ export default function CreateListing() {
       return;
     }
     try {
-      await createMutation.mutateAsync({
+      const created = await createMutation.mutateAsync({
         companyId: activeCompany.companyId,
         name,
         address,
@@ -118,7 +126,16 @@ export default function CreateListing() {
         notes,
         status: 'Draft',
       });
-      Alert.alert('Listing Created', 'Your listing is saved as Draft. Submit it for approval from Listings to go live.', [
+
+      if (submitForApproval && created?.id) {
+        await setStatusMutation.mutateAsync({ id: created.id, status: 'PendingApproval' });
+      }
+
+      const message = submitForApproval
+        ? 'Your listing was submitted for admin approval. Once an admin approves it, it goes live for customers.'
+        : 'Your listing is saved as Draft. Submit it for approval from Listings to go live.';
+
+      Alert.alert(submitForApproval ? 'Submitted for Approval' : 'Listing Saved', message, [
         {
           text: 'OK',
           onPress: () => {
@@ -265,15 +282,25 @@ export default function CreateListing() {
 
         <View style={styles.section}>
           <Button
-            label="Create Listing (Draft)"
-            onPress={handleSubmit}
-            loading={createMutation.isPending}
+            label="Submit for Approval"
+            onPress={() => handleSubmit(true)}
+            loading={createMutation.isPending || setStatusMutation.isPending}
             fullWidth
             size="lg"
             icon={<CheckCircle size={16} color={C.white} />}
             testID="create-listing-submit"
           />
-          <Text style={styles.hint}>Listing will be saved as Draft. Go to Listings to submit for approval.</Text>
+          <View style={{ height: 10 }} />
+          <Button
+            label="Save as Draft"
+            onPress={() => handleSubmit(false)}
+            loading={createMutation.isPending && !setStatusMutation.isPending}
+            variant="secondary"
+            fullWidth
+            size="lg"
+            testID="create-listing-draft"
+          />
+          <Text style={styles.hint}>Submit for Approval sends your listing to an admin to review. Once approved, it goes live for customers.</Text>
         </View>
       </ScrollView>
     </View>
