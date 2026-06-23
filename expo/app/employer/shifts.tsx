@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Users, CheckCircle, XCircle, Clock, Star, ChevronDown, ChevronUp,
-  Award, User, AlertTriangle, AlertCircle, LogIn, LogOut as LogOutIcon,
+  Award, User, AlertTriangle, AlertCircle, LogIn, LogOut as LogOutIcon, MessageCircle,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -100,6 +100,12 @@ export default function EmployerShifts() {
   const [confirmHours, setConfirmHours] = useState('');
   const [editingHours, setEditingHours] = useState(false);
   const [reviewFor, setReviewFor] = useState<{ assignmentId: string; workerUserId: string; workerName: string } | null>(null);
+  const openThreadM = trpc.messaging.openShiftThread.useMutation({
+    onSuccess: (res: { threadId: string }) => {
+      if (res?.threadId) router.push(`/messages/${res.threadId}` as any);
+    },
+    onError: (e: Error) => Alert.alert('Unable to open chat', e.message),
+  });
   const [expandedApplicantId, setExpandedApplicantId] = useState<string | null>(null);
   const [noShowFor, setNoShowFor] = useState<AssignmentRow | null>(null);
   const [noShowReason, setNoShowReason] = useState('');
@@ -605,6 +611,10 @@ export default function EmployerShifts() {
                               <Text style={styles.workerName}>{getWorkerName(ass.worker_user_id)}</Text>
                               <Text style={styles.appliedAt}>${ass.confirmed_rate}/hr</Text>
                             </View>
+                            <TouchableOpacity onPress={() => openThreadM.mutate({ shiftId: ass.shift_id })} disabled={openThreadM.isPending} style={styles.msgBtn}>
+                              <MessageCircle size={13} color={C.accent} />
+                              <Text style={styles.msgBtnText}>{openThreadM.isPending ? '…' : 'Message'}</Text>
+                            </TouchableOpacity>
                             <StatusBadge status={ass.status} />
                             {['Completed', 'HoursConfirmed', 'Confirmed'].includes(ass.status) &&
                               !reviewedIds.has(ass.id) && (
@@ -1051,6 +1061,8 @@ const styles = StyleSheet.create({
   workerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
   workerAvatarText: { fontSize: 14, fontWeight: '700' as const, color: C.accent },
   workerName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  msgBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
+  msgBtnText: { color: C.accent, fontSize: 12, fontWeight: '600' as const },
   appliedAt: { fontSize: 11, color: C.textMuted, marginTop: 1 },
   applicantBtns: { flexDirection: 'row', gap: 8 },
   acceptBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },

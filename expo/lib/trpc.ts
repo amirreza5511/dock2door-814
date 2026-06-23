@@ -1162,6 +1162,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { id: data!.id };
   },
 
+  'messaging.openShiftThread': async (input: { shiftId: string }) => {
+    const { data, error } = await supabase.rpc('open_shift_thread', { p_shift_id: input.shiftId });
+    if (error) throwErr(error, 'Unable to open conversation');
+    return { threadId: data as string };
+  },
+
   'messaging.getThread': async (input: { threadId: string }) => {
     const { data, error } = await supabase.from('chat_threads').select('*').eq('id', input.threadId).maybeSingle();
     if (error || !data) throw new Error('Thread not found');

@@ -5,7 +5,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon,
+  MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon, MessageCircle,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -171,6 +171,13 @@ export default function WorkerMyShifts() {
       setGpsChecking(false);
     }
   };
+  const openThreadM = trpc.messaging.openShiftThread.useMutation({
+    onSuccess: (res: { threadId: string }) => {
+      if (res?.threadId) router.push(`/messages/${res.threadId}` as any);
+    },
+    onError: (e: Error) => Alert.alert('Unable to open chat', e.message),
+  });
+
   const clockOutM = trpc.shifts.clockOut.useMutation({
     onSuccess: async () => { await invalidate(); Alert.alert('Shift ended', 'Awaiting employer to confirm your hours.'); },
     onError: (e: Error) => Alert.alert('Unable to clock out', e.message),
@@ -435,6 +442,10 @@ export default function WorkerMyShifts() {
                       </View>
                       <Text style={styles.shiftTitle}>{shift?.title ?? '—'}</Text>
                       {shift && (<TouchableOpacity onPress={() => router.push({ pathname: '/company/[id]' as any, params: { id: shift.employer_company_id } })}><Text style={[styles.employer, styles.employerLink]}>{getEmpName(shift.employer_company_id)}</Text></TouchableOpacity>)}
+                      <TouchableOpacity onPress={() => openThreadM.mutate({ shiftId: ass.shift_id })} disabled={openThreadM.isPending} style={styles.msgLink}>
+                        <MessageCircle size={13} color={C.accent} />
+                        <Text style={styles.msgLinkText}>{openThreadM.isPending ? 'Opening…' : 'Message employer'}</Text>
+                      </TouchableOpacity>
                       {te?.start_timestamp && (
                         <View style={styles.timerCard}>
                           <Clock size={16} color={C.accent} />
@@ -460,6 +471,10 @@ export default function WorkerMyShifts() {
                         </View>
                         <StatusBadge status={ass.status} />
                       </View>
+                      <TouchableOpacity onPress={() => openThreadM.mutate({ shiftId: ass.shift_id })} disabled={openThreadM.isPending} style={styles.msgLink}>
+                        <MessageCircle size={13} color={C.accent} />
+                        <Text style={styles.msgLinkText}>{openThreadM.isPending ? 'Opening…' : 'Message employer'}</Text>
+                      </TouchableOpacity>
                       {shift && (
                         <>
                           <View style={styles.metaRow}>
@@ -841,6 +856,8 @@ const styles = StyleSheet.create({
   list: { padding: 16, gap: 12 },
   card: { gap: 10 },
   cardActive: { borderColor: C.accent + '50', backgroundColor: C.accent + '08' },
+  msgLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
+  msgLinkText: { color: C.accent, fontSize: 12.5, fontWeight: '600' as const },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   activePill: {
     alignSelf: 'flex-start',
