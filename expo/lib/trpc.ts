@@ -1183,6 +1183,33 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { name: row?.name ?? null, phone: (row?.phone ?? '').trim() || null };
   },
 
+  // Posts a message authored by the AI assistant (or a system note) into a
+  // support thread. Stored with sender = the caller (the only id RLS allows)
+  // but author_kind != 'user' so the UI renders it as the assistant/system.
+  'messaging.sendSupportReply': async (
+    input: { threadId: string; body: string; authorKind?: 'ai' | 'system' },
+    ctx,
+  ) => {
+    const { data, error } = await supabase.from('thread_messages').insert({
+      thread_id: input.threadId,
+      sender_user_id: ctx.user.id,
+      body: input.body,
+      attachments: [],
+      author_kind: input.authorKind ?? 'ai',
+    }).select().single();
+    if (error) throwErr(error, 'Unable to post reply');
+    await supabase.from('chat_threads').update({ updated_at: new Date().toISOString() }).eq('id', input.threadId);
+    return { id: data!.id };
+  },
+
+  // Hands an AI support conversation over to real humans: joins all admins and
+  // flips the thread's support_status to 'human'.
+  'messaging.escalateSupport': async (input: { threadId: string }) => {
+    const { error } = await supabase.rpc('escalate_support_thread', { p_thread_id: input.threadId });
+    if (error) throwErr(error, 'Unable to reach a human agent');
+    return { success: true };
+  },
+
   // Admin/super-admin support inbox: every Support conversation across all users.
   'messaging.listSupportThreads': async () => {
     const { data, error } = await supabase.rpc('list_support_threads');

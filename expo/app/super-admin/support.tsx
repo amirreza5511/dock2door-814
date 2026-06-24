@@ -18,6 +18,7 @@ interface SupportThreadRow {
   requester_email: string;
   last_message: string | null;
   is_member: boolean;
+  support_status?: string | null;
 }
 
 export default function SuperAdminSupportInbox() {
@@ -54,7 +55,7 @@ export default function SuperAdminSupportInbox() {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Support Inbox</Text>
-          <Text style={styles.sub}>{threads.length} conversation{threads.length === 1 ? '' : 's'}</Text>
+          <Text style={styles.sub}>{threads.length} need{threads.length === 1 ? 's' : ''} a human</Text>
         </View>
       </View>
 
@@ -85,6 +86,9 @@ export default function SuperAdminSupportInbox() {
               <View style={{ flex: 1 }}>
                 <View style={styles.rowTop}>
                   <Text style={styles.name} numberOfLines={1}>{thread.requester_name}</Text>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>Needs human</Text>
+                  </View>
                   <Text style={styles.time}>{new Date(thread.updated_at).toLocaleDateString()}</Text>
                 </View>
                 <Text style={styles.preview} numberOfLines={1}>{thread.last_message ?? 'No messages yet'}</Text>
@@ -115,4 +119,6 @@ const styles = StyleSheet.create({
   preview: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   email: { fontSize: 11, color: C.textMuted, marginTop: 2 },
   time: { fontSize: 11, color: C.textMuted },
+  badge: { backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontSize: 10, fontWeight: '800' as const, color: C.accent },
 });

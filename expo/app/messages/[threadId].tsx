@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Linking } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Linking, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Paperclip, Send, X, Phone } from 'lucide-react-native';
+import { ArrowLeft, Paperclip, Send, X, Phone, Sparkles, Headphones } from 'lucide-react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import AttachmentList, { type AttachmentItem } from '@/components/ui/AttachmentList';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -10,6 +10,7 @@ import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+import { askAssistant, type AiMessage } from '@/lib/ai';
 
 interface MessageRow {
   id: string;
@@ -18,6 +19,7 @@ interface MessageRow {
   body: string;
   attachments: unknown;
   created_at: string;
+  author_kind?: string | null;
 }
 
 function parseAttachments(raw: unknown): AttachmentItem[] {
@@ -54,6 +56,10 @@ export default function MessageThread() {
     },
   });
   const markReadMutation = trpc.messaging.markThreadRead.useMutation();
+  const sendSupportReply = trpc.messaging.sendSupportReply.useMutation();
+  const escalateMutation = trpc.messaging.escalateSupport.useMutation();
+  const [aiThinking, setAiThinking] = useState<boolean>(false);
+  const [escalating, setEscalating] = useState<boolean>(false);
   // Hold latest mutation/utils in refs so realtime + mark-read effects don't
   // re-run on every render (these objects get a fresh identity each render,
   // which previously caused an infinite subscribe/mark-read loop that flooded
@@ -164,9 +170,76 @@ export default function MessageThread() {
     }
   }, [messagesQuery.data]);
 
+  const threadData = threadQuery.data as { scope?: string; support_status?: string | null } | undefined;
+  const isSupportAi = threadData?.scope === 'Support' && (threadData?.support_status ?? 'ai') === 'ai';
+
+  // Generate an AI support reply for the user's latest message. If the AI can't
+  // resolve it (or the user asks for a person), it appends [[ESCALATE]] and we
+  // hand the thread to real humans.
+  const runAiSupport = useCallback(async (userText: string) => {
+    if (!threadId) return;
+    setAiThinking(true);
+    try {
+      const prior = ((messagesQuery.data as MessageRow[] | undefined) ?? [])
+        .filter((m) => m.author_kind !== 'system')
+        .map((m): AiMessage => ({ role: m.author_kind === 'ai' ? 'assistant' : 'user', content: m.body }));
+      const systemPrompt =
+        `You are dock2door Support — the first-line support agent inside a logistics and labour-staffing app. ` +
+        `The user's role is "${user?.role ?? 'guest'}". Be warm, concise and practical. Help with shifts, clocking in/out, ` +
+        `bookings, payments, profiles, documents, warehousing and account questions. ` +
+        `If you genuinely cannot resolve the issue, or the user clearly asks to talk to a human/person/agent/support staff, ` +
+        `reassure them you're connecting them with the dock2door team and end your message with a final line containing exactly [[ESCALATE]].`;
+      const reply = await askAssistant([{ role: 'system', content: systemPrompt }, ...prior, { role: 'user', content: userText }]);
+      const shouldEscalate = /\[\[ESCALATE\]\]/i.test(reply);
+      const clean = reply.replace(/\[\[ESCALATE\]\]/gi, '').trim() || 'Let me connect you with our team.';
+      await sendSupportReply.mutateAsync({ threadId, body: clean, authorKind: 'ai' });
+      if (shouldEscalate) {
+        await escalateMutation.mutateAsync({ threadId });
+        await sendSupportReply.mutateAsync({
+          threadId,
+          body: "You're now connected with the dock2door team. A human agent will reply here shortly.",
+          authorKind: 'system',
+        });
+        await utilsRef.current.messaging.getThread.invalidate({ threadId });
+      }
+    } catch {
+      await sendSupportReply
+        .mutateAsync({
+          threadId,
+          body: "I'm having trouble answering right now. Tap \u201cTalk to a human\u201d below and our team will help you directly.",
+          authorKind: 'system',
+        })
+        .catch(() => undefined);
+    } finally {
+      setAiThinking(false);
+      await utilsRef.current.messaging.listMessages.invalidate({ threadId });
+      await utilsRef.current.messaging.listThreads.invalidate();
+    }
+  }, [threadId, messagesQuery.data, user?.role, sendSupportReply, escalateMutation]);
+
+  const handleTalkToHuman = useCallback(async () => {
+    if (!threadId || escalating) return;
+    setEscalating(true);
+    try {
+      await escalateMutation.mutateAsync({ threadId });
+      await sendSupportReply.mutateAsync({
+        threadId,
+        body: "You asked to speak with a person \u2014 connecting you with the dock2door team. A human agent will reply here shortly.",
+        authorKind: 'system',
+      });
+      await utilsRef.current.messaging.getThread.invalidate({ threadId });
+      await utilsRef.current.messaging.listMessages.invalidate({ threadId });
+    } catch (error) {
+      Alert.alert('Unable to reach a human', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setEscalating(false);
+    }
+  }, [threadId, escalating, escalateMutation, sendSupportReply]);
+
   const handleSend = () => {
     const body = text.trim();
     if ((!body && pendingAttachments.length === 0) || !threadId) return;
+    const aiShouldReply = isSupportAi && body.length > 0;
     sendMutation.mutate(
       {
         threadId,
@@ -174,7 +247,10 @@ export default function MessageThread() {
         attachments: pendingAttachments.map((a) => ({ id: a.id, name: a.name, url: a.url })),
       },
       {
-        onSuccess: () => { setPendingAttachments([]); },
+        onSuccess: () => {
+          setPendingAttachments([]);
+          if (aiShouldReply) void runAiSupport(body);
+        },
         onError: (error) => { Alert.alert('Unable to send message', error.message); },
       },
     );
@@ -228,12 +304,31 @@ export default function MessageThread() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top + 60}>
         <ScrollView ref={scrollRef} contentContainerStyle={styles.msgs} showsVerticalScrollIndicator={false}>
           {messages.length === 0 ? (
-            <Text style={styles.empty}>No messages yet. Say hello.</Text>
+            <Text style={styles.empty}>
+              {isSupportAi
+                ? 'Hi! I\u2019m the dock2door support assistant. Ask me anything \u2014 if I can\u2019t help, I\u2019ll connect you with a person.'
+                : 'No messages yet. Say hello.'}
+            </Text>
           ) : messages.map((m) => {
-            const mine = m.sender_user_id === user?.id;
+            const isAi = m.author_kind === 'ai';
+            const isSystem = m.author_kind === 'system';
+            const mine = !isAi && !isSystem && m.sender_user_id === user?.id;
             const attachments = parseAttachments(m.attachments);
+            if (isSystem) {
+              return (
+                <View key={m.id} style={styles.systemRow}>
+                  <Text style={styles.systemText}>{m.body}</Text>
+                </View>
+              );
+            }
             return (
               <View key={m.id} style={[styles.bubble, mine ? styles.bubbleMine : styles.bubbleOther]}>
+                {isAi ? (
+                  <View style={styles.aiTag}>
+                    <Sparkles size={11} color={C.accent} />
+                    <Text style={styles.aiTagText}>Support AI</Text>
+                  </View>
+                ) : null}
                 <Text style={[styles.bubbleText, mine && styles.bubbleTextMine]}>{m.body}</Text>
                 {attachments.length > 0 ? (
                   <View style={styles.attWrap}>
@@ -244,7 +339,25 @@ export default function MessageThread() {
               </View>
             );
           })}
+          {aiThinking ? (
+            <View style={[styles.bubble, styles.bubbleOther, styles.typing]}>
+              <ActivityIndicator size="small" color={C.accent} />
+              <Text style={styles.typingText}>Support AI is typing…</Text>
+            </View>
+          ) : null}
         </ScrollView>
+
+        {isSupportAi ? (
+          <TouchableOpacity
+            onPress={() => void handleTalkToHuman()}
+            disabled={escalating}
+            style={[styles.humanBtn, escalating && styles.sendBtnDisabled]}
+            testID="talk-to-human"
+          >
+            <Headphones size={15} color={C.accent} />
+            <Text style={styles.humanBtnText}>{escalating ? 'Connecting\u2026' : 'Talk to a human'}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {pendingAttachments.length > 0 ? (
           <View style={styles.pendingWrap}>
@@ -293,6 +406,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   callBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  aiTag: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 },
+  aiTagText: { fontSize: 10, fontWeight: '800' as const, color: C.accent, letterSpacing: 0.3 },
+  systemRow: { alignItems: 'center', paddingVertical: 6, paddingHorizontal: 16 },
+  systemText: { fontSize: 11.5, color: C.textMuted, textAlign: 'center', lineHeight: 17 },
+  typing: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' },
+  typingText: { fontSize: 12.5, color: C.textSecondary },
+  humanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: 14, marginBottom: 8, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: C.accent, backgroundColor: C.accentDim },
+  humanBtnText: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
   title: { fontSize: 17, fontWeight: '800' as const, color: C.text },
   sub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   msgs: { padding: 16, gap: 8 },
