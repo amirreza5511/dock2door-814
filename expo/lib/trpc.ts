@@ -1332,7 +1332,9 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     // gate_events is append-only and ordered by occurred_at (it has no created_at column).
     const orderColumn = table === 'gate_events' ? 'occurred_at' : 'created_at';
     const { data, error } = await supabase.from(table).select('*').order(orderColumn, { ascending: false }).limit(200);
-    if (error) return [];
+    // Never swallow query/RLS errors into an empty list — that disguises real backend
+    // failures as "No records". Surface the message so the UI can show a clear error.
+    if (error) throw new Error(error.message);
     return data ?? [];
   },
 

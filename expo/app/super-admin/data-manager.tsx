@@ -193,14 +193,13 @@ export default function SuperAdminDataManagerScreen() {
   }
 
   if (listQuery.isError) {
-    // Show the actual error message so the real root cause is visible in the UI,
-    // not just a generic "Unable to load data manager" with no details.
+    // Surface the real query/RLS error instead of disguising it as "No records".
     const errMsg = listQuery.error?.message ?? 'Unknown error';
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback
           state="error"
-          title="Unable to load data manager"
+          title={`Failed to load ${entity}`}
           description={errMsg}
           onRetry={() => void listQuery.refetch()}
         />
