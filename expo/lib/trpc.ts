@@ -1771,25 +1771,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_application_id: input.applicationId, p_rate: input.rate ?? null,
     });
     if (error) throwErr(error, 'Unable to accept applicant');
-    // Best-effort in-app notification to the worker. Never blocks the accept.
-    void (async () => {
-      const { data: app } = await supabase
-        .from('shift_applications')
-        .select('worker_user_id, shift_id')
-        .eq('id', input.applicationId)
-        .maybeSingle();
-      if (!app?.worker_user_id) return;
-      const { data: shift } = await supabase
-        .from('shift_posts').select('title').eq('id', app.shift_id).maybeSingle();
-      await supabase.from('notifications').insert({
-        user_id: app.worker_user_id,
-        kind: 'shift_accepted',
-        title: 'Application accepted! 🎉',
-        body: `You've been accepted for "${shift?.title ?? 'a shift'}". Check My Shifts to confirm attendance and clock in.`,
-        entity_type: 'shift_applications',
-        entity_id: input.applicationId,
-      });
-    })();
+    // Worker notification is queued inside employer_accept_applicant (migration 0036).
     return { assignmentId: data as string };
   },
   'shifts.rejectApplicant': async (input: { applicationId: string; reason?: string }) => {
@@ -1797,34 +1779,25 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_application_id: input.applicationId, p_reason: input.reason ?? null,
     });
     if (error) throwErr(error, 'Unable to reject');
-    // Best-effort in-app notification to the worker. Never blocks the reject.
-    void (async () => {
-      const { data: app } = await supabase
-        .from('shift_applications')
-        .select('worker_user_id, shift_id')
-        .eq('id', input.applicationId)
-        .maybeSingle();
-      if (!app?.worker_user_id) return;
-      const { data: shift } = await supabase
-        .from('shift_posts').select('title').eq('id', app.shift_id).maybeSingle();
-      await supabase.from('notifications').insert({
-        user_id: app.worker_user_id,
-        kind: 'shift_rejected',
-        title: 'Application not selected',
-        body: `Your application for "${shift?.title ?? 'a shift'}" was not selected${input.reason ? `. Reason: ${input.reason}` : '.'}`,
-        entity_type: 'shift_applications',
-        entity_id: input.applicationId,
-      });
-    })();
+    // Worker notification is queued inside employer_reject_applicant (migration 0058).
     return { success: true };
   },
-  'shifts.clockIn': async (input: { assignmentId: string }) => {
-    const { data, error } = await supabase.rpc('worker_clock_in', { p_assignment_id: input.assignmentId });
+  'shifts.clockIn': async (input: { assignmentId: string; lat?: number; lng?: number; accuracy?: number }) => {
+    const { data, error } = await supabase.rpc('worker_clock_in', {
+      p_assignment_id: input.assignmentId,
+      p_lat: input.lat ?? null,
+      p_lng: input.lng ?? null,
+      p_accuracy: input.accuracy ?? null,
+    });
     if (error) throwErr(error, 'Unable to clock in');
     return { timeEntryId: data as string };
   },
-  'shifts.clockOut': async (input: { assignmentId: string }) => {
-    const { error } = await supabase.rpc('worker_clock_out', { p_assignment_id: input.assignmentId });
+  'shifts.clockOut': async (input: { assignmentId: string; lat?: number; lng?: number }) => {
+    const { error } = await supabase.rpc('worker_clock_out', {
+      p_assignment_id: input.assignmentId,
+      p_lat: input.lat ?? null,
+      p_lng: input.lng ?? null,
+    });
     if (error) throwErr(error, 'Unable to clock out');
     return { success: true };
   },
@@ -1850,25 +1823,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_time_entry_id: input.timeEntryId, p_hours: input.hours, p_notes: input.notes ?? '',
     });
     if (error) throwErr(error, 'Unable to confirm hours');
-    // Best-effort: notify worker that hours have been confirmed. Never blocks the confirm.
-    void (async () => {
-      const { data: te } = await supabase
-        .from('time_entries').select('assignment_id').eq('id', input.timeEntryId).maybeSingle();
-      if (!te?.assignment_id) return;
-      const { data: ass } = await supabase
-        .from('shift_assignments').select('worker_user_id, shift_id').eq('id', te.assignment_id).maybeSingle();
-      if (!ass?.worker_user_id) return;
-      const { data: shift } = await supabase
-        .from('shift_posts').select('title').eq('id', ass.shift_id).maybeSingle();
-      await supabase.from('notifications').insert({
-        user_id: ass.worker_user_id,
-        kind: 'hours_confirmed',
-        title: 'Hours confirmed ✓',
-        body: `Your ${input.hours}h have been confirmed for "${shift?.title ?? 'your shift'}". Payment follows your employer's payroll schedule.`,
-        entity_type: 'time_entries',
-        entity_id: input.timeEntryId,
-      });
-    })();
+    // Worker notification is queued inside employer_confirm_hours (migration 0079).
     return { success: true };
   },
 
@@ -1992,25 +1947,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_reason: input.reason ?? null,
     });
     if (error) throwErr(error, 'Unable to approve certification');
-
-    // 2. Queue in-app notification for the worker.
-    const { data: cert } = await supabase
-      .from('worker_certifications')
-      .select('worker_user_id, type')
-      .eq('id', input.id)
-      .maybeSingle();
-    if (cert?.worker_user_id) {
-      // Best-effort — never block approval if notification table insert fails.
-      void supabase.from('notifications').insert({
-        user_id: cert.worker_user_id,
-        kind: 'cert_approved',
-        title: 'Certification approved',
-        body: `Your ${cert.type} certification has been approved.`,
-        entity_type: 'worker_certifications',
-        entity_id: input.id,
-      });
-    }
-
+    // Worker notification is queued inside admin_approve_certification (migration 0058).
     return { success: true };
   },
 
@@ -2021,25 +1958,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_reason: input.reason,
     });
     if (error) throwErr(error, 'Unable to reject certification');
-
-    // 2. Queue in-app notification for the worker.
-    const { data: cert } = await supabase
-      .from('worker_certifications')
-      .select('worker_user_id, type')
-      .eq('id', input.id)
-      .maybeSingle();
-    if (cert?.worker_user_id) {
-      // Best-effort — never block rejection if notification table insert fails.
-      void supabase.from('notifications').insert({
-        user_id: cert.worker_user_id,
-        kind: 'cert_rejected',
-        title: 'Certification rejected',
-        body: `Your ${cert.type} certification was not approved. Reason: ${input.reason}`,
-        entity_type: 'worker_certifications',
-        entity_id: input.id,
-      });
-    }
-
+    // Worker notification is queued inside admin_reject_certification (migration 0058).
     return { success: true };
   },
 

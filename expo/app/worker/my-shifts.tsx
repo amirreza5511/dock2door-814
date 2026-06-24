@@ -17,7 +17,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
-import { checkAtSite, SITE_RADIUS_METERS } from '@/lib/geo';
+import { checkAtSite, getCurrentCoords, SITE_RADIUS_METERS } from '@/lib/geo';
 
 type ViewTab = 'Active' | 'Applications' | 'History' | 'Earnings';
 
@@ -161,7 +161,7 @@ export default function WorkerMyShifts() {
         );
         return;
       }
-      clockInM.mutate({ assignmentId });
+      clockInM.mutate({ assignmentId, lat: result.coords.latitude, lng: result.coords.longitude });
     } catch (e) {
       Alert.alert(
         'Location check failed',
@@ -182,6 +182,17 @@ export default function WorkerMyShifts() {
     onSuccess: async () => { await invalidate(); Alert.alert('Shift ended', 'Awaiting employer to confirm your hours.'); },
     onError: (e: Error) => Alert.alert('Unable to clock out', e.message),
   });
+
+  /** Clock out, capturing the worker's coordinates best-effort (never blocks). */
+  const clockOutWithGps = async (assignmentId: string) => {
+    if (clockOutM.isPending) return;
+    try {
+      const coords = await getCurrentCoords();
+      clockOutM.mutate({ assignmentId, lat: coords.latitude, lng: coords.longitude });
+    } catch {
+      clockOutM.mutate({ assignmentId });
+    }
+  };
   const withdrawM = trpc.shifts.withdraw.useMutation({
     onSuccess: invalidate,
     onError: (e: Error) => Alert.alert('Unable to withdraw', e.message),
@@ -454,7 +465,7 @@ export default function WorkerMyShifts() {
                       )}
                       <Button
                         label="Clock Out"
-                        onPress={() => clockOutM.mutate({ assignmentId: ass.id })}
+                        onPress={() => { void clockOutWithGps(ass.id); }}
                         loading={clockOutM.isPending}
                         fullWidth
                         size="lg"
