@@ -1183,6 +1183,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { name: row?.name ?? null, phone: (row?.phone ?? '').trim() || null };
   },
 
+  // Admin/super-admin support inbox: every Support conversation across all users.
+  'messaging.listSupportThreads': async () => {
+    const { data, error } = await supabase.rpc('list_support_threads');
+    if (error) throwErr(error, 'Unable to load support inbox');
+    return data ?? [];
+  },
+
+  // Admin joins a thread (becomes a participant) so they can read + reply.
+  'messaging.adminJoinThread': async (input: { threadId: string }) => {
+    const { error } = await supabase.rpc('admin_join_thread', { p_thread_id: input.threadId });
+    if (error) throwErr(error, 'Unable to open conversation');
+    return { success: true };
+  },
+
   'messaging.getThread': async (input: { threadId: string }) => {
     const { data, error } = await supabase.from('chat_threads').select('*').eq('id', input.threadId).maybeSingle();
     if (error || !data) throw new Error('Thread not found');
@@ -1224,10 +1238,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
   'notifications.markRead': async (input: { id: string }) => {
-    // DB column is read_at (timestamp) from migration 0014; also set read=true for any legacy schema.
+    // DB has both `read` (boolean, migration 0001) and `read_at` (timestamp, 0014).
+    // The UI reads the `read` boolean, so set BOTH or the card stays "unread".
     const { error } = await supabase
       .from('notifications')
-      .update({ read_at: new Date().toISOString() })
+      .update({ read: true, read_at: new Date().toISOString() })
       .eq('id', input.id);
     if (error) throwErr(error, 'Unable to mark notification');
     return { success: true };
