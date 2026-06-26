@@ -5,6 +5,7 @@ import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, Truck, X } from 'lucide-react-native';
+import { useAuthStore } from '@/store/auth';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -34,6 +35,7 @@ const NEXT_ACTION: Record<string, { label: string; status: string; icon: React.C
 export default function DriverHomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const logout = useAuthStore((s) => s.logout);
   const utils = trpc.useUtils();
   const jobsQuery = trpc.operations.driverJobs.useQuery(undefined, { refetchInterval: 20000, refetchOnWindowFocus: true });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
@@ -221,6 +223,15 @@ export default function DriverHomeScreen() {
               <Text style={styles.heroTitle}>{partitioned.active.length + partitioned.upcoming.length} jobs assigned</Text>
             </View>
             <TouchableOpacity
+              testID="driver-logout"
+              onPress={logout}
+              style={styles.logoutBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Log out"
+            >
+              <LogOut size={16} color={C.red} />
+            </TouchableOpacity>
+            <TouchableOpacity
               testID="share-location-toggle"
               onPress={() => void toggleShareLocation()}
               style={[styles.gpsBtn, sharingLocation && styles.gpsBtnActive]}
@@ -305,6 +316,7 @@ const styles = StyleSheet.create({
   gpsBtnActive: { backgroundColor: C.accent, borderColor: C.accent },
   gpsBtnText: { fontSize: 12, fontWeight: '700' as const, color: C.accent },
   gpsMeta: { fontSize: 11, color: C.textMuted, marginTop: 4 },
+  logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40', alignItems: 'center', justifyContent: 'center' },
   greeting: { fontSize: 12, color: C.textMuted, fontWeight: '700' as const, letterSpacing: 1, textTransform: 'uppercase' as const },
   heroTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   heroStats: { flexDirection: 'row', gap: 10, marginTop: 10 },

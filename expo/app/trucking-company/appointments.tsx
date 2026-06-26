@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
+import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, RefreshControl } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, CalendarPlus, CircleDot, Clock, Filter, MapPin, Plus, Search, Truck, UserCheck, X } from 'lucide-react-native';
+import { AlertTriangle, CalendarDays, CalendarPlus, CircleDot, Clock, Filter, MapPin, Package, Plus, Search, Truck, UserCheck, Warehouse, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -36,6 +37,84 @@ interface AssignForm {
 
 const INITIAL_ASSIGN: AssignForm = { driverId: '', driverName: '', driverUserId: '', truckPlate: '', etaMinutes: '30', notes: '' };
 
+const APPOINTMENT_TYPES = ['Pallet Delivery', 'Pallet Pickup', 'Container', 'Floor Loaded', 'Other'] as const;
+
+/** Round a date up to the next whole hour, seconds zeroed. */
+function roundToNextHour(d: Date): Date {
+  const next = new Date(d);
+  next.setMinutes(0, 0, 0);
+  next.setHours(next.getHours() + 1);
+  return next;
+}
+
+function formatFriendly(d: Date): string {
+  return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Friendly date + time picker that hides the raw ISO timestamp from the user. */
+function DateTimeField({ label, value, onChange, minimumDate }: { label: string; value: Date; onChange: (d: Date) => void; minimumDate?: Date }) {
+  const [mode, setMode] = useState<null | 'date' | 'time'>(null);
+
+  if (Platform.OS === 'ios') {
+    return (
+      <View style={styles.dtField}>
+        <Text style={styles.dtLabel}>{label}</Text>
+        <DateTimePicker
+          value={value}
+          mode="datetime"
+          display="compact"
+          themeVariant="dark"
+          minimumDate={minimumDate}
+          onChange={(_e, d) => { if (d) onChange(d); }}
+          style={styles.dtIosPicker}
+        />
+      </View>
+    );
+  }
+
+  if (Platform.OS === 'android') {
+    return (
+      <View style={styles.dtField}>
+        <Text style={styles.dtLabel}>{label}</Text>
+        <View style={styles.dtRow}>
+          <TouchableOpacity style={styles.dtBtn} onPress={() => setMode('date')}>
+            <CalendarDays size={14} color={C.accent} />
+            <Text style={styles.dtBtnText}>{value.toLocaleDateString([], { month: 'short', day: 'numeric' })}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.dtBtn} onPress={() => setMode('time')}>
+            <Clock size={14} color={C.accent} />
+            <Text style={styles.dtBtnText}>{value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+          </TouchableOpacity>
+        </View>
+        {mode ? (
+          <DateTimePicker
+            value={value}
+            mode={mode}
+            display="default"
+            minimumDate={minimumDate}
+            onChange={(_e, d) => { setMode(null); if (d) onChange(d); }}
+          />
+        ) : null}
+      </View>
+    );
+  }
+
+  // Web fallback — native browser datetime input via a controlled text field.
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  return (
+    <View style={styles.dtField}>
+      <Text style={styles.dtLabel}>{label}</Text>
+      <TextInput
+        value={local}
+        onChangeText={(t) => { const d = new Date(t); if (!Number.isNaN(d.getTime())) onChange(d); }}
+        placeholder="YYYY-MM-DD HH:MM"
+        placeholderTextColor={C.textMuted}
+        style={styles.dtWebInput}
+      />
+    </View>
+  );
+}
+
 export default function DispatcherBoardScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
@@ -55,9 +134,11 @@ export default function DispatcherBoardScreen() {
   const [exceptionReason, setExceptionReason] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({
-    warehouseListingId: '', scheduledStart: '', scheduledEnd: '',
+    warehouseListingId: '',
     driverName: '', truckPlate: '', appointmentType: 'Pallet Delivery', palletCount: '1',
   });
+  const [startDate, setStartDate] = useState<Date>(() => roundToNextHour(new Date()));
+  const [endDate, setEndDate] = useState<Date>(() => { const s = roundToNextHour(new Date()); return new Date(s.getTime() + 60 * 60 * 1000); });
 
   const appointments = dashboardQuery.data?.appointments ?? [];
   const drivers = (dashboardQuery.data?.drivers ?? []) as Array<{ id: string; name: string; status?: string; data?: Record<string, unknown> | null }>;
@@ -140,22 +221,29 @@ export default function DispatcherBoardScreen() {
 
   const handleCreate = async () => {
     const f = createForm;
-    if (!f.warehouseListingId.trim() || !f.scheduledStart.trim() || !f.scheduledEnd.trim()) {
-      Alert.alert('Missing fields', 'Listing and start/end times are required.');
+    if (!f.warehouseListingId.trim()) {
+      Alert.alert('Which warehouse?', 'Enter the warehouse this truck is going to.');
+      return;
+    }
+    if (endDate.getTime() <= startDate.getTime()) {
+      Alert.alert('Check the times', 'The end of the slot must be after the start.');
       return;
     }
     try {
       await createMutation.mutateAsync({
         warehouseListingId: f.warehouseListingId.trim(),
-        scheduledStart: f.scheduledStart.trim(),
-        scheduledEnd: f.scheduledEnd.trim(),
+        scheduledStart: startDate.toISOString(),
+        scheduledEnd: endDate.toISOString(),
         driverName: f.driverName.trim() || null,
         truckPlate: f.truckPlate.trim() || null,
         appointmentType: f.appointmentType.trim(),
         palletCount: Number(f.palletCount) || 1,
       });
       setCreateOpen(false);
-      setCreateForm({ ...createForm, warehouseListingId: '', scheduledStart: '', scheduledEnd: '', driverName: '', truckPlate: '', palletCount: '1' });
+      setCreateForm({ warehouseListingId: '', driverName: '', truckPlate: '', appointmentType: 'Pallet Delivery', palletCount: '1' });
+      const s = roundToNextHour(new Date());
+      setStartDate(s);
+      setEndDate(new Date(s.getTime() + 60 * 60 * 1000));
     } catch (err) { Alert.alert('Create failed', err instanceof Error ? err.message : 'Unknown'); }
   };
 
@@ -375,18 +463,40 @@ export default function DispatcherBoardScreen() {
       <Modal visible={createOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCreateOpen(false)}>
         <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>New dock appointment</Text>
+            <Text style={styles.modalTitle}>Book a dock slot</Text>
             <TouchableOpacity onPress={() => setCreateOpen(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalBody}>
-            <Input label="Warehouse Listing ID" value={createForm.warehouseListingId} onChangeText={(v) => setCreateForm({ ...createForm, warehouseListingId: v })} placeholder="listing_…" />
-            <Input label="Start (ISO)" value={createForm.scheduledStart} onChangeText={(v) => setCreateForm({ ...createForm, scheduledStart: v })} placeholder="2026-05-01T10:00:00Z" />
-            <Input label="End (ISO)" value={createForm.scheduledEnd} onChangeText={(v) => setCreateForm({ ...createForm, scheduledEnd: v })} placeholder="2026-05-01T11:00:00Z" />
-            <Input label="Appointment type" value={createForm.appointmentType} onChangeText={(v) => setCreateForm({ ...createForm, appointmentType: v })} />
-            <Input label="Pallets" value={createForm.palletCount} onChangeText={(v) => setCreateForm({ ...createForm, palletCount: v })} keyboardType="numeric" />
-            <Input label="Driver name (optional)" value={createForm.driverName} onChangeText={(v) => setCreateForm({ ...createForm, driverName: v })} />
-            <Input label="Truck plate (optional)" value={createForm.truckPlate} onChangeText={(v) => setCreateForm({ ...createForm, truckPlate: v })} autoCapitalize="characters" />
-            <Button label="Create appointment" onPress={() => void handleCreate()} loading={createMutation.isPending} fullWidth size="lg" icon={<CalendarPlus size={15} color={C.white} />} />
+            <Text style={styles.formIntro}>Reserve a time for a truck to load or unload at a warehouse.</Text>
+
+            <View style={styles.sectionLabelRow}><Warehouse size={13} color={C.accent} /><Text style={styles.sectionLabel}>Warehouse</Text></View>
+            <Input label="Warehouse" value={createForm.warehouseListingId} onChangeText={(v) => setCreateForm({ ...createForm, warehouseListingId: v })} placeholder="Warehouse name or code" />
+            <Text style={styles.fieldHint}>Use the warehouse code your dispatcher shared, or the one shown on the booking.</Text>
+
+            <View style={styles.sectionLabelRow}><Clock size={13} color={C.accent} /><Text style={styles.sectionLabel}>Time slot</Text></View>
+            <DateTimeField label="Arrives" value={startDate} onChange={(d) => { setStartDate(d); if (endDate.getTime() <= d.getTime()) setEndDate(new Date(d.getTime() + 60 * 60 * 1000)); }} minimumDate={new Date()} />
+            <DateTimeField label="Done by" value={endDate} onChange={setEndDate} minimumDate={startDate} />
+            <Text style={styles.fieldHint}>Booking {formatFriendly(startDate)} → {formatFriendly(endDate)}.</Text>
+
+            <View style={styles.sectionLabelRow}><Package size={13} color={C.accent} /><Text style={styles.sectionLabel}>Load</Text></View>
+            <Text style={styles.pickLabel}>What is the truck doing?</Text>
+            <View style={styles.typeRow}>
+              {APPOINTMENT_TYPES.map((t) => {
+                const active = createForm.appointmentType === t;
+                return (
+                  <TouchableOpacity key={t} onPress={() => setCreateForm({ ...createForm, appointmentType: t })} style={[styles.typeChip, active && styles.typeChipActive]}>
+                    <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>{t}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Input label="How many pallets?" value={createForm.palletCount} onChangeText={(v) => setCreateForm({ ...createForm, palletCount: v })} keyboardType="numeric" />
+
+            <View style={styles.sectionLabelRow}><Truck size={13} color={C.accent} /><Text style={styles.sectionLabel}>Driver (optional)</Text></View>
+            <Input label="Driver name" value={createForm.driverName} onChangeText={(v) => setCreateForm({ ...createForm, driverName: v })} placeholder="Add now or assign later" />
+            <Input label="Truck plate" value={createForm.truckPlate} onChangeText={(v) => setCreateForm({ ...createForm, truckPlate: v })} autoCapitalize="characters" placeholder="e.g. ABC 1234" />
+
+            <Button label="Book this slot" onPress={() => void handleCreate()} loading={createMutation.isPending} fullWidth size="lg" icon={<CalendarPlus size={15} color={C.white} />} />
             <Button label="Cancel" onPress={() => setCreateOpen(false)} variant="ghost" fullWidth />
           </ScrollView>
         </View>
@@ -442,6 +552,22 @@ const styles = StyleSheet.create({
   closeBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   modalBody: { padding: 20, gap: 12 },
   pickLabel: { fontSize: 11, color: C.textMuted, fontWeight: '700' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  formIntro: { fontSize: 13, color: C.textSecondary, marginBottom: 4 },
+  sectionLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  sectionLabel: { fontSize: 12, fontWeight: '800' as const, color: C.text, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  fieldHint: { fontSize: 11, color: C.textMuted, marginTop: -4 },
+  dtField: { gap: 6 },
+  dtLabel: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
+  dtIosPicker: { alignSelf: 'flex-start' },
+  dtRow: { flexDirection: 'row', gap: 8 },
+  dtBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  dtBtnText: { fontSize: 13, color: C.text, fontWeight: '600' as const },
+  dtWebInput: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 12, color: C.text, fontSize: 14 },
+  typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  typeChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  typeChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  typeChipTextActive: { color: C.accent, fontWeight: '700' as const },
   driverRow: { gap: 6, paddingVertical: 4 },
   driverChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   driverChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
