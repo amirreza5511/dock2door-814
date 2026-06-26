@@ -882,17 +882,35 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'operations.gatePanel': async (_input, ctx) => {
+  // gateWarehouses — the warehouses (listings) owned by the gate staff's company.
+  // Each warehouse is a separate gate; the panel scopes appointments to one of these.
+  'operations.gateWarehouses': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data } = await supabase
+      .from('warehouse_listings')
+      .select('id,name')
+      .eq('company_id', ctx.user.companyId)
+      .order('name');
+    return (data ?? []).map((x) => ({ id: String(x.id), name: String((x as AnyRecord).name ?? 'Warehouse') }));
+  },
+
+  // gatePanel — today's dock appointments for ONE warehouse (gate). A company can run
+  // several warehouses; each has its own gate, so a listingId must be supplied to scope
+  // the queue. Without it, no appointments are returned (the UI prompts to pick a gate).
+  'operations.gatePanel': async (input: { listingId?: string | null } | undefined, ctx) => {
     if (!ctx.user.companyId) return [];
     const { data: myListings } = await supabase.from('warehouse_listings').select('id').eq('company_id', ctx.user.companyId);
-    const ids = (myListings ?? []).map((x) => x.id);
-    if (ids.length === 0) return [];
+    const ownedIds = (myListings ?? []).map((x) => String(x.id));
+    if (ownedIds.length === 0) return [];
+    const requested = input?.listingId ? String(input.listingId) : null;
+    // Only allow filtering to a warehouse the company actually owns.
+    if (!requested || !ownedIds.includes(requested)) return [];
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const end = new Date(today); end.setDate(end.getDate() + 1);
     const { data } = await supabase
       .from('dock_appointments').select('*')
-      .in('warehouse_listing_id', ids)
+      .eq('warehouse_listing_id', requested)
       .gte('scheduled_start', today.toISOString())
       .lt('scheduled_start', end.toISOString())
       .order('scheduled_start');

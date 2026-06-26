@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CircleCheckBig, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
+import { CircleCheckBig, LogOut, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -9,6 +9,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { useAuthStore } from '@/store/auth';
 
 /** Map appointment status → gate_event kind understood by gate_record_event RPC (migration 0014). */
 const STATUS_TO_KIND: Record<string, string> = {
@@ -54,13 +55,31 @@ const INITIAL_FORM: FormState = {
 export default function GatePanelScreen() {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
+  const logout = useAuthStore((s) => s.logout);
 
   // Search state — was previously an undeclared variable causing a runtime error.
   const [search, setSearch] = useState<string>('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
 
-  const panelQuery = trpc.operations.gatePanel.useQuery();
+  // Each warehouse is its own gate. The panel is scoped to a single selected warehouse;
+  // appointments from other warehouses never appear here.
+  const [listingId, setListingId] = useState<string | null>(null);
+  const warehousesQuery = trpc.operations.gateWarehouses.useQuery();
+  const warehouses = useMemo(
+    () => (warehousesQuery.data ?? []) as { id: string; name: string }[],
+    [warehousesQuery.data],
+  );
+
+  // Auto-select the only warehouse so single-site companies skip the picker.
+  React.useEffect(() => {
+    if (!listingId && warehouses.length === 1) setListingId(warehouses[0].id);
+  }, [listingId, warehouses]);
+
+  const panelQuery = trpc.operations.gatePanel.useQuery(
+    { listingId },
+    { enabled: Boolean(listingId) },
+  );
 
   /**
    * All gate-staff advancement now routes through yard.recordEvent which calls
@@ -158,7 +177,15 @@ export default function GatePanelScreen() {
     ]);
   };
 
-  if (panelQuery.isLoading) {
+  if (warehousesQuery.isLoading) {
+    return (
+      <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
+        <ScreenFeedback state="loading" title="Loading warehouses" />
+      </View>
+    );
+  }
+
+  if (listingId && panelQuery.isLoading) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback state="loading" title="Loading gate panel" />
@@ -166,7 +193,7 @@ export default function GatePanelScreen() {
     );
   }
 
-  if (panelQuery.isError) {
+  if (listingId && panelQuery.isError) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback state="error" title="Unable to load gate panel" onRetry={() => void panelQuery.refetch()} />
@@ -192,9 +219,45 @@ export default function GatePanelScreen() {
         contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Gate Staff Panel</Text>
-        <Text style={styles.subtitle}>Approve arrivals and advance dock appointments via gate events.</Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>Gate Staff Panel</Text>
+          <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="gate-logout-btn">
+            <LogOut size={18} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.subtitle}>Each warehouse has its own gate. Pick a gate to manage its arrivals.</Text>
 
+        {/* Warehouse (gate) selector */}
+        {warehouses.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gateRow}>
+            {warehouses.map((w) => (
+              <TouchableOpacity
+                key={w.id}
+                onPress={() => setListingId(w.id)}
+                style={[styles.gateChip, listingId === w.id && styles.gateChipActive]}
+                testID={`gate-${w.id}`}
+              >
+                <Warehouse size={13} color={listingId === w.id ? C.accent : C.textSecondary} />
+                <Text style={[styles.gateChipText, listingId === w.id && styles.gateChipTextActive]}>{w.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        {warehouses.length === 0 ? (
+          <EmptyState
+            icon={Warehouse}
+            title="No warehouses yet"
+            description="Once your company has a warehouse, its gate will appear here."
+          />
+        ) : !listingId ? (
+          <EmptyState
+            icon={Warehouse}
+            title="Select a gate"
+            description="Choose a warehouse above to see today's arrivals for that gate."
+          />
+        ) : (
+        <>
         {/* Stats */}
         <View style={styles.statsRow}>
           {([['Queue', stats.queue], ['On Site', stats.onSite], ['Active', stats.active], ['Done', stats.completed]] as [string, number][]).map(([label, value]) => (
@@ -265,6 +328,8 @@ export default function GatePanelScreen() {
               </Card>
             );
           })
+        )}
+        </>
         )}
       </ScrollView>
 
@@ -354,8 +419,15 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   centered: { justifyContent: 'center', padding: 20 },
   scroll: { paddingHorizontal: 20, gap: 14 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 24, fontWeight: '800' as const, color: C.text },
+  logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 4 },
+  gateRow: { gap: 8, paddingVertical: 2 },
+  gateChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  gateChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  gateChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  gateChipTextActive: { color: C.accent, fontWeight: '700' as const },
   statsRow: { flexDirection: 'row', gap: 8 },
   statCard: { flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 12 },
   statValue: { fontSize: 20, fontWeight: '800' as const, color: C.text },
