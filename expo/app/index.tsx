@@ -8,14 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
-  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck,
+  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 
 type WorldDef = {
-  key: 'labour' | 'logistics';
+  key: 'labour' | 'logistics' | 'freight';
   badge: string;
   color: string;
   bg: string;
@@ -51,6 +51,19 @@ const WORLDS: WorldDef[] = [
       { icon: Warehouse, label: 'Warehouse Space', sub: 'Dry · Chill · Frozen' },
       { icon: Wrench, label: 'Industrial Services', sub: 'On-demand crews' },
       { icon: Truck, label: 'Trucking & Fulfillment', sub: 'Move and ship goods' },
+    ],
+  },
+  {
+    key: 'freight',
+    badge: 'Domain 3',
+    color: C.green,
+    bg: C.greenDim,
+    icon: PackageOpen,
+    title: 'Freight & Delivery',
+    desc: 'Uber for trucks — post any delivery, from a single box to a full load, and nearby drivers grab it.',
+    bullets: [
+      { icon: PackageOpen, label: 'Shippers', sub: 'Post loads — parcel to full truck' },
+      { icon: Truck, label: 'Drivers / Carriers', sub: 'Accept loads on a live map' },
     ],
   },
 ];
@@ -204,6 +217,8 @@ export default function Landing() {
               { role: 'Service Provider', desc: 'Offer industrial services', icon: Wrench, color: C.green },
               { role: 'Employer', desc: 'Post and fill shifts fast', icon: Clock, color: C.yellow },
               { role: 'Worker', desc: 'Find shifts that fit you', icon: Users, color: C.purple },
+              { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green },
+              { role: 'Driver / Carrier', desc: 'Accept loads & deliver', icon: Truck, color: C.green },
               { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
             ].map((r) => (
               <View key={r.role} style={styles.roleCard}>

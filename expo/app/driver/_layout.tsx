@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { ClipboardCheck, LayoutDashboard } from 'lucide-react-native';
+import { ClipboardCheck, LayoutDashboard, ShieldCheck } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
@@ -18,6 +18,7 @@ export default function DriverLayout() {
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Jobs', tabBarIcon: ({ color }) => <LayoutDashboard size={22} color={color} /> }} />
+      <Tabs.Screen name="documents" options={{ title: 'Compliance', tabBarIcon: ({ color }) => <ShieldCheck size={22} color={color} /> }} />
       <Tabs.Screen name="pod" options={{ title: 'POD', tabBarIcon: ({ color }) => <ClipboardCheck size={22} color={color} /> }} />
     </Tabs>
   );

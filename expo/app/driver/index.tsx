@@ -4,8 +4,11 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, Truck, X } from 'lucide-react-native';
+import { AlertTriangle, Camera, ChevronRight, Clock, FileText, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, ShieldAlert, ShieldCheck, Truck, X } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
+import { supabase } from '@/lib/supabase';
+import { useQuery } from '@tanstack/react-query';
+import { CARRIER_DOCS, REQUIRED_CARRIER_DOC_COUNT, carrierDocKeyFromType, isCarrierDocType, type CarrierDocKey } from '@/constants/carrier-docs';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -36,6 +39,31 @@ export default function DriverHomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
+  const user = useAuthStore((s) => s.user);
+
+  const complianceQuery = useQuery({
+    queryKey: ['carrier-docs', user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async (): Promise<number> => {
+      if (!user?.id) return 0;
+      const { data, error } = await supabase
+        .from('worker_certifications')
+        .select('type,status')
+        .eq('worker_user_id', user.id)
+        .eq('status', 'Approved');
+      if (error) throw new Error(error.message);
+      const approvedKeys = new Set<CarrierDocKey>();
+      for (const r of (data ?? []) as { type: string }[]) {
+        if (!isCarrierDocType(r.type)) continue;
+        const key = carrierDocKeyFromType(r.type);
+        if (key) approvedKeys.add(key);
+      }
+      return CARRIER_DOCS.filter((d) => d.required && approvedKeys.has(d.key)).length;
+    },
+    staleTime: 30_000,
+  });
+  const approvedRequired = complianceQuery.data ?? 0;
+  const compliant = approvedRequired >= REQUIRED_CARRIER_DOC_COUNT;
   const utils = trpc.useUtils();
   const jobsQuery = trpc.operations.driverJobs.useQuery(undefined, { refetchInterval: 20000, refetchOnWindowFocus: true });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
@@ -256,6 +284,23 @@ export default function DriverHomeScreen() {
           </View>
         </View>
 
+        <TouchableOpacity
+          style={[styles.complianceBanner, compliant ? styles.complianceOk : styles.complianceWarn]}
+          onPress={() => router.push('/driver/documents' as never)}
+          activeOpacity={0.85}
+        >
+          {compliant ? <ShieldCheck size={20} color={C.green} /> : <ShieldAlert size={20} color={C.yellow} />}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.complianceTitle}>{compliant ? 'Compliance verified' : 'Complete your compliance'}</Text>
+            <Text style={styles.complianceSub}>
+              {compliant
+                ? 'All required documents approved — you’re cleared to haul.'
+                : `${approvedRequired}/${REQUIRED_CARRIER_DOC_COUNT} documents approved · insurance, NSC, abstract, CRC, inspection…`}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={C.textMuted} />
+        </TouchableOpacity>
+
         <View style={styles.marketRow}>
           <TouchableOpacity style={styles.marketBtn} onPress={() => router.push('/driver/loads' as never)}>
             <MapPin size={18} color={C.white} />
@@ -334,6 +379,11 @@ const styles = StyleSheet.create({
   heroStat: { flex: 1, backgroundColor: C.bgSecondary, borderRadius: 12, padding: 12, alignItems: 'center' },
   heroStatValue: { fontSize: 20, fontWeight: '800' as const, color: C.text },
   heroStatLabel: { fontSize: 10, color: C.textMuted, marginTop: 2, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  complianceBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, borderWidth: 1, padding: 14 },
+  complianceWarn: { backgroundColor: C.yellowDim, borderColor: C.yellow + '55' },
+  complianceOk: { backgroundColor: C.greenDim, borderColor: C.green + '55' },
+  complianceTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  complianceSub: { fontSize: 11, color: C.textSecondary, marginTop: 2, lineHeight: 16 },
   marketRow: { flexDirection: 'row', gap: 10 },
   marketBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14 },
   marketBtnAlt: { backgroundColor: C.card, borderWidth: 1, borderColor: C.accent },
