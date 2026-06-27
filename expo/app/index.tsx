@@ -60,10 +60,10 @@ const WORLDS: WorldDef[] = [
     bg: C.greenDim,
     icon: PackageOpen,
     title: 'Freight & Delivery',
-    desc: 'Uber for trucks — post any delivery, from a single box to a full load, and nearby drivers grab it.',
+    desc: 'Uber for trucks — post any delivery, from a single box to a full load, and nearby owner-operators grab it.',
     bullets: [
       { icon: PackageOpen, label: 'Shippers', sub: 'Post loads — parcel to full truck' },
-      { icon: Truck, label: 'Drivers / Carriers', sub: 'Accept loads on a live map' },
+      { icon: Truck, label: 'Owner-Operators', sub: 'Bring your truck, accept loads' },
     ],
   },
 ];

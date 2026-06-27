@@ -190,7 +190,7 @@ export default function DriverDocumentsScreen() {
       >
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><ArrowLeft size={20} color={C.text} /></TouchableOpacity>
-          <Text style={styles.topTitle}>Carrier Compliance</Text>
+          <Text style={styles.topTitle}>Owner-Operator Compliance</Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -198,7 +198,7 @@ export default function DriverDocumentsScreen() {
           <View style={styles.heroIcon}>
             <ShieldCheck size={26} color={allApproved ? C.green : C.accent} />
           </View>
-          <Text style={styles.heroTitle}>{allApproved ? 'You\u2019re road-legal' : 'Verify your authority to haul'}</Text>
+          <Text style={styles.heroTitle}>{allApproved ? 'You\u2019re road-legal' : 'Register your truck & authority'}</Text>
           <Text style={styles.heroSub}>
             {approvedRequired} of {REQUIRED_CARRIER_DOC_COUNT} required documents approved.
           </Text>

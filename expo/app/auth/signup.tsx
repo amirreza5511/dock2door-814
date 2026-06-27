@@ -30,7 +30,7 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
   ],
   freight: [
     { role: 'Shipper', label: 'Shipper', desc: 'Post deliveries — parcel to full load' },
-    { role: 'Driver', label: 'Driver / Carrier', desc: 'Accept loads, deliver, upload PODs' },
+    { role: 'Driver', label: 'Owner-Operator', desc: 'Own your truck, accept loads, deliver' },
   ],
 };
 
