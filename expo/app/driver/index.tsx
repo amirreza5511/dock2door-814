@@ -42,7 +42,7 @@ export default function DriverHomeScreen() {
   const user = useAuthStore((s) => s.user);
 
   const complianceQuery = useQuery({
-    queryKey: ['carrier-docs', user?.id],
+    queryKey: ['carrier-docs', 'count', user?.id],
     enabled: Boolean(user?.id),
     queryFn: async (): Promise<number> => {
       if (!user?.id) return 0;

@@ -63,7 +63,7 @@ export default function DriverDocumentsScreen() {
   const [expiryDrafts, setExpiryDrafts] = useState<Record<string, string>>({});
 
   const docsQuery = useQuery({
-    queryKey: ['carrier-docs', user?.id],
+    queryKey: ['carrier-docs', 'list', user?.id],
     enabled: Boolean(user?.id),
     queryFn: async (): Promise<CarrierDocRow[]> => {
       if (!user?.id) return [];
@@ -159,7 +159,7 @@ export default function DriverDocumentsScreen() {
     onSuccess: (result, vars) => {
       if (!result) return;
       setExpiryDrafts((p) => ({ ...p, [vars.key]: '' }));
-      void queryClient.invalidateQueries({ queryKey: ['carrier-docs', user?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['carrier-docs'] });
       Alert.alert('Document submitted', 'Our compliance team will review it shortly. You\u2019ll be notified once it\u2019s approved.');
     },
     onError: (err: unknown) => Alert.alert('Upload failed', err instanceof Error ? err.message : 'Unknown error'),

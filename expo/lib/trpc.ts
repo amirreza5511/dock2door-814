@@ -73,6 +73,27 @@ function throwErr(error: unknown, fallback: string): never {
   throw new Error(msg);
 }
 
+/**
+ * Detects a "relation/table does not exist" error from Postgres / PostgREST.
+ * Used so brand-new features whose migration hasn't been applied to the live
+ * database yet degrade to an empty state instead of crashing the app.
+ */
+function isMissingRelation(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === '42P01' || e.code === 'PGRST205' || e.code === 'PGRST204') return true;
+  const msg = (e.message ?? '').toLowerCase();
+  return (
+    msg.includes('does not exist') ||
+    msg.includes('could not find the table') ||
+    msg.includes('schema cache')
+  );
+}
+
+/** Friendly error thrown when a load action is attempted before migrations are applied. */
+const LOADS_NOT_READY =
+  'The Loads marketplace isn\u2019t set up on the server yet. Apply the latest database migrations (0082 & 0083) and try again.';
+
 // ---------------------------------------------------------------------------
 // Mappers: row -> shape expected by the UI (camelCase, booking types, etc.)
 // ---------------------------------------------------------------------------
@@ -1039,7 +1060,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_delivery_speed: input.deliverySpeed,
       p_cargo_type: input.cargoType ?? 'Pallet', p_weight_kg: input.weightKg ?? 0,
     });
-    if (error) throwErr(error, 'Unable to price this load');
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to price this load');
+    }
     return (data ?? {}) as AnyRecord;
   },
 
@@ -1064,7 +1088,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_item_description: input.itemDescription ?? '',
       p_recipient_name: input.recipientName ?? '', p_recipient_phone: input.recipientPhone ?? '',
     });
-    if (error) throwErr(error, 'Unable to post load');
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to post load');
+    }
     return { id: data as string };
   },
 
@@ -1072,7 +1099,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     let q = supabase.from('loads').select('*').eq('status', 'Open').is('archived_at', null).order('created_at', { ascending: false }).limit(200);
     if (input?.vehicleType) q = q.eq('vehicle_type', input.vehicleType);
     const { data, error } = await q;
-    if (error) throwErr(error, 'Unable to load marketplace');
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load marketplace');
+    }
     return data ?? [];
   },
 
@@ -1080,7 +1110,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const { data, error } = await supabase.from('loads').select('*')
       .eq('poster_user_id', ctx.user.id).is('archived_at', null)
       .order('created_at', { ascending: false }).limit(200);
-    if (error) throwErr(error, 'Unable to load your loads');
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load your loads');
+    }
     return data ?? [];
   },
 
@@ -1090,7 +1123,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       : `accepted_driver_user_id.eq.${ctx.user.id}`;
     const { data, error } = await supabase.from('loads').select('*')
       .or(filter).is('archived_at', null).order('updated_at', { ascending: false }).limit(200);
-    if (error) throwErr(error, 'Unable to load your trips');
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load your trips');
+    }
     return data ?? [];
   },
 
@@ -1102,13 +1138,19 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   'loads.accept': async (input: { id: string }) => {
     const { error } = await supabase.rpc('accept_load', { p_load_id: input.id });
-    if (error) throwErr(error, 'Unable to accept load');
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to accept load');
+    }
     return { success: true };
   },
 
   'loads.advance': async (input: { id: string; status: string }) => {
     const { error } = await supabase.rpc('advance_load', { p_load_id: input.id, p_next_status: input.status });
-    if (error) throwErr(error, 'Unable to update load');
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to update load');
+    }
     return { success: true };
   },
 
