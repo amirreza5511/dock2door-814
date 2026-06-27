@@ -1030,12 +1030,14 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.quote': async (input: {
     pickupLat: number; pickupLng: number; dropoffLat: number; dropoffLng: number;
     vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay';
+    cargoType?: string; weightKg?: number;
   }) => {
     const { data, error } = await supabase.rpc('quote_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
       p_dropoff_lat: input.dropoffLat, p_dropoff_lng: input.dropoffLng,
       p_vehicle_type: input.vehicleType, p_pallets: input.pallets,
       p_delivery_speed: input.deliverySpeed,
+      p_cargo_type: input.cargoType ?? 'Pallet', p_weight_kg: input.weightKg ?? 0,
     });
     if (error) throwErr(error, 'Unable to price this load');
     return (data ?? {}) as AnyRecord;
@@ -1045,6 +1047,9 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     pickupLat: number; pickupLng: number; pickupAddress?: string; pickupCity?: string;
     dropoffLat: number; dropoffLng: number; dropoffAddress?: string; dropoffCity?: string;
     vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay'; notes?: string;
+    cargoType?: string; itemCount?: number; weightKg?: number;
+    lengthCm?: number; widthCm?: number; heightCm?: number;
+    itemDescription?: string; recipientName?: string; recipientPhone?: string;
   }) => {
     const { data, error } = await supabase.rpc('post_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1053,6 +1058,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_dropoff_address: input.dropoffAddress ?? '', p_dropoff_city: input.dropoffCity ?? '',
       p_vehicle_type: input.vehicleType, p_pallets: input.pallets,
       p_delivery_speed: input.deliverySpeed, p_notes: input.notes ?? '',
+      p_cargo_type: input.cargoType ?? 'Pallet', p_item_count: input.itemCount ?? 1,
+      p_weight_kg: input.weightKg ?? 0,
+      p_length_cm: input.lengthCm ?? 0, p_width_cm: input.widthCm ?? 0, p_height_cm: input.heightCm ?? 0,
+      p_item_description: input.itemDescription ?? '',
+      p_recipient_name: input.recipientName ?? '', p_recipient_phone: input.recipientPhone ?? '',
     });
     if (error) throwErr(error, 'Unable to post load');
     return { id: data as string };

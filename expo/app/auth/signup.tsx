@@ -26,12 +26,15 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
     { role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
     { role: 'TruckingCompany', label: 'Trucking Company', desc: 'Manage drivers, fleet, and appointments' },
-    { role: 'Driver', label: 'Driver', desc: 'View assigned jobs and upload PODs' },
     { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
+  ],
+  freight: [
+    { role: 'Shipper', label: 'Shipper', desc: 'Post deliveries — parcel to full load' },
+    { role: 'Driver', label: 'Driver / Carrier', desc: 'Accept loads, deliver, upload PODs' },
   ],
 };
 
-const WORLD_ORDER: Domain[] = ['labour', 'logistics'];
+const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight'];
 
 export default function Signup() {
   const router = useRouter();

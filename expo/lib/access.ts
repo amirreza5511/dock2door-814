@@ -3,8 +3,8 @@ import type { CompanyType, User, UserRole } from '@/constants/types';
 /** Feature flag for the two-world (domain) layer. Flip to false to restore pre-domain behavior. */
 export const ENABLE_DOMAINS = true;
 
-/** The two product worlds plus the shared admin layer. */
-export type Domain = 'labour' | 'logistics';
+/** The product worlds plus the shared admin layer. */
+export type Domain = 'labour' | 'logistics' | 'freight';
 
 /** Roles belonging to the Labour world. */
 export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer'];
@@ -19,6 +19,9 @@ export const LOGISTICS_ROLES: UserRole[] = [
   'Driver',
 ];
 
+/** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace). */
+export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver'];
+
 /** Roles in the shared admin layer that oversees both worlds. */
 export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
 
@@ -31,13 +34,15 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   ServiceProvider: 'logistics',
   TruckingCompany: 'logistics',
   GateStaff: 'logistics',
-  Driver: 'logistics',
+  Driver: 'freight',
+  Shipper: 'freight',
 };
 
 /** Human-friendly labels for each world. */
 export const DOMAIN_LABELS: Record<Domain, string> = {
   labour: 'Labour',
   logistics: 'Logistics & Warehousing',
+  freight: 'Freight & Delivery',
 };
 
 export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
@@ -49,6 +54,7 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   TruckingCompany: '/trucking-company',
   Driver: '/driver',
   GateStaff: '/gate-staff',
+  Shipper: '/shipper',
   Admin: '/admin',
   SuperAdmin: '/super-admin',
 };
@@ -60,6 +66,7 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'Employer',
   'TruckingCompany',
   'GateStaff',
+  'Shipper',
 ];
 
 export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
@@ -69,6 +76,7 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   Employer: 'Employer',
   TruckingCompany: 'TruckingCompany',
   GateStaff: 'WarehouseProvider',
+  Shipper: 'Shipper',
 };
 
 const ROUTE_PREFIXES: Record<string, UserRole[]> = {
@@ -80,6 +88,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   'trucking-company': ['TruckingCompany'],
   driver: ['Driver'],
   'gate-staff': ['GateStaff'],
+  shipper: ['Shipper'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],
   fulfillment: ['WarehouseProvider', 'Customer', 'Admin', 'SuperAdmin'],
@@ -132,7 +141,7 @@ export function visibleDomains(user: User | null): Domain[] {
     return [];
   }
   if (isAdminRole(user.role) || user.isPlatformAdmin) {
-    return ['labour', 'logistics'];
+    return ['labour', 'logistics', 'freight'];
   }
   const domain = DOMAIN_BY_ROLE[user.role];
   return domain ? [domain] : [];

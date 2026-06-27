@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Boxes, Check, ChevronDown, HardHat } from 'lucide-react-native';
+import { Boxes, Check, ChevronDown, HardHat, Send } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { useCurrentWorld } from '@/providers/CurrentWorldProvider';
 import { useAuthStore } from '@/store/auth';
@@ -10,6 +10,7 @@ import { type Domain, DOMAIN_LABELS, getRoleRoute, isAdminRole } from '@/lib/acc
 const WORLD_META: Record<Domain, { icon: typeof HardHat; color: string; bg: string }> = {
   labour: { icon: HardHat, color: C.purple, bg: C.purpleDim },
   logistics: { icon: Boxes, color: C.accent, bg: C.accentDim },
+  freight: { icon: Send, color: C.blue, bg: C.blueDim },
 };
 
 /**

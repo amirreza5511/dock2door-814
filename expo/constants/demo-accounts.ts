@@ -60,6 +60,14 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
     displayName: 'Worker Demo',
   },
   {
+    label: 'Shipper',
+    role: 'Shipper',
+    email: 'shipper@acmegoods.ca',
+    password: 'password',
+    displayName: 'Shipper Demo',
+    companyType: 'Shipper',
+  },
+  {
     label: 'Super Admin',
     role: 'SuperAdmin',
     email: 'superadmin@dock2door.ca',

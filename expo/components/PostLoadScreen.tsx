@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LoadsMap, { type MapPoint } from '@/components/LoadsMap';
 import C from '@/constants/colors';
-import { DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
+import { CARGO_OPTIONS, CargoType, DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
 
 type LatLng = { lat: number; lng: number };
@@ -33,8 +33,17 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [dropoff, setDropoff] = useState<LatLng | null>(null);
   const [pickupAddr, setPickupAddr] = useState<string>('');
   const [dropoffAddr, setDropoffAddr] = useState<string>('');
-  const [vehicle, setVehicle] = useState<VehicleType>('Pickup');
+  const [cargo, setCargo] = useState<CargoType>('Pallet');
+  const [vehicle, setVehicle] = useState<VehicleType>('FiveTon');
   const [pallets, setPallets] = useState<number>(1);
+  const [itemCount, setItemCount] = useState<number>(1);
+  const [weightKg, setWeightKg] = useState<string>('');
+  const [lengthCm, setLengthCm] = useState<string>('');
+  const [widthCm, setWidthCm] = useState<string>('');
+  const [heightCm, setHeightCm] = useState<string>('');
+  const [itemDescription, setItemDescription] = useState<string>('');
+  const [recipientName, setRecipientName] = useState<string>('');
+  const [recipientPhone, setRecipientPhone] = useState<string>('');
   const [speed, setSpeed] = useState<DeliverySpeed>('NextDay');
   const [notes, setNotes] = useState<string>('');
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -54,6 +63,19 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
     () => (pickup && dropoff ? [{ from: pickup, to: dropoff }] : []),
     [pickup, dropoff],
   );
+
+  const num = (s: string): number => {
+    const n = parseFloat(s);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  };
+
+  const selectCargo = (next: CargoType) => {
+    if (Platform.OS !== 'web') void Haptics.selectionAsync();
+    const opt = CARGO_OPTIONS.find((c) => c.type === next);
+    setCargo(next);
+    if (opt) setVehicle(opt.suggestedVehicle);
+    setQuote(null);
+  };
 
   const handleMapPress = (lat: number, lng: number) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
@@ -91,6 +113,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         pickupLat: pickup.lat, pickupLng: pickup.lng,
         dropoffLat: dropoff.lat, dropoffLng: dropoff.lng,
         vehicleType: vehicle, pallets, deliverySpeed: speed,
+        cargoType: cargo, weightKg: num(weightKg),
       });
       setQuote(q as unknown as Quote);
     } catch (err) {
@@ -107,6 +130,9 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         pickupLat: pickup.lat, pickupLng: pickup.lng, pickupAddress: pickupAddr, pickupCity: '',
         dropoffLat: dropoff.lat, dropoffLng: dropoff.lng, dropoffAddress: dropoffAddr, dropoffCity: '',
         vehicleType: vehicle, pallets, deliverySpeed: speed, notes,
+        cargoType: cargo, itemCount, weightKg: num(weightKg),
+        lengthCm: num(lengthCm), widthCm: num(widthCm), heightCm: num(heightCm),
+        itemDescription, recipientName, recipientPhone,
       });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
@@ -147,6 +173,41 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           </View>
         </Card>
 
+        <Text style={styles.sectionTitle}>What are you shipping?</Text>
+        <View style={styles.vehicleGrid}>
+          {CARGO_OPTIONS.map((c) => {
+            const active = cargo === c.type;
+            return (
+              <TouchableOpacity key={c.type} style={[styles.vehicleCard, active && styles.vehicleCardActive]} onPress={() => selectCargo(c.type)}>
+                <Text style={styles.vehicleEmoji}>{c.emoji}</Text>
+                <Text style={[styles.vehicleLabel, active && { color: C.accent }]}>{c.label}</Text>
+                <Text style={styles.vehicleDesc}>{c.description}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Card style={styles.dimCard}>
+          <Text style={styles.dimTitle}>Dimensions & weight</Text>
+          <View style={styles.dimRow}>
+            <DimInput label="Length" unit="cm" value={lengthCm} onChangeText={(t) => { setLengthCm(t); }} />
+            <DimInput label="Width" unit="cm" value={widthCm} onChangeText={(t) => { setWidthCm(t); }} />
+            <DimInput label="Height" unit="cm" value={heightCm} onChangeText={(t) => { setHeightCm(t); }} />
+          </View>
+          <View style={styles.dimRow}>
+            <DimInput label="Weight" unit="kg" value={weightKg} onChangeText={(t) => { setWeightKg(t); setQuote(null); }} />
+            <View style={styles.dimField}>
+              <Text style={styles.dimLabel}>Quantity</Text>
+              <View style={styles.qtyRow}>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => setItemCount((n) => Math.max(1, n - 1))}><Text style={styles.qtyBtnText}>−</Text></TouchableOpacity>
+                <Text style={styles.qtyValue}>{itemCount}</Text>
+                <TouchableOpacity style={styles.qtyBtn} onPress={() => setItemCount((n) => Math.min(999, n + 1))}><Text style={styles.qtyBtnText}>+</Text></TouchableOpacity>
+              </View>
+            </View>
+          </View>
+          <TextInput style={styles.dimDesc} placeholder="Describe the goods (e.g. fragile electronics)" placeholderTextColor={C.textMuted} value={itemDescription} onChangeText={setItemDescription} />
+        </Card>
+
         <Text style={styles.sectionTitle}>Vehicle type</Text>
         <View style={styles.vehicleGrid}>
           {VEHICLE_OPTIONS.map((v) => {
@@ -173,6 +234,16 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           <Chip active={speed === 'NextDay'} color={C.blue} label="Next day" onPress={() => { setSpeed('NextDay'); setQuote(null); }} />
           <Chip active={speed === 'SameDay'} color={C.accent} label="Same day (+40%)" onPress={() => { setSpeed('SameDay'); setQuote(null); }} />
         </View>
+
+        <Text style={styles.sectionTitle}>Recipient (optional)</Text>
+        <Card style={styles.addrCard}>
+          <View style={styles.addrRow}>
+            <TextInput style={styles.addrInput} placeholder="Recipient name" placeholderTextColor={C.textMuted} value={recipientName} onChangeText={setRecipientName} />
+          </View>
+          <View style={styles.addrRow}>
+            <TextInput style={styles.addrInput} placeholder="Recipient phone" placeholderTextColor={C.textMuted} value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" />
+          </View>
+        </Card>
 
         <Card style={styles.notesCard}>
           <TextInput style={styles.notesInput} placeholder="Notes for the driver (optional)" placeholderTextColor={C.textMuted} value={notes} onChangeText={setNotes} multiline />
@@ -202,6 +273,18 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           <Button label="Post load" onPress={() => void submit()} loading={postMutation.isPending} fullWidth icon={<Truck size={15} color={C.white} />} />
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function DimInput({ label, unit, value, onChangeText }: { label: string; unit: string; value: string; onChangeText: (t: string) => void }) {
+  return (
+    <View style={styles.dimField}>
+      <Text style={styles.dimLabel}>{label}</Text>
+      <View style={styles.dimInputWrap}>
+        <TextInput style={styles.dimInput} placeholder="0" placeholderTextColor={C.textMuted} value={value} onChangeText={onChangeText} keyboardType="numeric" />
+        <Text style={styles.dimUnit}>{unit}</Text>
+      </View>
     </View>
   );
 }
@@ -247,6 +330,19 @@ const styles = StyleSheet.create({
   stepBtn: { width: 40, height: 40, borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   stepBtnText: { fontSize: 22, color: C.text, fontWeight: '700' as const },
   stepValue: { fontSize: 15, fontWeight: '800' as const, color: C.text, minWidth: 100, textAlign: 'center' as const },
+  dimCard: { padding: 12, gap: 10 },
+  dimTitle: { fontSize: 13, fontWeight: '800' as const, color: C.text },
+  dimRow: { flexDirection: 'row', gap: 8 },
+  dimField: { flex: 1, gap: 4 },
+  dimLabel: { fontSize: 11, color: C.textSecondary, fontWeight: '600' as const },
+  dimInputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 10 },
+  dimInput: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 9 },
+  dimUnit: { fontSize: 11, color: C.textMuted, fontWeight: '600' as const },
+  dimDesc: { color: C.text, fontSize: 13, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9 },
+  qtyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 6, paddingVertical: 3 },
+  qtyBtn: { width: 30, height: 30, borderRadius: 8, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  qtyBtnText: { fontSize: 18, color: C.text, fontWeight: '700' as const },
+  qtyValue: { fontSize: 14, fontWeight: '800' as const, color: C.text },
   notesCard: { padding: 12 },
   notesInput: { color: C.text, fontSize: 13, minHeight: 44 },
   quoteCard: { gap: 8, padding: 14 },
