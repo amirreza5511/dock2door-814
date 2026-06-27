@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { CalendarClock, CreditCard, LogOut, MessagesSquare, Truck, Users } from 'lucide-react-native';
+import { CalendarClock, CreditCard, LogOut, MapPinned, MessagesSquare, PackagePlus, Truck, Users } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -73,6 +73,28 @@ export default function TruckingCompanyDashboard() {
               <Text style={styles.statLabel}>{label}</Text>
             </View>
           ))}
+        </View>
+
+        <Card onPress={() => router.push('/trucking-company/loads' as never)} style={styles.heroCard}>
+          <View style={styles.heroCardRow}>
+            <View style={styles.heroIcon}><MapPinned size={22} color={C.white} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heroCardTitle}>Loads marketplace</Text>
+              <Text style={styles.heroCardText}>Find open loads on the map and accept with one tap.</Text>
+            </View>
+          </View>
+        </Card>
+        <View style={styles.actionsRow}>
+          <Card onPress={() => router.push('/trucking-company/post-load' as never)} style={styles.actionCard}>
+            <PackagePlus size={20} color={C.green} />
+            <Text style={styles.actionTitle}>Post a load</Text>
+            <Text style={styles.actionText}>List freight for nearby drivers.</Text>
+          </Card>
+          <Card onPress={() => router.push('/trucking-company/my-loads' as never)} style={styles.actionCard}>
+            <Truck size={20} color={C.accent} />
+            <Text style={styles.actionTitle}>My loads</Text>
+            <Text style={styles.actionText}>Run accepted trips end to end.</Text>
+          </Card>
         </View>
 
         <View style={styles.sectionRow}>
@@ -158,6 +180,11 @@ const styles = StyleSheet.create({
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   sectionTitle: { fontSize: 16, color: C.text, fontWeight: '700' as const },
   link: { fontSize: 13, color: C.accent, fontWeight: '700' as const },
+  heroCard: { backgroundColor: C.accent, borderColor: C.accent },
+  heroCardRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  heroCardTitle: { fontSize: 16, fontWeight: '800' as const, color: C.white },
+  heroCardText: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2, lineHeight: 17 },
   actionsRow: { flexDirection: 'row', gap: 10 },
   actionCard: { flex: 1, gap: 8 },
   actionTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },

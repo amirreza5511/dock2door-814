@@ -75,6 +75,8 @@ export default function AdminPlatformSettings() {
 
   const [handlingFee, setHandlingFee] = useState<string>('12');
   const [taxMode, setTaxMode] = useState<string>('GST+PST');
+  const [truckingCommission, setTruckingCommission] = useState<string>('12');
+  const [truckingBookingFee, setTruckingBookingFee] = useState<string>('5');
   const [commissionDraft, setCommissionDraft] = useState<CommissionDraft>({ module: 'warehouse', percentage: '8', minimumAmount: '0' });
   const [taxDraft, setTaxDraft] = useState<TaxDraft>({ jurisdiction: '', rate: '0', appliesTo: 'all' });
   const [flagDraft, setFlagDraft] = useState<FlagDraft>({ key: '', description: '', enabled: false });
@@ -84,6 +86,13 @@ export default function AdminPlatformSettings() {
     if (data) {
       if (typeof data.handlingFeePerPalletDefault === 'number') setHandlingFee(String(data.handlingFeePerPalletDefault));
       if (typeof data.taxMode === 'string') setTaxMode(data.taxMode);
+      if (typeof data.truckingCommissionPercentage === 'number') setTruckingCommission(String(data.truckingCommissionPercentage));
+      if (typeof data.truckingBookingFee === 'number') setTruckingBookingFee(String(data.truckingBookingFee));
+    }
+    const root = settingsQuery.data as Record<string, unknown> | undefined;
+    if (root) {
+      if (typeof root.trucking_commission_percentage === 'number') setTruckingCommission(String(root.trucking_commission_percentage));
+      if (typeof root.trucking_booking_fee === 'number') setTruckingBookingFee(String(root.trucking_booking_fee));
     }
   }, [settingsQuery.data]);
 
@@ -93,6 +102,8 @@ export default function AdminPlatformSettings() {
         data: {
           handlingFeePerPalletDefault: Number(handlingFee) || 0,
           taxMode,
+          truckingCommissionPercentage: Number(truckingCommission) || 0,
+          truckingBookingFee: Number(truckingBookingFee) || 0,
         },
       });
     } catch (error) {
@@ -211,6 +222,11 @@ export default function AdminPlatformSettings() {
           <Card elevated style={styles.formCard}>
             <Input label="Default Handling Fee per Pallet ($)" value={handlingFee} onChangeText={setHandlingFee} keyboardType="numeric" placeholder="12" />
             <Input label="Tax Mode" value={taxMode} onChangeText={setTaxMode} placeholder="GST+PST" />
+            <View style={styles.inlineRow}>
+              <View style={{ flex: 1 }}><Input label="Trucking Commission (%)" value={truckingCommission} onChangeText={setTruckingCommission} keyboardType="numeric" placeholder="12" /></View>
+              <View style={{ flex: 1 }}><Input label="Trucking Booking Fee ($)" value={truckingBookingFee} onChangeText={setTruckingBookingFee} keyboardType="numeric" placeholder="5" /></View>
+            </View>
+            <Text style={styles.helperNote}>Applied to every load accepted in the marketplace — your cut on each trucking job.</Text>
             <Button label="Save Defaults" onPress={() => void saveSettings()} loading={updateSettings.isPending} fullWidth icon={<CheckCircle size={16} color={C.white} />} />
           </Card>
         </Section>
@@ -313,4 +329,5 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
   toggleText: { fontSize: 13, color: C.text, fontWeight: '600' as const },
   emptyText: { fontSize: 13, color: C.textMuted, marginBottom: 12 },
+  helperNote: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
 });

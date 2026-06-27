@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -107,6 +107,22 @@ export default function CustomerDashboard() {
               </View>
               <Text style={styles.actionTitle}>Book Services</Text>
               <Text style={styles.actionDesc}>On-demand industrial crews</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.actionsRow, { marginTop: 10 }]}>
+            <TouchableOpacity onPress={() => router.push('/customer/post-load' as any)} style={[styles.actionCard, { borderColor: C.green + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.greenDim }]}>
+                <Truck size={24} color={C.green} />
+              </View>
+              <Text style={styles.actionTitle}>Post a Load</Text>
+              <Text style={styles.actionDesc}>Ship freight, any vehicle</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/customer/loads' as any)} style={[styles.actionCard, { borderColor: C.blue + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.blueDim }]}>
+                <TrendingUp size={24} color={C.blue} />
+              </View>
+              <Text style={styles.actionTitle}>Track Loads</Text>
+              <Text style={styles.actionDesc}>See pickup progress live</Text>
             </TouchableOpacity>
           </View>
         </View>

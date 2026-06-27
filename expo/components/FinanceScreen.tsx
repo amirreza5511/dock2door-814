@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, RefreshCw, Scale, Undo2, Wallet, Download } from 'lucide-react-native';
+import { AlertTriangle, BadgeDollarSign, CreditCard, ExternalLink, FileText, CreditCard as PayIcon, PieChart, RefreshCw, Scale, Undo2, Wallet, Download } from 'lucide-react-native';
 import { Linking } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
@@ -66,6 +66,7 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
 
   const paymentsQuery = trpc.payments.list.useQuery();
   const invoicesQuery = trpc.payments.listInvoices.useQuery();
+  const commissionQuery = trpc.analytics.commissionBreakdown.useQuery(undefined, { enabled: showAdmin });
   const payoutsQuery = trpc.payments.listPayouts.useQuery(undefined, { enabled: showPayouts });
   const paymentDetailQuery = trpc.payments.getPayment.useQuery({ id: selectedId ?? '' }, { enabled: tab === 'payments' && Boolean(selectedId) });
   const invoiceDetailQuery = trpc.payments.getInvoice.useQuery({ id: selectedId ?? undefined }, { enabled: tab === 'invoices' && Boolean(selectedId) });
@@ -351,6 +352,22 @@ export default function FinanceScreen({ title = 'Billing', subtitle, adminAction
             </View>
           )}
         </View>
+
+        {showAdmin && commissionQuery.data ? (
+          <Card elevated style={styles.reconCard} testID="commission-breakdown">
+            <View style={styles.reconHeader}>
+              <PieChart size={16} color={C.green} />
+              <Text style={styles.reconTitle}>Your commission by marketplace</Text>
+              <Text style={[styles.reconBadgeText, { color: C.green }]}>${Number(commissionQuery.data.total ?? 0).toFixed(2)}</Text>
+            </View>
+            <View style={styles.reconGrid}>
+              <View style={styles.reconCell}><Text style={styles.reconLabel}>Warehouse</Text><Text style={styles.reconValue}>${Number(commissionQuery.data.warehouse ?? 0).toFixed(2)}</Text></View>
+              <View style={styles.reconCell}><Text style={styles.reconLabel}>Service</Text><Text style={styles.reconValue}>${Number(commissionQuery.data.service ?? 0).toFixed(2)}</Text></View>
+              <View style={styles.reconCell}><Text style={styles.reconLabel}>Labour</Text><Text style={styles.reconValue}>${Number(commissionQuery.data.labour ?? 0).toFixed(2)}</Text></View>
+              <View style={styles.reconCell}><Text style={styles.reconLabel}>Trucking</Text><Text style={[styles.reconValue, { color: C.accent }]}>${Number(commissionQuery.data.trucking ?? 0).toFixed(2)}</Text></View>
+            </View>
+          </Card>
+        ) : null}
 
         <Card elevated style={styles.reconCard} testID="reconciliation-summary">
           <View style={styles.reconHeader}>

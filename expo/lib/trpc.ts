@@ -1025,6 +1025,84 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // LOADS — "Uber for Trucks" marketplace
+  // =========================================================================
+  'loads.quote': async (input: {
+    pickupLat: number; pickupLng: number; dropoffLat: number; dropoffLng: number;
+    vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay';
+  }) => {
+    const { data, error } = await supabase.rpc('quote_load', {
+      p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
+      p_dropoff_lat: input.dropoffLat, p_dropoff_lng: input.dropoffLng,
+      p_vehicle_type: input.vehicleType, p_pallets: input.pallets,
+      p_delivery_speed: input.deliverySpeed,
+    });
+    if (error) throwErr(error, 'Unable to price this load');
+    return (data ?? {}) as AnyRecord;
+  },
+
+  'loads.post': async (input: {
+    pickupLat: number; pickupLng: number; pickupAddress?: string; pickupCity?: string;
+    dropoffLat: number; dropoffLng: number; dropoffAddress?: string; dropoffCity?: string;
+    vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay'; notes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('post_load', {
+      p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
+      p_pickup_address: input.pickupAddress ?? '', p_pickup_city: input.pickupCity ?? '',
+      p_dropoff_lat: input.dropoffLat, p_dropoff_lng: input.dropoffLng,
+      p_dropoff_address: input.dropoffAddress ?? '', p_dropoff_city: input.dropoffCity ?? '',
+      p_vehicle_type: input.vehicleType, p_pallets: input.pallets,
+      p_delivery_speed: input.deliverySpeed, p_notes: input.notes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to post load');
+    return { id: data as string };
+  },
+
+  'loads.listOpen': async (input: { vehicleType?: string | null } | undefined) => {
+    let q = supabase.from('loads').select('*').eq('status', 'Open').is('archived_at', null).order('created_at', { ascending: false }).limit(200);
+    if (input?.vehicleType) q = q.eq('vehicle_type', input.vehicleType);
+    const { data, error } = await q;
+    if (error) throwErr(error, 'Unable to load marketplace');
+    return data ?? [];
+  },
+
+  'loads.listPosted': async (_input, ctx) => {
+    const { data, error } = await supabase.from('loads').select('*')
+      .eq('poster_user_id', ctx.user.id).is('archived_at', null)
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) throwErr(error, 'Unable to load your loads');
+    return data ?? [];
+  },
+
+  'loads.listAccepted': async (_input, ctx) => {
+    const filter = ctx.user.companyId
+      ? `accepted_driver_user_id.eq.${ctx.user.id},accepted_company_id.eq.${ctx.user.companyId}`
+      : `accepted_driver_user_id.eq.${ctx.user.id}`;
+    const { data, error } = await supabase.from('loads').select('*')
+      .or(filter).is('archived_at', null).order('updated_at', { ascending: false }).limit(200);
+    if (error) throwErr(error, 'Unable to load your trips');
+    return data ?? [];
+  },
+
+  'loads.get': async (input: { id: string }) => {
+    const { data, error } = await supabase.from('loads').select('*').eq('id', input.id).maybeSingle();
+    if (error || !data) throw new Error('Load not found');
+    return data;
+  },
+
+  'loads.accept': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('accept_load', { p_load_id: input.id });
+    if (error) throwErr(error, 'Unable to accept load');
+    return { success: true };
+  },
+
+  'loads.advance': async (input: { id: string; status: string }) => {
+    const { error } = await supabase.rpc('advance_load', { p_load_id: input.id, p_next_status: input.status });
+    if (error) throwErr(error, 'Unable to update load');
+    return { success: true };
+  },
+
+  // =========================================================================
   // PAYMENTS
   // =========================================================================
   'payments.list': async (_input, ctx) => {
@@ -1585,6 +1663,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_labour_commission_percentage: Number(input.data.labourCommissionPercentage ?? 15),
       p_handling_fee_per_pallet_default: Number(input.data.handlingFeePerPalletDefault ?? 12),
       p_tax_mode: String(input.data.taxMode ?? 'GST+PST'),
+      p_trucking_commission_percentage: Number(input.data.truckingCommissionPercentage ?? 12),
+      p_trucking_booking_fee: Number(input.data.truckingBookingFee ?? 5),
     });
     if (error) throwErr(error, 'Unable to update platform settings — admin only');
     const { data: row } = await supabase.from('platform_settings').select('id').limit(1).maybeSingle();
@@ -1594,6 +1674,39 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // =========================================================================
   // ANALYTICS
   // =========================================================================
+  // commissionBreakdown — platform commission earned by marketplace area, derived
+  // from settled payments. Trucking loads tag payments with category='trucking';
+  // older payments are inferred from their linked booking / invoice.
+  'analytics.commissionBreakdown': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const settled = ['Captured', 'Paid'];
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('commission_amount,category,booking_id,invoice_id,status');
+    const rows = (payments ?? []).filter((p) => settled.includes(String(p.status)));
+    const invoiceIds = Array.from(new Set(rows.map((r) => r.invoice_id).filter(Boolean))) as string[];
+    const [invRes, wpRes] = await Promise.all([
+      invoiceIds.length ? supabase.from('invoices').select('id,service_job_id,booking_id').in('id', invoiceIds) : Promise.resolve({ data: [] as AnyRecord[] }),
+      invoiceIds.length ? supabase.from('worker_payables').select('invoice_id').in('invoice_id', invoiceIds) : Promise.resolve({ data: [] as AnyRecord[] }),
+    ]);
+    const invById = new Map<string, AnyRecord>((invRes.data ?? []).map((i: AnyRecord) => [String(i.id), i]));
+    const labourInvoices = new Set((wpRes.data ?? []).map((w: AnyRecord) => String(w.invoice_id)));
+    const totals = { warehouse: 0, service: 0, labour: 0, trucking: 0, other: 0, total: 0 };
+    for (const r of rows) {
+      const amt = Number(r.commission_amount ?? 0);
+      if (amt <= 0) continue;
+      totals.total += amt;
+      const cat = String(r.category ?? '');
+      const inv = r.invoice_id ? invById.get(String(r.invoice_id)) : null;
+      if (cat === 'trucking') totals.trucking += amt;
+      else if (r.booking_id || inv?.booking_id) totals.warehouse += amt;
+      else if (inv?.service_job_id) totals.service += amt;
+      else if (r.invoice_id && labourInvoices.has(String(r.invoice_id))) totals.labour += amt;
+      else totals.other += amt;
+    }
+    return totals;
+  },
+
   'analytics.overview': async () => {
     const [bookings, payments, companies, disputes] = await Promise.all([
       supabase.from('warehouse_bookings').select('id,status,proposed_price,final_price'),

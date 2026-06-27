@@ -256,6 +256,17 @@ export default function DriverHomeScreen() {
           </View>
         </View>
 
+        <View style={styles.marketRow}>
+          <TouchableOpacity style={styles.marketBtn} onPress={() => router.push('/driver/loads' as never)}>
+            <MapPin size={18} color={C.white} />
+            <Text style={styles.marketBtnText}>Find loads</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.marketBtn, styles.marketBtnAlt]} onPress={() => router.push('/driver/my-loads' as never)}>
+            <Truck size={18} color={C.accent} />
+            <Text style={[styles.marketBtnText, { color: C.accent }]}>My loads</Text>
+          </TouchableOpacity>
+        </View>
+
         {partitioned.active.length > 0 ? (
           <>
             <View style={styles.sectionHeader}>
@@ -323,6 +334,10 @@ const styles = StyleSheet.create({
   heroStat: { flex: 1, backgroundColor: C.bgSecondary, borderRadius: 12, padding: 12, alignItems: 'center' },
   heroStatValue: { fontSize: 20, fontWeight: '800' as const, color: C.text },
   heroStatLabel: { fontSize: 10, color: C.textMuted, marginTop: 2, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  marketRow: { flexDirection: 'row', gap: 10 },
+  marketBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14 },
+  marketBtnAlt: { backgroundColor: C.card, borderWidth: 1, borderColor: C.accent },
+  marketBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
   jobCard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 10 },
