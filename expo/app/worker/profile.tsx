@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star, Globe, Building2, ExternalLink, MessageSquare } from 'lucide-react-native';
+import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star, Globe, Building2, ExternalLink, MessageSquare, Plus, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,6 +12,7 @@ import { useDockData } from '@/hooks/useDockData';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import DateField from '@/components/ui/DateField';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
 import type { ShiftCategory } from '@/constants/types';
@@ -347,6 +348,9 @@ export default function WorkerProfile() {
   const [addingCert, setAddingCert] = useState(false);
   const [certType, setCertType] = useState<CertType>('Forklift');
   const [certExpiry, setCertExpiry] = useState('');
+  const [showCrcForm, setShowCrcForm] = useState(false);
+  const [newCity, setNewCity] = useState('');
+  const [savingQuick, setSavingQuick] = useState(false);
 
   // ── Private info state ───────────────────────────────────────────
   const [privateExpanded, setPrivateExpanded] = useState(false);
@@ -373,6 +377,61 @@ export default function WorkerProfile() {
 
   const toggleSkill = (s: ShiftCategory) => {
     setEditSkills((prev) => prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]);
+  };
+
+  /**
+   * Persist a quick change (skills or coverage cities) immediately without opening
+   * the full edit form. Uses the canonical RPC, falling back to a direct update.
+   */
+  const persistQuick = async (patch: { skills?: ShiftCategory[]; cities?: string[] }) => {
+    if (!profile) return;
+    const skills = patch.skills ?? profile.skills;
+    const cities = patch.cities ?? profile.coverageCities;
+    setSavingQuick(true);
+    try {
+      const ex = extendedQuery.data;
+      const { error } = await supabase.rpc('update_my_worker_profile', {
+        p_bio: profile.bio ?? '',
+        p_skills: skills,
+        p_coverage_cities: cities,
+        p_hourly_expectation: profile.hourlyExpectation ?? 0,
+        p_tagline: ex?.tagline ?? '',
+        p_phone: ex?.phone ?? '',
+        p_languages: ex?.languages ?? [],
+        p_experience_years: ex?.experience_years ?? 0,
+        p_transportation: ex?.transportation ?? '',
+        p_emergency_contact_name: ex?.emergency_contact_name ?? '',
+        p_emergency_contact_phone: ex?.emergency_contact_phone ?? '',
+        p_references_text: ex?.references_text ?? '',
+        p_work_history: ex?.work_history ?? '',
+        p_education: ex?.education ?? '',
+        p_preferred_shift: ex?.preferred_shift ?? '',
+        p_linkedin_url: ex?.linkedin_url ?? '',
+        p_website_url: ex?.website_url ?? '',
+      });
+      if (error) {
+        await updateWorkerProfile(profile.id, { skills, coverageCities: cities });
+      }
+      await refetch();
+    } catch (err) {
+      Alert.alert('Save failed', err instanceof Error ? err.message : 'Unable to save');
+    } finally {
+      setSavingQuick(false);
+    }
+  };
+
+  const addCity = () => {
+    if (!profile) return;
+    const c = newCity.trim();
+    if (!c) return;
+    if (profile.coverageCities.some((x) => x.toLowerCase() === c.toLowerCase())) { setNewCity(''); return; }
+    void persistQuick({ cities: [...profile.coverageCities, c] });
+    setNewCity('');
+  };
+
+  const removeCity = (c: string) => {
+    if (!profile) return;
+    void persistQuick({ cities: profile.coverageCities.filter((x) => x !== c) });
   };
 
   const openEdit = () => {
@@ -605,6 +664,7 @@ export default function WorkerProfile() {
     onSuccess: (result) => {
       if (!result) return;
       setAddingCert(false);
+      setShowCrcForm(false);
       setCertExpiry('');
       void queryClient.invalidateQueries({ queryKey: ['worker-certs', user?.id] });
       Alert.alert('Certificate Submitted', 'Admin will review and approve your certificate.');
@@ -1114,13 +1174,34 @@ export default function WorkerProfile() {
                 <Text style={styles.idMissingText}>Not uploaded</Text>
               </View>
             )}
-            <Button
-              label="Upload CRC Document"
-              onPress={() => { setCertType('CriminalRecordCheck'); setAddingCert(true); }}
-              variant="ghost"
-              fullWidth
-              icon={<Upload size={15} color={C.accent} />}
-            />
+            {showCrcForm ? (
+              <View style={styles.formGap}>
+                <DateField
+                  label="Expiry Date"
+                  value={certExpiry}
+                  onChange={setCertExpiry}
+                  placeholder="Select expiry date"
+                  minimumDate={new Date()}
+                />
+                <Button
+                  label={uploadCertMutation.isPending ? 'Uploading…' : 'Pick File & Submit'}
+                  onPress={() => { setCertType('CriminalRecordCheck'); uploadCertMutation.mutate(); }}
+                  disabled={uploadCertMutation.isPending || !certExpiry}
+                  fullWidth
+                  icon={<Upload size={15} color={C.white} />}
+                />
+                <Button label="Cancel" onPress={() => { setShowCrcForm(false); setCertExpiry(''); }} variant="ghost" fullWidth />
+                <Text style={styles.hint}>Accepted: PDF or image. Admin will review and approve.</Text>
+              </View>
+            ) : (
+              <Button
+                label={criminalRecordCert ? 'Replace CRC Document' : 'Upload CRC Document'}
+                onPress={() => { setCertType('CriminalRecordCheck'); setCertExpiry(criminalRecordCert?.expiry_date ?? ''); setShowCrcForm(true); }}
+                variant="ghost"
+                fullWidth
+                icon={criminalRecordCert ? <Edit size={15} color={C.accent} /> : <Upload size={15} color={C.accent} />}
+              />
+            )}
           </Card>
         </View>
         )}
@@ -1171,7 +1252,7 @@ export default function WorkerProfile() {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Input label="Expiry Date (YYYY-MM-DD)" value={certExpiry} onChangeText={setCertExpiry} placeholder="2026-06-30" />
+              <DateField label="Expiry Date" value={certExpiry} onChange={setCertExpiry} placeholder="Select expiry date" minimumDate={new Date()} />
               <Button
                 label={uploadCertMutation.isPending ? 'Uploading…' : 'Pick File & Submit'}
                 onPress={() => uploadCertMutation.mutate()}
@@ -1219,31 +1300,65 @@ export default function WorkerProfile() {
         ════════════════════════════════════════ */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Skills</Text>
-          <View style={styles.skillsRow}>
-            {profile.skills.length === 0 ? (
-              <TouchableOpacity onPress={openEdit} style={styles.addSkillPrompt}>
-                <Text style={styles.addSkillPromptText}>+ Tap Edit to add your skills</Text>
-              </TouchableOpacity>
-            ) : profile.skills.map((s) => (
-              <View key={s} style={styles.skillChip}>
-                <Text style={styles.skillText}>{s}</Text>
+          {viewMode === 'mine' ? (
+            <>
+              <Text style={styles.inlineHint}>Tap to add or remove your skills</Text>
+              <View style={styles.skillsRow}>
+                {ALL_SKILLS.map((s) => {
+                  const active = profile.skills.includes(s);
+                  return (
+                    <TouchableOpacity
+                      key={s}
+                      disabled={savingQuick}
+                      onPress={() => void persistQuick({ skills: active ? profile.skills.filter((x) => x !== s) : [...profile.skills, s] })}
+                      style={[styles.skillToggle, active && styles.skillToggleActive]}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.skillToggleText, active && styles.skillToggleTextActive]}>{active ? '✓ ' : '+ '}{s}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            ))}
-          </View>
+            </>
+          ) : (
+            <View style={styles.skillsRow}>
+              {profile.skills.length === 0 ? (
+                <Text style={styles.addSkillPromptText}>No skills listed.</Text>
+              ) : profile.skills.map((s) => (
+                <View key={s} style={styles.skillChip}><Text style={styles.skillText}>{s}</Text></View>
+              ))}
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Coverage Cities</Text>
+          {viewMode === 'mine' && (
+            <View style={styles.cityInputRow}>
+              <View style={styles.flex1}>
+                <Input value={newCity} onChangeText={setNewCity} placeholder="Add a city (e.g. Chicago)" />
+              </View>
+              <TouchableOpacity onPress={addCity} disabled={savingQuick || !newCity.trim()} style={[styles.addCityBtn, (!newCity.trim()) && styles.addCityBtnDisabled]} activeOpacity={0.8}>
+                <Plus size={18} color={C.white} />
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={styles.skillsRow}>
             {profile.coverageCities.length === 0 ? (
-              <TouchableOpacity onPress={openEdit} style={styles.addSkillPrompt}>
-                <Text style={styles.addSkillPromptText}>+ Tap Edit to add cities</Text>
-              </TouchableOpacity>
+              <Text style={styles.addSkillPromptText}>{viewMode === 'mine' ? 'Add the cities you can work in.' : 'No coverage cities listed.'}</Text>
             ) : profile.coverageCities.map((c) => (
-              <View key={c} style={styles.cityChip}>
-                <MapPin size={11} color={C.blue} />
-                <Text style={styles.cityText}>{c}</Text>
-              </View>
+              viewMode === 'mine' ? (
+                <TouchableOpacity key={c} onPress={() => removeCity(c)} disabled={savingQuick} style={styles.cityChip} activeOpacity={0.7}>
+                  <MapPin size={11} color={C.blue} />
+                  <Text style={styles.cityText}>{c}</Text>
+                  <X size={12} color={C.blue} />
+                </TouchableOpacity>
+              ) : (
+                <View key={c} style={styles.cityChip}>
+                  <MapPin size={11} color={C.blue} />
+                  <Text style={styles.cityText}>{c}</Text>
+                </View>
+              )
             ))}
           </View>
         </View>
@@ -1605,6 +1720,10 @@ const styles = StyleSheet.create({
   cityText: { fontSize: 12, color: C.blue, fontWeight: '600' as const },
   addSkillPrompt: { padding: 10, borderRadius: 8, borderWidth: 1, borderColor: C.border, borderStyle: 'dashed' as const },
   addSkillPromptText: { fontSize: 13, color: C.textMuted },
+  inlineHint: { fontSize: 12, color: C.textMuted, marginBottom: 10 },
+  cityInputRow: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 12 },
+  addCityBtn: { width: 48, height: 48, borderRadius: 10, backgroundColor: C.accent, alignItems: 'center' as const, justifyContent: 'center' as const },
+  addCityBtnDisabled: { opacity: 0.4 },
   skillToggle: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   skillToggleActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   skillToggleText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
