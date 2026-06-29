@@ -81,12 +81,37 @@ function throwErr(error: unknown, fallback: string): never {
 function isMissingRelation(error: unknown): boolean {
   const e = error as { code?: string; message?: string } | null;
   if (!e) return false;
-  if (e.code === '42P01' || e.code === 'PGRST205' || e.code === 'PGRST204') return true;
+  // Only treat genuine "missing table / not in schema cache" as not-ready.
+  // 42P01 = undefined_table. NOTE: do NOT include 42703 (undefined_column) or
+  // 42883 (undefined_function) here — those are real bugs inside an applied
+  // migration and must surface, not be masked by the "apply migrations" message.
+  if (e.code === '42P01' || e.code === 'PGRST205') return true;
   const msg = (e.message ?? '').toLowerCase();
   return (
-    msg.includes('does not exist') ||
     msg.includes('could not find the table') ||
-    msg.includes('schema cache')
+    (msg.includes('schema cache') && !msg.includes('column') && !msg.includes('function')) ||
+    (msg.includes('relation') && msg.includes('does not exist'))
+  );
+}
+
+/**
+ * Narrowly detects that the `loads` TABLE itself is absent (migrations 0082/0083
+ * never applied). Unlike isMissingRelation, this does NOT match a missing
+ * dependency (invoices/payments columns, payouts), an RLS denial, or a business
+ * rule raised inside accept_load — those are real errors that must surface so
+ * they can be fixed, not masked by the misleading "apply migrations" message.
+ */
+function isLoadsTableMissing(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  const msg = (e.message ?? '').toLowerCase();
+  // PostgREST schema-cache miss for the loads endpoint, or Postgres undefined_table
+  // (42P01) naming the loads relation specifically.
+  if (e.code === 'PGRST205' && msg.includes('loads')) return true;
+  if (e.code === '42P01' && msg.includes('"loads"')) return true;
+  return (
+    msg.includes("could not find the table 'public.loads'") ||
+    (msg.includes('relation "public.loads" does not exist'))
   );
 }
 
@@ -1140,7 +1165,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.accept': async (input: { id: string }) => {
     const { error } = await supabase.rpc('accept_load', { p_load_id: input.id });
     if (error) {
-      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      // Only the loads table itself being absent means "migrations not applied".
+      // Anything else (a missing dependency column/table inside accept_load, an RLS
+      // denial, a business-rule raise like "no longer available") is a REAL error and
+      // must surface verbatim so it can be diagnosed instead of masked.
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to accept load');
     }
     return { success: true };
@@ -1149,7 +1178,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.advance': async (input: { id: string; status: string }) => {
     const { error } = await supabase.rpc('advance_load', { p_load_id: input.id, p_next_status: input.status });
     if (error) {
-      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to update load');
     }
     return { success: true };
@@ -1159,7 +1188,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.dispatch': async (input: { id: string; driverUserId: string }) => {
     const { error } = await supabase.rpc('dispatch_load', { p_load_id: input.id, p_driver_user_id: input.driverUserId });
     if (error) {
-      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to dispatch load');
     }
     return { success: true };
