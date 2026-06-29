@@ -5,13 +5,15 @@ import * as FileSystem from 'expo-file-system';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Clock, FileText, ShieldCheck, Upload, XCircle } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, Clock, FileText, ShieldCheck, Truck, Upload, XCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { supabase } from '@/lib/supabase';
 import { buildCertPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import Input from '@/components/ui/Input';
 import C from '@/constants/colors';
+import { VEHICLE_OPTIONS, type VehicleType } from '@/constants/loads';
+import { getCarrierVehicles, setCarrierVehicles } from '@/lib/carrier-vehicles';
 import {
   CARRIER_DOCS,
   REQUIRED_CARRIER_DOC_COUNT,
@@ -93,6 +95,28 @@ export default function DriverDocumentsScreen() {
     () => CARRIER_DOCS.filter((d) => d.required && latestByKey[d.key]?.status === 'Approved').length,
     [latestByKey],
   );
+
+  // Owner-operator's registered vehicle(s). Drives which loads they see.
+  // Stored on-device per user (no server dependency).
+  const vehiclesQuery = useQuery({
+    queryKey: ['carrier-vehicles', user?.id],
+    enabled: Boolean(user?.id),
+    queryFn: async (): Promise<VehicleType[]> => getCarrierVehicles(user?.id ?? ''),
+    staleTime: 30_000,
+  });
+  const ownedVehicles = useMemo<VehicleType[]>(() => vehiclesQuery.data ?? [], [vehiclesQuery.data]);
+
+  const saveVehiclesMutation = useMutation({
+    mutationFn: async (types: VehicleType[]) => setCarrierVehicles(user?.id ?? '', types),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['carrier-vehicles'] }); },
+    onError: (err: unknown) => Alert.alert('Could not save', err instanceof Error ? err.message : 'Unknown error'),
+  });
+
+  const toggleVehicle = (type: VehicleType) => {
+    const set = new Set(ownedVehicles);
+    if (set.has(type)) set.delete(type); else set.add(type);
+    saveVehiclesMutation.mutate(Array.from(set));
+  };
 
   const uploadMutation = useMutation({
     mutationFn: async ({ key, expiry }: { key: CarrierDocKey; expiry: string }) => {
@@ -210,6 +234,36 @@ export default function DriverDocumentsScreen() {
           ) : null}
         </View>
 
+        <View style={styles.vehicleCard}>
+          <View style={styles.vehicleHeadRow}>
+            <Truck size={18} color={C.accent} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.vehicleTitle}>My vehicles</Text>
+              <Text style={styles.vehicleSub}>Pick every vehicle you own. You’ll only see loads that match.</Text>
+            </View>
+          </View>
+          <View style={styles.vehicleGrid}>
+            {VEHICLE_OPTIONS.map((v) => {
+              const active = ownedVehicles.includes(v.type);
+              return (
+                <TouchableOpacity
+                  key={v.type}
+                  onPress={() => toggleVehicle(v.type)}
+                  disabled={saveVehiclesMutation.isPending}
+                  style={[styles.vehicleChip, active && styles.vehicleChipActive]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.vehicleEmoji}>{v.emoji}</Text>
+                  <Text style={[styles.vehicleChipText, active && { color: C.accent }]}>{v.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          {ownedVehicles.length === 0 ? (
+            <Text style={styles.vehicleHint}>Select at least one vehicle to start receiving loads.</Text>
+          ) : null}
+        </View>
+
         {CARRIER_DOCS.map((spec) => {
           const row = latestByKey[spec.key];
           const status = (row?.status ?? null) as DocStatus | null;
@@ -320,4 +374,14 @@ const styles = StyleSheet.create({
   fileHint: { fontSize: 11, color: C.textMuted, textAlign: 'center' as const },
   approvedFootRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   approvedFootText: { fontSize: 12, color: C.textMuted },
+  vehicleCard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 12 },
+  vehicleHeadRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  vehicleTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  vehicleSub: { fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 },
+  vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 8 },
+  vehicleChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  vehicleChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  vehicleEmoji: { fontSize: 14 },
+  vehicleChipText: { fontSize: 12, fontWeight: '700' as const, color: C.textSecondary },
+  vehicleHint: { fontSize: 11, color: C.yellow, fontWeight: '600' as const },
 });

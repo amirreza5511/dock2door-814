@@ -4,15 +4,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, MapPin, Package, Plus, Truck, X, Zap } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, MapPin, Package, Plus, ShieldAlert, Truck, X, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import LoadsMap, { type MapPoint, type MapRoute } from '@/components/LoadsMap';
 import C from '@/constants/colors';
-import { VEHICLE_LABEL, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
+import { VEHICLE_LABEL, VEHICLE_OPTIONS, VehicleType, smallerThanOwned } from '@/constants/loads';
+import { useAuthStore } from '@/store/auth';
+import { getCarrierVehicles } from '@/lib/carrier-vehicles';
 import { trpc } from '@/lib/trpc';
+
+/** Driver-side marketplace filter modes. */
+type DriverMode = { kind: 'mine' } | { kind: 'smaller' } | { kind: 'type'; type: VehicleType };
 
 type LoadRow = {
   id: string; vehicle_type: string; pallets: number; delivery_speed: string;
@@ -26,6 +32,9 @@ interface Props {
   /** Route to the Post a Load screen, when this role can post (shippers/companies). */
   postRoute?: string;
   title?: string;
+  /** When true, restrict the marketplace to the owner-operator's registered
+   *  vehicle(s) — they never see loads requiring a bigger truck than they own. */
+  restrictToMyVehicles?: boolean;
 }
 
 function haversine(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -36,18 +45,41 @@ function haversine(aLat: number, aLng: number, bLat: number, bLng: number): numb
   return Math.round(R * 2 * Math.asin(Math.sqrt(s)));
 }
 
-export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marketplace' }: Props) {
+export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marketplace', restrictToMyVehicles = false }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
+  const userId = useAuthStore((s) => s.user?.id);
 
   const [vehicleFilter, setVehicleFilter] = useState<VehicleType | null>(null);
+  const [driverMode, setDriverMode] = useState<DriverMode>({ kind: 'mine' });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
 
+  // Owner-operator's registered vehicle types (restricted marketplace only).
+  // Stored on-device per user (no server dependency).
+  const ownedQuery = useQuery({
+    queryKey: ['carrier-vehicles', userId],
+    enabled: restrictToMyVehicles && Boolean(userId),
+    queryFn: async (): Promise<VehicleType[]> => getCarrierVehicles(userId ?? ''),
+    staleTime: 30_000,
+  });
+  const owned = useMemo<VehicleType[]>(() => ownedQuery.data ?? [], [ownedQuery.data]);
+  const smaller = useMemo<VehicleType[]>(() => smallerThanOwned(owned), [owned]);
+  const hasVehicles = owned.length > 0;
+
+  // Vehicle types the driver's current filter resolves to (undefined = no filter).
+  const driverVehicleTypes = useMemo<VehicleType[] | undefined>(() => {
+    if (!restrictToMyVehicles) return undefined;
+    if (!hasVehicles) return undefined; // not registered yet — show all with a prompt
+    if (driverMode.kind === 'mine') return owned;
+    if (driverMode.kind === 'smaller') return smaller;
+    return [driverMode.type];
+  }, [restrictToMyVehicles, hasVehicles, driverMode, owned, smaller]);
+
   const loadsQuery = trpc.loads.listOpen.useQuery(
-    { vehicleType: vehicleFilter },
-    { refetchInterval: 20000 },
+    restrictToMyVehicles ? { vehicleTypes: driverVehicleTypes ?? null } : { vehicleType: vehicleFilter },
+    { refetchInterval: 20000, enabled: !restrictToMyVehicles || !ownedQuery.isLoading },
   );
   const acceptMutation = trpc.loads.accept.useMutation({
     onSuccess: async () => {
@@ -125,12 +157,44 @@ export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marke
       >
         <LoadsMap points={points} routes={routes} height={300} onSelectPoint={onSelectPoint} />
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-          <FilterChip active={vehicleFilter === null} label="All" onPress={() => setVehicleFilter(null)} />
-          {VEHICLE_OPTIONS.map((v) => (
-            <FilterChip key={v.type} active={vehicleFilter === v.type} label={`${v.emoji} ${v.label}`} onPress={() => setVehicleFilter(v.type)} />
-          ))}
-        </ScrollView>
+        {restrictToMyVehicles && !hasVehicles && !ownedQuery.isLoading ? (
+          <TouchableOpacity style={styles.registerBanner} onPress={() => router.push('/driver/documents' as never)} activeOpacity={0.85}>
+            <ShieldAlert size={18} color={C.yellow} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.registerTitle}>Register your truck</Text>
+              <Text style={styles.registerSub}>Add the vehicle(s) you own so we show only loads you can actually haul.</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        {restrictToMyVehicles ? (
+          hasVehicles ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              <FilterChip active={driverMode.kind === 'mine'} label="🚛 My vehicles" onPress={() => setDriverMode({ kind: 'mine' })} />
+              {owned.length > 1 ? owned.map((t) => {
+                const opt = VEHICLE_OPTIONS.find((v) => v.type === t);
+                return (
+                  <FilterChip
+                    key={t}
+                    active={driverMode.kind === 'type' && driverMode.type === t}
+                    label={`${opt?.emoji ?? ''} ${VEHICLE_LABEL[t]}`}
+                    onPress={() => setDriverMode({ kind: 'type', type: t })}
+                  />
+                );
+              }) : null}
+              {smaller.length > 0 ? (
+                <FilterChip active={driverMode.kind === 'smaller'} label="📦 Smaller loads" onPress={() => setDriverMode({ kind: 'smaller' })} />
+              ) : null}
+            </ScrollView>
+          ) : null
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+            <FilterChip active={vehicleFilter === null} label="All" onPress={() => setVehicleFilter(null)} />
+            {VEHICLE_OPTIONS.map((v) => (
+              <FilterChip key={v.type} active={vehicleFilter === v.type} label={`${v.emoji} ${v.label}`} onPress={() => setVehicleFilter(v.type)} />
+            ))}
+          </ScrollView>
+        )}
 
         <Text style={styles.countText}>{sorted.length} open {sorted.length === 1 ? 'load' : 'loads'}{me ? ' · nearest first' : ''}</Text>
 
@@ -222,6 +286,9 @@ const styles = StyleSheet.create({
   iconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   scroll: { padding: 16, gap: 12 },
+  registerBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.yellowDim, borderWidth: 1, borderColor: C.yellow + '55', borderRadius: 14, padding: 12 },
+  registerTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  registerSub: { fontSize: 11, color: C.textSecondary, marginTop: 2, lineHeight: 15 },
   filterRow: { gap: 8, paddingVertical: 2 },
   filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
   filterChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },

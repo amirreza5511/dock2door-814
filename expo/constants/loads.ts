@@ -33,6 +33,26 @@ export const VEHICLE_LABEL: Record<VehicleType, string> = VEHICLE_OPTIONS.reduce
   {} as Record<VehicleType, string>,
 );
 
+/** Vehicle size order, smallest → largest. Drives the marketplace logic:
+ *  an owner-operator can serve loads sized for their own vehicle and anything
+ *  smaller, but never anything larger than the biggest truck they own. */
+export const VEHICLE_ORDER: VehicleType[] = [
+  'Bicycle', 'Motorcycle', 'Car', 'Pickup', 'MovingTruck', 'FiveTon', 'FlatDeck', 'Semi',
+];
+
+export function vehicleRank(type: VehicleType): number {
+  const i = VEHICLE_ORDER.indexOf(type);
+  return i === -1 ? VEHICLE_ORDER.length : i;
+}
+
+/** All vehicle types strictly smaller than the operator's largest owned vehicle. */
+export function smallerThanOwned(owned: VehicleType[]): VehicleType[] {
+  if (owned.length === 0) return [];
+  const maxRank = Math.max(...owned.map(vehicleRank));
+  const ownedSet = new Set(owned);
+  return VEHICLE_ORDER.filter((t) => vehicleRank(t) < maxRank && !ownedSet.has(t));
+}
+
 /** Cargo types for the freight marketplace. Values match the
  *  `load_cargo_type` enum in migration 0083. From a letter up to a full load. */
 export type CargoType =

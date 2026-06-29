@@ -1095,9 +1095,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { id: data as string };
   },
 
-  'loads.listOpen': async (input: { vehicleType?: string | null } | undefined) => {
+  'loads.listOpen': async (input: { vehicleType?: string | null; vehicleTypes?: string[] | null } | undefined) => {
     let q = supabase.from('loads').select('*').eq('status', 'Open').is('archived_at', null).order('created_at', { ascending: false }).limit(200);
-    if (input?.vehicleType) q = q.eq('vehicle_type', input.vehicleType);
+    if (input?.vehicleTypes && input.vehicleTypes.length > 0) q = q.in('vehicle_type', input.vehicleTypes);
+    else if (input?.vehicleType) q = q.eq('vehicle_type', input.vehicleType);
     const { data, error } = await q;
     if (error) {
       if (isMissingRelation(error)) return [];
