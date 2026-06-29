@@ -434,6 +434,14 @@ export default function WorkerProfile() {
     void persistQuick({ cities: profile.coverageCities.filter((x) => x !== c) });
   };
 
+  const goToMissing = (label: string) => {
+    if (label === 'a certification') {
+      setAddingCert(true);
+      return;
+    }
+    openEdit();
+  };
+
   const openEdit = () => {
     setEditBio(profile?.bio ?? '');
     setEditRate(String(profile?.hourlyExpectation ?? ''));
@@ -1096,9 +1104,9 @@ export default function WorkerProfile() {
           {completionData.missing.length > 0 && (
             <View style={styles.missingRow}>
               {completionData.missing.slice(0, 3).map((m) => (
-                <View key={m} style={styles.missingChip}>
+                <TouchableOpacity key={m} style={styles.missingChip} activeOpacity={0.7} onPress={() => goToMissing(m)}>
                   <Text style={styles.missingText}>+ {m}</Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
