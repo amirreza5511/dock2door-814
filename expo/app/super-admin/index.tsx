@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
-  Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy,
+  Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle,
 } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Card from '@/components/ui/Card';
@@ -171,6 +171,16 @@ export default function SuperAdminOverviewScreen() {
               {user?.name ? <Text style={styles.userName}>{user.name}</Text> : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => router.push('/help' as never)}
+                style={styles.logoutBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Help Center"
+                testID="help-btn"
+              >
+                <HelpCircle size={18} color={C.text} />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/notifications' as never)}
                 style={styles.logoutBtn}

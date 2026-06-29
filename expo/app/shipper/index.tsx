@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { LogOut, Send, Package, Truck, MapPin, CheckCircle2, Plus } from 'lucide-react-native';
+import { LogOut, Send, Package, Truck, MapPin, CheckCircle2, Plus, HelpCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -54,6 +54,9 @@ export default function ShipperDashboard() {
         </View>
         <View style={styles.headerActions}>
           <WorldSwitcher />
+          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.logoutBtn} testID="help-btn">
+            <HelpCircle size={18} color={C.textMuted} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn">
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>

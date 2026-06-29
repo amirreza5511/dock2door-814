@@ -85,7 +85,7 @@ const installTextNodeGuard = () => {
 };
 
 installTextNodeGuard();
-const SHARED_SEGMENTS = ['messages', 'notifications', 'reviews', 'onboarding'];
+const SHARED_SEGMENTS = ['messages', 'notifications', 'reviews', 'onboarding', 'help'];
 
 function AuthGuard() {
   const { user, isHydrated } = useAuthStore();
@@ -175,6 +175,7 @@ function RootLayoutNav() {
       <Stack.Screen name="reviews" />
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="assistant" />
+      <Stack.Screen name="help" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
