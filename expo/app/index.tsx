@@ -60,10 +60,11 @@ const WORLDS: WorldDef[] = [
     bg: C.greenDim,
     icon: PackageOpen,
     title: 'Freight & Delivery',
-    desc: 'Uber for trucks — post any delivery, from a single box to a full load, and nearby owner-operators grab it.',
+    desc: 'Uber for trucks — post any delivery, from a single box to a full load. Owner-operators and fleet carriers grab and dispatch them.',
     bullets: [
       { icon: PackageOpen, label: 'Shippers', sub: 'Post loads — parcel to full truck' },
       { icon: Truck, label: 'Owner-Operators', sub: 'Bring your truck, accept loads' },
+      { icon: Truck, label: 'Fleet / Carrier Companies', sub: 'Accept loads & dispatch drivers' },
     ],
   },
 ];
@@ -218,7 +219,8 @@ export default function Landing() {
               { role: 'Employer', desc: 'Post and fill shifts fast', icon: Clock, color: C.yellow },
               { role: 'Worker', desc: 'Find shifts that fit you', icon: Users, color: C.purple },
               { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green },
-              { role: 'Driver / Carrier', desc: 'Accept loads & deliver', icon: Truck, color: C.green },
+              { role: 'Owner-Operator', desc: 'Own one truck, deliver loads', icon: Truck, color: C.green },
+              { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green },
               { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
             ].map((r) => (
               <View key={r.role} style={styles.roleCard}>

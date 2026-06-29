@@ -46,11 +46,16 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
   const fit = useMemo(() => fitRegion(points), [points]);
   const [center, setCenter] = useState<{ lat: number; lng: number }>(fit.center);
   const [span, setSpan] = useState<{ lat: number; lng: number }>(fit.span);
-  const didInit = useRef<boolean>(false);
+  const lastFitKey = useRef<string>('');
 
-  // Re-fit once when the first points arrive.
-  if (!didInit.current && points.length > 0) {
-    didInit.current = true;
+  // Re-fit whenever the set of point coordinates changes (e.g. a pin is added
+  // by tapping the map or geocoding an address) so new pins stay in view.
+  const fitKey = useMemo(
+    () => points.map((p) => `${p.id}:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|'),
+    [points],
+  );
+  if (points.length > 0 && fitKey !== lastFitKey.current) {
+    lastFitKey.current = fitKey;
     setCenter(fit.center);
     setSpan(fit.span);
   }

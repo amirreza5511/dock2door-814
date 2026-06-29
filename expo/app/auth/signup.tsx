@@ -25,12 +25,12 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
     { role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
     { role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
-    { role: 'TruckingCompany', label: 'Trucking Company', desc: 'Manage drivers, fleet, and appointments' },
     { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
   ],
   freight: [
     { role: 'Shipper', label: 'Shipper', desc: 'Post deliveries — parcel to full load' },
-    { role: 'Driver', label: 'Owner-Operator', desc: 'Own your truck, accept loads, deliver' },
+    { role: 'Driver', label: 'Owner-Operator', desc: 'Own one truck — accept & deliver loads yourself' },
+    { role: 'TruckingCompany', label: 'Fleet / Carrier Company', desc: 'Run a fleet — accept loads & dispatch your drivers' },
   ],
 };
 

@@ -14,13 +14,11 @@ export const LOGISTICS_ROLES: UserRole[] = [
   'Customer',
   'WarehouseProvider',
   'ServiceProvider',
-  'TruckingCompany',
   'GateStaff',
-  'Driver',
 ];
 
 /** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace). */
-export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver'];
+export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'];
 
 /** Roles in the shared admin layer that oversees both worlds. */
 export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
@@ -32,7 +30,7 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Customer: 'logistics',
   WarehouseProvider: 'logistics',
   ServiceProvider: 'logistics',
-  TruckingCompany: 'logistics',
+  TruckingCompany: 'freight',
   GateStaff: 'logistics',
   Driver: 'freight',
   Shipper: 'freight',

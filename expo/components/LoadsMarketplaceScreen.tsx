@@ -57,7 +57,7 @@ export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marke
   const [me, setMe] = useState<{ lat: number; lng: number } | null>(null);
 
   // Owner-operator's registered vehicle types (restricted marketplace only).
-  // Stored on-device per user (no server dependency).
+  // Read from their profile (carrier_vehicle_types).
   const ownedQuery = useQuery({
     queryKey: ['carrier-vehicles', userId],
     enabled: restrictToMyVehicles && Boolean(userId),

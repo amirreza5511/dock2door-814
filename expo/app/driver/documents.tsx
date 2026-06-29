@@ -97,7 +97,7 @@ export default function DriverDocumentsScreen() {
   );
 
   // Owner-operator's registered vehicle(s). Drives which loads they see.
-  // Stored on-device per user (no server dependency).
+  // Stored on their profile (carrier_vehicle_types) via the set_carrier_vehicles RPC.
   const vehiclesQuery = useQuery({
     queryKey: ['carrier-vehicles', user?.id],
     enabled: Boolean(user?.id),

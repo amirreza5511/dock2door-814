@@ -1155,6 +1155,41 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // Carrier (trucking) company assigns one of its drivers to an accepted load.
+  'loads.dispatch': async (input: { id: string; driverUserId: string }) => {
+    const { error } = await supabase.rpc('dispatch_load', { p_load_id: input.id, p_driver_user_id: input.driverUserId });
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to dispatch load');
+    }
+    return { success: true };
+  },
+
+  // Drivers in the current user's fleet that can be dispatched. Only fleet driver
+  // records linked to a registered app user (data.userId) are assignable.
+  'loads.fleetDrivers': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [] as AnyRecord[];
+    const { data, error } = await supabase.from('drivers').select('*')
+      .eq('company_id', ctx.user.companyId).is('archived_at', null)
+      .order('updated_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load drivers');
+    }
+    return (data ?? []).map((d) => {
+      const row = d as AnyRecord;
+      const meta = (row.data ?? {}) as AnyRecord;
+      return {
+        id: String(row.id),
+        name: String(meta.name ?? row.name ?? 'Driver'),
+        userId: meta.userId ? String(meta.userId) : null,
+        email: meta.email ? String(meta.email) : null,
+        phone: row.phone ? String(row.phone) : null,
+        licenseNumber: row.license_number ? String(row.license_number) : null,
+      };
+    });
+  },
+
   // =========================================================================
   // PAYMENTS
   // =========================================================================

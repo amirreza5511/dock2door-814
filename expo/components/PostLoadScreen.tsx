@@ -4,12 +4,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, Crosshair, MapPin, Truck, Zap } from 'lucide-react-native';
+import { ArrowLeft, Crosshair, MapPin, Search, Truck, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LoadsMap, { type MapPoint } from '@/components/LoadsMap';
 import C from '@/constants/colors';
 import { CARGO_OPTIONS, CargoType, DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
+import { geocodeAddress, reverseGeocode } from '@/lib/geocode';
 import { trpc } from '@/lib/trpc';
 
 type LatLng = { lat: number; lng: number };
@@ -48,6 +49,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [notes, setNotes] = useState<string>('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState<boolean>(false);
+  const [geocoding, setGeocoding] = useState<'pickup' | 'dropoff' | null>(null);
 
   const quoteMutation = trpc.loads.quote.useMutation();
   const postMutation = trpc.loads.post.useMutation();
@@ -80,11 +82,42 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const handleMapPress = (lat: number, lng: number) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
     setQuote(null);
-    if (placing === 'pickup') {
+    const which = placing;
+    if (which === 'pickup') {
       setPickup({ lat, lng });
       setPlacing('dropoff');
     } else {
       setDropoff({ lat, lng });
+    }
+    // Fill the matching address field from the dropped pin (best-effort).
+    void reverseGeocode(lat, lng).then((label) => {
+      if (!label) return;
+      if (which === 'pickup') setPickupAddr((cur) => cur.trim() ? cur : label);
+      else setDropoffAddr((cur) => cur.trim() ? cur : label);
+    });
+  };
+
+  const searchAddress = async (which: 'pickup' | 'dropoff') => {
+    const addr = which === 'pickup' ? pickupAddr : dropoffAddr;
+    if (!addr.trim()) { Alert.alert('Type an address', `Enter a ${which === 'pickup' ? 'pickup' : 'drop-off'} address, then tap search.`); return; }
+    try {
+      setGeocoding(which);
+      const res = await geocodeAddress(addr);
+      if (!res) { Alert.alert('Address not found', 'Try adding a city or postal/ZIP code to narrow it down.'); return; }
+      if (Platform.OS !== 'web') void Haptics.selectionAsync();
+      setQuote(null);
+      if (which === 'pickup') {
+        setPickup({ lat: res.lat, lng: res.lng });
+        setPickupAddr(res.label);
+        setPlacing('dropoff');
+      } else {
+        setDropoff({ lat: res.lat, lng: res.lng });
+        setDropoffAddr(res.label);
+      }
+    } catch (err) {
+      Alert.alert('Search failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setGeocoding(null);
     }
   };
 
@@ -163,13 +196,20 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         <LoadsMap points={points} routes={routes} placing height={300} onMapPress={handleMapPress} />
 
         <Card style={styles.addrCard}>
+          <Text style={styles.addrHint}>Type an address and tap search to drop the pin — or tap the map directly.</Text>
           <View style={styles.addrRow}>
             <MapPin size={14} color={C.green} />
-            <TextInput style={styles.addrInput} placeholder="Pickup address (optional)" placeholderTextColor={C.textMuted} value={pickupAddr} onChangeText={setPickupAddr} />
+            <TextInput style={styles.addrInput} placeholder="Pickup address" placeholderTextColor={C.textMuted} value={pickupAddr} onChangeText={setPickupAddr} returnKeyType="search" onSubmitEditing={() => void searchAddress('pickup')} />
+            <TouchableOpacity style={[styles.addrSearchBtn, { borderColor: C.green }]} onPress={() => void searchAddress('pickup')} disabled={geocoding === 'pickup'} accessibilityLabel="Find pickup">
+              <Search size={15} color={geocoding === 'pickup' ? C.textMuted : C.green} />
+            </TouchableOpacity>
           </View>
           <View style={styles.addrRow}>
             <MapPin size={14} color={C.red} />
-            <TextInput style={styles.addrInput} placeholder="Drop-off address (optional)" placeholderTextColor={C.textMuted} value={dropoffAddr} onChangeText={setDropoffAddr} />
+            <TextInput style={styles.addrInput} placeholder="Drop-off address" placeholderTextColor={C.textMuted} value={dropoffAddr} onChangeText={setDropoffAddr} returnKeyType="search" onSubmitEditing={() => void searchAddress('dropoff')} />
+            <TouchableOpacity style={[styles.addrSearchBtn, { borderColor: C.red }]} onPress={() => void searchAddress('dropoff')} disabled={geocoding === 'dropoff'} accessibilityLabel="Find drop-off">
+              <Search size={15} color={geocoding === 'dropoff' ? C.textMuted : C.red} />
+            </TouchableOpacity>
           </View>
         </Card>
 
@@ -317,8 +357,10 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: '700' as const, color: C.textSecondary },
   locBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   addrCard: { gap: 10, padding: 12 },
+  addrHint: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   addrInput: { flex: 1, color: C.text, fontSize: 13, paddingVertical: 6 },
+  addrSearchBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1, backgroundColor: C.bgSecondary, alignItems: 'center', justifyContent: 'center' },
   sectionTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text, marginTop: 4 },
   vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleCard: { width: '31%', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 10, gap: 2 },

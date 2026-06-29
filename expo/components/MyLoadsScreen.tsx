@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
-import { Alert, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, CheckCircle2, ChevronRight, MapPin, Package, Truck } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, ChevronRight, MapPin, Package, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -11,12 +11,16 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
+import { useAuthStore } from '@/store/auth';
 
 type LoadRow = {
   id: string; vehicle_type: string; pallets: number; delivery_speed: string; status: string;
   pickup_address?: string | null; dropoff_address?: string | null;
   distance_km: number; total_price: number; provider_net: number;
+  accepted_driver_user_id?: string | null;
 };
+
+type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
 
 interface Props {
   title?: string;
@@ -35,6 +39,30 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const advance = trpc.loads.advance.useMutation({
     onSuccess: async () => { await query.refetch(); },
   });
+
+  const user = useAuthStore((s) => s.user);
+  // Only a carrier (trucking) company can dispatch accepted loads to its drivers.
+  const canDispatch = source === 'accepted' && user?.role === 'TruckingCompany' && Boolean(user?.companyId);
+  const [dispatchFor, setDispatchFor] = useState<string | null>(null);
+  const fleetDriversQuery = trpc.loads.fleetDrivers.useQuery(undefined, { enabled: canDispatch });
+  const fleetDrivers = useMemo<FleetDriver[]>(() => (fleetDriversQuery.data ?? []) as FleetDriver[], [fleetDriversQuery.data]);
+  const dispatch = trpc.loads.dispatch.useMutation({
+    onSuccess: async () => { setDispatchFor(null); await query.refetch(); },
+  });
+
+  const assignDriver = async (loadId: string, driver: FleetDriver) => {
+    if (!driver.userId) {
+      Alert.alert('Driver not linked', `${driver.name} isn’t a registered app user yet. Add their account email in Fleet so they can receive dispatched loads.`);
+      return;
+    }
+    try {
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await dispatch.mutateAsync({ id: loadId, driverUserId: driver.userId });
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      Alert.alert('Unable to dispatch', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
 
   const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
   const active = loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status));
@@ -81,6 +109,15 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         ) : l.status === 'Delivered' ? (
           <View style={styles.deliveredRow}><CheckCircle2 size={14} color={C.green} /><Text style={styles.deliveredText}>Delivered</Text></View>
         ) : null}
+
+        {canDispatch && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
+          <TouchableOpacity style={styles.dispatchBtn} onPress={() => setDispatchFor(l.id)}>
+            <UserCheck size={14} color={C.accent} />
+            <Text style={styles.dispatchBtnText}>
+              {l.accepted_driver_user_id ? 'Reassign driver' : 'Dispatch to driver'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </Card>
     );
   };
@@ -116,6 +153,40 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </>
         ) : null}
       </ScrollView>
+
+      <Modal visible={dispatchFor !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDispatchFor(null)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Dispatch to driver</Text>
+            <TouchableOpacity onPress={() => setDispatchFor(null)} style={styles.iconBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            {fleetDriversQuery.isLoading ? (
+              <ScreenFeedback state="loading" title="Loading your drivers" />
+            ) : fleetDrivers.length === 0 ? (
+              <EmptyState icon={UserRound} title="No drivers in your fleet" description="Add drivers under Fleet (with their account email) so you can dispatch loads to them." />
+            ) : (
+              fleetDrivers.map((d) => (
+                <TouchableOpacity
+                  key={d.id}
+                  style={[styles.driverRow, !d.userId && styles.driverRowDisabled]}
+                  disabled={dispatch.isPending}
+                  onPress={() => { if (dispatchFor) void assignDriver(dispatchFor, d); }}
+                >
+                  <View style={styles.driverIcon}><UserRound size={16} color={d.userId ? C.green : C.textMuted} /></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.driverName}>{d.name}</Text>
+                    <Text style={styles.driverMeta}>
+                      {d.userId ? (d.licenseNumber || d.phone || 'Ready for dispatch') : 'Not a registered app user — add their email in Fleet'}
+                    </Text>
+                  </View>
+                  {d.userId ? <ChevronRight size={16} color={C.textMuted} /> : null}
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -145,4 +216,15 @@ const styles = StyleSheet.create({
   primaryBtnText: { flex: 1, textAlign: 'center' as const, color: C.white, fontSize: 14, fontWeight: '800' as const },
   deliveredRow: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 4 },
   deliveredText: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  dispatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
+  dispatchBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
+  modal: { flex: 1, backgroundColor: C.bg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  modalBody: { padding: 20, gap: 10 },
+  driverRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14 },
+  driverRowDisabled: { opacity: 0.55 },
+  driverIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.greenDim },
+  driverName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
 });
