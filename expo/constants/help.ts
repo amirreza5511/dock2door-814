@@ -672,6 +672,15 @@ export function getRoleDoc(key: string): RoleDoc | undefined {
   return HELP_ROLES.find((r) => r.key === key);
 }
 
+/**
+ * Resolves the in-app route for a given role + screen so the manual can deep-link
+ * straight to the real screen. Screen ids match the route file names per role folder,
+ * and `index` maps to the role root.
+ */
+export function getScreenRoute(roleKey: string, screenId: string): string {
+  return screenId === 'index' ? `/${roleKey}` : `/${roleKey}/${screenId}`;
+}
+
 /** Maps an auth UserRole to the matching manual key, when one exists. */
 export const ROLE_TO_HELP_KEY: Record<string, string> = {
   Shipper: 'shipper',

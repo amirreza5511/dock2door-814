@@ -4,9 +4,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { ChevronLeft, Check, Sparkles } from 'lucide-react-native';
+import { ChevronLeft, Check, Sparkles, ArrowUpRight } from 'lucide-react-native';
 import C from '@/constants/colors';
-import { getRoleDoc, type ScreenDoc, type MockKind } from '@/constants/help';
+import { getRoleDoc, getScreenRoute, type ScreenDoc, type MockKind } from '@/constants/help';
 import ScreenMock from '@/components/help/ScreenMock';
 
 export default function RoleManual() {
@@ -109,6 +109,15 @@ export default function RoleManual() {
                 </View>
               ))}
             </View>
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => router.push(getScreenRoute(role.key, s.id) as never)}
+              style={[styles.openBtn, { backgroundColor: role.colorDim, borderColor: accent }]}
+            >
+              <Text style={[styles.openBtnText, { color: accent }]}>Open this screen</Text>
+              <ArrowUpRight size={16} color={accent} />
+            </TouchableOpacity>
           </View>
         ))}
 
@@ -158,6 +167,12 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   actionDot: { width: 20, height: 20, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   actionText: { flex: 1, fontSize: 13, color: C.text, lineHeight: 18 },
+
+  openBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderRadius: 12, borderWidth: 1, paddingVertical: 11, marginTop: 2,
+  },
+  openBtnText: { fontSize: 14, fontWeight: '800' as const },
 
   askCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
