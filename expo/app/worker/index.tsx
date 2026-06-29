@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Linking, Alert, ActivityIndicator, RefreshControl,
@@ -18,6 +18,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import ReviewModal from '@/components/ReviewModal';
 import { checkAtSite, SITE_RADIUS_METERS } from '@/lib/geo';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -269,6 +270,22 @@ export default function WorkerDashboard() {
     [reviewsQ.data],
   );
   const ratingPending = completedIds.some((id) => !reviewedIds.has(id));
+  const [reviewForId, setReviewForId] = useState<string | null>(null);
+  const pendingReviewAssignment = useMemo(() => {
+    const id = completedIds.find((cid) => !reviewedIds.has(cid));
+    if (!id) return null;
+    const ass = myAssignments.find((a) => a.id === id);
+    if (!ass) return null;
+    const shift = shiftPosts.find((s) => s.id === ass.shift_id);
+    return { assignmentId: ass.id, companyId: shift?.employerCompanyId ?? null };
+  }, [completedIds, reviewedIds, myAssignments, shiftPosts]);
+  const activeReview = useMemo(() => {
+    if (!reviewForId) return null;
+    const ass = myAssignments.find((a) => a.id === reviewForId);
+    if (!ass) return null;
+    const shift = shiftPosts.find((s) => s.id === ass.shift_id);
+    return { assignmentId: ass.id, companyId: shift?.employerCompanyId ?? null };
+  }, [reviewForId, myAssignments, shiftPosts]);
 
   // ── Critical action banner ────────────────────────────────────────────────
   const criticalAction = useMemo((): CriticalAction | null => {
@@ -803,7 +820,10 @@ export default function WorkerDashboard() {
         {ratingPending && (
           <View style={styles.section}>
             <TouchableOpacity
-              onPress={() => router.push('/worker/my-shifts' as any)}
+              onPress={() => {
+                if (pendingReviewAssignment) setReviewForId(pendingReviewAssignment.assignmentId);
+                else router.push('/worker/my-shifts' as any);
+              }}
               style={styles.ratingPrompt}
             >
               <Star size={16} color={C.yellow} fill={C.yellow} />
@@ -847,6 +867,21 @@ export default function WorkerDashboard() {
           </View>
         </View>
       </ScrollView>
+
+      <ReviewModal
+        visible={!!activeReview}
+        onClose={() => setReviewForId(null)}
+        onSubmitted={() => {
+          setReviewForId(null);
+          void reviewsQ.refetch();
+        }}
+        title="Rate this employer"
+        subtitle={activeReview?.companyId ? employerName(activeReview.companyId) : undefined}
+        contextKind="shift_assignment"
+        contextId={activeReview?.assignmentId ?? ''}
+        targetKind="company"
+        targetCompanyId={activeReview?.companyId ?? null}
+      />
     </View>
   );
 }
