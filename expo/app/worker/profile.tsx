@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image, KeyboardAvoidingView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star, Globe, Building2, ExternalLink, MessageSquare } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -840,7 +840,17 @@ export default function WorkerProfile() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={styles.flex1}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={insets.top + 16}
+      >
+      <ScrollView
+        contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 220 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
 
         {/* ── Preview mode tabs ── */}
         <View style={styles.viewTabsWrap}>
@@ -1505,6 +1515,7 @@ export default function WorkerProfile() {
         )}
 
       </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -1515,6 +1526,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: C.card, borderRadius: 8, borderWidth: 1, borderColor: C.border },
   editBtnText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
+  flex1: { flex: 1 },
   scroll: { padding: 20, gap: 0 },
 
   // Hero

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle } from 'lucide-react-native';
+import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -61,7 +61,7 @@ export default function ServiceProviderDashboard() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />
           <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.helpBtn} testID="service-help-btn"><HelpCircle size={18} color={C.accent} /></TouchableOpacity>
-          <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Wrench size={18} color={C.textMuted} /></TouchableOpacity>
+          <TouchableOpacity onPress={logout} style={styles.logoutBtn}><LogOut size={18} color={C.textMuted} /></TouchableOpacity>
         </View>
       </View>
 
