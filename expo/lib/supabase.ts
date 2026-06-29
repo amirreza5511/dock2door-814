@@ -205,13 +205,36 @@ const clearStaleLocalSession = async (): Promise<void> => {
 };
 
 if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
-    if (isBenignRefreshTokenError(e?.reason)) {
-      console.log('[supabase] swallowing benign stale-refresh-token rejection');
-      e.preventDefault();
-      void clearStaleLocalSession();
-    }
-  });
+  // Register in the CAPTURE phase and call stopImmediatePropagation so this
+  // benign rejection never reaches Rork's runtime-error overlay listener
+  // (which would otherwise show a fatal red screen). preventDefault alone is
+  // not enough — other listeners still fire and report the error.
+  window.addEventListener(
+    'unhandledrejection',
+    (e: PromiseRejectionEvent) => {
+      if (isBenignRefreshTokenError(e?.reason)) {
+        console.log('[supabase] swallowing benign stale-refresh-token rejection');
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void clearStaleLocalSession();
+      }
+    },
+    true,
+  );
+
+  // Some auth failures surface as a generic error event rather than a rejection.
+  window.addEventListener(
+    'error',
+    (e: ErrorEvent) => {
+      if (isBenignRefreshTokenError(e?.error ?? e?.message)) {
+        console.log('[supabase] swallowing benign stale-refresh-token error event');
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void clearStaleLocalSession();
+      }
+    },
+    true,
+  );
 }
 
 // ---------------------------------------------------------------------------
