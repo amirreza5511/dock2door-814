@@ -1,6 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { Image } from 'expo-image';
+import Svg, { Circle, G, Path, Text as SvgText } from 'react-native-svg';
 import { Minus, Plus } from 'lucide-react-native';
 import C from '@/constants/colors';
 
@@ -32,92 +33,143 @@ const PIN_COLORS: Record<MapPoint['kind'], string> = {
   load: C.blue,
 };
 
+const TILE = 256;
+const MIN_ZOOM = 3;
+const MAX_ZOOM = 18;
+
 // Default region centered on Southern Ontario (Toronto-ish) when there are no points.
 const DEFAULT_CENTER = { lat: 43.6532, lng: -79.3832 };
-const DEFAULT_SPAN = { lat: 0.6, lng: 0.8 };
+const DEFAULT_ZOOM = 9;
 
-/**
- * Lightweight cross-platform interactive map built on react-native-svg.
- * Projects lat/lng to pixels with an equirectangular projection, supports
- * pan (drag), zoom (buttons), pin selection, and tap-to-place.
- */
-export default function LoadsMap({ points, routes = [], height = 280, onMapPress, onSelectPoint, placing = false }: LoadsMapProps) {
-  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: height });
-  const fit = useMemo(() => fitRegion(points), [points]);
-  const [center, setCenter] = useState<{ lat: number; lng: number }>(fit.center);
-  const [span, setSpan] = useState<{ lat: number; lng: number }>(fit.span);
-  const lastFitKey = useRef<string>('');
+type LatLng = { lat: number; lng: number };
+type Size = { w: number; h: number };
 
-  // Re-fit whenever the set of point coordinates changes (e.g. a pin is added
-  // by tapping the map or geocoding an address) so new pins stay in view.
-  const fitKey = useMemo(
-    () => points.map((p) => `${p.id}:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|'),
-    [points],
-  );
-  if (points.length > 0 && fitKey !== lastFitKey.current) {
-    lastFitKey.current = fitKey;
-    setCenter(fit.center);
-    setSpan(fit.span);
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+// --- Web Mercator projection (absolute world pixels at a given integer zoom) ---
+function lngToWorldX(lng: number, z: number): number {
+  return ((lng + 180) / 360) * TILE * 2 ** z;
+}
+function latToWorldY(lat: number, z: number): number {
+  const s = clamp(Math.sin((lat * Math.PI) / 180), -0.9999, 0.9999);
+  return (0.5 - Math.log((1 + s) / (1 - s)) / (4 * Math.PI)) * TILE * 2 ** z;
+}
+function worldXToLng(x: number, z: number): number {
+  return (x / (TILE * 2 ** z)) * 360 - 180;
+}
+function worldYToLat(y: number, z: number): number {
+  const n = Math.PI - (2 * Math.PI * y) / (TILE * 2 ** z);
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
+/** Choose a center + integer zoom that frames every point inside the viewport. */
+function computeFit(points: MapPoint[], size: Size): { center: LatLng; zoom: number } | null {
+  if (size.w <= 0 || size.h <= 0) return null;
+  if (points.length === 0) return { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM };
+
+  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+  for (const p of points) {
+    minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
+    minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
   }
 
-  const stateRef = useRef({ center, span, size });
-  stateRef.current = { center, span, size };
+  const centerLng = (minLng + maxLng) / 2;
+  // Mercator-correct latitude midpoint (zoom-independent ratio).
+  const midY = (latToWorldY(minLat, 0) + latToWorldY(maxLat, 0)) / 2;
+  const centerLat = worldYToLat(midY, 0);
+  const center: LatLng = { lat: centerLat, lng: centerLng };
+
+  if (minLat === maxLat && minLng === maxLng) return { center, zoom: 13 };
+
+  for (let z = MAX_ZOOM; z >= MIN_ZOOM; z--) {
+    const spanX = Math.abs(lngToWorldX(maxLng, z) - lngToWorldX(minLng, z));
+    const spanY = Math.abs(latToWorldY(minLat, z) - latToWorldY(maxLat, z));
+    if (spanX < size.w * 0.82 && spanY < size.h * 0.82) return { center, zoom: z };
+  }
+  return { center, zoom: MIN_ZOOM };
+}
+
+/**
+ * Real, interactive tile-based map. Renders OpenStreetMap/CARTO raster tiles
+ * (dark theme) under an SVG overlay of routes and pins. Supports drag-to-pan,
+ * button zoom, pin selection, and tap-to-place — on web and native alike.
+ */
+export default function LoadsMap({ points, routes = [], height = 280, onMapPress, onSelectPoint, placing = false }: LoadsMapProps) {
+  const [size, setSize] = useState<Size>({ w: 0, h: height });
+  const [center, setCenter] = useState<LatLng>(DEFAULT_CENTER);
+  const [zoom, setZoom] = useState<number>(DEFAULT_ZOOM);
+
+  // Re-fit only when the SET of pins changes (ids), not when an existing pin
+  // moves — so live truck tracking doesn't fight the user's pan/zoom.
+  const fitKey = useMemo(() => points.map((p) => p.id).sort().join('|'), [points]);
+  const lastFit = useRef<string>('');
+
+  useEffect(() => {
+    if (size.w <= 0) return;
+    const key = `${fitKey}@${Math.round(size.w)}x${Math.round(size.h)}`;
+    if (key === lastFit.current) return;
+    lastFit.current = key;
+    const f = computeFit(points, size);
+    if (f) { setCenter(f.center); setZoom(f.zoom); }
+  }, [fitKey, size, points]);
+
+  const stateRef = useRef({ center, zoom, size, points });
+  stateRef.current = { center, zoom, size, points };
 
   const project = (lat: number, lng: number, s = stateRef.current) => {
-    const { w, h } = s.size;
-    const x = ((lng - (s.center.lng - s.span.lng / 2)) / s.span.lng) * w;
-    const y = ((s.center.lat + s.span.lat / 2 - lat) / s.span.lat) * h;
-    return { x, y };
+    const cx = lngToWorldX(s.center.lng, s.zoom);
+    const cy = latToWorldY(s.center.lat, s.zoom);
+    return {
+      x: lngToWorldX(lng, s.zoom) - cx + s.size.w / 2,
+      y: latToWorldY(lat, s.zoom) - cy + s.size.h / 2,
+    };
   };
 
-  const unproject = (x: number, y: number, s = stateRef.current) => {
-    const { w, h } = s.size;
-    const lng = s.center.lng - s.span.lng / 2 + (x / w) * s.span.lng;
-    const lat = s.center.lat + s.span.lat / 2 - (y / h) * s.span.lat;
-    return { lat, lng };
-  };
-
-  const start = useRef<{ x: number; y: number; center: { lat: number; lng: number }; moved: boolean } | null>(null);
+  const drag = useRef<{ startCx: number; startCy: number; moved: boolean } | null>(null);
 
   const pan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3,
-      onPanResponderGrant: (e) => {
-        start.current = {
-          x: e.nativeEvent.locationX,
-          y: e.nativeEvent.locationY,
-          center: stateRef.current.center,
+      onPanResponderGrant: () => {
+        const s = stateRef.current;
+        drag.current = {
+          startCx: lngToWorldX(s.center.lng, s.zoom),
+          startCy: latToWorldY(s.center.lat, s.zoom),
           moved: false,
         };
       },
       onPanResponderMove: (_e, g) => {
-        if (!start.current) return;
+        if (!drag.current) return;
         const s = stateRef.current;
-        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) start.current.moved = true;
-        const dLng = -(g.dx / s.size.w) * s.span.lng;
-        const dLat = (g.dy / s.size.h) * s.span.lat;
-        setCenter({ lat: start.current.center.lat + dLat, lng: start.current.center.lng + dLng });
+        if (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3) drag.current.moved = true;
+        const newCx = drag.current.startCx - g.dx;
+        const newCy = drag.current.startCy - g.dy;
+        setCenter({ lat: worldYToLat(newCy, s.zoom), lng: worldXToLng(newCx, s.zoom) });
       },
       onPanResponderRelease: (e, g) => {
-        const moved = start.current?.moved || Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6;
+        const moved = drag.current?.moved || Math.abs(g.dx) > 6 || Math.abs(g.dy) > 6;
         const x = e.nativeEvent.locationX;
         const y = e.nativeEvent.locationY;
-        start.current = null;
+        drag.current = null;
         if (moved) return;
-        // Tap: hit-test points first, else place a pin.
         const s = stateRef.current;
         let hit: MapPoint | null = null;
-        let best = 24;
-        for (const p of points) {
+        let best = 26;
+        for (const p of s.points) {
           const pr = project(p.lat, p.lng, s);
           const d = Math.hypot(pr.x - x, pr.y - y);
           if (d < best) { best = d; hit = p; }
         }
         if (hit && onSelectPoint) { onSelectPoint(hit.id); return; }
         if (placing && onMapPress) {
-          const ll = unproject(x, y, s);
-          onMapPress(ll.lat, ll.lng);
+          const cx = lngToWorldX(s.center.lng, s.zoom);
+          const cy = latToWorldY(s.center.lat, s.zoom);
+          const wx = x - s.size.w / 2 + cx;
+          const wy = y - s.size.h / 2 + cy;
+          onMapPress(worldYToLat(wy, s.zoom), worldXToLng(wx, s.zoom));
         }
       },
     }),
@@ -128,32 +180,54 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
     setSize({ w: width, h });
   };
 
-  const zoom = (factor: number) => {
-    setSpan((s) => ({
-      lat: clamp(s.lat * factor, 0.005, 12),
-      lng: clamp(s.lng * factor, 0.006, 16),
-    }));
-  };
+  const changeZoom = (delta: number) => setZoom((z) => clamp(z + delta, MIN_ZOOM, MAX_ZOOM));
 
   const ready = size.w > 0;
-  const gridLines = useMemo(() => buildGrid(size), [size]);
+
+  // Compute the visible tile grid for the current center/zoom/size.
+  const tiles = useMemo(() => {
+    if (!ready) return [] as { key: string; uri: string; left: number; top: number }[];
+    const n = 2 ** zoom;
+    const cx = lngToWorldX(center.lng, zoom);
+    const cy = latToWorldY(center.lat, zoom);
+    const leftWorld = cx - size.w / 2;
+    const topWorld = cy - size.h / 2;
+    const firstX = Math.floor(leftWorld / TILE);
+    const lastX = Math.floor((cx + size.w / 2) / TILE);
+    const firstY = Math.floor(topWorld / TILE);
+    const lastY = Math.floor((cy + size.h / 2) / TILE);
+    const out: { key: string; uri: string; left: number; top: number }[] = [];
+    for (let tx = firstX; tx <= lastX; tx++) {
+      for (let ty = firstY; ty <= lastY; ty++) {
+        if (ty < 0 || ty >= n) continue;
+        const wrappedX = ((tx % n) + n) % n;
+        out.push({
+          key: `${zoom}/${wrappedX}/${ty}`,
+          uri: `https://a.basemaps.cartocdn.com/dark_all/${zoom}/${wrappedX}/${ty}.png`,
+          left: tx * TILE - leftWorld,
+          top: ty * TILE - topWorld,
+        });
+      }
+    }
+    return out;
+  }, [ready, zoom, center, size]);
 
   return (
     <View style={[styles.wrap, { height }]} onLayout={onLayout}>
       {ready ? (
         <View style={StyleSheet.absoluteFill} {...pan.panHandlers}>
-          <Svg width={size.w} height={size.h}>
-            <Defs>
-              <LinearGradient id="mapbg" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={C.bgSecondary} />
-                <Stop offset="1" stopColor={C.bg} />
-              </LinearGradient>
-            </Defs>
-            <Rect x={0} y={0} width={size.w} height={size.h} fill="url(#mapbg)" />
-            {gridLines.map((g, i) => (
-              <Line key={`g${i}`} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={C.border} strokeWidth={1} opacity={0.5} />
-            ))}
+          {tiles.map((t) => (
+            <Image
+              key={t.key}
+              source={{ uri: t.uri }}
+              style={[styles.tile, { left: t.left, top: t.top }]}
+              contentFit="cover"
+              transition={150}
+              cachePolicy="memory-disk"
+            />
+          ))}
 
+          <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
             {routes.map((r, i) => {
               const a = project(r.from.lat, r.from.lng);
               const b = project(r.to.lat, r.to.lng);
@@ -162,10 +236,10 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
                   key={`r${i}`}
                   d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`}
                   stroke={r.muted ? C.textMuted : C.accent}
-                  strokeWidth={r.muted ? 2 : 3}
+                  strokeWidth={r.muted ? 2 : 4}
                   strokeDasharray={r.muted ? '4 6' : undefined}
                   strokeLinecap="round"
-                  opacity={r.muted ? 0.5 : 0.9}
+                  opacity={r.muted ? 0.6 : 0.95}
                   fill="none"
                 />
               );
@@ -178,11 +252,12 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
               const r = p.selected ? 11 : 8;
               return (
                 <G key={p.id}>
-                  {p.selected ? <Circle cx={x} cy={y} r={r + 7} fill={color} opacity={0.18} /> : null}
+                  {p.selected ? <Circle cx={x} cy={y} r={r + 8} fill={color} opacity={0.2} /> : null}
+                  {p.kind === 'driver' ? <Circle cx={x} cy={y} r={r + 6} fill={color} opacity={0.22} /> : null}
                   <Circle cx={x} cy={y} r={r} fill={color} stroke={C.white} strokeWidth={2.5} />
                   {p.kind === 'driver' ? <Circle cx={x} cy={y} r={3} fill={C.white} /> : null}
                   {p.label ? (
-                    <SvgText x={x} y={y - r - 6} fill={C.text} fontSize={11} fontWeight="700" textAnchor="middle">
+                    <SvgText x={x} y={y - r - 7} fill={C.white} fontSize={11} fontWeight="700" textAnchor="middle" stroke={C.black} strokeWidth={0.4}>
                       {p.label}
                     </SvgText>
                   ) : null}
@@ -193,11 +268,15 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
         </View>
       ) : null}
 
+      <View style={styles.attribution} pointerEvents="none">
+        <Text style={styles.attributionText}>© OpenStreetMap · CARTO</Text>
+      </View>
+
       <View style={styles.zoomCol} pointerEvents="box-none">
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(0.6)} accessibilityLabel="Zoom in">
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => changeZoom(1)} accessibilityLabel="Zoom in">
           <Plus size={16} color={C.text} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.zoomBtn} onPress={() => zoom(1.7)} accessibilityLabel="Zoom out">
+        <TouchableOpacity style={styles.zoomBtn} onPress={() => changeZoom(-1)} accessibilityLabel="Zoom out">
           <Minus size={16} color={C.text} />
         </TouchableOpacity>
       </View>
@@ -211,34 +290,11 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
   );
 }
 
-function clamp(v: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, v));
-}
-
-function fitRegion(points: MapPoint[]): { center: { lat: number; lng: number }; span: { lat: number; lng: number } } {
-  if (points.length === 0) return { center: DEFAULT_CENTER, span: DEFAULT_SPAN };
-  let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
-  for (const p of points) {
-    minLat = Math.min(minLat, p.lat); maxLat = Math.max(maxLat, p.lat);
-    minLng = Math.min(minLng, p.lng); maxLng = Math.max(maxLng, p.lng);
-  }
-  const center = { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
-  const latSpan = Math.max((maxLat - minLat) * 1.6, 0.04);
-  const lngSpan = Math.max((maxLng - minLng) * 1.6, 0.05);
-  return { center, span: { lat: latSpan, lng: lngSpan } };
-}
-
-function buildGrid(size: { w: number; h: number }): { x1: number; y1: number; x2: number; y2: number }[] {
-  const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
-  if (size.w <= 0) return lines;
-  const step = 56;
-  for (let x = step; x < size.w; x += step) lines.push({ x1: x, y1: 0, x2: x, y2: size.h });
-  for (let y = step; y < size.h; y += step) lines.push({ x1: 0, y1: y, x2: size.w, y2: y });
-  return lines;
-}
-
 const styles = StyleSheet.create({
   wrap: { borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.border, backgroundColor: C.bgSecondary },
+  tile: { position: 'absolute', width: TILE, height: TILE },
+  attribution: { position: 'absolute', left: 8, bottom: 6, backgroundColor: 'rgba(8,17,30,0.55)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+  attributionText: { fontSize: 9, color: C.textSecondary },
   zoomCol: { position: 'absolute', right: 10, bottom: 10, gap: 8 },
   zoomBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   hint: { position: 'absolute', top: 10, alignSelf: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },

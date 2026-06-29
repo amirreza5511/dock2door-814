@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 
 export type Bucket = 'certifications' | 'warehouse-docs' | 'booking-docs' | 'invoices' | 'attachments' | 'worker-photos' | 'shift-attachments';
@@ -113,6 +114,29 @@ export async function getSignedUrl(bucket: Bucket, path: string, expiresInSecond
   return data.signedUrl;
 }
 
+/**
+ * Reads a local file/asset URI into a Blob. On native, `fetch(uri).blob()` is
+ * unreliable (often yields empty 0-byte blobs), so we read via expo-file-system
+ * base64 and rebuild the bytes. On web, fetch works correctly.
+ */
+async function uriToBlob(uri: string, contentType: string): Promise<Blob> {
+  if (Platform.OS === 'web') {
+    const res = await fetch(uri);
+    return res.blob();
+  }
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+    const byteString = typeof atob === 'function' ? atob(base64) : Buffer.from(base64, 'base64').toString('binary');
+    const buf = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i += 1) buf[i] = byteString.charCodeAt(i);
+    return new Blob([buf], { type: contentType });
+  } catch (fsErr) {
+    console.log('[storage] expo-file-system read failed, falling back to fetch', fsErr);
+    const res = await fetch(uri);
+    return res.blob();
+  }
+}
+
 export async function pickAndUploadFromUri(params: {
   uri: string;
   bucket: Bucket;
@@ -122,13 +146,9 @@ export async function pickAndUploadFromUri(params: {
   entityId?: string | null;
   companyId?: string | null;
 }): Promise<UploadedFileMeta> {
-  let body: Blob;
-  if (Platform.OS === 'web') {
-    const res = await fetch(params.uri);
-    body = await res.blob();
-  } else {
-    const res = await fetch(params.uri);
-    body = await res.blob();
+  const body = await uriToBlob(params.uri, params.contentType);
+  if (!body || body.size === 0) {
+    throw new Error('The selected photo could not be read. Please try taking it again.');
   }
   return uploadFileWithMetadata({
     bucket: params.bucket,
