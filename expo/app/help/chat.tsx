@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -10,19 +10,15 @@ import { useAuthStore } from '@/store/auth';
 import C from '@/constants/colors';
 import { askAssistant, type AiMessage } from '@/lib/ai';
 import { HELP_ROLES, ROLE_TO_HELP_KEY } from '@/constants/help';
+import { useHelpLanguage } from '@/store/help-language';
+import { getLang, tUI, CHAT_SUGGESTIONS } from '@/constants/i18n';
+import LanguagePicker from '@/components/help/LanguagePicker';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
 }
-
-const SUGGESTIONS = [
-  'How do I post a load and get a quote?',
-  'Where do I take pickup and delivery photos?',
-  'How does a fleet dispatcher assign a driver?',
-  'Where can I track my truck live?',
-];
 
 /** Builds a compact knowledge summary of the manual so the AI answers accurately. */
 function buildKnowledge(): string {
@@ -38,6 +34,12 @@ export default function HelpChat() {
   const user = useAuthStore((s) => s.user);
   const scrollRef = useRef<ScrollView>(null);
 
+  const lang = useHelpLanguage((s) => s.lang);
+  const hydrate = useHelpLanguage((s) => s.hydrate);
+  useEffect(() => { void hydrate(); }, [hydrate]);
+  const langDef = getLang(lang);
+  const dirText = langDef.rtl ? ('right' as const) : ('left' as const);
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>('');
   const [sending, setSending] = useState<boolean>(false);
@@ -45,6 +47,7 @@ export default function HelpChat() {
   const myRole = user ? HELP_ROLES.find((x) => x.key === ROLE_TO_HELP_KEY[user.role]) : undefined;
 
   const systemPrompt = `You are the Dock2Door Help Center assistant. Dock2Door is a logistics, freight-delivery and labour-staffing platform with three worlds: Freight & Delivery (Uber for trucks), Logistics & Warehousing, and Labour. The current user's role is "${myRole?.name ?? user?.role ?? 'guest'}".
+ALWAYS reply in ${langDef.aiName}, regardless of the language the question is written in. Keep screen names recognizable.
 Answer ONLY using the app knowledge below. Be concise, practical and step-by-step. Reference the exact screen names. If something isn't covered, say so briefly and suggest the closest screen.
 
 APP KNOWLEDGE:
@@ -77,6 +80,8 @@ ${buildKnowledge()}`;
     }
   }, [messages, sending, systemPrompt]);
 
+  const suggestions = CHAT_SUGGESTIONS[lang] ?? CHAT_SUGGESTIONS.en;
+
   const empty = messages.length === 0;
 
   return (
@@ -91,10 +96,11 @@ ${buildKnowledge()}`;
           <View style={styles.aiBadge}>
             <Sparkles size={14} color={C.accent} />
           </View>
-          <View>
-            <Text style={styles.headerTitle}>Help Assistant</Text>
-            <Text style={styles.headerSub}>Answers from the app manual</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{tUI(lang, 'helpAssistant')}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>{tUI(lang, 'answersFromManual')}</Text>
           </View>
+          <LanguagePicker />
         </View>
       </View>
 
@@ -115,14 +121,14 @@ ${buildKnowledge()}`;
               <View style={styles.emptyIcon}>
                 <Sparkles size={28} color={C.accent} />
               </View>
-              <Text style={styles.emptyTitle}>How can I help?</Text>
+              <Text style={styles.emptyTitle}>{tUI(lang, 'howCanIHelp')}</Text>
               <Text style={styles.emptySub}>
-                Ask me anything about how Dock2Door works — I’ll point you to the exact screen and steps.
+                {tUI(lang, 'askAnythingSub')}
               </Text>
               <View style={styles.suggestions}>
-                {SUGGESTIONS.map((s) => (
+                {suggestions.map((s) => (
                   <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => void send(s)}>
-                    <Text style={styles.suggestionText}>{s}</Text>
+                    <Text style={[styles.suggestionText, { textAlign: dirText }]}>{s}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -134,7 +140,7 @@ ${buildKnowledge()}`;
                 style={[styles.bubbleRow, m.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAi]}
               >
                 <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}>
-                  <Text style={[styles.bubbleText, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
+                  <Text style={[styles.bubbleText, { textAlign: dirText }, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
                 </View>
               </View>
             ))
@@ -143,7 +149,7 @@ ${buildKnowledge()}`;
             <View style={[styles.bubbleRow, styles.bubbleRowAi]}>
               <View style={[styles.bubble, styles.bubbleAi, styles.typing]}>
                 <ActivityIndicator size="small" color={C.accent} />
-                <Text style={styles.typingText}>Thinking…</Text>
+                <Text style={styles.typingText}>{tUI(lang, 'thinking')}</Text>
               </View>
             </View>
           )}
@@ -153,9 +159,9 @@ ${buildKnowledge()}`;
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Ask about any screen or task…"
+            placeholder={tUI(lang, 'askPlaceholder')}
             placeholderTextColor={C.textMuted}
-            style={styles.input}
+            style={[styles.input, { textAlign: dirText }]}
             multiline
             onSubmitEditing={() => void send(input)}
             editable={!sending}

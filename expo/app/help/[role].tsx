@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -8,6 +8,10 @@ import { ChevronLeft, Check, Sparkles, ArrowUpRight } from 'lucide-react-native'
 import C from '@/constants/colors';
 import { getRoleDoc, getScreenRoute, type ScreenDoc, type MockKind } from '@/constants/help';
 import ScreenMock from '@/components/help/ScreenMock';
+import { useHelpLanguage } from '@/store/help-language';
+import { getLang, tUI } from '@/constants/i18n';
+import { useTranslator } from '@/hooks/useTranslator';
+import LanguagePicker from '@/components/help/LanguagePicker';
 
 export default function RoleManual() {
   const insets = useSafeAreaInsets();
@@ -16,6 +20,30 @@ export default function RoleManual() {
   const role = getRoleDoc(params.role ?? '');
   const scrollRef = useRef<ScrollView>(null);
   const offsets = useRef<Record<string, number>>({});
+
+  const lang = useHelpLanguage((s) => s.lang);
+  const hydrate = useHelpLanguage((s) => s.hydrate);
+  useEffect(() => { void hydrate(); }, [hydrate]);
+  const rtl = getLang(lang).rtl;
+  const dirText = rtl ? ('right' as const) : ('left' as const);
+
+  // Collect every translatable string for this role into one batch.
+  const texts = useMemo<string[]>(() => {
+    if (!role) return [];
+    const out: string[] = [role.name, role.tagline, role.overview];
+    for (const s of role.screens) {
+      out.push(s.title, s.summary, ...s.actions, ...(s.mockRows ?? []));
+      if (s.mockCta) out.push(s.mockCta);
+    }
+    return out;
+  }, [role]);
+  const { tx, loading } = useTranslator(texts, lang);
+
+  const txScreen = useMemo(() => (s: ScreenDoc): ScreenDoc => ({
+    ...s,
+    mockRows: s.mockRows?.map((r) => tx(r)),
+    mockCta: s.mockCta ? tx(s.mockCta) : undefined,
+  }), [tx]);
 
   const focusScreen = typeof params.screen === 'string' ? params.screen : undefined;
 
@@ -38,20 +66,20 @@ export default function RoleManual() {
         <View style={[styles.heroIcon, { backgroundColor: C.bgSecondary }]}>
           <Icon size={26} color={accent} />
         </View>
-        <Text style={styles.heroTitle}>{role.name}</Text>
-        <Text style={styles.heroTagline}>{role.tagline}</Text>
-        <Text style={styles.heroOverview}>{role.overview}</Text>
+        <Text style={[styles.heroTitle, { textAlign: dirText }]}>{tx(role.name)}</Text>
+        <Text style={[styles.heroTagline, { textAlign: dirText }]}>{tx(role.tagline)}</Text>
+        <Text style={[styles.heroOverview, { textAlign: dirText }]}>{tx(role.overview)}</Text>
       </View>
     );
-  }, [role, accent]);
+  }, [role, accent, tx, dirText]);
 
   if (!role) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, paddingTop: insets.top + 80, alignItems: 'center' }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.notFound}>Manual not found.</Text>
+        <Text style={styles.notFound}>{tUI(lang, 'manualNotFound')}</Text>
         <TouchableOpacity onPress={() => router.back()} style={styles.notFoundBtn}>
-          <Text style={styles.notFoundBtnText}>Go back</Text>
+          <Text style={styles.notFoundBtnText}>{tUI(lang, 'goBack')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -65,7 +93,8 @@ export default function RoleManual() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ChevronLeft size={22} color={C.text} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{role.name} Manual</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>{tx(role.name)} {tUI(lang, 'manualSuffix')}</Text>
+        <LanguagePicker accent={accent} />
         <TouchableOpacity onPress={() => router.push('/help/chat' as never)} style={styles.aiBtn}>
           <Sparkles size={16} color={accent} />
         </TouchableOpacity>
@@ -79,7 +108,15 @@ export default function RoleManual() {
       >
         {header}
 
-        <Text style={styles.sectionLabel}>{role.screens.length} SCREENS · STEP BY STEP</Text>
+        <View style={styles.sectionRow}>
+          <Text style={styles.sectionLabel}>{tUI(lang, 'screensStepByStep').replace('{n}', String(role.screens.length))}</Text>
+          {loading && (
+            <View style={styles.translatingPill}>
+              <ActivityIndicator size="small" color={accent} />
+              <Text style={[styles.translatingText, { color: accent }]}>{tUI(lang, 'translating')}</Text>
+            </View>
+          )}
+        </View>
 
         {role.screens.map((s, i) => (
           <View
@@ -92,12 +129,12 @@ export default function RoleManual() {
                 <Text style={[styles.stepNumText, { color: accent }]}>{i + 1}</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.screenTitle}>{s.title}</Text>
-                <Text style={styles.screenSummary}>{s.summary}</Text>
+                <Text style={[styles.screenTitle, { textAlign: dirText }]}>{tx(s.title)}</Text>
+                <Text style={[styles.screenSummary, { textAlign: dirText }]}>{tx(s.summary)}</Text>
               </View>
             </View>
 
-            <ScreenMock doc={s} accent={accent} />
+            <ScreenMock doc={txScreen(s)} accent={accent} />
 
             <View style={styles.actions}>
               {s.actions.map((a) => (
@@ -105,7 +142,7 @@ export default function RoleManual() {
                   <View style={[styles.actionDot, { backgroundColor: role.colorDim }]}>
                     <Check size={11} color={accent} />
                   </View>
-                  <Text style={styles.actionText}>{a}</Text>
+                  <Text style={[styles.actionText, { textAlign: dirText }]}>{tx(a)}</Text>
                 </View>
               ))}
             </View>
@@ -115,7 +152,7 @@ export default function RoleManual() {
               onPress={() => router.push(getScreenRoute(role.key, s.id) as never)}
               style={[styles.openBtn, { backgroundColor: role.colorDim, borderColor: accent }]}
             >
-              <Text style={[styles.openBtnText, { color: accent }]}>Open this screen</Text>
+              <Text style={[styles.openBtnText, { color: accent }]}>{tUI(lang, 'openScreen')}</Text>
               <ArrowUpRight size={16} color={accent} />
             </TouchableOpacity>
           </View>
@@ -123,7 +160,7 @@ export default function RoleManual() {
 
         <TouchableOpacity style={[styles.askCard, { borderColor: accent }]} onPress={() => router.push('/help/chat' as never)}>
           <Sparkles size={18} color={accent} />
-          <Text style={styles.askText}>Still stuck? Ask the AI assistant</Text>
+          <Text style={styles.askText}>{tUI(lang, 'stillStuck')}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -151,7 +188,10 @@ const styles = StyleSheet.create({
   heroTagline: { fontSize: 13, color: C.textSecondary, marginTop: 2, marginBottom: 10 },
   heroOverview: { fontSize: 14, color: C.text, lineHeight: 21, opacity: 0.92 },
 
+  sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionLabel: { fontSize: 11, color: C.textMuted, fontWeight: '700' as const, letterSpacing: 1.2, marginTop: 14, marginBottom: 6 },
+  translatingPill: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  translatingText: { fontSize: 11, fontWeight: '700' as const },
 
   screenCard: {
     backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border,

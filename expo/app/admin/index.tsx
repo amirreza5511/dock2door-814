@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award, Truck, Tag } from 'lucide-react-native';
+import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award, Truck, Tag, HelpCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -75,6 +75,9 @@ export default function AdminDashboard() {
         </View>
         <View style={styles.headerActions}>
           <WorldSwitcher />
+          <TouchableOpacity onPress={() => router.push('/help' as never)} style={[styles.logoutBtn, { backgroundColor: C.accent + '15', borderColor: C.accent + '40' }]} testID="admin-help-btn">
+            <HelpCircle size={18} color={C.accent} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}>
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>

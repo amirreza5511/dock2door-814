@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CircleCheckBig, LogOut, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
+import { CircleCheckBig, HelpCircle, LogOut, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -54,6 +55,7 @@ const INITIAL_FORM: FormState = {
 
 export default function GatePanelScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const utils = trpc.useUtils();
   const logout = useAuthStore((s) => s.logout);
 
@@ -221,9 +223,14 @@ export default function GatePanelScreen() {
       >
         <View style={styles.headerRow}>
           <Text style={styles.title}>Gate Staff Panel</Text>
-          <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="gate-logout-btn">
-            <LogOut size={18} color={C.textMuted} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={() => router.push('/help' as never)} style={[styles.logoutBtn, { backgroundColor: C.accent + '15', borderColor: C.accent + '40' }]} testID="gate-help-btn">
+              <HelpCircle size={18} color={C.accent} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="gate-logout-btn">
+              <LogOut size={18} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.subtitle}>Each warehouse has its own gate. Pick a gate to manage its arrivals.</Text>
 

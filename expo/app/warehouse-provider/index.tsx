@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, HelpCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -63,6 +63,9 @@ export default function WarehouseProviderDashboard() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />
+          <TouchableOpacity onPress={() => router.push('/help' as never)} style={[styles.logoutBtn, { backgroundColor: C.accent + '20', borderColor: C.accent + '40' }]} testID="warehouse-help-btn">
+            <HelpCircle size={18} color={C.accent} />
+          </TouchableOpacity>
           {user?.isPlatformAdmin && (
             <TouchableOpacity
               onPress={() => router.push('/admin' as never)}

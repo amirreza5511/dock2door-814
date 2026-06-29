@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
 } from 'react-native';
@@ -12,6 +12,10 @@ import {
   HELP_ROLES, HELP_WORLDS, SHARED_HELP, ROLE_TO_HELP_KEY, type RoleDoc,
 } from '@/constants/help';
 import { useAuthStore } from '@/store/auth';
+import { useHelpLanguage } from '@/store/help-language';
+import { getLang, tUI } from '@/constants/i18n';
+import { useTranslator } from '@/hooks/useTranslator';
+import LanguagePicker from '@/components/help/LanguagePicker';
 
 const SHARED_ICON: Record<string, typeof MessageCircle> = {
   messages: MessageCircle,
@@ -24,13 +28,30 @@ export default function HelpHome() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const lang = useHelpLanguage((s) => s.lang);
+  const hydrate = useHelpLanguage((s) => s.hydrate);
   const [query, setQuery] = useState<string>('');
+
+  useEffect(() => { void hydrate(); }, [hydrate]);
+
+  const rtl = getLang(lang).rtl;
+  const dirText = rtl ? ('right' as const) : ('left' as const);
 
   const myKey = user ? ROLE_TO_HELP_KEY[user.role] : undefined;
   const myRole = useMemo<RoleDoc | undefined>(
     () => HELP_ROLES.find((r) => r.key === myKey),
     [myKey],
   );
+
+  // Translatable card text: role names/taglines, world titles/blurbs, shared cards.
+  const dynamicTexts = useMemo<string[]>(() => {
+    const out: string[] = [];
+    for (const r of HELP_ROLES) { out.push(r.name, r.tagline); }
+    for (const w of HELP_WORLDS) { out.push(w.title, w.blurb); }
+    for (const s of SHARED_HELP) { out.push(s.title, s.summary); }
+    return out;
+  }, []);
+  const { tx } = useTranslator(dynamicTexts, lang);
 
   const q = query.trim().toLowerCase();
   const matches = useMemo(() => {
@@ -63,11 +84,12 @@ export default function HelpHome() {
           <View style={styles.headerIcon}>
             <BookOpen size={18} color={C.accent} />
           </View>
-          <View>
-            <Text style={styles.headerTitle}>Help Center</Text>
-            <Text style={styles.headerSub}>Manuals, guides & AI help</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{tUI(lang, 'helpCenter')}</Text>
+            <Text style={styles.headerSub} numberOfLines={1}>{tUI(lang, 'helpCenterSub')}</Text>
           </View>
         </View>
+        <LanguagePicker />
       </View>
 
       <ScrollView
@@ -82,16 +104,16 @@ export default function HelpHome() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search screens, roles, how-tos…"
+            placeholder={tUI(lang, 'searchPlaceholder')}
             placeholderTextColor={C.textMuted}
-            style={styles.searchInput}
+            style={[styles.searchInput, { textAlign: dirText }]}
             autoCorrect={false}
           />
         </View>
 
         {q.length > 0 ? (
           <View style={styles.searchResults}>
-            <Text style={styles.sectionLabel}>{matches.length} RESULT{matches.length === 1 ? '' : 'S'}</Text>
+            <Text style={styles.sectionLabel}>{matches.length} {matches.length === 1 ? tUI(lang, 'result') : tUI(lang, 'results')}</Text>
             {matches.map((m) => (
               <TouchableOpacity
                 key={`${m.roleKey}-${m.screenId}`}
@@ -99,14 +121,14 @@ export default function HelpHome() {
                 onPress={() => router.push(`/help/${m.roleKey}?screen=${m.screenId}` as never)}
               >
                 <View style={styles.resultText}>
-                  <Text style={styles.resultTitle}>{m.title}</Text>
-                  <Text style={styles.resultSub} numberOfLines={1}>{m.roleName} · {m.summary}</Text>
+                  <Text style={[styles.resultTitle, { textAlign: dirText }]}>{tx(m.title)}</Text>
+                  <Text style={[styles.resultSub, { textAlign: dirText }]} numberOfLines={1}>{tx(m.roleName)} · {tx(m.summary)}</Text>
                 </View>
                 <ChevronRight size={18} color={C.textMuted} />
               </TouchableOpacity>
             ))}
             {matches.length === 0 && (
-              <Text style={styles.noResults}>No matches. Try the AI assistant below.</Text>
+              <Text style={styles.noResults}>{tUI(lang, 'noMatches')}</Text>
             )}
           </View>
         ) : (
@@ -121,8 +143,8 @@ export default function HelpHome() {
                 <Sparkles size={22} color={C.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.aiTitle}>Ask AI for help</Text>
-                <Text style={styles.aiSub}>Describe what you’re trying to do and get a step-by-step answer.</Text>
+                <Text style={[styles.aiTitle, { textAlign: dirText }]}>{tUI(lang, 'askAi')}</Text>
+                <Text style={[styles.aiSub, { textAlign: dirText }]}>{tUI(lang, 'askAiSub')}</Text>
               </View>
               <ChevronRight size={20} color={C.accent} />
             </TouchableOpacity>
@@ -130,13 +152,13 @@ export default function HelpHome() {
             {/* Your role shortcut */}
             {myRole && (
               <>
-                <Text style={styles.sectionLabel}>YOUR MANUAL</Text>
-                <RoleCard role={myRole} highlighted onPress={() => router.push(`/help/${myRole.key}` as never)} />
+                <Text style={styles.sectionLabel}>{tUI(lang, 'yourManual')}</Text>
+                <RoleCard role={myRole} highlighted tx={tx} dirText={dirText} onPress={() => router.push(`/help/${myRole.key}` as never)} />
               </>
             )}
 
             {/* All manuals grouped by world */}
-            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>ALL ROLE MANUALS</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{tUI(lang, 'allManuals')}</Text>
             {HELP_WORLDS.map((w) => {
               const roles = HELP_ROLES.filter((r) => r.world === w.key);
               if (roles.length === 0) return null;
@@ -144,18 +166,18 @@ export default function HelpHome() {
                 <View key={w.key} style={styles.worldBlock}>
                   <View style={styles.worldHeader}>
                     <View style={[styles.worldDot, { backgroundColor: w.color }]} />
-                    <Text style={styles.worldTitle}>{w.title}</Text>
+                    <Text style={styles.worldTitle}>{tx(w.title)}</Text>
                   </View>
-                  <Text style={styles.worldBlurb}>{w.blurb}</Text>
+                  <Text style={[styles.worldBlurb, { textAlign: dirText }]}>{tx(w.blurb)}</Text>
                   {roles.map((r) => (
-                    <RoleCard key={r.key} role={r} onPress={() => router.push(`/help/${r.key}` as never)} />
+                    <RoleCard key={r.key} role={r} tx={tx} dirText={dirText} onPress={() => router.push(`/help/${r.key}` as never)} />
                   ))}
                 </View>
               );
             })}
 
             {/* Shared screens */}
-            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>EVERYWHERE IN THE APP</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 20 }]}>{tUI(lang, 'everywhere')}</Text>
             <View style={styles.sharedGrid}>
               {SHARED_HELP.map((s) => {
                 const Icon = SHARED_ICON[s.id] ?? BookOpen;
@@ -164,8 +186,8 @@ export default function HelpHome() {
                     <View style={styles.sharedIcon}>
                       <Icon size={18} color={C.accent} />
                     </View>
-                    <Text style={styles.sharedTitle}>{s.title}</Text>
-                    <Text style={styles.sharedSub} numberOfLines={3}>{s.summary}</Text>
+                    <Text style={[styles.sharedTitle, { textAlign: dirText }]}>{tx(s.title)}</Text>
+                    <Text style={[styles.sharedSub, { textAlign: dirText }]} numberOfLines={3}>{tx(s.summary)}</Text>
                   </View>
                 );
               })}
@@ -177,7 +199,7 @@ export default function HelpHome() {
   );
 }
 
-function RoleCard({ role, onPress, highlighted }: { role: RoleDoc; onPress: () => void; highlighted?: boolean }) {
+function RoleCard({ role, onPress, highlighted, tx, dirText }: { role: RoleDoc; onPress: () => void; highlighted?: boolean; tx: (s: string) => string; dirText: 'left' | 'right' }) {
   const Icon = role.icon;
   return (
     <TouchableOpacity
@@ -189,8 +211,8 @@ function RoleCard({ role, onPress, highlighted }: { role: RoleDoc; onPress: () =
         <Icon size={20} color={role.color} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.roleName}>{role.name}</Text>
-        <Text style={styles.roleTagline} numberOfLines={1}>{role.tagline}</Text>
+        <Text style={[styles.roleName, { textAlign: dirText }]}>{tx(role.name)}</Text>
+        <Text style={[styles.roleTagline, { textAlign: dirText }]} numberOfLines={1}>{tx(role.tagline)}</Text>
       </View>
       <View style={styles.roleMeta}>
         <Text style={styles.roleCount}>{role.screens.length}</Text>

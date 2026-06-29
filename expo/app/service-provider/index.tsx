@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wrench, DollarSign, Clock, CheckCircle } from 'lucide-react-native';
+import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -60,6 +60,7 @@ export default function ServiceProviderDashboard() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />
+          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.helpBtn} testID="service-help-btn"><HelpCircle size={18} color={C.accent} /></TouchableOpacity>
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}><Wrench size={18} color={C.textMuted} /></TouchableOpacity>
         </View>
       </View>
@@ -147,6 +148,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 22, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
   company: { fontSize: 13, color: C.accent, fontWeight: '600' as const, marginTop: 2 },
   logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  helpBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingTop: 20 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 20, marginBottom: 16 },
   statCard: { flex: 1, minWidth: '45%', backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 4 },
