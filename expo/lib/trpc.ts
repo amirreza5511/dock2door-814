@@ -1398,6 +1398,14 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { threadId: data as string };
   },
 
+  // Opens (or reuses) the conversation tied to a load so the shipper, the
+  // assigned driver and the fleet dispatcher can all talk in one thread.
+  'messaging.openLoadThread': async (input: { loadId: string }) => {
+    const { data, error } = await supabase.rpc('open_load_thread', { p_load_id: input.loadId });
+    if (error) throwErr(error, 'Unable to open conversation');
+    return { threadId: data as string };
+  },
+
   // Opens (or reuses) the caller's direct conversation with the dock2door support team.
   'messaging.openSupportThread': async () => {
     const { data, error } = await supabase.rpc('open_support_thread');

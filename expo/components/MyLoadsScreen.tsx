@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Image } from 'expo-image';
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, Navigation, Package, Radio, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, MessageCircle, Navigation, Package, Phone, Radio, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -24,6 +24,7 @@ type LoadRow = {
   pickup_address?: string | null; dropoff_address?: string | null;
   distance_km: number; total_price: number; provider_net: number;
   accepted_driver_user_id?: string | null;
+  recipient_name?: string | null; recipient_phone?: string | null;
 };
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
@@ -48,6 +49,26 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     onSuccess: async () => { await query.refetch(); },
   });
   const updateLocation = trpc.loads.updateLocation.useMutation();
+  const openThread = trpc.messaging.openLoadThread.useMutation();
+
+  // Opens (or reuses) the load conversation and jumps into it. Everyone tied to
+  // the load — shipper, assigned driver and the fleet dispatcher — shares it.
+  const openLoadChat = async (loadId: string) => {
+    try {
+      const res = await openThread.mutateAsync({ loadId });
+      router.push(`/messages/${res.threadId}` as never);
+    } catch (err) {
+      Alert.alert('Unable to open chat', err instanceof Error ? err.message : 'Try again.');
+    }
+  };
+
+  // Tap-to-call the drop-off recipient captured when the load was posted.
+  const callRecipient = async (phone: string) => {
+    const url = `tel:${phone.replace(/[^+0-9]/g, '')}`;
+    const ok = await Linking.canOpenURL(url).catch(() => false);
+    if (!ok) { Alert.alert('Unable to call', 'Calling is not available on this device.'); return; }
+    await Linking.openURL(url);
+  };
 
   const user = useAuthStore((s) => s.user);
   // Only a carrier (trucking) company can dispatch accepted loads to its drivers.
@@ -230,6 +251,21 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </TouchableOpacity>
         ) : null}
 
+        {['Accepted', 'EnRoute', 'Arrived', 'Delivered'].includes(l.status) && l.accepted_driver_user_id ? (
+          <View style={styles.contactRow}>
+            <TouchableOpacity style={styles.contactBtn} disabled={openThread.isPending} onPress={() => void openLoadChat(l.id)}>
+              <MessageCircle size={14} color={C.accent} />
+              <Text style={styles.contactBtnText}>{source === 'posted' ? 'Message driver' : 'Message shipper'}</Text>
+            </TouchableOpacity>
+            {source === 'accepted' && (l.recipient_phone ?? '').trim() ? (
+              <TouchableOpacity style={[styles.contactBtn, styles.contactBtnCall]} onPress={() => void callRecipient(l.recipient_phone as string)}>
+                <Phone size={14} color={C.green} />
+                <Text style={[styles.contactBtnText, { color: C.green }]} numberOfLines={1}>Call {l.recipient_name?.trim() || 'recipient'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {canDispatch && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
           <TouchableOpacity style={styles.dispatchBtn} onPress={() => setDispatchFor(l.id)}>
             <UserCheck size={14} color={C.accent} />
@@ -390,6 +426,10 @@ const styles = StyleSheet.create({
   deliveredText: { fontSize: 13, color: C.green, fontWeight: '700' as const },
   trackBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.blueDim, borderWidth: 1, borderColor: C.blue + '55' },
   trackBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.blue },
+  contactRow: { flexDirection: 'row', gap: 8 },
+  contactBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55' },
+  contactBtnCall: { backgroundColor: C.greenDim, borderColor: C.green + '55' },
+  contactBtnText: { fontSize: 12.5, fontWeight: '800' as const, color: C.accent },
   dispatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
   dispatchBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
   modal: { flex: 1, backgroundColor: C.bg },
