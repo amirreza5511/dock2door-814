@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Building2, Users, Settings, AlertTriangle, ScrollText, Database, Receipt, Award, BellRing, Route, Activity, CalendarDays, Images, ClipboardCheck } from 'lucide-react-native';
+import { LayoutDashboard, Building2, Users, Settings, AlertTriangle, ScrollText, Database, Receipt, Award, BellRing, Route, Activity, CalendarDays, Images, ClipboardCheck, DollarSign } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
@@ -32,6 +32,7 @@ export default function AdminLayout() {
       <Tabs.Screen name="notifications-health" options={{ title: 'Notify', tabBarIcon: ({ color }) => <BellRing size={22} color={color} /> }} />
       <Tabs.Screen name="system-health" options={{ title: 'Health', tabBarIcon: ({ color }) => <Activity size={22} color={color} /> }} />
       <Tabs.Screen name="platform-settings" options={{ title: 'Settings', tabBarIcon: ({ color }) => <Settings size={22} color={color} /> }} />
+      <Tabs.Screen name="freight-pricing" options={{ href: null, title: 'Pricing', tabBarIcon: ({ color }) => <DollarSign size={22} color={color} /> }} />
     </Tabs>
   );
 }

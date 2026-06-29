@@ -1,16 +1,22 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, CheckCircle2, ChevronRight, MapPin, Package, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
+import { Image } from 'expo-image';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, Navigation, Package, Radio, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
+import { pickAndUploadFromUri } from '@/lib/storage-files';
 import { useAuthStore } from '@/store/auth';
 
 type LoadRow = {
@@ -22,6 +28,9 @@ type LoadRow = {
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
 
+/** A pending advance that needs photo proof before it can be committed. */
+type ProofRequest = { load: LoadRow; nextStatus: string; kind: 'pickup' | 'delivery' };
+
 interface Props {
   title?: string;
   /** 'accepted' = carrier/driver runs the trip; 'posted' = shipper tracks read-only. */
@@ -31,7 +40,6 @@ interface Props {
 export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const utils = trpc.useUtils();
   const acceptedQuery = trpc.loads.listAccepted.useQuery(undefined, { refetchInterval: 20000, enabled: source === 'accepted' });
   const postedQuery = trpc.loads.listPosted.useQuery(undefined, { refetchInterval: 20000, enabled: source === 'posted' });
   const query = source === 'accepted' ? acceptedQuery : postedQuery;
@@ -39,6 +47,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const advance = trpc.loads.advance.useMutation({
     onSuccess: async () => { await query.refetch(); },
   });
+  const updateLocation = trpc.loads.updateLocation.useMutation();
 
   const user = useAuthStore((s) => s.user);
   // Only a carrier (trucking) company can dispatch accepted loads to its drivers.
@@ -49,6 +58,60 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const dispatch = trpc.loads.dispatch.useMutation({
     onSuccess: async () => { setDispatchFor(null); await query.refetch(); },
   });
+
+  // --- Proof capture (pickup / delivery) ---
+  const [proof, setProof] = useState<ProofRequest | null>(null);
+  const [proofPhoto, setProofPhoto] = useState<string | null>(null);
+  const [receiverName, setReceiverName] = useState<string>('');
+  const [submittingProof, setSubmittingProof] = useState<boolean>(false);
+
+  const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
+  const active = loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status));
+  const done = loads.filter((l) => ['Delivered', 'Cancelled'].includes(l.status));
+
+  // --- Live location sharing for the driver while a load is in motion ---
+  const [sharing, setSharing] = useState<boolean>(false);
+  const watchRef = useRef<Location.LocationSubscription | null>(null);
+  // The load currently being moved on the road (EnRoute / Arrived) — its driver shares GPS.
+  const trackingLoad = useMemo(
+    () => active.find((l) => ['EnRoute', 'Arrived'].includes(l.status) && l.accepted_driver_user_id === user?.id) ?? null,
+    [active, user?.id],
+  );
+  const trackingLoadId = trackingLoad?.id ?? null;
+
+  useEffect(() => {
+    if (source !== 'accepted' || Platform.OS === 'web' || !trackingLoadId) {
+      try { watchRef.current?.remove(); } catch {}
+      watchRef.current = null;
+      setSharing(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted' || cancelled) return;
+        const sub = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.Balanced, distanceInterval: 30, timeInterval: 8000 },
+          (loc) => {
+            void updateLocation.mutateAsync({ id: trackingLoadId, lat: loc.coords.latitude, lng: loc.coords.longitude }).catch(() => {});
+          },
+        );
+        if (cancelled) { sub.remove(); return; }
+        watchRef.current = sub;
+        setSharing(true);
+      } catch {
+        // Location unavailable — tracking simply won't update; not fatal.
+      }
+    })();
+    return () => {
+      cancelled = true;
+      try { watchRef.current?.remove(); } catch {}
+      watchRef.current = null;
+      setSharing(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, trackingLoadId]);
 
   const assignDriver = async (loadId: string, driver: FleetDriver) => {
     if (!driver.userId) {
@@ -64,13 +127,12 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     }
   };
 
-  const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
-  const active = loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status));
-  const done = loads.filter((l) => ['Delivered', 'Cancelled'].includes(l.status));
-
   const move = async (l: LoadRow) => {
     const flow = LOAD_STATUS_FLOW[l.status];
     if (!flow) return;
+    // Proof gates: going EnRoute needs a pickup photo; Delivered needs a delivery photo + receiver.
+    if (flow.next === 'EnRoute') { openProof(l, 'EnRoute', 'pickup'); return; }
+    if (flow.next === 'Delivered') { openProof(l, 'Delivered', 'delivery'); return; }
     try {
       if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await advance.mutateAsync({ id: l.id, status: flow.next });
@@ -80,11 +142,61 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     }
   };
 
+  const openProof = (load: LoadRow, nextStatus: string, kind: 'pickup' | 'delivery') => {
+    setProof({ load, nextStatus, kind });
+    setProofPhoto(null);
+    setReceiverName('');
+  };
+
+  const pickProofPhoto = async () => {
+    const camera = await ImagePicker.requestCameraPermissionsAsync().catch(() => null);
+    const useCamera = camera?.granted === true && Platform.OS !== 'web';
+    const res = useCamera
+      ? await ImagePicker.launchCameraAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images })
+      : await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ImagePicker.MediaTypeOptions.Images });
+    if (!res.canceled && res.assets[0]) setProofPhoto(res.assets[0].uri);
+  };
+
+  const submitProof = async () => {
+    if (!proof) return;
+    if (!proofPhoto) { Alert.alert(proof.kind === 'pickup' ? 'Take a pickup photo' : 'Take a delivery photo'); return; }
+    if (proof.kind === 'delivery' && !receiverName.trim()) { Alert.alert('Receiver name required'); return; }
+    setSubmittingProof(true);
+    try {
+      const ts = Date.now();
+      const filename = `${proof.kind}_${proof.load.id}_${ts}.jpg`;
+      const meta = await pickAndUploadFromUri({
+        uri: proofPhoto,
+        bucket: 'attachments',
+        path: `load-proof/${proof.load.id}/${filename}`,
+        contentType: 'image/jpeg',
+        entityType: 'load_proof',
+        entityId: proof.load.id,
+        companyId: user?.companyId ?? null,
+      });
+      await advance.mutateAsync({
+        id: proof.load.id,
+        status: proof.nextStatus,
+        proofPhotoPath: meta.path,
+        receiverName: proof.kind === 'delivery' ? receiverName.trim() : null,
+      });
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setProof(null);
+      setProofPhoto(null);
+      setReceiverName('');
+    } catch (err) {
+      Alert.alert('Unable to submit', err instanceof Error ? err.message : 'Unknown');
+    } finally {
+      setSubmittingProof(false);
+    }
+  };
+
   if (query.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading your trips" /></View>;
   if (query.isError) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load trips" onRetry={() => void query.refetch()} /></View>;
 
   const renderCard = (l: LoadRow, primary: boolean) => {
     const flow = canRun ? LOAD_STATUS_FLOW[l.status] : undefined;
+    const trackable = source === 'posted' && ['Accepted', 'EnRoute', 'Arrived', 'Delivered'].includes(l.status);
     return (
       <Card key={l.id} style={StyleSheet.flatten([styles.card, primary && styles.cardActive])}>
         <View style={styles.cardTop}>
@@ -98,7 +210,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         <View style={styles.metaRow}>
           <View style={styles.meta}><Package size={12} color={C.textMuted} /><Text style={styles.metaText}>{l.pallets} {l.pallets === 1 ? 'pallet' : 'pallets'}</Text></View>
           <View style={styles.meta}><MapPin size={12} color={C.textMuted} /><Text style={styles.metaText}>{l.distance_km} km</Text></View>
-          <Text style={styles.earn}>${Number(l.provider_net).toFixed(2)}</Text>
+          <Text style={styles.earn}>${Number(source === 'posted' ? l.total_price : l.provider_net).toFixed(2)}</Text>
         </View>
         {flow ? (
           <TouchableOpacity style={[styles.primaryBtn, advance.isPending && { opacity: 0.6 }]} disabled={advance.isPending} onPress={() => void move(l)}>
@@ -108,6 +220,14 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </TouchableOpacity>
         ) : l.status === 'Delivered' ? (
           <View style={styles.deliveredRow}><CheckCircle2 size={14} color={C.green} /><Text style={styles.deliveredText}>Delivered</Text></View>
+        ) : null}
+
+        {trackable ? (
+          <TouchableOpacity style={styles.trackBtn} onPress={() => router.push({ pathname: '/shipper/track', params: { id: l.id } } as never)}>
+            <Navigation size={14} color={C.blue} />
+            <Text style={styles.trackBtnText}>Track shipment</Text>
+            <ChevronRight size={15} color={C.blue} />
+          </TouchableOpacity>
         ) : null}
 
         {canDispatch && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
@@ -129,6 +249,13 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         <Text style={styles.title}>{title}</Text>
         <View style={{ width: 36 }} />
       </View>
+
+      {sharing ? (
+        <View style={styles.shareBar}>
+          <Radio size={13} color={C.green} />
+          <Text style={styles.shareBarText}>Sharing your live location with the shipper</Text>
+        </View>
+      ) : null}
 
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
@@ -153,6 +280,49 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </>
         ) : null}
       </ScrollView>
+
+      {/* Proof of pickup / delivery */}
+      <Modal visible={proof !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setProof(null)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{proof?.kind === 'pickup' ? 'Proof of pickup' : 'Proof of delivery'}</Text>
+            <TouchableOpacity onPress={() => setProof(null)} style={styles.iconBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            <Text style={styles.proofHint}>
+              {proof?.kind === 'pickup'
+                ? 'Take a photo of the cargo at pickup before you start the trip.'
+                : 'Take a photo at the drop-off and enter who received the shipment.'}
+            </Text>
+            <TouchableOpacity onPress={() => void pickProofPhoto()} style={styles.photoBox}>
+              {proofPhoto ? (
+                <Image source={{ uri: proofPhoto }} style={styles.photoPreview} contentFit="cover" />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Camera size={30} color={C.accent} />
+                  <Text style={styles.photoHint}>{Platform.OS === 'web' ? 'Choose a photo' : 'Take photo'}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {proofPhoto ? (
+              <Button label="Retake photo" onPress={() => void pickProofPhoto()} variant="secondary" icon={<Camera size={14} color={C.text} />} />
+            ) : null}
+
+            {proof?.kind === 'delivery' ? (
+              <Input label="Received by" value={receiverName} onChangeText={setReceiverName} placeholder="Name of person who received it" />
+            ) : null}
+
+            <Button
+              label={proof?.kind === 'pickup' ? 'Confirm pickup & start trip' : 'Confirm delivery'}
+              onPress={() => void submitProof()}
+              loading={submittingProof || advance.isPending}
+              fullWidth
+              size="lg"
+              icon={<CheckCircle2 size={16} color={C.white} />}
+            />
+          </ScrollView>
+        </View>
+      </Modal>
 
       <Modal visible={dispatchFor !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDispatchFor(null)}>
         <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
@@ -197,6 +367,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   iconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  shareBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: C.greenDim, borderBottomWidth: 1, borderBottomColor: C.green + '40' },
+  shareBarText: { fontSize: 12, color: C.green, fontWeight: '700' as const },
   scroll: { padding: 16, gap: 12 },
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
   card: { gap: 10 },
@@ -216,12 +388,19 @@ const styles = StyleSheet.create({
   primaryBtnText: { flex: 1, textAlign: 'center' as const, color: C.white, fontSize: 14, fontWeight: '800' as const },
   deliveredRow: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center', paddingVertical: 4 },
   deliveredText: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  trackBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.blueDim, borderWidth: 1, borderColor: C.blue + '55' },
+  trackBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.blue },
   dispatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
   dispatchBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
-  modalBody: { padding: 20, gap: 10 },
+  modalBody: { padding: 20, gap: 14 },
+  proofHint: { fontSize: 13, color: C.textSecondary, lineHeight: 18 },
+  photoBox: { height: 200, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
+  photoPreview: { width: '100%', height: '100%' },
+  photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  photoHint: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   driverRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14 },
   driverRowDisabled: { opacity: 0.55 },
   driverIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.greenDim },

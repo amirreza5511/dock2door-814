@@ -1175,11 +1175,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'loads.advance': async (input: { id: string; status: string }) => {
-    const { error } = await supabase.rpc('advance_load', { p_load_id: input.id, p_next_status: input.status });
+  'loads.advance': async (input: { id: string; status: string; proofPhotoPath?: string | null; receiverName?: string | null }) => {
+    const { error } = await supabase.rpc('advance_load', {
+      p_load_id: input.id,
+      p_next_status: input.status,
+      p_proof_photo_path: input.proofPhotoPath ?? null,
+      p_receiver_name: input.receiverName ?? null,
+    });
     if (error) {
       if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to update load');
+    }
+    return { success: true };
+  },
+
+  // Driver pushes their live GPS fix onto an active load so the shipper can track it.
+  'loads.updateLocation': async (input: { id: string; lat: number; lng: number }) => {
+    const { error } = await supabase.rpc('update_driver_location', {
+      p_load_id: input.id, p_lat: input.lat, p_lng: input.lng,
+    });
+    if (error) {
+      if (isLoadsTableMissing(error)) return { success: false };
+      throwErr(error, 'Unable to update location');
     }
     return { success: true };
   },
@@ -1786,6 +1803,84 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to update platform settings — admin only');
     const { data: row } = await supabase.from('platform_settings').select('id').limit(1).maybeSingle();
     return { id: row?.id ?? null };
+  },
+
+  // =========================================================================
+  // FREIGHT PRICING — rate cards (global + per-company) & commission overrides
+  // =========================================================================
+  // Lists every rate card row. Global rows have company_id = null; company
+  // overrides carry a company_id. The console groups them client-side.
+  'admin.listRateCards': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase
+      .from('load_rate_cards')
+      .select('*')
+      .order('company_id', { ascending: true, nullsFirst: true })
+      .order('vehicle_type', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load rate cards');
+    }
+    return data ?? [];
+  },
+
+  'admin.upsertRateCard': async (input: {
+    companyId?: string | null; vehicleType: string;
+    basePrice: number; perKm: number; perPallet: number; sameDayMultiplier: number;
+  }) => {
+    const { data, error } = await supabase.rpc('admin_upsert_rate_card', {
+      p_company_id: input.companyId ?? null,
+      p_vehicle_type: input.vehicleType,
+      p_base_price: input.basePrice,
+      p_per_km: input.perKm,
+      p_per_pallet: input.perPallet,
+      p_same_day_multiplier: input.sameDayMultiplier,
+    });
+    if (error) throwErr(error, 'Unable to save rate card — admin only');
+    return { id: data as string };
+  },
+
+  'admin.deleteRateCard': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('admin_delete_rate_card', { p_id: input.id });
+    if (error) throwErr(error, 'Unable to delete rate card');
+    return { success: true };
+  },
+
+  'admin.listCommissionOverrides': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.from('load_commission_overrides').select('*');
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load commission overrides');
+    }
+    return data ?? [];
+  },
+
+  'admin.upsertCommissionOverride': async (input: { companyId: string; commissionPercentage: number; bookingFee: number }) => {
+    const { error } = await supabase.rpc('admin_upsert_commission_override', {
+      p_company_id: input.companyId,
+      p_commission_percentage: input.commissionPercentage,
+      p_booking_fee: input.bookingFee,
+    });
+    if (error) throwErr(error, 'Unable to save commission override');
+    return { success: true };
+  },
+
+  'admin.deleteCommissionOverride': async (input: { companyId: string }) => {
+    const { error } = await supabase.rpc('admin_delete_commission_override', { p_company_id: input.companyId });
+    if (error) throwErr(error, 'Unable to delete commission override');
+    return { success: true };
+  },
+
+  // Companies the admin can attach a pricing override to.
+  'admin.listCompaniesForPricing': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name, type')
+      .order('name', { ascending: true });
+    if (error) throwErr(error, 'Unable to load companies');
+    return (data ?? []).map((c) => ({ id: String(c.id), name: String((c as AnyRecord).name ?? 'Company'), type: String((c as AnyRecord).type ?? '') }));
   },
 
   // =========================================================================

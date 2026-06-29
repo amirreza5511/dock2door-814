@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award, Truck } from 'lucide-react-native';
+import { Building2, Users, AlertTriangle, CheckCircle, Clock, DollarSign, ShieldCheck, LogOut, Award, Truck, Tag } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -233,6 +233,7 @@ export default function AdminDashboard() {
               { label: 'Users', icon: Users, route: '/admin/users', color: C.green },
               { label: 'Certifications', icon: Award, route: '/admin/certifications', color: C.yellow },
               { label: 'Disputes', icon: AlertTriangle, route: '/admin/disputes', color: C.red },
+              { label: 'Freight Pricing', icon: Tag, route: '/admin/freight-pricing', color: C.green },
               { label: 'Platform Settings', icon: CheckCircle, route: '/admin/platform-settings', color: C.accent },
               { label: 'Shipping Carriers', icon: Truck, route: '/admin/shipping-carriers', color: C.purple },
             ].map((n) => (
