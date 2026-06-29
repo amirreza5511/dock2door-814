@@ -351,6 +351,9 @@ export default function WorkerProfile() {
   const [showCrcForm, setShowCrcForm] = useState(false);
   const [newCity, setNewCity] = useState('');
   const [savingQuick, setSavingQuick] = useState(false);
+  const [editingBio, setEditingBio] = useState(false);
+  const [inlineBio, setInlineBio] = useState('');
+  const [savingBio, setSavingBio] = useState(false);
 
   // ── Private info state ───────────────────────────────────────────
   const [privateExpanded, setPrivateExpanded] = useState(false);
@@ -383,15 +386,16 @@ export default function WorkerProfile() {
    * Persist a quick change (skills or coverage cities) immediately without opening
    * the full edit form. Uses the canonical RPC, falling back to a direct update.
    */
-  const persistQuick = async (patch: { skills?: ShiftCategory[]; cities?: string[] }) => {
+  const persistQuick = async (patch: { skills?: ShiftCategory[]; cities?: string[]; bio?: string }) => {
     if (!profile) return;
     const skills = patch.skills ?? profile.skills;
     const cities = patch.cities ?? profile.coverageCities;
+    const bio = patch.bio ?? profile.bio ?? '';
     setSavingQuick(true);
     try {
       const ex = extendedQuery.data;
       const { error } = await supabase.rpc('update_my_worker_profile', {
-        p_bio: profile.bio ?? '',
+        p_bio: bio,
         p_skills: skills,
         p_coverage_cities: cities,
         p_hourly_expectation: profile.hourlyExpectation ?? 0,
@@ -410,7 +414,7 @@ export default function WorkerProfile() {
         p_website_url: ex?.website_url ?? '',
       });
       if (error) {
-        await updateWorkerProfile(profile.id, { skills, coverageCities: cities });
+        await updateWorkerProfile(profile.id, { skills, coverageCities: cities, bio });
       }
       await refetch();
     } catch (err) {
@@ -439,7 +443,23 @@ export default function WorkerProfile() {
       setAddingCert(true);
       return;
     }
+    if (label === 'a bio') {
+      setInlineBio(profile?.bio ?? '');
+      setEditingBio(true);
+      return;
+    }
     openEdit();
+  };
+
+  const saveInlineBio = async () => {
+    if (!profile) return;
+    setSavingBio(true);
+    try {
+      await persistQuick({ bio: inlineBio.trim() });
+      setEditingBio(false);
+    } finally {
+      setSavingBio(false);
+    }
   };
 
   const openEdit = () => {
@@ -802,7 +822,7 @@ export default function WorkerProfile() {
   const completionData = useMemo(() => {
     if (!profile) return { pct: 0, missing: [] as string[] };
     const hasPhoto = Boolean(profile.profilePhotoPath ?? profile.avatarPath);
-    const hasBio = (profile.bio?.length ?? 0) > 20;
+    const hasBio = (profile.bio?.trim().length ?? 0) >= 10;
     const hasSkills = profile.skills.length > 0;
     const hasCities = profile.coverageCities.length > 0;
     const hasApprovedCert = workCerts.some((c) => c.status === 'Approved');
@@ -1372,7 +1392,41 @@ export default function WorkerProfile() {
         </View>
 
         {/* About */}
-        {profile.bio ? (
+        {viewMode === 'mine' ? (
+          <View style={styles.section}>
+            <View style={sh.row}>
+              <Text style={styles.sectionTitle}>About Me</Text>
+              {!editingBio && (
+                <TouchableOpacity onPress={() => { setInlineBio(profile.bio ?? ''); setEditingBio(true); }} style={sh.actionBtn}>
+                  <Text style={sh.actionText}>{profile.bio ? 'Edit' : '+ Add'}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {editingBio ? (
+              <Card elevated style={styles.formGap}>
+                <Input
+                  value={inlineBio}
+                  onChangeText={setInlineBio}
+                  placeholder="Write a short intro about your experience, reliability, and what you're great at (min 10 characters)…"
+                  multiline
+                  numberOfLines={4}
+                />
+                <Text style={styles.hint}>{inlineBio.trim().length}/10 characters minimum to count toward your profile.</Text>
+                <Button
+                  label={savingBio ? 'Saving…' : 'Save Bio'}
+                  onPress={saveInlineBio}
+                  disabled={savingBio || inlineBio.trim().length < 10}
+                  fullWidth
+                />
+                <Button label="Cancel" onPress={() => setEditingBio(false)} variant="ghost" fullWidth />
+              </Card>
+            ) : profile.bio ? (
+              <Card><Text style={styles.bioText}>{profile.bio}</Text></Card>
+            ) : (
+              <Card><Text style={styles.addSkillPromptText}>No bio yet. Tap “+ Add” to introduce yourself to employers.</Text></Card>
+            )}
+          </View>
+        ) : profile.bio ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About Me</Text>
             <Card><Text style={styles.bioText}>{profile.bio}</Text></Card>
