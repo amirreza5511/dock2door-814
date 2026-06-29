@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, Package, Plus, ShieldAlert, Truck, X, Zap } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, MapPin, Package, Plus, ShieldAlert, Truck, UserCheck, UserRound, X, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -28,6 +28,8 @@ type LoadRow = {
   notes?: string | null; status: string;
 };
 
+type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
+
 interface Props {
   /** Route to the Post a Load screen, when this role can post (shippers/companies). */
   postRoute?: string;
@@ -35,6 +37,9 @@ interface Props {
   /** When true, restrict the marketplace to the owner-operator's registered
    *  vehicle(s) — they never see loads requiring a bigger truck than they own. */
   restrictToMyVehicles?: boolean;
+  /** When true (carrier dispatcher), the company can accept a load and assign it
+   *  to one of its fleet drivers in a single flow, straight from the map. */
+  enableDispatch?: boolean;
 }
 
 function haversine(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -45,7 +50,7 @@ function haversine(aLat: number, aLng: number, bLat: number, bLng: number): numb
   return Math.round(R * 2 * Math.asin(Math.sqrt(s)));
 }
 
-export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marketplace', restrictToMyVehicles = false }: Props) {
+export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marketplace', restrictToMyVehicles = false, enableDispatch = false }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -86,6 +91,13 @@ export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marke
       await Promise.all([utils.loads.listOpen.invalidate(), utils.loads.listAccepted.invalidate()]);
     },
   });
+
+  // Carrier dispatcher: pick a fleet driver to assign the load to right after accepting.
+  const fleetDriversQuery = trpc.loads.fleetDrivers.useQuery(undefined, { enabled: enableDispatch });
+  const fleetDrivers = useMemo<FleetDriver[]>(() => (fleetDriversQuery.data ?? []) as FleetDriver[], [fleetDriversQuery.data]);
+  const dispatchMutation = trpc.loads.dispatch.useMutation();
+  // The id of the load that was just accepted and is now awaiting driver assignment.
+  const [assignLoadId, setAssignLoadId] = useState<string | null>(null);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
@@ -129,9 +141,31 @@ export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marke
       await acceptMutation.mutateAsync({ id });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSelectedId(null);
+      if (enableDispatch) {
+        // Carrier flow: keep going and let the dispatcher assign a driver now.
+        setAssignLoadId(id);
+        return;
+      }
       Alert.alert('Load accepted', 'It\'s now in My Loads — start the trip when you\'re ready.');
     } catch (err) {
       Alert.alert('Unable to accept', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
+
+  const assignDriver = async (loadId: string, driver: FleetDriver) => {
+    if (!driver.userId) {
+      Alert.alert('Driver not linked', `${driver.name} isn\u2019t a registered app user yet. Add their account email in Fleet so they can receive dispatched loads.`);
+      return;
+    }
+    try {
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await dispatchMutation.mutateAsync({ id: loadId, driverUserId: driver.userId });
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await Promise.all([utils.loads.listOpen.invalidate(), utils.loads.listAccepted.invalidate()]);
+      setAssignLoadId(null);
+      Alert.alert('Driver dispatched', `${driver.name} was assigned this load and notified.`);
+    } catch (err) {
+      Alert.alert('Unable to dispatch', err instanceof Error ? err.message : 'Unknown');
     }
   };
 
@@ -249,7 +283,7 @@ export default function LoadsMarketplaceScreen({ postRoute, title = 'Loads marke
                   <Text style={styles.payoutValue}>${Number(selected.provider_net).toFixed(2)}</Text>
                 </View>
                 {selected.notes ? <Text style={styles.sheetNotes}>“{selected.notes}”</Text> : null}
-                <Button label="Accept load" onPress={() => void accept(selected.id)} loading={acceptMutation.isPending} fullWidth size="lg" icon={<Truck size={16} color={C.white} />} />
+                <Button label={enableDispatch ? 'Accept & assign driver' : 'Accept load'} onPress={() => void accept(selected.id)} loading={acceptMutation.isPending} fullWidth size="lg" icon={enableDispatch ? <UserCheck size={16} color={C.white} /> : <Truck size={16} color={C.white} />} />
               </>
             ) : null}
           </View>
