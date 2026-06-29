@@ -427,13 +427,13 @@ export default function BrowseShifts() {
                   </View>
 
                   {/* Notes */}
-                  {selected.notes && !selected.notes.startsWith('[URGENT]') && (
+                  {!!selected.notes && !selected.notes.startsWith('[URGENT]') && (
                     <View style={styles.notesBox}>
                       <Text style={styles.notesLabel}>Notes from employer</Text>
                       <Text style={styles.notesText}>{selected.notes}</Text>
                     </View>
                   )}
-                  {selected.notes?.startsWith('[URGENT]') && selected.notes.length > 8 && (
+                  {!!selected.notes && selected.notes.startsWith('[URGENT]') && selected.notes.length > 8 && (
                     <View style={styles.notesBox}>
                       <Text style={styles.notesLabel}>Notes from employer</Text>
                       <Text style={styles.notesText}>{selected.notes.replace('[URGENT] ', '')}</Text>
