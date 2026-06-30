@@ -18,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
 import { checkAtSite, getCurrentCoords, SITE_RADIUS_METERS } from '@/lib/geo';
+import { syncShiftReminders } from '@/lib/shift-reminders';
 
 type ViewTab = 'Active' | 'Applications' | 'History' | 'Earnings';
 
@@ -433,6 +434,26 @@ export default function WorkerMyShifts() {
     [myAssignments, shiftPostRows],
   );
 
+  // Schedule on-device reminders ("shift tomorrow", "starts in 1 hour") for every
+  // upcoming active shift. Re-syncs whenever the active list changes.
+  useEffect(() => {
+    const upcoming = activeAssignments
+      .map((a) => {
+        const s = getShift(a.shift_id);
+        if (!s) return null;
+        return {
+          assignmentId: a.id,
+          title: s.title,
+          date: s.date,
+          startTime: s.start_time,
+          locationLabel: s.location_city,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    void syncShiftReminders(upcoming);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAssignments, shiftPostRows]);
+
   const historyAssignments = useMemo(
     () => myAssignments
       .filter((a) => ['Completed', 'HoursConfirmed', 'Confirmed', 'Cancelled', 'NoShow'].includes(a.status))
@@ -624,6 +645,13 @@ export default function WorkerMyShifts() {
                             <DollarSign size={12} color={C.textMuted} />
                             <Text style={styles.meta}>${ass.confirmed_rate}/hr</Text>
                           </View>
+                          <TouchableOpacity
+                            onPress={() => router.push({ pathname: '/worker/arrive' as any, params: { assignmentId: ass.id, address: shift.location_address, city: shift.location_city, title: shift.title } })}
+                            style={styles.arriveLink}
+                          >
+                            <MapPin size={13} color={C.accent} />
+                            <Text style={styles.arriveLinkText}>Arrival map — am I on site?</Text>
+                          </TouchableOpacity>
                         </>
                       )}
                       {ass.worker_confirmed === null && shift && (() => {
@@ -990,6 +1018,8 @@ const styles = StyleSheet.create({
   msgLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
   msgLinkText: { color: C.accent, fontSize: 12.5, fontWeight: '600' as const },
   dirBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueDim, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4 },
+  arriveLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: C.accent + '14', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7, marginTop: 2 },
+  arriveLinkText: { color: C.accent, fontSize: 12.5, fontWeight: '700' as const },
   dirBtnText: { fontSize: 11, color: C.blue, fontWeight: '700' as const },
   inviteCard: { gap: 8, borderColor: C.accent + '50', backgroundColor: C.accent + '0A' },
   invitePillRow: { flexDirection: 'row' },
