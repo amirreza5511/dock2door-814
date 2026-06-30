@@ -467,7 +467,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         ? `${window.location.origin}/auth/confirm`
         : undefined;
       const { data: signUpData, error } = await supabase.auth.signUp({
-        email: data.email.trim(),
+        email: data.email.trim().toLowerCase(),
         password: data.password,
         options: {
           emailRedirectTo,

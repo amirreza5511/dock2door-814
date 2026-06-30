@@ -20,7 +20,7 @@ import ReviewModal from '@/components/ReviewModal';
 import { checkAtSite, getCurrentCoords, SITE_RADIUS_METERS } from '@/lib/geo';
 import { syncShiftReminders } from '@/lib/shift-reminders';
 
-type ViewTab = 'Active' | 'Applications' | 'History' | 'Earnings';
+type ViewTab = 'Active' | 'Invitations' | 'Applications' | 'History' | 'Earnings';
 
 interface AssignmentRow {
   id: string;
@@ -493,19 +493,29 @@ export default function WorkerMyShifts() {
     return Math.abs(clock - te.employer_confirmed_hours) > 0.5;
   };
 
-  const TABS: ViewTab[] = ['Active', 'Applications', 'History', 'Earnings'];
+  const TABS: ViewTab[] = ['Active', 'Invitations', 'Applications', 'History', 'Earnings'];
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Shifts</Text>
-        <View style={styles.tabs}>
-          {TABS.map((t) => (
-            <TouchableOpacity key={t} onPress={() => setTab(t)} style={[styles.tab, tab === t && styles.tabActive]}>
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+          {TABS.map((t) => {
+            const showBadge = t === 'Invitations' && invitations.length > 0;
+            return (
+              <TouchableOpacity key={t} onPress={() => setTab(t)} style={[styles.tab, tab === t && styles.tabActive]}>
+                <View style={styles.tabInner}>
+                  <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t}</Text>
+                  {showBadge && (
+                    <View style={styles.tabBadge}>
+                      <Text style={styles.tabBadgeText}>{invitations.length}</Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       <ScrollView
@@ -515,8 +525,15 @@ export default function WorkerMyShifts() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
         }
       >
-        {/* ─── Invitations (shown above Active) ─── */}
-        {tab === 'Active' && invitations.map((inv) => {
+        {/* ─── Invitations Tab ─── */}
+        {tab === 'Invitations' && invitations.length === 0 && (
+          <View style={styles.empty}>
+            <Mail size={40} color={C.textMuted} />
+            <Text style={styles.emptyText}>No invitations</Text>
+            <Text style={styles.emptySub}>When an employer invites you to a shift, it shows up here</Text>
+          </View>
+        )}
+        {tab === 'Invitations' && invitations.map((inv) => {
           const sp = inv.shift_posts;
           const compName = sp?.companies?.name ?? 'An employer';
           return (
@@ -567,10 +584,16 @@ export default function WorkerMyShifts() {
 
         {/* ─── Active Tab ─── */}
         {tab === 'Active' && (
-          activeAssignments.length === 0 && invitations.length === 0 ? (
+          activeAssignments.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No active shifts</Text>
               <Text style={styles.emptySub}>Accepted shifts appear here</Text>
+              {invitations.length > 0 && (
+                <TouchableOpacity onPress={() => setTab('Invitations')} style={styles.inviteNudge}>
+                  <Mail size={14} color={C.accent} />
+                  <Text style={styles.inviteNudgeText}>You have {invitations.length} pending invitation{invitations.length > 1 ? 's' : ''} →</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             activeAssignments.map((ass) => {
@@ -1007,11 +1030,16 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 12 },
-  tabs: { flexDirection: 'row' },
-  tab: { paddingHorizontal: 18, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  tabs: { flexDirection: 'row', alignItems: 'center' },
+  tab: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: C.accent },
+  tabInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   tabText: { fontSize: 13, color: C.textMuted, fontWeight: '600' as const },
   tabTextActive: { color: C.accent },
+  tabBadge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  tabBadgeText: { fontSize: 11, fontWeight: '800' as const, color: C.white },
+  inviteNudge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 14, backgroundColor: C.accent + '14', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  inviteNudgeText: { fontSize: 13, color: C.accent, fontWeight: '700' as const },
   list: { padding: 16, gap: 12 },
   card: { gap: 10 },
   cardActive: { borderColor: C.accent + '50', backgroundColor: C.accent + '08' },

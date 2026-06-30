@@ -74,6 +74,7 @@ export default function BrowseShifts() {
 
   const [query, setQuery] = useState('');
   const [filterCat, setFilterCat] = useState<ShiftCategory | 'All'>('All');
+  const [favOnly, setFavOnly] = useState<boolean>(false);
   const [selected, setSelected] = useState<ShiftPost | null>(null);
   const [applyModal, setApplyModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -175,8 +176,9 @@ export default function BrowseShifts() {
   const filtered = useMemo(() => available.filter((s) => {
     const matchQ = s.title.toLowerCase().includes(query.toLowerCase()) || s.locationCity.toLowerCase().includes(query.toLowerCase());
     const matchCat = filterCat === 'All' || s.category === filterCat;
-    return matchQ && matchCat;
-  }), [available, query, filterCat]);
+    const matchFav = !favOnly || favEmpSet.has(s.employerCompanyId);
+    return matchQ && matchCat && matchFav;
+  }), [available, query, filterCat, favOnly, favEmpSet]);
 
   const hasApplied = (shiftId: string) => myApps.some((a) => a.shift_id === shiftId && ['Applied', 'Accepted'].includes(a.status));
 
@@ -249,6 +251,13 @@ export default function BrowseShifts() {
         style={styles.filterScroll}
         contentContainerStyle={styles.filterContent}
       >
+        <TouchableOpacity
+          onPress={() => setFavOnly((v) => !v)}
+          style={[styles.chip, styles.favChip, favOnly && styles.favChipActive]}
+        >
+          <Heart size={12} color={favOnly ? C.red : C.textSecondary} fill={favOnly ? C.red : 'transparent'} />
+          <Text style={[styles.chipText, favOnly && { color: C.red, fontWeight: '700' as const }]}>Favorites</Text>
+        </TouchableOpacity>
         {CATEGORIES.map((c) => (
           <TouchableOpacity
             key={c}
@@ -546,6 +555,8 @@ const styles = StyleSheet.create({
   filterContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8, alignItems: 'center' },
   chip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   chipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  favChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  favChipActive: { backgroundColor: C.redDim, borderColor: C.red },
   chipText: { fontSize: 12, color: C.textSecondary, fontWeight: '500' as const },
   chipTextActive: { color: C.accent, fontWeight: '700' as const },
   list: { padding: 16, gap: 12 },

@@ -12,6 +12,7 @@ import { trpc, trpcClient } from '@/lib/trpc';
 import C from '@/constants/colors';
 import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
 import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
+import { registerPushTokenAsync } from '@/lib/push';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -186,10 +187,18 @@ function RootLayoutNav() {
 function BootstrapController() {
   const authBootstrap = useAuthStore((state) => state.bootstrap);
   const isHydrated = useAuthStore((state) => state.isHydrated);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
 
   useEffect(() => {
     void authBootstrap();
   }, [authBootstrap]);
+
+  // Register this device for push notifications once a user is signed in, so the
+  // backend can deliver shift invitations/matches/messages even when the app is closed.
+  useEffect(() => {
+    if (!userId) return;
+    void registerPushTokenAsync();
+  }, [userId]);
 
   useEffect(() => {
     if (!isHydrated) {
