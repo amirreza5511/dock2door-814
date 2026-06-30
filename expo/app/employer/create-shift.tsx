@@ -8,7 +8,7 @@ import { CheckCircle, Upload, Calendar, Clock, ChevronDown, Repeat, Zap, DollarS
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { trpc } from '@/lib/trpc';
 import * as DocumentPicker from 'expo-document-picker';
 import { supabase } from '@/lib/supabase';
@@ -120,6 +120,12 @@ export default function CreateShift() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const params = useLocalSearchParams<{
+    title?: string; category?: string; address?: string; city?: string;
+    hourlyRate?: string; minHours?: string; workersNeeded?: string;
+    requirements?: string; notes?: string;
+  }>();
+  const asStr = (v: string | string[] | undefined): string => (Array.isArray(v) ? v[0] ?? '' : v ?? '');
 
   // Platform commission (labour) for cost preview
   const commissionQ = useQuery({
@@ -197,18 +203,24 @@ export default function CreateShift() {
     },
   });
 
-  const [title, setTitle] = useState('');
-  const [category, setCategory] = useState<ShiftCategory>('General');
-  const [address, setAddress] = useState('');
-  const [city, setCity] = useState('');
+  const initRequirements = asStr(params.requirements);
+  const initCategory = asStr(params.category) as ShiftCategory;
+  const [title, setTitle] = useState(asStr(params.title));
+  const [category, setCategory] = useState<ShiftCategory>(
+    CATEGORIES.includes(initCategory) ? initCategory : 'General',
+  );
+  const [address, setAddress] = useState(asStr(params.address));
+  const [city, setCity] = useState(asStr(params.city));
   const [date, setDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [hourlyRate, setHourlyRate] = useState('');
-  const [minHours, setMinHours] = useState('4');
-  const [workersNeeded, setWorkersNeeded] = useState('1');
-  const [selectedPPE, setSelectedPPE] = useState<string[]>([]);
-  const [notes, setNotes] = useState('');
+  const [hourlyRate, setHourlyRate] = useState(asStr(params.hourlyRate));
+  const [minHours, setMinHours] = useState(asStr(params.minHours) || '4');
+  const [workersNeeded, setWorkersNeeded] = useState(asStr(params.workersNeeded) || '1');
+  const [selectedPPE, setSelectedPPE] = useState<string[]>(
+    initRequirements ? initRequirements.split(',').map((r) => r.trim()).filter(Boolean) : [],
+  );
+  const [notes, setNotes] = useState(asStr(params.notes));
   const [attachments, setAttachments] = useState<DocumentPicker.DocumentPickerAsset[]>([]);
 
   // Pickers

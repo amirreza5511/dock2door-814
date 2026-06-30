@@ -5,7 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Users, CheckCircle, XCircle, Clock, Star, ChevronDown, ChevronUp,
-  Award, User, AlertTriangle, AlertCircle, LogIn, LogOut as LogOutIcon, MessageCircle,
+  Award, User, AlertTriangle, AlertCircle, LogIn, LogOut as LogOutIcon, MessageCircle, Copy,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -855,6 +855,30 @@ export default function EmployerShifts() {
                       </>
                     );
                   })()}
+                  <Button
+                    label="Duplicate Shift"
+                    onPress={() => {
+                      const s = selected;
+                      setDetailModal(false);
+                      setTimeout(() => router.push({
+                        pathname: '/employer/create-shift' as any,
+                        params: {
+                          title: s.title,
+                          category: s.category,
+                          address: s.locationAddress,
+                          city: s.locationCity,
+                          hourlyRate: s.hourlyRate ? String(s.hourlyRate) : '',
+                          minHours: String(s.minimumHours),
+                          workersNeeded: String(s.workersNeeded),
+                          requirements: s.requirements ?? '',
+                          notes: (s.notes ?? '').replace('[URGENT] ', ''),
+                        },
+                      }), 300);
+                    }}
+                    variant="outline"
+                    fullWidth
+                    icon={<Copy size={15} color={C.accent} />}
+                  />
                   <Button label="Close" onPress={() => setDetailModal(false)} variant="ghost" fullWidth />
                 </View>
               </View>

@@ -4,7 +4,7 @@ import {
   Alert, Modal, Linking, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle } from 'lucide-react-native';
+import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle, Heart } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
@@ -123,6 +123,44 @@ export default function BrowseShifts() {
   const allReviews = reviewsQ.data ?? [];
 
   const profile = useMemo(() => workerProfiles.find((w) => w.userId === user?.id), [workerProfiles, user]);
+
+  // Favorite employers
+  const favEmpQ = useQuery({
+    queryKey: ['worker-fav-employers', user?.id],
+    queryFn: async (): Promise<string[]> => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('worker_favorite_employers')
+        .select('employer_company_id')
+        .eq('worker_user_id', user.id);
+      return (data ?? []).map((r) => r.employer_company_id as string);
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 30_000,
+  });
+  const favEmpSet = useMemo(() => new Set(favEmpQ.data ?? []), [favEmpQ.data]);
+
+  const toggleFavoriteEmployer = async (companyId: string) => {
+    if (!user?.id) return;
+    const isFav = favEmpSet.has(companyId);
+    try {
+      if (isFav) {
+        await supabase
+          .from('worker_favorite_employers')
+          .delete()
+          .eq('worker_user_id', user.id)
+          .eq('employer_company_id', companyId);
+      } else {
+        await supabase.from('worker_favorite_employers').insert({
+          worker_user_id: user.id,
+          employer_company_id: companyId,
+        });
+      }
+      await favEmpQ.refetch();
+    } catch (e) {
+      Alert.alert('Unable to update favorites', e instanceof Error ? e.message : 'Please try again.');
+    }
+  };
 
   const todayStr = useMemo(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0);
@@ -356,14 +394,27 @@ export default function BrowseShifts() {
                     )}
                   </View>
                   <Text style={styles.modalTitle}>{selected.title}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setApplyModal(false);
-                      setTimeout(() => router.push({ pathname: '/company/[id]' as any, params: { id: selected.employerCompanyId } }), 300);
-                    }}
-                  >
-                    <Text style={styles.modalEmployer}>{getEmployerName(selected.employerCompanyId)} →</Text>
-                  </TouchableOpacity>
+                  <View style={styles.modalEmployerRow}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setApplyModal(false);
+                        setTimeout(() => router.push({ pathname: '/company/[id]' as any, params: { id: selected.employerCompanyId } }), 300);
+                      }}
+                      style={{ flex: 1 }}
+                    >
+                      <Text style={styles.modalEmployer}>{getEmployerName(selected.employerCompanyId)} →</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => void toggleFavoriteEmployer(selected.employerCompanyId)}
+                      style={[styles.favEmpBtn, favEmpSet.has(selected.employerCompanyId) && styles.favEmpBtnActive]}
+                      hitSlop={6}
+                    >
+                      <Heart size={14} color={favEmpSet.has(selected.employerCompanyId) ? C.red : C.textMuted} fill={favEmpSet.has(selected.employerCompanyId) ? C.red : 'transparent'} />
+                      <Text style={[styles.favEmpText, favEmpSet.has(selected.employerCompanyId) && { color: C.red }]}>
+                        {favEmpSet.has(selected.employerCompanyId) ? 'Saved' : 'Save'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* Requirements */}
                   {reqParts.length > 0 && (
@@ -537,6 +588,10 @@ const styles = StyleSheet.create({
   modalCatRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   modalTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   modalEmployer: { fontSize: 15, color: C.accent, fontWeight: '600' as const },
+  modalEmployerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  favEmpBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.card, borderRadius: 9, borderWidth: 1, borderColor: C.border, paddingHorizontal: 10, paddingVertical: 6 },
+  favEmpBtnActive: { backgroundColor: C.redDim, borderColor: C.red + '60' },
+  favEmpText: { fontSize: 12, color: C.textMuted, fontWeight: '700' as const },
   modalSection: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14, gap: 8 },
   modalSectionTitle: { fontSize: 12, fontWeight: '700' as const, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginBottom: 4 },
   bulletRow: { flexDirection: 'row', gap: 8 },

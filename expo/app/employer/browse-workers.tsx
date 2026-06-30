@@ -4,12 +4,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Contacts from 'expo-contacts';
-import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight, Star, UserPlus, Send, X } from 'lucide-react-native';
+import { Search, CheckCircle, MapPin, DollarSign, Users, ChevronRight, Star, UserPlus, Send, X, Heart, Calendar, Clock } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
-import StatusBadge from '@/components/ui/StatusBadge';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth';
+
+interface OpenShiftRow {
+  id: string;
+  title: string;
+  category: string;
+  location_city: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  hourly_rate: number | null;
+  flat_rate: number | null;
+  status: string;
+}
 
 interface ContactRow {
   id: string;
@@ -69,8 +82,12 @@ async function fetchWorkers(): Promise<WorkerRow[]> {
 export default function BrowseWorkers() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [search, setSearch] = useState('');
   const [skillFilter, setSkillFilter] = useState<SkillFilter>('All');
+  const [favOnly, setFavOnly] = useState<boolean>(false);
+  const [inviteWorker, setInviteWorker] = useState<WorkerRow | null>(null);
+  const [invitingShiftId, setInvitingShiftId] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState<boolean>(false);
   const [contactsLoading, setContactsLoading] = useState<boolean>(false);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
@@ -137,10 +154,86 @@ export default function BrowseWorkers() {
   });
   const ratingMap = ratingsQuery.data ?? {};
 
+  const favQ = useQuery({
+    queryKey: ['employer-fav-workers', user?.companyId],
+    queryFn: async (): Promise<string[]> => {
+      if (!user?.companyId) return [];
+      const { data } = await supabase
+        .from('employer_favorite_workers')
+        .select('worker_user_id')
+        .eq('employer_company_id', user.companyId);
+      return (data ?? []).map((r) => r.worker_user_id as string);
+    },
+    enabled: Boolean(user?.companyId),
+    staleTime: 30_000,
+  });
+  const favSet = useMemo(() => new Set(favQ.data ?? []), [favQ.data]);
+
+  const openShiftsQ = useQuery({
+    queryKey: ['employer-open-shifts', user?.companyId],
+    queryFn: async (): Promise<OpenShiftRow[]> => {
+      if (!user?.companyId) return [];
+      const { data } = await supabase
+        .from('shift_posts')
+        .select('id,title,category,location_city,date,start_time,end_time,hourly_rate,flat_rate,status')
+        .eq('employer_company_id', user.companyId)
+        .in('status', ['Posted', 'Filled'])
+        .order('date', { ascending: true });
+      return (data ?? []) as OpenShiftRow[];
+    },
+    enabled: Boolean(user?.companyId),
+    staleTime: 30_000,
+  });
+  const openShifts = openShiftsQ.data ?? [];
+
+  const toggleFavorite = useCallback(async (workerUserId: string) => {
+    if (!user?.companyId) return;
+    const isFav = favSet.has(workerUserId);
+    try {
+      if (isFav) {
+        await supabase
+          .from('employer_favorite_workers')
+          .delete()
+          .eq('employer_company_id', user.companyId)
+          .eq('worker_user_id', workerUserId);
+      } else {
+        await supabase.from('employer_favorite_workers').insert({
+          employer_company_id: user.companyId,
+          worker_user_id: workerUserId,
+          created_by: user.id,
+        });
+      }
+      await favQ.refetch();
+    } catch (e) {
+      Alert.alert('Unable to update favorites', e instanceof Error ? e.message : 'Please try again.');
+    }
+  }, [favSet, user?.companyId, user?.id, favQ]);
+
+  const sendShiftInvite = useCallback(async (shift: OpenShiftRow) => {
+    if (!inviteWorker) return;
+    setInvitingShiftId(shift.id);
+    try {
+      const { error } = await supabase.rpc('employer_invite_worker', {
+        p_shift_id: shift.id,
+        p_worker_user_id: inviteWorker.user_id,
+        p_message: '',
+      });
+      if (error) throw new Error(error.message);
+      const name = inviteWorker.display_name;
+      setInviteWorker(null);
+      Alert.alert('Invitation sent', `${name} was invited to "${shift.title}". They'll get a notification to accept or decline.`);
+    } catch (e) {
+      Alert.alert('Unable to invite', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setInvitingShiftId(null);
+    }
+  }, [inviteWorker]);
+
   const filtered = useMemo(() => {
     const list = workersQuery.data ?? [];
     const q = search.trim().toLowerCase();
     return list.filter((w) => {
+      if (favOnly && !favSet.has(w.user_id)) return false;
       if (skillFilter !== 'All' && !w.skills.includes(skillFilter)) return false;
       if (q) {
         const nameMatch = w.display_name.toLowerCase().includes(q);
@@ -149,7 +242,7 @@ export default function BrowseWorkers() {
       }
       return true;
     });
-  }, [workersQuery.data, search, skillFilter]);
+  }, [workersQuery.data, search, skillFilter, favOnly, favSet]);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -182,6 +275,10 @@ export default function BrowseWorkers() {
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+        <TouchableOpacity onPress={() => setFavOnly((v) => !v)} style={[styles.chip, favOnly && styles.chipFav]}>
+          <Heart size={12} color={favOnly ? C.red : C.textSecondary} fill={favOnly ? C.red : 'transparent'} />
+          <Text style={[styles.chipText, favOnly && { color: C.red, fontWeight: '700' as const }]}>Favorites</Text>
+        </TouchableOpacity>
         {SKILL_FILTERS.map((f) => (
           <TouchableOpacity key={f} onPress={() => setSkillFilter(f)} style={[styles.chip, skillFilter === f && styles.chipActive]}>
             <Text style={[styles.chipText, skillFilter === f && styles.chipTextActive]}>{f}</Text>
@@ -216,6 +313,10 @@ export default function BrowseWorkers() {
                         <Text style={styles.verifiedText}>Verified</Text>
                       </View>
                     )}
+                    <View style={{ flex: 1 }} />
+                    <TouchableOpacity onPress={() => void toggleFavorite(w.user_id)} hitSlop={8} style={styles.heartBtn}>
+                      <Heart size={18} color={favSet.has(w.user_id) ? C.red : C.textMuted} fill={favSet.has(w.user_id) ? C.red : 'transparent'} />
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.infoRow}>
@@ -263,18 +364,80 @@ export default function BrowseWorkers() {
                 <Text style={styles.bio} numberOfLines={2}>{w.bio}</Text>
               ) : null}
 
-              <TouchableOpacity
-                onPress={() => router.push({ pathname: '/worker/[id]' as any, params: { id: w.user_id } })}
-                style={styles.viewBtn}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.viewBtnText}>View Profile</Text>
-                <ChevronRight size={15} color={C.accent} />
-              </TouchableOpacity>
+              <View style={styles.cardActions}>
+                <TouchableOpacity
+                  onPress={() => setInviteWorker(w)}
+                  style={styles.inviteShiftBtn}
+                  activeOpacity={0.85}
+                >
+                  <Send size={14} color={C.white} />
+                  <Text style={styles.inviteShiftText}>Invite to shift</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/worker/[id]' as any, params: { id: w.user_id } })}
+                  style={styles.viewBtn}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.viewBtnText}>Profile</Text>
+                  <ChevronRight size={15} color={C.accent} />
+                </TouchableOpacity>
+              </View>
             </Card>
           ))}
         </ScrollView>
       )}
+
+      {/* Invite worker to a shift */}
+      <Modal visible={!!inviteWorker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setInviteWorker(null)}>
+        <View style={[styles.modal, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle}>Invite to a shift</Text>
+              <Text style={styles.modalSub}>Pick a shift for {inviteWorker?.display_name}. They'll get a notification to accept.</Text>
+            </View>
+            <TouchableOpacity onPress={() => setInviteWorker(null)} style={styles.closeBtn}>
+              <X size={18} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+          {openShifts.length === 0 ? (
+            <View style={styles.empty}>
+              <Calendar size={40} color={C.textMuted} />
+              <Text style={styles.emptyTitle}>No open shifts</Text>
+              <Text style={styles.emptyText}>Post a shift first, then invite workers to it.</Text>
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]} showsVerticalScrollIndicator={false}>
+              {openShifts.map((s) => (
+                <TouchableOpacity
+                  key={s.id}
+                  onPress={() => void sendShiftInvite(s)}
+                  disabled={invitingShiftId !== null}
+                  style={styles.shiftPick}
+                  activeOpacity={0.85}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.shiftPickTitle}>{s.title}</Text>
+                    <View style={styles.shiftPickMeta}>
+                      <Calendar size={11} color={C.textMuted} />
+                      <Text style={styles.shiftPickMetaText}>{s.date}</Text>
+                      <Clock size={11} color={C.textMuted} />
+                      <Text style={styles.shiftPickMetaText}>{s.start_time}–{s.end_time}</Text>
+                      <DollarSign size={11} color={C.green} />
+                      <Text style={styles.shiftPickMetaText}>${s.hourly_rate ?? s.flat_rate}/hr</Text>
+                    </View>
+                  </View>
+                  {invitingShiftId === s.id ? (
+                    <ActivityIndicator color={C.accent} />
+                  ) : (
+                    <Send size={16} color={C.accent} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </Modal>
 
       {/* Invite from Contacts */}
       <Modal visible={inviteOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setInviteOpen(false)}>
@@ -386,6 +549,15 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, color: C.textSecondary, textAlign: 'center' },
   inviteBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.accentDim, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: C.accent + '50' },
   inviteBtnText: { fontSize: 13, color: C.accent, fontWeight: '700' as const },
+  chipFav: { backgroundColor: C.redDim, borderColor: C.red, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  heartBtn: { padding: 2 },
+  cardActions: { flexDirection: 'row', gap: 8 },
+  inviteShiftBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, borderRadius: 10, paddingVertical: 10 },
+  inviteShiftText: { fontSize: 14, color: C.white, fontWeight: '700' as const },
+  shiftPick: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14 },
+  shiftPickTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  shiftPickMeta: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5, flexWrap: 'wrap' },
+  shiftPickMetaText: { fontSize: 11, color: C.textSecondary, marginRight: 4 },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHandle: { width: 40, height: 4, backgroundColor: C.border, borderRadius: 2, alignSelf: 'center', marginTop: 10 },
   modalHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 },

@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, RefreshControl,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput, RefreshControl, Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon, MessageCircle,
+  MapPin, Clock, DollarSign, CheckCircle, Star, AlertTriangle, LogIn, LogOut as LogOutIcon, MessageCircle, Navigation, Mail, X,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
@@ -47,6 +47,26 @@ interface AppRow {
   status: string;
   applied_at: string;
   rejection_reason?: string | null;
+}
+
+interface InvitationRow {
+  id: string;
+  shift_id: string;
+  status: string;
+  message: string | null;
+  created_at: string;
+  shift_posts: {
+    title: string;
+    location_city: string;
+    location_address: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    hourly_rate: number | null;
+    flat_rate: number | null;
+    employer_company_id: string;
+    companies: { name: string } | null;
+  } | null;
 }
 
 function fmtTime(t: string): string {
@@ -113,6 +133,7 @@ export default function WorkerMyShifts() {
   const [disputeReason, setDisputeReason] = useState('');
   const [submittingDispute, setSubmittingDispute] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [invBusyId, setInvBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -333,6 +354,47 @@ export default function WorkerMyShifts() {
     [myReviewsQ.data],
   );
 
+  // Pending shift invitations (employer invited this worker directly)
+  const invitationsQ = useQuery({
+    queryKey: ['myshifts-invitations', user?.id],
+    queryFn: async (): Promise<InvitationRow[]> => {
+      if (!user?.id) return [];
+      const { data } = await supabase
+        .from('shift_invitations')
+        .select('id,shift_id,status,message,created_at,shift_posts(title,location_city,location_address,date,start_time,end_time,hourly_rate,flat_rate,employer_company_id,companies(name))')
+        .eq('worker_user_id', user.id)
+        .eq('status', 'Pending')
+        .order('created_at', { ascending: false });
+      return (data ?? []) as unknown as InvitationRow[];
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+  });
+  const invitations = invitationsQ.data ?? [];
+
+  const respondInvitation = async (invitationId: string, accept: boolean) => {
+    setInvBusyId(invitationId);
+    try {
+      const { error } = await supabase.rpc('worker_respond_invitation', {
+        p_invitation_id: invitationId,
+        p_accept: accept,
+      });
+      if (error) throw new Error(error.message);
+      await Promise.all([invitationsQ.refetch(), invalidate()]);
+      Alert.alert(accept ? 'Invitation accepted' : 'Invitation declined', accept ? 'The shift is now in your Active tab.' : 'The employer has been notified.');
+    } catch (e) {
+      Alert.alert('Unable to respond', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setInvBusyId(null);
+    }
+  };
+
+  const openDirections = (address: string, city: string) => {
+    const q = encodeURIComponent(`${address}, ${city}`.trim());
+    Linking.openURL(`https://maps.google.com/?q=${q}`).catch(() => {});
+  };
+
   const getShift = (shiftId: string) => shiftPostRows.find((s) => s.id === shiftId);
   const getTE = (assignmentId: string) => myTimeEntries.find((t) => t.assignment_id === assignmentId);
   const getEmpName = (companyId: string) => companyRows.find((c) => c.id === companyId)?.name ?? 'Employer';
@@ -432,9 +494,59 @@ export default function WorkerMyShifts() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.accent} colors={[C.accent]} />
         }
       >
+        {/* ─── Invitations (shown above Active) ─── */}
+        {tab === 'Active' && invitations.map((inv) => {
+          const sp = inv.shift_posts;
+          const compName = sp?.companies?.name ?? 'An employer';
+          return (
+            <Card key={inv.id} style={styles.inviteCard}>
+              <View style={styles.invitePillRow}>
+                <View style={styles.invitePill}>
+                  <Mail size={11} color={C.accent} />
+                  <Text style={styles.invitePillText}>INVITATION</Text>
+                </View>
+              </View>
+              <Text style={styles.shiftTitle}>{sp?.title ?? 'Shift'}</Text>
+              <Text style={styles.employer}>{compName}</Text>
+              {sp && (
+                <>
+                  <View style={styles.metaRow}>
+                    <Clock size={12} color={C.textMuted} />
+                    <Text style={styles.meta}>{formatDate(sp.date)} · {fmtTime(sp.start_time)} – {fmtTime(sp.end_time)}</Text>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <DollarSign size={12} color={C.textMuted} />
+                    <Text style={styles.meta}>${sp.hourly_rate ?? sp.flat_rate}/hr · {sp.location_city}</Text>
+                  </View>
+                </>
+              )}
+              {inv.message ? <Text style={styles.inviteMsg}>“{inv.message}”</Text> : null}
+              <View style={styles.inviteBtns}>
+                <Button
+                  label="Accept"
+                  onPress={() => void respondInvitation(inv.id, true)}
+                  loading={invBusyId === inv.id}
+                  size="sm"
+                  fullWidth
+                  icon={<CheckCircle size={14} color={C.white} />}
+                />
+                <Button
+                  label="Decline"
+                  onPress={() => void respondInvitation(inv.id, false)}
+                  disabled={invBusyId === inv.id}
+                  variant="outline"
+                  size="sm"
+                  fullWidth
+                  icon={<X size={14} color={C.accent} />}
+                />
+              </View>
+            </Card>
+          );
+        })}
+
         {/* ─── Active Tab ─── */}
         {tab === 'Active' && (
-          activeAssignments.length === 0 ? (
+          activeAssignments.length === 0 && invitations.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No active shifts</Text>
               <Text style={styles.emptySub}>Accepted shifts appear here</Text>
@@ -499,6 +611,14 @@ export default function WorkerMyShifts() {
                             <Text style={styles.meta} numberOfLines={1}>
                               {shift.location_address}, {shift.location_city}
                             </Text>
+                            <TouchableOpacity
+                              onPress={() => openDirections(shift.location_address, shift.location_city)}
+                              style={styles.dirBtn}
+                              hitSlop={6}
+                            >
+                              <Navigation size={11} color={C.blue} />
+                              <Text style={styles.dirBtnText}>Directions</Text>
+                            </TouchableOpacity>
                           </View>
                           <View style={styles.metaRow}>
                             <DollarSign size={12} color={C.textMuted} />
@@ -869,6 +989,14 @@ const styles = StyleSheet.create({
   cardActive: { borderColor: C.accent + '50', backgroundColor: C.accent + '08' },
   msgLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingVertical: 4 },
   msgLinkText: { color: C.accent, fontSize: 12.5, fontWeight: '600' as const },
+  dirBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.blueDim, borderRadius: 7, paddingHorizontal: 8, paddingVertical: 4 },
+  dirBtnText: { fontSize: 11, color: C.blue, fontWeight: '700' as const },
+  inviteCard: { gap: 8, borderColor: C.accent + '50', backgroundColor: C.accent + '0A' },
+  invitePillRow: { flexDirection: 'row' },
+  invitePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accentDim, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  invitePillText: { fontSize: 10, fontWeight: '800' as const, color: C.accent, letterSpacing: 1 },
+  inviteMsg: { fontSize: 13, color: C.textSecondary, fontStyle: 'italic' as const },
+  inviteBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   activePill: {
     alignSelf: 'flex-start',
