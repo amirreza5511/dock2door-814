@@ -145,9 +145,13 @@ export default function MessageThread() {
 
   useEffect(() => {
     if (!threadId) return;
-    console.log('[thread-realtime] subscribing', threadId);
+    // Unique channel name per mount so we never reuse an already-subscribed
+    // channel (which makes `.on(...)` throw "cannot add postgres_changes
+    // callbacks after subscribe()").
+    const channelName = `thread-messages-${threadId}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+    console.log('[thread-realtime] subscribing', channelName);
     const channel = supabase
-      .channel(`thread-messages-${threadId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'thread_messages', filter: `thread_id=eq.${threadId}` },
@@ -159,7 +163,7 @@ export default function MessageThread() {
       )
       .subscribe();
     return () => {
-      console.log('[thread-realtime] unsubscribing', threadId);
+      console.log('[thread-realtime] unsubscribing', channelName);
       void supabase.removeChannel(channel);
     };
   }, [threadId]);
@@ -170,8 +174,10 @@ export default function MessageThread() {
     }
   }, [messagesQuery.data]);
 
-  const threadData = threadQuery.data as { scope?: string; support_status?: string | null } | undefined;
+  const threadData = threadQuery.data as { scope?: string; support_status?: string | null; shift_id?: string | null; messaging_closed?: boolean } | undefined;
   const isSupportAi = threadData?.scope === 'Support' && (threadData?.support_status ?? 'ai') === 'ai';
+  // Shift conversations lock once the shift is over (or before anyone is accepted).
+  const messagingClosed = threadData?.messaging_closed === true;
 
   // Generate an AI support reply for the user's latest message. If the AI can't
   // resolve it (or the user asks for a person), it appends [[ESCALATE]] and we
@@ -239,6 +245,10 @@ export default function MessageThread() {
   const handleSend = () => {
     const body = text.trim();
     if ((!body && pendingAttachments.length === 0) || !threadId) return;
+    if (messagingClosed) {
+      Alert.alert('Conversation closed', 'This shift has ended, so you can no longer send messages here.');
+      return;
+    }
     const aiShouldReply = isSupportAi && body.length > 0;
     sendMutation.mutate(
       {
@@ -359,6 +369,14 @@ export default function MessageThread() {
           </TouchableOpacity>
         ) : null}
 
+        {messagingClosed ? (
+          <View style={styles.closedBanner}>
+            <Text style={styles.closedBannerText}>
+              This conversation is closed. You can only message while the shift is active.
+            </Text>
+          </View>
+        ) : null}
+
         {pendingAttachments.length > 0 ? (
           <View style={styles.pendingWrap}>
             {pendingAttachments.map((a) => (
@@ -373,23 +391,23 @@ export default function MessageThread() {
         ) : null}
 
         <View style={[styles.inputRow, { paddingBottom: insets.bottom + 10 }]}>
-          <TouchableOpacity onPress={() => void handlePickAttachment()} disabled={uploading} style={[styles.attachBtn, uploading && styles.sendBtnDisabled]} testID="thread-attach">
+          <TouchableOpacity onPress={() => void handlePickAttachment()} disabled={uploading || messagingClosed} style={[styles.attachBtn, (uploading || messagingClosed) && styles.sendBtnDisabled]} testID="thread-attach">
             <Paperclip size={18} color={C.textSecondary} />
           </TouchableOpacity>
           <TextInput
             value={text}
             onChangeText={setText}
-            placeholder={uploading ? 'Uploading attachment…' : 'Write a message…'}
+            placeholder={messagingClosed ? 'Messaging is closed for this shift' : uploading ? 'Uploading attachment…' : 'Write a message…'}
             placeholderTextColor={C.textMuted}
             style={styles.input}
             multiline
-            editable={!uploading}
+            editable={!uploading && !messagingClosed}
             testID="thread-input"
           />
           <TouchableOpacity
             onPress={handleSend}
-            disabled={(!text.trim() && pendingAttachments.length === 0) || sendMutation.isPending || uploading}
-            style={[styles.sendBtn, ((!text.trim() && pendingAttachments.length === 0) || sendMutation.isPending || uploading) && styles.sendBtnDisabled]}
+            disabled={(!text.trim() && pendingAttachments.length === 0) || sendMutation.isPending || uploading || messagingClosed}
+            style={[styles.sendBtn, ((!text.trim() && pendingAttachments.length === 0) || sendMutation.isPending || uploading || messagingClosed) && styles.sendBtnDisabled]}
             testID="thread-send"
           >
             <Send size={18} color={C.white} />
@@ -434,4 +452,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, minHeight: 40, maxHeight: 140, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 18, paddingHorizontal: 14, paddingTop: 10, paddingBottom: 10, color: C.text, fontSize: 14 },
   sendBtn: { width: 42, height: 42, borderRadius: 14, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.5 },
+  closedBanner: { marginHorizontal: 14, marginBottom: 8, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: C.border, backgroundColor: C.bgSecondary },
+  closedBannerText: { fontSize: 12.5, color: C.textSecondary, textAlign: 'center', lineHeight: 18 },
 });

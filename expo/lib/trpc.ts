@@ -1465,7 +1465,16 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'messaging.getThread': async (input: { threadId: string }) => {
     const { data, error } = await supabase.from('chat_threads').select('*').eq('id', input.threadId).maybeSingle();
     if (error || !data) throw new Error('Thread not found');
-    return data;
+    // Shift-scoped conversations are only open while the worker is accepted and
+    // the shift is still active. Surface that window so the UI can lock the input
+    // once a shift is over (or before anyone is accepted).
+    let messagingClosed = false;
+    const shiftId = (data as { shift_id?: string | null }).shift_id ?? null;
+    if (shiftId) {
+      const { data: openData } = await supabase.rpc('shift_chat_is_open', { p_shift_id: shiftId });
+      messagingClosed = openData !== true;
+    }
+    return { ...data, messaging_closed: messagingClosed };
   },
 
   'messaging.listMessages': async (input: { threadId: string }) => {
