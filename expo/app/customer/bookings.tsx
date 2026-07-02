@@ -173,6 +173,7 @@ export default function CustomerBookings() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.listingName}>{getListingName(b.listingId)}</Text>
                     <Text style={styles.bookingMeta}>{b.palletsRequested} pallets · {b.startDate} → {b.endDate}</Text>
+                    {b.referenceNumber ? <Text style={styles.refTag}>Ref # {b.referenceNumber}</Text> : null}
                   </View>
                   <StatusBadge status={b.status} />
                 </View>
@@ -377,6 +378,7 @@ const styles = StyleSheet.create({
   cardTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 },
   typeIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   listingName: { fontSize: 15, fontWeight: '700' as const, color: C.text },
+  refTag: { fontSize: 11, color: C.textMuted, fontWeight: '700' as const, marginTop: 3, letterSpacing: 0.4 },
   bookingMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border },
   priceLabel: { fontSize: 11, color: C.textMuted },

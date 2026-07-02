@@ -188,6 +188,7 @@ export default function WPBookings() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.listingName}>{getListingName(b.listingId)}</Text>
                   <Text style={styles.customerName}>{getCustomerName(b.customerCompanyId)}</Text>
+                  {b.referenceNumber ? <Text style={styles.refTag}>{b.referenceNumber}</Text> : null}
                 </View>
                 <StatusBadge status={b.status} />
               </View>
@@ -220,6 +221,7 @@ export default function WPBookings() {
                   <StatusBadge status={selected.status} size="md" />
                 </View>
                 <Text style={styles.customerLabel}>{getCustomerName(selected.customerCompanyId)}</Text>
+                {selected.referenceNumber ? <Text style={styles.refTagLarge}>Ref # {selected.referenceNumber}</Text> : null}
 
                 {/* Tab switcher */}
                 <View style={styles.tabRow}>
@@ -412,6 +414,8 @@ const styles = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 },
   listingName: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   customerName: { fontSize: 12, color: C.accent, fontWeight: '600' as const, marginTop: 2 },
+  refTag: { fontSize: 11, color: C.textMuted, fontWeight: '700' as const, marginTop: 3, letterSpacing: 0.5 },
+  refTagLarge: { fontSize: 13, color: C.text, fontWeight: '700' as const, letterSpacing: 0.5, marginTop: 2 },
   cardMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   metaText: { fontSize: 12, color: C.textSecondary },
   metaDot: { color: C.textMuted },

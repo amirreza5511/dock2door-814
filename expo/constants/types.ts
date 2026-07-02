@@ -103,6 +103,7 @@ export interface WarehouseAvailability {
 
 export interface WarehouseBooking {
   id: string;
+  referenceNumber: string;
   listingId: string;
   customerCompanyId: string;
   palletsRequested: number;

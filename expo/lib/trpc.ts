@@ -451,6 +451,35 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // Receiving: look up a booking by its reference number (WB-XXXXXXXX).
+  // Returns the booking, listing, customer, and any existing receipt so the
+  // receiving operator can verify who the cargo belongs to before accepting it.
+  'bookings.lookupByReference': async (input: { reference: string }) => {
+    const { data, error } = await supabase.rpc('warehouse_receiving_lookup', {
+      p_reference: input.reference,
+    });
+    if (error) throwErr(error, 'Unable to find booking');
+    return data as {
+      booking: AnyRecord;
+      listing: AnyRecord | null;
+      customer: AnyRecord | null;
+      receipt: AnyRecord | null;
+    };
+  },
+
+  // Receiving: confirm the cargo physically arrived. Creates/updates the
+  // inventory receipt (ASN) so it can be putaway into the WMS.
+  'bookings.confirmArrival': async (input: { reference: string; carrier?: string; tracking?: string; notes?: string }) => {
+    const { data, error } = await supabase.rpc('warehouse_confirm_receipt', {
+      p_reference: input.reference,
+      p_carrier: input.carrier ?? '',
+      p_tracking: input.tracking ?? '',
+      p_notes: input.notes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to confirm receipt');
+    return { receiptId: data as string };
+  },
+
   // =========================================================================
   // WAREHOUSES
   // =========================================================================

@@ -107,6 +107,7 @@ function mapWarehouseListing(r: Row): WarehouseListing {
 function mapWarehouseBooking(r: Row): WarehouseBooking {
   return {
     id: r.id,
+    referenceNumber: r.reference_number ?? '',
     listingId: r.listing_id,
     customerCompanyId: r.customer_company_id,
     palletsRequested: Number(r.pallets_requested ?? 0),

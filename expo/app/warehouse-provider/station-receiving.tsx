@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History } from 'lucide-react-native';
+import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -15,6 +15,13 @@ import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import { can, ROLE_LABEL, type CompanyRole } from '@/lib/permissions';
 
 interface ReceiptRow { id: string; reference?: string | null; status: string; supplier?: string | null; created_at: string }
+
+interface LookupResult {
+  booking: { id: string; reference_number?: string; pallets_requested?: number; start_date?: string; end_date?: string; status?: string; customer_notes?: string; handling_required?: boolean } | null;
+  listing: { name?: string; address?: string; city?: string } | null;
+  customer: { name?: string; contact_phone?: string; contact_email?: string } | null;
+  receipt: { id: string; status?: string; arrived_at?: string } | null;
+}
 
 export default function ReceivingStation() {
   const insets = useSafeAreaInsets();
@@ -32,6 +39,10 @@ export default function ReceivingStation() {
       await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate()]);
     },
   });
+  const lookup = trpc.bookings.lookupByReference.useMutation();
+  const confirmArrival = trpc.bookings.confirmArrival.useMutation({
+    onSuccess: async () => { await utils.wms.listReceipts.invalidate(); },
+  });
 
   const [variantId, setVariantId] = useState<string>('');
   const [locationId, setLocationId] = useState<string>('');
@@ -39,6 +50,33 @@ export default function ReceivingStation() {
   const [lot, setLot] = useState<string>('');
   const [reference, setReference] = useState<string>('');
   const [receiptId, setReceiptId] = useState<string>('');
+  const [refInput, setRefInput] = useState<string>('');
+  const [found, setFound] = useState<LookupResult | null>(null);
+
+  const doLookup = async () => {
+    if (!refInput.trim()) { Alert.alert('Enter a reference', 'Type the booking reference number from the customer.'); return; }
+    try {
+      const res = await lookup.mutateAsync({ reference: refInput.trim() });
+      setFound(res as LookupResult);
+    } catch (err) {
+      setFound(null);
+      Alert.alert('Not found', err instanceof Error ? err.message : 'No booking matched that reference.');
+    }
+  };
+
+  const confirmReceived = async () => {
+    const ref = found?.booking?.reference_number ?? refInput.trim();
+    try {
+      const res = await confirmArrival.mutateAsync({ reference: ref });
+      setReceiptId(res.receiptId);
+      setReference(found?.booking?.reference_number ?? ref);
+      Alert.alert('Cargo received ✅', 'The shipment is checked in. Now enter the SKU, location and quantity below to putaway into the WMS.');
+      // refresh the lookup so the receipt/status shows as arrived
+      try { const again = await lookup.mutateAsync({ reference: ref }); setFound(again as LookupResult); } catch { /* noop */ }
+    } catch (err) {
+      Alert.alert('Could not confirm', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   const list = useMemo<ReceiptRow[]>(() => (receipts.data ?? []) as ReceiptRow[], [receipts.data]);
   const open = useMemo(() => list.filter((r) => r.status !== 'Completed'), [list]);
@@ -101,6 +139,52 @@ export default function ReceivingStation() {
           <View style={styles.stat}><Text style={styles.statValue}>{open.length}</Text><Text style={styles.statLabel}>Open ASNs</Text></View>
           <View style={styles.stat}><Text style={styles.statValue}>{list.length - open.length}</Text><Text style={styles.statLabel}>Completed</Text></View>
           <View style={styles.stat}><Text style={[styles.statValue, { color: receive.isError ? C.red : C.text }]}>{receive.data ? '1' : '0'}</Text><Text style={styles.statLabel}>Last submit</Text></View>
+        </View>
+
+        <Text style={styles.sectionTitle}>Check in by reference #</Text>
+        <View style={styles.card}>
+          <Text style={styles.helpText}>Driver at the dock? Enter the booking reference the customer gave (e.g. WB-1A2B3C4D) to load their details before you accept the cargo.</Text>
+          <View style={styles.refRow}>
+            <View style={{ flex: 1 }}>
+              <Input label="Reference #" value={refInput} onChangeText={setRefInput} placeholder="WB-XXXXXXXX" autoCapitalize="characters" />
+            </View>
+            <Button label="Look up" onPress={() => void doLookup()} loading={lookup.isPending} icon={<ScanLine size={15} color={C.white} />} />
+          </View>
+
+          {found?.booking ? (
+            <View style={styles.foundBox}>
+              <View style={styles.foundHeader}>
+                <Text style={styles.foundRef}>{found.booking.reference_number}</Text>
+                <StatusBadge status={found.receipt?.status ?? found.booking.status ?? 'Requested'} size="sm" />
+              </View>
+              <View style={styles.foundRowLine}>
+                <Building2 size={13} color={C.accent} />
+                <Text style={styles.foundCustomer}>{found.customer?.name ?? 'Unknown customer'}</Text>
+              </View>
+              {found.customer?.contact_phone ? (
+                <Text style={styles.foundMeta}>{found.customer.contact_phone}</Text>
+              ) : null}
+              <Text style={styles.foundMeta}>{found.listing?.name ?? ''}{found.listing?.city ? ` · ${found.listing.city}` : ''}</Text>
+              <Text style={styles.foundMeta}>{found.booking.pallets_requested ?? 0} pallets · {found.booking.start_date ?? '?'} → {found.booking.end_date ?? '?'}{found.booking.handling_required ? ' · handling' : ''}</Text>
+              {found.booking.customer_notes ? (
+                <Text style={styles.foundNotes}>“{found.booking.customer_notes}”</Text>
+              ) : null}
+              {found.receipt?.arrived_at ? (
+                <View style={styles.arrivedTag}>
+                  <CheckCircle2 size={13} color={C.green} />
+                  <Text style={styles.arrivedText}>Checked in · {new Date(found.receipt.arrived_at).toLocaleString()}</Text>
+                </View>
+              ) : (
+                <Button
+                  label="Confirm cargo received"
+                  onPress={() => void confirmReceived()}
+                  loading={confirmArrival.isPending}
+                  fullWidth
+                  icon={<Truck size={15} color={C.white} />}
+                />
+              )}
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Open ASNs</Text>
@@ -186,4 +270,15 @@ const styles = StyleSheet.create({
   chipTextActive: { color: C.accent },
   errBox: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: C.red + '15', borderRadius: 8, borderWidth: 1, borderColor: C.red },
   errText: { flex: 1, fontSize: 11, color: C.red },
+  helpText: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  refRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  foundBox: { backgroundColor: C.bgSecondary, borderRadius: 12, borderWidth: 1, borderColor: C.accent + '55', padding: 12, gap: 6 },
+  foundHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  foundRef: { fontSize: 15, fontWeight: '800' as const, color: C.text, letterSpacing: 0.5 },
+  foundRowLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  foundCustomer: { fontSize: 14, fontWeight: '700' as const, color: C.accent },
+  foundMeta: { fontSize: 12, color: C.textSecondary },
+  foundNotes: { fontSize: 12, color: C.textMuted, fontStyle: 'italic' as const, marginTop: 2 },
+  arrivedTag: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  arrivedText: { fontSize: 12, color: C.green, fontWeight: '600' as const },
 });
