@@ -121,6 +121,14 @@ function mapWarehouseBooking(r: Row): WarehouseBooking {
     finalPrice: r.final_price != null ? Number(r.final_price) : null,
     status: r.status ?? 'Requested',
     paymentStatus: r.payment_status ?? 'Pending',
+    transportMode: r.transport_mode ?? 'unspecified',
+    carrierName: r.carrier_name ?? '',
+    driverName: r.driver_name ?? '',
+    vehiclePlate: r.vehicle_plate ?? '',
+    cargoDescription: r.cargo_description ?? '',
+    declaredPieces: r.declared_pieces != null ? Number(r.declared_pieces) : null,
+    declaredWeightKg: r.declared_weight_kg != null ? Number(r.declared_weight_kg) : null,
+    bolIssuedAt: r.bol_issued_at ?? null,
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }

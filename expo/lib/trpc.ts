@@ -141,6 +141,15 @@ function mapWarehouseBooking(r: Row): Row {
     status: r.status ?? 'Requested',
     paymentStatus: r.payment_status ?? 'Pending',
     pendingCounterOfferId: r.pending_counter_offer_id ?? null,
+    referenceNumber: r.reference_number ?? '',
+    transportMode: r.transport_mode ?? 'unspecified',
+    carrierName: r.carrier_name ?? '',
+    driverName: r.driver_name ?? '',
+    vehiclePlate: r.vehicle_plate ?? '',
+    cargoDescription: r.cargo_description ?? '',
+    declaredPieces: r.declared_pieces != null ? Number(r.declared_pieces) : null,
+    declaredWeightKg: r.declared_weight_kg != null ? Number(r.declared_weight_kg) : null,
+    bolIssuedAt: r.bol_issued_at ?? null,
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }
@@ -478,6 +487,33 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
     if (error) throwErr(error, 'Unable to confirm receipt');
     return { receiptId: data as string };
+  },
+
+  // Customer declares how the cargo will arrive and (optionally) issues the BOL.
+  'bookings.setTransport': async (input: {
+    bookingId: string;
+    transportMode?: 'unspecified' | 'own_driver' | 'self_delivery' | 'third_party';
+    carrierName?: string;
+    driverName?: string;
+    vehiclePlate?: string;
+    cargoDescription?: string;
+    declaredPieces?: number | null;
+    declaredWeightKg?: number | null;
+    issueBol?: boolean;
+  }) => {
+    const { data, error } = await supabase.rpc('warehouse_booking_set_transport', {
+      p_booking_id: input.bookingId,
+      p_transport_mode: input.transportMode ?? null,
+      p_carrier_name: input.carrierName ?? null,
+      p_driver_name: input.driverName ?? null,
+      p_vehicle_plate: input.vehiclePlate ?? null,
+      p_cargo_description: input.cargoDescription ?? null,
+      p_declared_pieces: input.declaredPieces ?? null,
+      p_declared_weight_kg: input.declaredWeightKg ?? null,
+      p_issue_bol: input.issueBol ?? false,
+    });
+    if (error) throwErr(error, 'Unable to update transport details');
+    return mapWarehouseBooking(data as Row);
   },
 
   // =========================================================================

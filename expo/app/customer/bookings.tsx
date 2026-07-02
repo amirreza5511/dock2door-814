@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Warehouse, Wrench, AlertCircle, CheckCircle, Package, Star } from 'lucide-react-native';
+import { Warehouse, Wrench, AlertCircle, CheckCircle, Package, Star, FileText } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -312,6 +312,15 @@ export default function CustomerBookings() {
                 </View>
 
                 <View style={styles.actionBtns}>
+                  {!['Cancelled', 'Declined'].includes(selectedBooking.status) && (
+                    <Button
+                      label="Bill of Lading"
+                      onPress={() => { setDetailModal(false); router.push(`/fulfillment/bol/${selectedBooking.id}` as never); }}
+                      variant="outline"
+                      fullWidth
+                      icon={<FileText size={15} color={C.accent} />}
+                    />
+                  )}
                   {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selectedBooking.status) && (
                     <Button
                       label="Open Fulfillment"

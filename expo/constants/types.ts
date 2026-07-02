@@ -117,8 +117,18 @@ export interface WarehouseBooking {
   finalPrice: number | null;
   status: BookingStatus;
   paymentStatus: PaymentStatus;
+  transportMode: TransportMode;
+  carrierName: string;
+  driverName: string;
+  vehiclePlate: string;
+  cargoDescription: string;
+  declaredPieces: number | null;
+  declaredWeightKg: number | null;
+  bolIssuedAt: string | null;
   createdAt: string;
 }
+
+export type TransportMode = 'unspecified' | 'own_driver' | 'self_delivery' | 'third_party';
 
 export interface ServiceListing {
   id: string;

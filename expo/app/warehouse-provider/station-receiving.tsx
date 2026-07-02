@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, Platform } from 'react-native';
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck } from 'lucide-react-native';
+import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck, QrCode, X } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -52,16 +53,36 @@ export default function ReceivingStation() {
   const [receiptId, setReceiptId] = useState<string>('');
   const [refInput, setRefInput] = useState<string>('');
   const [found, setFound] = useState<LookupResult | null>(null);
+  const [scanOpen, setScanOpen] = useState<boolean>(false);
+  const [permission, requestPermission] = useCameraPermissions();
 
-  const doLookup = async () => {
-    if (!refInput.trim()) { Alert.alert('Enter a reference', 'Type the booking reference number from the customer.'); return; }
+  const runLookup = async (raw: string): Promise<void> => {
+    const value = raw.trim();
+    if (!value) { Alert.alert('Enter a reference', 'Type or scan the booking reference number from the customer.'); return; }
+    setRefInput(value);
     try {
-      const res = await lookup.mutateAsync({ reference: refInput.trim() });
+      const res = await lookup.mutateAsync({ reference: value });
       setFound(res as LookupResult);
     } catch (err) {
       setFound(null);
       Alert.alert('Not found', err instanceof Error ? err.message : 'No booking matched that reference.');
     }
+  };
+
+  const doLookup = async () => { await runLookup(refInput); };
+
+  const openScanner = async () => {
+    if (Platform.OS === 'web') { Alert.alert('Scan on device', 'QR scanning works on the iOS/Android app. Type the reference here on web.'); return; }
+    if (!permission?.granted) {
+      const res = await requestPermission();
+      if (!res.granted) { Alert.alert('Camera needed', 'Enable camera access to scan the Bill of Lading QR code.'); return; }
+    }
+    setScanOpen(true);
+  };
+
+  const onScanned = (result: BarcodeScanningResult) => {
+    setScanOpen(false);
+    void runLookup(result.data ?? '');
   };
 
   const confirmReceived = async () => {
@@ -150,6 +171,10 @@ export default function ReceivingStation() {
             </View>
             <Button label="Look up" onPress={() => void doLookup()} loading={lookup.isPending} icon={<ScanLine size={15} color={C.white} />} />
           </View>
+          <TouchableOpacity onPress={() => void openScanner()} style={styles.scanBtn} testID="scan-qr">
+            <QrCode size={16} color={C.accent} />
+            <Text style={styles.scanBtnText}>Scan Bill of Lading QR</Text>
+          </TouchableOpacity>
 
           {found?.booking ? (
             <View style={styles.foundBox}>
@@ -241,6 +266,25 @@ export default function ReceivingStation() {
           </View>
         ))}
       </ScrollView>
+
+      <Modal visible={scanOpen} animationType="slide" onRequestClose={() => setScanOpen(false)}>
+        <View style={styles.scanRoot}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={scanOpen ? onScanned : undefined}
+          />
+          <View style={[styles.scanOverlay, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.scanTopRow}>
+              <Text style={styles.scanTitle}>Scan the BOL QR</Text>
+              <TouchableOpacity onPress={() => setScanOpen(false)} style={styles.scanClose}><X size={20} color={C.white} /></TouchableOpacity>
+            </View>
+            <View style={styles.scanFrame} />
+            <Text style={styles.scanHint}>Point the camera at the QR code on the driver's Bill of Lading.</Text>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -281,4 +325,13 @@ const styles = StyleSheet.create({
   foundNotes: { fontSize: 12, color: C.textMuted, fontStyle: 'italic' as const, marginTop: 2 },
   arrivedTag: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   arrivedText: { fontSize: 12, color: C.green, fontWeight: '600' as const },
+  scanBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.accent + '55', backgroundColor: C.accentDim },
+  scanBtnText: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  scanRoot: { flex: 1, backgroundColor: '#000' },
+  scanOverlay: { flex: 1, paddingHorizontal: 24, justifyContent: 'space-between' },
+  scanTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  scanTitle: { fontSize: 18, fontWeight: '800' as const, color: C.white },
+  scanClose: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  scanFrame: { alignSelf: 'center', width: 240, height: 240, borderRadius: 24, borderWidth: 3, borderColor: C.white },
+  scanHint: { fontSize: 13, color: C.white, textAlign: 'center' as const, opacity: 0.85, lineHeight: 19 },
 });

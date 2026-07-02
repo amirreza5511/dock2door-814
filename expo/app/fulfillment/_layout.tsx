@@ -10,6 +10,7 @@ export default function FulfillmentLayout() {
       <Stack.Screen name="rate-shop" />
       <Stack.Screen name="manifest" />
       <Stack.Screen name="integrations" />
+      <Stack.Screen name="bol/[bookingId]" />
     </Stack>
   );
 }
