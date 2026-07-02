@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshCon
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck, QrCode, X } from 'lucide-react-native';
+import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck, QrCode, X, CalendarClock, ClipboardCheck, ChevronRight } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -13,7 +13,10 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
+import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import { can, ROLE_LABEL, type CompanyRole } from '@/lib/permissions';
+
+const ACTIVE_INBOUND_STATUSES = ['Accepted', 'Confirmed', 'Scheduled', 'InProgress'];
 
 interface ReceiptRow { id: string; reference?: string | null; status: string; supplier?: string | null; created_at: string }
 
@@ -33,6 +36,8 @@ export default function ReceivingStation() {
   const role: CompanyRole | null = (activeCompany?.role ?? null) as CompanyRole | null;
   const allowed = can(role, 'wms.receive');
 
+  const bootstrap = useDockBootstrapData();
+  const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
   const receipts = trpc.wms.listReceipts.useQuery();
   const locations = trpc.wms.listLocations.useQuery();
   const receive = trpc.wms.receive.useMutation({
@@ -103,6 +108,29 @@ export default function ReceivingStation() {
   const open = useMemo(() => list.filter((r) => r.status !== 'Completed'), [list]);
   const recent = useMemo(() => list.slice(0, 10), [list]);
 
+  // Inbound schedule: bookings for this warehouse that are accepted/active and
+  // expected to arrive. Sorted by expected date so today's arrivals surface first.
+  const { warehouseListings, warehouseBookings, companies } = bootstrap.data;
+  const myListingIds = useMemo(
+    () => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id),
+    [warehouseListings, activeCompanyId],
+  );
+  const today = new Date().toISOString().slice(0, 10);
+  const inbound = useMemo(() => {
+    return warehouseBookings
+      .filter((b) => myListingIds.includes(b.listingId) && ACTIVE_INBOUND_STATUSES.includes(b.status))
+      .map((b) => {
+        const when = (b.startDate ?? '').slice(0, 10);
+        const bucket: 'overdue' | 'today' | 'upcoming' = !when ? 'upcoming' : when < today ? 'overdue' : when === today ? 'today' : 'upcoming';
+        return { ...b, when, bucket };
+      })
+      .sort((a, b) => (a.when || '9999').localeCompare(b.when || '9999'));
+  }, [warehouseBookings, myListingIds, today]);
+  const customerName = (id: string) => companies.find((c) => c.id === id)?.name ?? 'Customer';
+
+  const openJob = (ref: string) => { setRefInput(ref); void runLookup(ref); };
+  const openGrn = (id: string) => router.push(`/fulfillment/grn/${id}` as never);
+
   if (!allowed) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, paddingTop: insets.top + 30 }]}>
@@ -162,6 +190,30 @@ export default function ReceivingStation() {
           <View style={styles.stat}><Text style={[styles.statValue, { color: receive.isError ? C.red : C.text }]}>{receive.data ? '1' : '0'}</Text><Text style={styles.statLabel}>Last submit</Text></View>
         </View>
 
+        <View style={styles.inboundHead}>
+          <CalendarClock size={13} color={C.textSecondary} />
+          <Text style={[styles.sectionTitle, { marginTop: 0 }]}>Inbound schedule</Text>
+        </View>
+        {inbound.length === 0 ? (
+          <EmptyState icon={CalendarClock} title="No inbound cargo scheduled" description="Accepted bookings expected to arrive will appear here." />
+        ) : inbound.slice(0, 12).map((b) => (
+          <TouchableOpacity key={b.id} onPress={() => openJob(b.referenceNumber || '')} style={styles.jobRow} testID={`inbound-${b.id}`}>
+            <View style={[styles.jobDot, b.bucket === 'today' ? { backgroundColor: C.green } : b.bucket === 'overdue' ? { backgroundColor: C.red } : { backgroundColor: C.textMuted }]} />
+            <View style={{ flex: 1 }}>
+              <View style={styles.jobTopRow}>
+                <Text style={styles.jobRef}>{b.referenceNumber || b.id.slice(0, 8)}</Text>
+                <View style={[styles.bucketTag, b.bucket === 'today' ? { backgroundColor: C.green + '18' } : b.bucket === 'overdue' ? { backgroundColor: C.red + '18' } : { backgroundColor: C.bgSecondary }]}>
+                  <Text style={[styles.bucketText, b.bucket === 'today' ? { color: C.green } : b.bucket === 'overdue' ? { color: C.red } : { color: C.textMuted }]}>
+                    {b.bucket === 'today' ? 'Today' : b.bucket === 'overdue' ? 'Overdue' : (b.when || 'TBD')}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.jobMeta}>{customerName(b.customerCompanyId)} · {b.palletsRequested} pallets</Text>
+            </View>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+        ))}
+
         <Text style={styles.sectionTitle}>Check in by reference #</Text>
         <View style={styles.card}>
           <Text style={styles.helpText}>Driver at the dock? Enter the booking reference the customer gave (e.g. WB-1A2B3C4D) to load their details before you accept the cargo.</Text>
@@ -195,10 +247,19 @@ export default function ReceivingStation() {
                 <Text style={styles.foundNotes}>“{found.booking.customer_notes}”</Text>
               ) : null}
               {found.receipt?.arrived_at ? (
-                <View style={styles.arrivedTag}>
-                  <CheckCircle2 size={13} color={C.green} />
-                  <Text style={styles.arrivedText}>Checked in · {new Date(found.receipt.arrived_at).toLocaleString()}</Text>
-                </View>
+                <>
+                  <View style={styles.arrivedTag}>
+                    <CheckCircle2 size={13} color={C.green} />
+                    <Text style={styles.arrivedText}>Checked in · {new Date(found.receipt.arrived_at).toLocaleString()}</Text>
+                  </View>
+                  <Button
+                    label="Inspect & issue GRN"
+                    onPress={() => found.booking?.id && openGrn(found.booking.id)}
+                    fullWidth
+                    variant="outline"
+                    icon={<ClipboardCheck size={15} color={C.accent} />}
+                  />
+                </>
               ) : (
                 <Button
                   label="Confirm cargo received"
@@ -315,6 +376,14 @@ const styles = StyleSheet.create({
   errBox: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: C.red + '15', borderRadius: 8, borderWidth: 1, borderColor: C.red },
   errText: { flex: 1, fontSize: 11, color: C.red },
   helpText: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  inboundHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  jobRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
+  jobDot: { width: 8, height: 8, borderRadius: 4 },
+  jobTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  jobRef: { fontSize: 13, fontWeight: '800' as const, color: C.text, letterSpacing: 0.4 },
+  jobMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
+  bucketTag: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  bucketText: { fontSize: 10, fontWeight: '700' as const },
   refRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   foundBox: { backgroundColor: C.bgSecondary, borderRadius: 12, borderWidth: 1, borderColor: C.accent + '55', padding: 12, gap: 6 },
   foundHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

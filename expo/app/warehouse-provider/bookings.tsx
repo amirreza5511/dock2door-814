@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle, XCircle, ArrowRightLeft, Package, Star } from 'lucide-react-native';
+import { CheckCircle, XCircle, ArrowRightLeft, Package, Star, ClipboardCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -297,6 +297,16 @@ export default function WPBookings() {
                     )}
                     {selected.status === 'Completed' && reviewedBookingIds.has(selected.id) && (
                       <Text style={{ color: C.green, textAlign: 'center', fontSize: 13, fontWeight: '600' as const }}>You rated this customer</Text>
+                    )}
+
+                    {['Accepted', 'Confirmed', 'Scheduled', 'InProgress', 'Completed'].includes(selected.status) && (
+                      <Button
+                        label="Goods Received Note (GRN)"
+                        onPress={() => { setDetailModal(false); router.push(`/fulfillment/grn/${selected.id}` as never); }}
+                        variant="outline"
+                        fullWidth
+                        icon={<ClipboardCheck size={15} color={C.accent} />}
+                      />
                     )}
 
                     {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selected.status) && (

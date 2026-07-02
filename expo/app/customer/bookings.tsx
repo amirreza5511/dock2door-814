@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Warehouse, Wrench, AlertCircle, CheckCircle, Package, Star, FileText } from 'lucide-react-native';
+import { Warehouse, Wrench, AlertCircle, CheckCircle, Package, Star, FileText, ClipboardCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -319,6 +319,15 @@ export default function CustomerBookings() {
                       variant="outline"
                       fullWidth
                       icon={<FileText size={15} color={C.accent} />}
+                    />
+                  )}
+                  {['Accepted', 'Confirmed', 'Scheduled', 'InProgress', 'Completed'].includes(selectedBooking.status) && (
+                    <Button
+                      label="Goods Received Note (GRN)"
+                      onPress={() => { setDetailModal(false); router.push(`/fulfillment/grn/${selectedBooking.id}` as never); }}
+                      variant="outline"
+                      fullWidth
+                      icon={<ClipboardCheck size={15} color={C.accent} />}
                     />
                   )}
                   {['Accepted', 'Confirmed', 'Scheduled', 'InProgress'].includes(selectedBooking.status) && (

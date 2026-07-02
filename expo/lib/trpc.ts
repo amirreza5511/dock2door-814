@@ -517,6 +517,47 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // GRN — Goods Received Note (inbound inspection + acceptance record)
+  // =========================================================================
+  // Warehouse issues a GRN after receiving+inspecting the cargo. Closes the
+  // inbound receipt and creates a permanent, printable acceptance record.
+  'grn.issue': async (input: {
+    bookingId: string;
+    inspectionStatus?: 'good' | 'damaged' | 'partial' | 'rejected';
+    palletsReceived?: number;
+    piecesReceived?: number | null;
+    conditionNotes?: string;
+    inspectorNotes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('warehouse_issue_grn', {
+      p_booking_id: input.bookingId,
+      p_inspection_status: input.inspectionStatus ?? 'good',
+      p_pallets_received: input.palletsReceived ?? 0,
+      p_pieces_received: input.piecesReceived ?? null,
+      p_condition_notes: input.conditionNotes ?? '',
+      p_inspector_notes: input.inspectorNotes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to issue goods received note');
+    return data as AnyRecord;
+  },
+
+  // Fetch the most recent GRN for a booking (customer or warehouse can read).
+  'grn.getByBooking': async (input: { bookingId: string }) => {
+    const { data, error } = await supabase
+      .from('goods_received_notes')
+      .select('*')
+      .eq('booking_id', input.bookingId)
+      .order('issued_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      if (isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load goods received note');
+    }
+    return (data as AnyRecord | null) ?? null;
+  },
+
+  // =========================================================================
   // WAREHOUSES
   // =========================================================================
   'warehouses.createListing': async (input: AnyRecord, ctx) => {

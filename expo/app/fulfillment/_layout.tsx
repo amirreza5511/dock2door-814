@@ -11,6 +11,7 @@ export default function FulfillmentLayout() {
       <Stack.Screen name="manifest" />
       <Stack.Screen name="integrations" />
       <Stack.Screen name="bol/[bookingId]" />
+      <Stack.Screen name="grn/[bookingId]" />
     </Stack>
   );
 }
