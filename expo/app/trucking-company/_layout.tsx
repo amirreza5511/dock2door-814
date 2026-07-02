@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { CalendarDays, CreditCard, LayoutDashboard, MessagesSquare, Truck } from 'lucide-react-native';
+import { CalendarDays, CreditCard, LayoutDashboard, MessagesSquare, Truck, UsersRound } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
@@ -22,6 +22,7 @@ export default function TruckingCompanyLayout() {
       <Tabs.Screen name="fleet" options={{ title: 'Fleet', tabBarIcon: ({ color }) => <Truck size={22} color={color} /> }} />
       <Tabs.Screen name="finance" options={{ title: 'Finance', tabBarIcon: ({ color }) => <CreditCard size={22} color={color} /> }} />
       <Tabs.Screen name="messages" options={{ title: 'Inbox', tabBarIcon: ({ color }) => <MessagesSquare size={22} color={color} /> }} />
+      <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: ({ color }) => <UsersRound size={22} color={color} /> }} />
     </Tabs>
   );
 }

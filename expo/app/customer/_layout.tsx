@@ -31,6 +31,7 @@ export default function CustomerLayout() {
       <Tabs.Screen name="orders" options={{ title: 'Orders', tabBarIcon: ({ color }) => <ClipboardList size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ title: 'Billing', tabBarIcon: ({ color }) => <Receipt size={22} color={color} /> }} />
       <Tabs.Screen name="services" options={{ href: null }} />
+      <Tabs.Screen name="team" options={{ href: null }} />
     </Tabs>
   );
 }

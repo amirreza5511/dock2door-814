@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, Wrench, ClipboardList, PlusCircle, Receipt } from 'lucide-react-native';
+import { LayoutDashboard, Wrench, ClipboardList, PlusCircle, Receipt, UsersRound } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import C from '@/constants/colors';
 
@@ -21,6 +21,7 @@ export default function ServiceProviderLayout() {
       <Tabs.Screen name="listings" options={{ title: 'Services', tabBarIcon: ({ color }) => <Wrench size={22} color={color} /> }} />
       <Tabs.Screen name="jobs" options={{ title: 'Jobs', tabBarIcon: ({ color }) => <ClipboardList size={22} color={color} /> }} />
       <Tabs.Screen name="create-listing" options={{ title: 'New Service', tabBarIcon: ({ color }) => <PlusCircle size={22} color={color} /> }} />
+      <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: ({ color }) => <UsersRound size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ title: 'Billing', tabBarIcon: ({ color }) => <Receipt size={22} color={color} /> }} />
     </Tabs>
   );
