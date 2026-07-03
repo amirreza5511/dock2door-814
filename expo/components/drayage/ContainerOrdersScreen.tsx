@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, Clock, Package, Plus, Ship, Train, X, Anchor } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor } from 'lucide-react-native';
+import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -32,6 +33,8 @@ type Props = {
 export default function ContainerOrdersScreen({ detailPath, showBack = true, subtitle }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const utils = trpc.useUtils();
   const ordersQuery = trpc.drayage.customerOrders.useQuery(undefined, { refetchInterval: 30000 });
   const createMutation = trpc.drayage.createOrder.useMutation({
@@ -136,9 +139,19 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
           </TouchableOpacity>
         ) : null}
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitle}>Container Drayage</Text>
+          <Text style={styles.headerTitle}>{showBack ? 'Container Drayage' : (user?.name ?? 'Container Drayage')}</Text>
           <Text style={styles.headerSub}>{subtitle ?? 'Post import/export container orders'}</Text>
         </View>
+        {!showBack ? (
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.iconBtn}>
+              <HelpCircle size={18} color={C.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => void logout()} style={styles.iconBtn}>
+              <LogOut size={18} color={C.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
 
       <ScrollView
@@ -376,6 +389,8 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingBottom: 14, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   backBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   headerSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   scroll: { padding: 20, gap: 16 },
