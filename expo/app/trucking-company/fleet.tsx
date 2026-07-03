@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { ChevronLeft, Package, Plus, Truck, UserRound, Container } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -155,6 +155,13 @@ export default function TruckingFleetScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
+  const handleBack = useCallback(() => {
+    try {
+      router.back();
+    } catch {
+      router.replace('/' as never);
+    }
+  }, [router]);
   const [entity, setEntity] = useState<FleetEntity>('drivers');
   const [search, setSearch] = useState<string>('');
   const [form, setForm] = useState<FleetFormState>(INITIAL_FORM);
@@ -270,7 +277,7 @@ export default function TruckingFleetScreen() {
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}> 
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as never))} style={styles.backBtn} testID="fleet-back">
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn} testID="fleet-back">
           <ChevronLeft size={22} color={C.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
