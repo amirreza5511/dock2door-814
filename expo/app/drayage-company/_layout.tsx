@@ -6,6 +6,7 @@ export default function DrayageCompanyLayout() {
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: C.bg }, animation: 'fade' }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="board" />
+      <Stack.Screen name="dispatch" />
       <Stack.Screen name="terminals" />
       <Stack.Screen name="[orderId]" />
     </Stack>
