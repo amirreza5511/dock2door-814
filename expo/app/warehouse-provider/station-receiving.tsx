@@ -48,6 +48,7 @@ export default function ReceivingStation() {
   const receipts = trpc.wms.listReceipts.useQuery();
   const locations = trpc.wms.listLocations.useQuery();
   const variants = trpc.inventory.listAllVariants.useQuery();
+  const issuedGrns = trpc.grn.listIssued.useQuery();
   const createLoc = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
   const createProduct = trpc.inventory.createProduct.useMutation();
   const upsertVariant = trpc.inventory.upsertVariant.useMutation({ onSuccess: async () => { await utils.inventory.listAllVariants.invalidate(); } });
@@ -153,6 +154,19 @@ export default function ReceivingStation() {
       .sort((a, b) => (a.when || '9999').localeCompare(b.when || '9999'));
   }, [warehouseBookings, myListingIds, today]);
   const customerName = (id: string) => companies.find((c) => c.id === id)?.name ?? 'Customer';
+
+  // Map booking_id -> issued GRN so lists can show a persisted "inspected" (green) state.
+  const grnByBooking = useMemo(() => {
+    const rows = (issuedGrns.data ?? []) as { booking_id?: string | null; inspection_status?: string; grn_number?: string }[];
+    const map = new Map<string, { status: string; grnNumber: string }>();
+    for (const r of rows) {
+      if (r.booking_id && !map.has(r.booking_id)) {
+        map.set(r.booking_id, { status: r.inspection_status ?? 'good', grnNumber: r.grn_number ?? '' });
+      }
+    }
+    return map;
+  }, [issuedGrns.data]);
+  const foundGrn = found?.booking?.id ? grnByBooking.get(found.booking.id) ?? null : null;
 
   const openJob = (ref: string) => { setRefInput(ref); void runLookup(ref); };
   const openGrn = (id: string) => router.push(`/fulfillment/grn/${id}` as never);

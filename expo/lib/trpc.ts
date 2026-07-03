@@ -557,6 +557,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return (data as AnyRecord | null) ?? null;
   },
 
+  // List all bookings that already have a GRN issued, with their inspection
+  // status. Used to show a persisted "already inspected" (green) state in lists.
+  'grn.listIssued': async () => {
+    const { data, error } = await supabase
+      .from('goods_received_notes')
+      .select('booking_id, inspection_status, grn_number, issued_at')
+      .order('issued_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load goods received notes');
+    }
+    return (data as AnyRecord[] | null) ?? [];
+  },
+
   // =========================================================================
   // WAREHOUSES
   // =========================================================================
