@@ -2747,7 +2747,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const q = supabase.from('warehouse_locations').select('*').is('archived_at', null).order('zone').order('aisle');
     const { data, error } = isAdmin(ctx.user.role) ? await q : await q.eq('warehouse_company_id', ctx.user.companyId!);
     if (error) throwErr(error, 'Unable to load locations');
-    return data ?? [];
+    const locs = data ?? [];
+    // Attach how many pallet slots are occupied at each location.
+    const ids = locs.map((l) => l.id as string);
+    let occupancy: Record<string, number> = {};
+    if (ids.length > 0) {
+      const { data: pallets } = await supabase
+        .from('warehouse_pallets')
+        .select('location_id')
+        .eq('status', 'stored')
+        .in('location_id', ids);
+      occupancy = (pallets ?? []).reduce<Record<string, number>>((acc, p) => {
+        const key = p.location_id as string;
+        acc[key] = (acc[key] ?? 0) + 1;
+        return acc;
+      }, {});
+    }
+    return locs.map((l) => ({
+      ...l,
+      pallet_capacity: Number(l.pallet_capacity ?? 1),
+      accepts_oversize: Boolean(l.accepts_oversize),
+      pallets_used: occupancy[l.id as string] ?? 0,
+    }));
   },
   'wms.createLocation': async (input: AnyRecord, ctx) => {
     if (!ctx.user.companyId) throw new Error('Company context required');
@@ -2760,6 +2781,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       rack: input.rack ?? '',
       level: input.level ?? '',
       bin: input.bin ?? '',
+      pallet_capacity: input.palletCapacity ?? 1,
+      accepts_oversize: input.acceptsOversize ?? false,
     }).select().single();
     if (error) throwErr(error, 'Unable to create location');
     return { id: data!.id };
@@ -2794,6 +2817,21 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
     if (error) throwErr(error, 'Unable to record receipt');
     return { movementId: data as string };
+  },
+  'wms.putawayPallet': async (input: { variantId?: string; locationId: string; palletType?: 'standard' | 'oversize'; units?: number; receiptId?: string; lotCode?: string; reference?: string }) => {
+    // wms_putaway_pallet(p_variant_id, p_location_id, p_pallet_type, p_units, p_receipt_id, p_lot_code, p_expiry, p_reference)
+    const { data, error } = await supabase.rpc('wms_putaway_pallet', {
+      p_variant_id: input.variantId ?? null,
+      p_location_id: input.locationId,
+      p_pallet_type: input.palletType ?? 'standard',
+      p_units: input.units ?? 1,
+      p_receipt_id: input.receiptId ?? null,
+      p_lot_code: input.lotCode ?? null,
+      p_expiry: null,
+      p_reference: input.reference ?? null,
+    });
+    if (error) throwErr(error, 'Unable to put away pallet');
+    return { palletId: data as string };
   },
   'wms.adjust': async (input: { variantId: string; locationId: string; delta: number; reason: string }) => {
     // wms_adjust(p_variant_id, p_location_id, p_lot_id, p_delta, p_reason)

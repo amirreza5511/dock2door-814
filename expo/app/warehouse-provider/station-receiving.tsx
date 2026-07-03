@@ -22,7 +22,10 @@ interface ReceiptRow { id: string; reference_code?: string | null; status: strin
 
 interface VariantRow { id: string; sku: string; name?: string | null; barcode?: string | null; product_id?: string; products?: { name?: string | null; company_id?: string | null } | null }
 
-interface LocationRow { id: string; code?: string | null; zone?: string | null; aisle?: string | null; rack?: string | null; level?: string | null; bin?: string | null }
+interface LocationRow { id: string; code?: string | null; zone?: string | null; aisle?: string | null; rack?: string | null; level?: string | null; bin?: string | null; pallet_capacity?: number; accepts_oversize?: boolean; pallets_used?: number }
+
+type PalletType = 'standard' | 'oversize';
+interface PlacedPallet { n: number; location: string; type: PalletType; sku: string }
 
 interface LookupResult {
   booking: { id: string; reference_number?: string; pallets_requested?: number; start_date?: string; end_date?: string; status?: string; customer_notes?: string; handling_required?: boolean } | null;
@@ -48,9 +51,9 @@ export default function ReceivingStation() {
   const createLoc = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
   const createProduct = trpc.inventory.createProduct.useMutation();
   const upsertVariant = trpc.inventory.upsertVariant.useMutation({ onSuccess: async () => { await utils.inventory.listAllVariants.invalidate(); } });
-  const receive = trpc.wms.receive.useMutation({
+  const putaway = trpc.wms.putawayPallet.useMutation({
     onSuccess: async () => {
-      await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate()]);
+      await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate(), utils.wms.listLocations.invalidate()]);
     },
   });
   const lookup = trpc.bookings.lookupByReference.useMutation();
@@ -62,6 +65,8 @@ export default function ReceivingStation() {
   const [locationId, setLocationId] = useState<string>('');
   const [qty, setQty] = useState<string>('');
   const [lot, setLot] = useState<string>('');
+  const [palletType, setPalletType] = useState<PalletType>('standard');
+  const [placed, setPlaced] = useState<PlacedPallet[]>([]);
   const [reference, setReference] = useState<string>('');
   const [receiptId, setReceiptId] = useState<string>('');
   const [refInput, setRefInput] = useState<string>('');
@@ -73,7 +78,7 @@ export default function ReceivingStation() {
   const [skuSearch, setSkuSearch] = useState<string>('');
   const [newSku, setNewSku] = useState<string>('');
   const [newSkuName, setNewSkuName] = useState<string>('');
-  const [newLoc, setNewLoc] = useState<{ code: string; zone: string; aisle: string; rack: string; level: string; bin: string }>({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '' });
+  const [newLoc, setNewLoc] = useState<{ code: string; zone: string; aisle: string; rack: string; level: string; bin: string; capacity: string; oversize: boolean }>({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '', capacity: '1', oversize: false });
 
   const runLookup = async (raw: string): Promise<void> => {
     const value = raw.trim();
@@ -149,6 +154,13 @@ export default function ReceivingStation() {
   const locationList = useMemo<LocationRow[]>(() => (locations.data ?? []) as LocationRow[], [locations.data]);
   const selectedVariant = useMemo(() => variantList.find((v) => v.id === variantId) ?? null, [variantList, variantId]);
   const selectedLocation = useMemo(() => locationList.find((l) => l.id === locationId) ?? null, [locationList, locationId]);
+  const locIsFull = (l: LocationRow): boolean => (l.pallets_used ?? 0) >= Math.max(l.pallet_capacity ?? 1, 1);
+  const locFreeSlots = (l: LocationRow): number => Math.max((l.pallet_capacity ?? 1) - (l.pallets_used ?? 0), 0);
+  // Slots the operator can actually use for the current pallet type.
+  const availableLocations = useMemo(
+    () => locationList.filter((l) => !locIsFull(l) && (palletType === 'standard' || l.accepts_oversize)),
+    [locationList, palletType],
+  );
   const filteredVariants = useMemo(() => {
     const q = skuSearch.trim().toLowerCase();
     const base = q ? variantList.filter((v) => (v.sku ?? '').toLowerCase().includes(q) || (v.name ?? '').toLowerCase().includes(q)) : variantList;
@@ -180,9 +192,11 @@ export default function ReceivingStation() {
         listingId: myListingIds[0] ?? undefined,
         code: newLoc.code.trim(), zone: newLoc.zone.trim(), aisle: newLoc.aisle.trim(),
         rack: newLoc.rack.trim(), level: newLoc.level.trim(), bin: newLoc.bin.trim(),
+        palletCapacity: Math.max(Number(newLoc.capacity) || 1, 1),
+        acceptsOversize: newLoc.oversize,
       });
       setLocationId(res.id);
-      setNewLoc({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '' });
+      setNewLoc({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '', capacity: '1', oversize: false });
       setLocPickerOpen(false);
     } catch (err) {
       Alert.alert('Could not add location', err instanceof Error ? err.message : 'Unknown error');
@@ -202,23 +216,37 @@ export default function ReceivingStation() {
   }
 
   const submit = async () => {
-    if (!variantId.trim() || !locationId.trim() || !qty.trim()) {
-      Alert.alert('Missing info', 'Variant ID, location, and quantity are required.');
+    if (!locationId.trim()) {
+      Alert.alert('Pick a slot', 'Select the shelf/rack slot to place this pallet in.');
+      return;
+    }
+    const loc = selectedLocation;
+    if (loc && locIsFull(loc)) {
+      Alert.alert('Slot full', 'That slot already holds a pallet. Pick an empty slot — each slot holds one pallet.');
+      return;
+    }
+    if (palletType === 'oversize' && loc && !loc.accepts_oversize) {
+      Alert.alert('Not an oversize slot', 'This over-standard pallet needs a slot marked as oversize-capable.');
       return;
     }
     try {
-      await receive.mutateAsync({
+      await putaway.mutateAsync({
         receiptId: receiptId.trim() || undefined,
-        variantId: variantId.trim(),
+        variantId: variantId.trim() || undefined,
         locationId: locationId.trim(),
-        quantity: Number(qty) || 0,
+        palletType,
+        units: Math.max(Number(qty) || 1, 1),
         lotCode: lot.trim() || undefined,
         reference: reference.trim() || undefined,
       });
-      Alert.alert('Received', `Logged by ${user?.name ?? user?.email ?? 'operator'}.`);
-      setVariantId(''); setQty(''); setLot('');
+      setPlaced((prev) => [
+        { n: prev.length + 1, location: loc ? locLabel(loc) : '—', type: palletType, sku: selectedVariant ? selectedVariant.sku : '—' },
+        ...prev,
+      ]);
+      // Clear the slot for the next pallet; keep SKU + pallet type for speed.
+      setLocationId('');
     } catch (err) {
-      Alert.alert('Receive failed', err instanceof Error ? err.message : 'Unknown error');
+      Alert.alert('Putaway failed', err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
@@ -247,7 +275,7 @@ export default function ReceivingStation() {
         <View style={styles.statRow}>
           <View style={styles.stat}><Text style={styles.statValue}>{open.length}</Text><Text style={styles.statLabel}>Open ASNs</Text></View>
           <View style={styles.stat}><Text style={styles.statValue}>{list.length - open.length}</Text><Text style={styles.statLabel}>Completed</Text></View>
-          <View style={styles.stat}><Text style={[styles.statValue, { color: receive.isError ? C.red : C.text }]}>{receive.data ? '1' : '0'}</Text><Text style={styles.statLabel}>Last submit</Text></View>
+          <View style={styles.stat}><Text style={[styles.statValue, { color: putaway.isError ? C.red : C.text }]}>{placed.length}</Text><Text style={styles.statLabel}>Put away</Text></View>
         </View>
 
         <View style={styles.inboundHead}>
@@ -347,9 +375,9 @@ export default function ReceivingStation() {
           </TouchableOpacity>
         ))}
 
-        <Text style={styles.sectionTitle}>Putaway to a shelf / rack (optional)</Text>
+        <Text style={styles.sectionTitle}>Putaway — one pallet per slot</Text>
         <View style={styles.card}>
-          <Text style={styles.helpText}>Issuing the GRN already adds the goods to the customer’s inventory. Use this to also record the exact SKU and shelf/bin location in the WMS.</Text>
+          <Text style={styles.helpText}>Each shelf slot holds one standard pallet. Place pallets one at a time — the SKU and pallet type stay selected so you can put away a stack quickly. Over-standard pallets need an oversize-capable slot.</Text>
 
           {reference ? (
             <View style={styles.linkedRef}>
@@ -360,7 +388,30 @@ export default function ReceivingStation() {
             <Text style={styles.helpTextMuted}>Tip: check in a booking above first to link this putaway to its receipt.</Text>
           )}
 
-          <Text style={styles.fieldLabel}>SKU</Text>
+          {placed.length > 0 ? (
+            <View style={styles.progressBox}>
+              <Text style={styles.progressText}>{placed.length} pallet{placed.length > 1 ? 's' : ''} put away this session</Text>
+              {placed.slice(0, 4).map((p) => (
+                <Text key={p.n} style={styles.progressLine}>#{p.n} · {p.location} · {p.type === 'oversize' ? 'Oversize' : 'Standard'}{p.sku !== '—' ? ` · ${p.sku}` : ''}</Text>
+              ))}
+            </View>
+          ) : null}
+
+          <Text style={styles.fieldLabel}>Pallet type</Text>
+          <View style={styles.typeRow}>
+            {(['standard', 'oversize'] as const).map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.typeChip, palletType === t && styles.typeChipActive]}
+                onPress={() => { setPalletType(t); setLocationId(''); }}
+                testID={`pallet-type-${t}`}
+              >
+                <Text style={[styles.typeChipText, palletType === t && styles.typeChipTextActive]}>{t === 'standard' ? 'Standard pallet' : 'Over-standard'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.fieldLabel}>SKU (optional)</Text>
           <TouchableOpacity style={styles.picker} onPress={() => setSkuPickerOpen(true)} testID="pick-sku">
             <Boxes size={16} color={selectedVariant ? C.accent : C.textMuted} />
             <Text style={[styles.pickerText, !selectedVariant && styles.pickerPlaceholder]} numberOfLines={1}>
@@ -369,22 +420,22 @@ export default function ReceivingStation() {
             <ChevronRight size={16} color={C.textMuted} />
           </TouchableOpacity>
 
-          <Text style={styles.fieldLabel}>Shelf / rack location</Text>
+          <Text style={styles.fieldLabel}>Pallet slot</Text>
           <TouchableOpacity style={styles.picker} onPress={() => setLocPickerOpen(true)} testID="pick-location">
             <MapPin size={16} color={selectedLocation ? C.accent : C.textMuted} />
             <Text style={[styles.pickerText, !selectedLocation && styles.pickerPlaceholder]} numberOfLines={1}>
-              {selectedLocation ? locLabel(selectedLocation) : 'Select or add a location'}
+              {selectedLocation ? `${locLabel(selectedLocation)} · ${locFreeSlots(selectedLocation)} free` : `Pick an empty slot (${availableLocations.length} available)`}
             </Text>
             <ChevronRight size={16} color={C.textMuted} />
           </TouchableOpacity>
 
-          <Input label="Quantity" value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="48" />
+          <Input label="Units on this pallet (optional)" value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="48" />
           <Input label="Lot / batch (optional)" value={lot} onChangeText={setLot} placeholder="LOT-2026-04" autoCapitalize="characters" />
-          <Button label="Receive & putaway" onPress={() => void submit()} loading={receive.isPending} fullWidth icon={<CheckCircle2 size={15} color={C.white} />} />
-          {receive.error ? (
+          <Button label="Put away this pallet" onPress={() => void submit()} loading={putaway.isPending} fullWidth icon={<CheckCircle2 size={15} color={C.white} />} />
+          {putaway.error ? (
             <View style={styles.errBox}>
               <AlertTriangle size={13} color={C.red} />
-              <Text style={styles.errText}>{receive.error.message}</Text>
+              <Text style={styles.errText}>{putaway.error.message}</Text>
             </View>
           ) : null}
         </View>
@@ -470,17 +521,29 @@ export default function ReceivingStation() {
             </View>
             <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {locationList.length === 0 ? (
-                <Text style={styles.emptyHint}>No locations yet. Build your racking below.</Text>
-              ) : locationList.map((l) => (
-                <TouchableOpacity key={l.id} style={styles.optRow} onPress={() => { setLocationId(l.id); setLocPickerOpen(false); }}>
-                  <MapPin size={15} color={C.accent} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.optTitle}>{locLabel(l)}</Text>
-                    {l.code && locLabel(l) !== l.code ? <Text style={styles.optMeta}>{l.code}</Text> : null}
-                  </View>
-                  {locationId === l.id ? <CheckCircle2 size={16} color={C.green} /> : null}
-                </TouchableOpacity>
-              ))}
+                <Text style={styles.emptyHint}>No slots yet. Build your racking below.</Text>
+              ) : locationList.map((l) => {
+                const full = locIsFull(l);
+                const blockedOversize = palletType === 'oversize' && !l.accepts_oversize;
+                const disabled = full || blockedOversize;
+                return (
+                  <TouchableOpacity
+                    key={l.id}
+                    style={[styles.optRow, disabled && styles.optRowDisabled]}
+                    disabled={disabled}
+                    onPress={() => { setLocationId(l.id); setLocPickerOpen(false); }}
+                  >
+                    <MapPin size={15} color={disabled ? C.textMuted : C.accent} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.optTitle, disabled && { color: C.textMuted }]}>{locLabel(l)}</Text>
+                      <Text style={styles.optMeta}>
+                        {(l.pallets_used ?? 0)}/{Math.max(l.pallet_capacity ?? 1, 1)} used{l.accepts_oversize ? ' · oversize-ok' : ''}{full ? ' · FULL' : blockedOversize ? ' · not oversize' : ''}
+                      </Text>
+                    </View>
+                    {locationId === l.id ? <CheckCircle2 size={16} color={C.green} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
               <View style={styles.addBox}>
                 <Text style={styles.addTitle}>Add a location</Text>
                 <View style={styles.twoCol}>
@@ -492,7 +555,13 @@ export default function ReceivingStation() {
                   <View style={{ flex: 1 }}><Input label="Level" value={newLoc.level} onChangeText={(t) => setNewLoc((s) => ({ ...s, level: t }))} placeholder="2" autoCapitalize="characters" /></View>
                   <View style={{ flex: 1 }}><Input label="Bin" value={newLoc.bin} onChangeText={(t) => setNewLoc((s) => ({ ...s, bin: t }))} placeholder="B" autoCapitalize="characters" /></View>
                 </View>
-                <Button label="Add location" onPress={() => void handleCreateLoc()} loading={createLoc.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}><Input label="Pallet slots" value={newLoc.capacity} onChangeText={(t) => setNewLoc((s) => ({ ...s, capacity: t }))} keyboardType="numeric" placeholder="1" /></View>
+                  <TouchableOpacity style={[styles.oversizeToggle, newLoc.oversize && styles.oversizeToggleActive]} onPress={() => setNewLoc((s) => ({ ...s, oversize: !s.oversize }))}>
+                    <Text style={[styles.oversizeToggleText, newLoc.oversize && styles.oversizeToggleTextActive]}>{newLoc.oversize ? '✓ Oversize-ok' : 'Oversize?'}</Text>
+                  </TouchableOpacity>
+                </View>
+                <Button label="Add slot" onPress={() => void handleCreateLoc()} loading={createLoc.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
               </View>
             </ScrollView>
           </View>
@@ -530,6 +599,19 @@ const styles = StyleSheet.create({
   helpText: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
   helpTextMuted: { fontSize: 12, color: C.textMuted, lineHeight: 17, fontStyle: 'italic' as const },
   fieldLabel: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, letterSpacing: 0.3, marginTop: 2 },
+  typeRow: { flexDirection: 'row', gap: 8 },
+  typeChip: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  typeChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  typeChipText: { fontSize: 13, fontWeight: '700' as const, color: C.textSecondary },
+  typeChipTextActive: { color: C.accent },
+  progressBox: { backgroundColor: C.green + '12', borderRadius: 10, borderWidth: 1, borderColor: C.green + '33', padding: 10, gap: 3 },
+  progressText: { fontSize: 12, fontWeight: '800' as const, color: C.green },
+  progressLine: { fontSize: 11, color: C.textSecondary },
+  optRowDisabled: { opacity: 0.5 },
+  oversizeToggle: { flex: 1, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, marginTop: 22 },
+  oversizeToggleActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  oversizeToggleText: { fontSize: 13, fontWeight: '700' as const, color: C.textSecondary },
+  oversizeToggleTextActive: { color: C.accent },
   linkedRef: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.green + '14', borderRadius: 10, borderWidth: 1, borderColor: C.green + '44', paddingHorizontal: 10, paddingVertical: 8 },
   linkedRefText: { fontSize: 12, fontWeight: '700' as const, color: C.green, letterSpacing: 0.4 },
   picker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, minHeight: 48 },
