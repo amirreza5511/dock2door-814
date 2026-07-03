@@ -66,7 +66,6 @@ const INITIAL_FORM: FleetFormState = {
 
 const TRAILER_TYPE_OPTIONS: string[] = ['20ft', '40ft', '53ft', 'Chassis 20/40 Combo', 'Tri-axle'];
 const CONTAINER_TYPE_OPTIONS: string[] = ['20GP', '40GP', '40HC', '45HC', 'Reefer'];
-const CHASSIS_TYPE_OPTIONS: string[] = ['20ft', '40ft', '20/40 Combo', 'Tri-axle', 'Slider'];
 
 function readText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -330,8 +329,7 @@ export default function TruckingFleetScreen() {
               <>
                 <Input label="Container number" value={form.containerNumber} onChangeText={(value) => setForm((current) => ({ ...current, containerNumber: value }))} placeholder="MSKU1234567" testID="fleet-container-number" />
                 <ChipSelect label="Container type" options={CONTAINER_TYPE_OPTIONS} value={form.containerType} onChange={(v) => setForm((current) => ({ ...current, containerType: v }))} testID="fleet-container-type" />
-                <ChipSelect label="Chassis type" options={CHASSIS_TYPE_OPTIONS} value={form.trailerType} onChange={(v) => setForm((current) => ({ ...current, trailerType: v }))} testID="fleet-container-chassis-type" />
-                <Input label="Chassis number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="CH-2201" testID="fleet-container-plate" />
+                <Text style={styles.chassisNote}>Chassis is assigned per move, not stored on the container — the same box rides a different chassis each trip.</Text>
               </>
             ) : null}
             <Input label="Status" value={form.status} onChangeText={(value) => setForm((current) => ({ ...current, status: value }))} placeholder="Active" testID="fleet-status" />
@@ -379,6 +377,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
   chipLabel: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, marginBottom: 8 },
+  chassisNote: { fontSize: 12, color: C.textSecondary, fontStyle: 'italic' as const, lineHeight: 17 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
   chipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
