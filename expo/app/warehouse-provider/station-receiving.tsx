@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, Platform, KeyboardAvoidingView, TextInput } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck, QrCode, X, CalendarClock, ClipboardCheck, ChevronRight } from 'lucide-react-native';
+import { PackageOpen, ArrowLeft, CheckCircle2, AlertTriangle, History, ScanLine, Building2, Truck, QrCode, X, CalendarClock, ClipboardCheck, ChevronRight, Boxes, MapPin, Plus, Search } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -18,7 +18,11 @@ import { can, ROLE_LABEL, type CompanyRole } from '@/lib/permissions';
 
 const ACTIVE_INBOUND_STATUSES = ['Accepted', 'Confirmed', 'Scheduled', 'InProgress'];
 
-interface ReceiptRow { id: string; reference?: string | null; status: string; supplier?: string | null; created_at: string }
+interface ReceiptRow { id: string; reference_code?: string | null; status: string; supplier?: string | null; created_at: string }
+
+interface VariantRow { id: string; sku: string; name?: string | null; barcode?: string | null; product_id?: string; products?: { name?: string | null; company_id?: string | null } | null }
+
+interface LocationRow { id: string; code?: string | null; zone?: string | null; aisle?: string | null; rack?: string | null; level?: string | null; bin?: string | null }
 
 interface LookupResult {
   booking: { id: string; reference_number?: string; pallets_requested?: number; start_date?: string; end_date?: string; status?: string; customer_notes?: string; handling_required?: boolean } | null;
@@ -40,6 +44,10 @@ export default function ReceivingStation() {
   const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
   const receipts = trpc.wms.listReceipts.useQuery();
   const locations = trpc.wms.listLocations.useQuery();
+  const variants = trpc.inventory.listAllVariants.useQuery();
+  const createLoc = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
+  const createProduct = trpc.inventory.createProduct.useMutation();
+  const upsertVariant = trpc.inventory.upsertVariant.useMutation({ onSuccess: async () => { await utils.inventory.listAllVariants.invalidate(); } });
   const receive = trpc.wms.receive.useMutation({
     onSuccess: async () => {
       await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate()]);
@@ -60,6 +68,12 @@ export default function ReceivingStation() {
   const [found, setFound] = useState<LookupResult | null>(null);
   const [scanOpen, setScanOpen] = useState<boolean>(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const [skuPickerOpen, setSkuPickerOpen] = useState<boolean>(false);
+  const [locPickerOpen, setLocPickerOpen] = useState<boolean>(false);
+  const [skuSearch, setSkuSearch] = useState<string>('');
+  const [newSku, setNewSku] = useState<string>('');
+  const [newSkuName, setNewSkuName] = useState<string>('');
+  const [newLoc, setNewLoc] = useState<{ code: string; zone: string; aisle: string; rack: string; level: string; bin: string }>({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '' });
 
   const runLookup = async (raw: string): Promise<void> => {
     const value = raw.trim();
@@ -131,6 +145,50 @@ export default function ReceivingStation() {
   const openJob = (ref: string) => { setRefInput(ref); void runLookup(ref); };
   const openGrn = (id: string) => router.push(`/fulfillment/grn/${id}` as never);
 
+  const variantList = useMemo<VariantRow[]>(() => (variants.data ?? []) as VariantRow[], [variants.data]);
+  const locationList = useMemo<LocationRow[]>(() => (locations.data ?? []) as LocationRow[], [locations.data]);
+  const selectedVariant = useMemo(() => variantList.find((v) => v.id === variantId) ?? null, [variantList, variantId]);
+  const selectedLocation = useMemo(() => locationList.find((l) => l.id === locationId) ?? null, [locationList, locationId]);
+  const filteredVariants = useMemo(() => {
+    const q = skuSearch.trim().toLowerCase();
+    const base = q ? variantList.filter((v) => (v.sku ?? '').toLowerCase().includes(q) || (v.name ?? '').toLowerCase().includes(q)) : variantList;
+    return base.slice(0, 50);
+  }, [variantList, skuSearch]);
+  const varLabel = (v: VariantRow): string => `${v.sku}${v.name ? ` · ${v.name}` : ''}`;
+  const locLabel = (l: LocationRow): string => [l.zone, l.aisle, l.rack, l.level, l.bin].map((x) => (x ?? '').trim()).filter(Boolean).join('-') || (l.code ?? '').trim() || l.id.slice(0, 6);
+
+  const handleCreateSku = async (): Promise<void> => {
+    const sku = newSku.trim();
+    if (!sku) { Alert.alert('SKU required', 'Enter a SKU code (e.g. ACME-001).'); return; }
+    try {
+      const prod = await createProduct.mutateAsync({ name: newSkuName.trim() || sku });
+      const v = await upsertVariant.mutateAsync({ productId: prod.id, sku, name: newSkuName.trim() });
+      setVariantId(v.id);
+      setNewSku(''); setNewSkuName(''); setSkuSearch(''); setSkuPickerOpen(false);
+    } catch (err) {
+      Alert.alert('Could not add SKU', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
+
+  const handleCreateLoc = async (): Promise<void> => {
+    if (!newLoc.zone.trim() && !newLoc.rack.trim() && !newLoc.code.trim()) {
+      Alert.alert('Location needs a label', 'Enter at least a zone, rack, or code.');
+      return;
+    }
+    try {
+      const res = await createLoc.mutateAsync({
+        listingId: myListingIds[0] ?? undefined,
+        code: newLoc.code.trim(), zone: newLoc.zone.trim(), aisle: newLoc.aisle.trim(),
+        rack: newLoc.rack.trim(), level: newLoc.level.trim(), bin: newLoc.bin.trim(),
+      });
+      setLocationId(res.id);
+      setNewLoc({ code: '', zone: '', aisle: '', rack: '', level: '', bin: '' });
+      setLocPickerOpen(false);
+    } catch (err) {
+      Alert.alert('Could not add location', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
+
   if (!allowed) {
     return (
       <View style={[styles.root, { backgroundColor: C.bg, paddingTop: insets.top + 30 }]}>
@@ -180,8 +238,10 @@ export default function ReceivingStation() {
         </View>
       </View>
 
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top + 60}>
       <ScrollView
         contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 80 }]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={receipts.isFetching} onRefresh={() => void receipts.refetch()} tintColor={C.accent} />}
       >
         <View style={styles.statRow}>
@@ -277,34 +337,49 @@ export default function ReceivingStation() {
         {open.length === 0 ? (
           <EmptyState icon={PackageOpen} title="No open receipts" description="ASNs will appear here when scheduled." />
         ) : open.map((r) => (
-          <TouchableOpacity key={r.id} onPress={() => { setReceiptId(r.id); setReference(r.reference ?? ''); }} style={[styles.row, receiptId === r.id && styles.rowActive]}>
+          <TouchableOpacity key={r.id} onPress={() => { setReceiptId(r.id); setReference(r.reference_code ?? ''); }} style={[styles.row, receiptId === r.id && styles.rowActive]}>
             <PackageOpen size={14} color={C.green} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+              <Text style={styles.rowTitle}>{r.reference_code || r.id.slice(0, 8)}</Text>
               <Text style={styles.rowMeta}>{r.supplier ?? 'Unknown supplier'} · {new Date(r.created_at).toLocaleDateString()}</Text>
             </View>
             <StatusBadge status={r.status} size="sm" />
           </TouchableOpacity>
         ))}
 
-        <Text style={styles.sectionTitle}>Advanced: bin-level putaway (optional)</Text>
+        <Text style={styles.sectionTitle}>Putaway to a shelf / rack (optional)</Text>
         <View style={styles.card}>
-          <Text style={styles.helpText}>Issuing the GRN already adds the received goods to the customer’s inventory. Use this only if you also track exact SKU + bin locations in the WMS.</Text>
-          <Input label="Receipt / ASN id" value={receiptId} onChangeText={setReceiptId} placeholder="optional" />
-          <Input label="Variant / SKU id" value={variantId} onChangeText={setVariantId} placeholder="variant_…" />
-          <Input label="Location id" value={locationId} onChangeText={setLocationId} placeholder="location_…" />
-          {(locations.data ?? []).length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {(locations.data as { id: string; label?: string; zone?: string }[]).slice(0, 12).map((l) => (
-                <TouchableOpacity key={l.id} onPress={() => setLocationId(l.id)} style={[styles.chip, locationId === l.id && styles.chipActive]}>
-                  <Text style={[styles.chipText, locationId === l.id && styles.chipTextActive]}>{l.label || l.zone || l.id.slice(0, 6)}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          ) : null}
+          <Text style={styles.helpText}>Issuing the GRN already adds the goods to the customer’s inventory. Use this to also record the exact SKU and shelf/bin location in the WMS.</Text>
+
+          {reference ? (
+            <View style={styles.linkedRef}>
+              <ClipboardCheck size={14} color={C.green} />
+              <Text style={styles.linkedRefText}>Receipt: {reference}</Text>
+            </View>
+          ) : (
+            <Text style={styles.helpTextMuted}>Tip: check in a booking above first to link this putaway to its receipt.</Text>
+          )}
+
+          <Text style={styles.fieldLabel}>SKU</Text>
+          <TouchableOpacity style={styles.picker} onPress={() => setSkuPickerOpen(true)} testID="pick-sku">
+            <Boxes size={16} color={selectedVariant ? C.accent : C.textMuted} />
+            <Text style={[styles.pickerText, !selectedVariant && styles.pickerPlaceholder]} numberOfLines={1}>
+              {selectedVariant ? varLabel(selectedVariant) : 'Select or add a SKU'}
+            </Text>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <Text style={styles.fieldLabel}>Shelf / rack location</Text>
+          <TouchableOpacity style={styles.picker} onPress={() => setLocPickerOpen(true)} testID="pick-location">
+            <MapPin size={16} color={selectedLocation ? C.accent : C.textMuted} />
+            <Text style={[styles.pickerText, !selectedLocation && styles.pickerPlaceholder]} numberOfLines={1}>
+              {selectedLocation ? locLabel(selectedLocation) : 'Select or add a location'}
+            </Text>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
           <Input label="Quantity" value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="48" />
-          <Input label="Lot / batch" value={lot} onChangeText={setLot} placeholder="LOT-2026-04" autoCapitalize="characters" />
-          <Input label="Reference" value={reference} onChangeText={setReference} placeholder="Supplier note" />
+          <Input label="Lot / batch (optional)" value={lot} onChangeText={setLot} placeholder="LOT-2026-04" autoCapitalize="characters" />
           <Button label="Receive & putaway" onPress={() => void submit()} loading={receive.isPending} fullWidth icon={<CheckCircle2 size={15} color={C.white} />} />
           {receive.error ? (
             <View style={styles.errBox}>
@@ -321,13 +396,14 @@ export default function ReceivingStation() {
           <View key={r.id} style={styles.row}>
             <PackageOpen size={14} color={C.green} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+              <Text style={styles.rowTitle}>{r.reference_code || r.id.slice(0, 8)}</Text>
               <Text style={styles.rowMeta}>{new Date(r.created_at).toLocaleString()}</Text>
             </View>
             <StatusBadge status={r.status} size="sm" />
           </View>
         ))}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={scanOpen} animationType="slide" onRequestClose={() => setScanOpen(false)}>
         <View style={styles.scanRoot}>
@@ -344,6 +420,79 @@ export default function ReceivingStation() {
             </View>
             <View style={styles.scanFrame} />
             <Text style={styles.scanHint}>Point the camera at the QR code on the driver's Bill of Lading.</Text>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={skuPickerOpen} animationType="slide" transparent onRequestClose={() => setSkuPickerOpen(false)}>
+        <View style={styles.sheetBackdrop}>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Select a SKU</Text>
+              <TouchableOpacity onPress={() => setSkuPickerOpen(false)} style={styles.sheetClose}><X size={18} color={C.text} /></TouchableOpacity>
+            </View>
+            <View style={styles.searchRow}>
+              <Search size={15} color={C.textMuted} />
+              <TextInput value={skuSearch} onChangeText={setSkuSearch} placeholder="Search SKU or name" placeholderTextColor={C.textMuted} style={styles.searchInput} autoCapitalize="characters" />
+            </View>
+            <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+              {filteredVariants.length === 0 ? (
+                <Text style={styles.emptyHint}>No SKUs found. Add a new one below.</Text>
+              ) : filteredVariants.map((v) => (
+                <TouchableOpacity key={v.id} style={styles.optRow} onPress={() => { setVariantId(v.id); setSkuPickerOpen(false); }}>
+                  <Boxes size={15} color={C.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optTitle}>{v.sku}</Text>
+                    {v.name ? <Text style={styles.optMeta}>{v.name}</Text> : null}
+                  </View>
+                  {variantId === v.id ? <CheckCircle2 size={16} color={C.green} /> : null}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.addBox}>
+              <Text style={styles.addTitle}>Add a new SKU</Text>
+              <Input label="SKU code" value={newSku} onChangeText={setNewSku} placeholder="e.g. ACME-001" autoCapitalize="characters" />
+              <Input label="Name" value={newSkuName} onChangeText={setNewSkuName} placeholder="e.g. Blue widget, 12oz" />
+              <Button label="Add SKU" onPress={() => void handleCreateSku()} loading={createProduct.isPending || upsertVariant.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={locPickerOpen} animationType="slide" transparent onRequestClose={() => setLocPickerOpen(false)}>
+        <View style={styles.sheetBackdrop}>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Shelf / rack location</Text>
+              <TouchableOpacity onPress={() => setLocPickerOpen(false)} style={styles.sheetClose}><X size={18} color={C.text} /></TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled">
+              {locationList.length === 0 ? (
+                <Text style={styles.emptyHint}>No locations yet. Build your racking below.</Text>
+              ) : locationList.map((l) => (
+                <TouchableOpacity key={l.id} style={styles.optRow} onPress={() => { setLocationId(l.id); setLocPickerOpen(false); }}>
+                  <MapPin size={15} color={C.accent} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.optTitle}>{locLabel(l)}</Text>
+                    {l.code && locLabel(l) !== l.code ? <Text style={styles.optMeta}>{l.code}</Text> : null}
+                  </View>
+                  {locationId === l.id ? <CheckCircle2 size={16} color={C.green} /> : null}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.addBox}>
+              <Text style={styles.addTitle}>Add a location</Text>
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}><Input label="Zone" value={newLoc.zone} onChangeText={(t) => setNewLoc((s) => ({ ...s, zone: t }))} placeholder="A" autoCapitalize="characters" /></View>
+                <View style={{ flex: 1 }}><Input label="Aisle" value={newLoc.aisle} onChangeText={(t) => setNewLoc((s) => ({ ...s, aisle: t }))} placeholder="01" autoCapitalize="characters" /></View>
+              </View>
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}><Input label="Rack" value={newLoc.rack} onChangeText={(t) => setNewLoc((s) => ({ ...s, rack: t }))} placeholder="R3" autoCapitalize="characters" /></View>
+                <View style={{ flex: 1 }}><Input label="Level" value={newLoc.level} onChangeText={(t) => setNewLoc((s) => ({ ...s, level: t }))} placeholder="2" autoCapitalize="characters" /></View>
+                <View style={{ flex: 1 }}><Input label="Bin" value={newLoc.bin} onChangeText={(t) => setNewLoc((s) => ({ ...s, bin: t }))} placeholder="B" autoCapitalize="characters" /></View>
+              </View>
+              <Button label="Add location" onPress={() => void handleCreateLoc()} loading={createLoc.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
+            </View>
           </View>
         </View>
       </Modal>
@@ -377,6 +526,27 @@ const styles = StyleSheet.create({
   errBox: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: C.red + '15', borderRadius: 8, borderWidth: 1, borderColor: C.red },
   errText: { flex: 1, fontSize: 11, color: C.red },
   helpText: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  helpTextMuted: { fontSize: 12, color: C.textMuted, lineHeight: 17, fontStyle: 'italic' as const },
+  fieldLabel: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, letterSpacing: 0.3, marginTop: 2 },
+  linkedRef: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.green + '14', borderRadius: 10, borderWidth: 1, borderColor: C.green + '44', paddingHorizontal: 10, paddingVertical: 8 },
+  linkedRefText: { fontSize: 12, fontWeight: '700' as const, color: C.green, letterSpacing: 0.4 },
+  picker: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, minHeight: 48 },
+  pickerText: { flex: 1, fontSize: 15, color: C.text, fontWeight: '600' as const },
+  pickerPlaceholder: { color: C.textMuted, fontWeight: '400' as const },
+  twoCol: { flexDirection: 'row', gap: 8 },
+  sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12, borderTopWidth: 1, borderColor: C.border },
+  sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sheetTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  sheetClose: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, minHeight: 44 },
+  searchInput: { flex: 1, color: C.text, fontSize: 15, paddingVertical: 10 },
+  optRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: 4, borderBottomWidth: 1, borderBottomColor: C.border },
+  optTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  optMeta: { fontSize: 11, color: C.textMuted, marginTop: 1 },
+  emptyHint: { fontSize: 12, color: C.textMuted, textAlign: 'center' as const, paddingVertical: 18 },
+  addBox: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, gap: 8 },
+  addTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   inboundHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   jobRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
   jobDot: { width: 8, height: 8, borderRadius: 4 },
