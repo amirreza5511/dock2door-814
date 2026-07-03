@@ -1745,7 +1745,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       supabase.from('drayage_moves').select('*, drayage_orders!inner(*)')
         .in('status', ['Assigned', 'EnRoute', 'AtOrigin', 'Loaded', 'InTransit', 'AtDestination', 'Unloaded'])
         .order('updated_at', { ascending: false }).limit(50),
-      supabase.from('fleet').select('*').eq('company_id', ctx.user.companyId).eq('entity', 'drivers').is('archived_at', null).order('created_at', { ascending: false }),
+      supabase.from('drivers').select('*').eq('company_id', ctx.user.companyId).is('archived_at', null).order('created_at', { ascending: false }),
     ]);
     if (isMissingRelation(openRes.error)) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [] };
     return {

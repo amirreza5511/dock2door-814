@@ -114,10 +114,9 @@ export default function DrayageOrderDetailScreen() {
     if (!order?.drayage_company_id) return;
     void (async () => {
       const { data } = await supabase
-        .from('fleet')
+        .from('drivers')
         .select('*')
         .eq('company_id', order.drayage_company_id)
-        .eq('entity', 'drivers')
         .is('archived_at', null)
         .order('created_at', { ascending: false });
       setDrivers(data ?? []);
