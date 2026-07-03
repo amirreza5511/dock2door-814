@@ -425,7 +425,8 @@ export default function ReceivingStation() {
       </Modal>
 
       <Modal visible={skuPickerOpen} animationType="slide" transparent onRequestClose={() => setSkuPickerOpen(false)}>
-        <View style={styles.sheetBackdrop}>
+        <KeyboardAvoidingView style={styles.sheetBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={styles.backdropTap} activeOpacity={1} onPress={() => setSkuPickerOpen(false)} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.sheetHead}>
               <Text style={styles.sheetTitle}>Select a SKU</Text>
@@ -435,7 +436,7 @@ export default function ReceivingStation() {
               <Search size={15} color={C.textMuted} />
               <TextInput value={skuSearch} onChangeText={setSkuSearch} placeholder="Search SKU or name" placeholderTextColor={C.textMuted} style={styles.searchInput} autoCapitalize="characters" />
             </View>
-            <ScrollView style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {filteredVariants.length === 0 ? (
                 <Text style={styles.emptyHint}>No SKUs found. Add a new one below.</Text>
               ) : filteredVariants.map((v) => (
@@ -448,25 +449,26 @@ export default function ReceivingStation() {
                   {variantId === v.id ? <CheckCircle2 size={16} color={C.green} /> : null}
                 </TouchableOpacity>
               ))}
+              <View style={styles.addBox}>
+                <Text style={styles.addTitle}>Add a new SKU</Text>
+                <Input label="SKU code" value={newSku} onChangeText={setNewSku} placeholder="e.g. ACME-001" autoCapitalize="characters" />
+                <Input label="Name" value={newSkuName} onChangeText={setNewSkuName} placeholder="e.g. Blue widget, 12oz" />
+                <Button label="Add SKU" onPress={() => void handleCreateSku()} loading={createProduct.isPending || upsertVariant.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
+              </View>
             </ScrollView>
-            <View style={styles.addBox}>
-              <Text style={styles.addTitle}>Add a new SKU</Text>
-              <Input label="SKU code" value={newSku} onChangeText={setNewSku} placeholder="e.g. ACME-001" autoCapitalize="characters" />
-              <Input label="Name" value={newSkuName} onChangeText={setNewSkuName} placeholder="e.g. Blue widget, 12oz" />
-              <Button label="Add SKU" onPress={() => void handleCreateSku()} loading={createProduct.isPending || upsertVariant.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
-            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={locPickerOpen} animationType="slide" transparent onRequestClose={() => setLocPickerOpen(false)}>
-        <View style={styles.sheetBackdrop}>
+        <KeyboardAvoidingView style={styles.sheetBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={styles.backdropTap} activeOpacity={1} onPress={() => setLocPickerOpen(false)} />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
             <View style={styles.sheetHead}>
               <Text style={styles.sheetTitle}>Shelf / rack location</Text>
               <TouchableOpacity onPress={() => setLocPickerOpen(false)} style={styles.sheetClose}><X size={18} color={C.text} /></TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: 360 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="none">
               {locationList.length === 0 ? (
                 <Text style={styles.emptyHint}>No locations yet. Build your racking below.</Text>
               ) : locationList.map((l) => (
@@ -479,22 +481,22 @@ export default function ReceivingStation() {
                   {locationId === l.id ? <CheckCircle2 size={16} color={C.green} /> : null}
                 </TouchableOpacity>
               ))}
+              <View style={styles.addBox}>
+                <Text style={styles.addTitle}>Add a location</Text>
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}><Input label="Zone" value={newLoc.zone} onChangeText={(t) => setNewLoc((s) => ({ ...s, zone: t }))} placeholder="A" autoCapitalize="characters" /></View>
+                  <View style={{ flex: 1 }}><Input label="Aisle" value={newLoc.aisle} onChangeText={(t) => setNewLoc((s) => ({ ...s, aisle: t }))} placeholder="01" autoCapitalize="characters" /></View>
+                </View>
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}><Input label="Rack" value={newLoc.rack} onChangeText={(t) => setNewLoc((s) => ({ ...s, rack: t }))} placeholder="R3" autoCapitalize="characters" /></View>
+                  <View style={{ flex: 1 }}><Input label="Level" value={newLoc.level} onChangeText={(t) => setNewLoc((s) => ({ ...s, level: t }))} placeholder="2" autoCapitalize="characters" /></View>
+                  <View style={{ flex: 1 }}><Input label="Bin" value={newLoc.bin} onChangeText={(t) => setNewLoc((s) => ({ ...s, bin: t }))} placeholder="B" autoCapitalize="characters" /></View>
+                </View>
+                <Button label="Add location" onPress={() => void handleCreateLoc()} loading={createLoc.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
+              </View>
             </ScrollView>
-            <View style={styles.addBox}>
-              <Text style={styles.addTitle}>Add a location</Text>
-              <View style={styles.twoCol}>
-                <View style={{ flex: 1 }}><Input label="Zone" value={newLoc.zone} onChangeText={(t) => setNewLoc((s) => ({ ...s, zone: t }))} placeholder="A" autoCapitalize="characters" /></View>
-                <View style={{ flex: 1 }}><Input label="Aisle" value={newLoc.aisle} onChangeText={(t) => setNewLoc((s) => ({ ...s, aisle: t }))} placeholder="01" autoCapitalize="characters" /></View>
-              </View>
-              <View style={styles.twoCol}>
-                <View style={{ flex: 1 }}><Input label="Rack" value={newLoc.rack} onChangeText={(t) => setNewLoc((s) => ({ ...s, rack: t }))} placeholder="R3" autoCapitalize="characters" /></View>
-                <View style={{ flex: 1 }}><Input label="Level" value={newLoc.level} onChangeText={(t) => setNewLoc((s) => ({ ...s, level: t }))} placeholder="2" autoCapitalize="characters" /></View>
-                <View style={{ flex: 1 }}><Input label="Bin" value={newLoc.bin} onChangeText={(t) => setNewLoc((s) => ({ ...s, bin: t }))} placeholder="B" autoCapitalize="characters" /></View>
-              </View>
-              <Button label="Add location" onPress={() => void handleCreateLoc()} loading={createLoc.isPending} fullWidth variant="outline" icon={<Plus size={15} color={C.accent} />} />
-            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -535,6 +537,7 @@ const styles = StyleSheet.create({
   pickerPlaceholder: { color: C.textMuted, fontWeight: '400' as const },
   twoCol: { flexDirection: 'row', gap: 8 },
   sheetBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  backdropTap: { ...StyleSheet.absoluteFillObject },
   sheet: { backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, gap: 12, borderTopWidth: 1, borderColor: C.border },
   sheetHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sheetTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
