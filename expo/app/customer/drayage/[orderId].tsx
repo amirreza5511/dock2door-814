@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, CalendarClock, MapPin, Package, Ship, Truck, Anchor, Clock, CheckCircle2, Radio } from 'lucide-react-native';
@@ -12,6 +12,22 @@ import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
+
+// react-native-maps does not render on web (needs a Google Maps loader/key), so we
+// only pull it in on native and show a graceful fallback on web.
+const isWeb = Platform.OS === 'web';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Maps = isWeb ? null : require('react-native-maps');
+const MapView = Maps?.default ?? null;
+const Marker = Maps?.Marker ?? null;
+const Polyline = Maps?.Polyline ?? null;
+const PROVIDER_DEFAULT = Maps?.PROVIDER_DEFAULT ?? undefined;
+
+type LatLng = { latitude: number; longitude: number };
+const validCoord = (lat?: number | null, lng?: number | null): LatLng | null =>
+  lat != null && lng != null && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)
+    ? { latitude: lat, longitude: lng }
+    : null;
 
 const STATUS_LABEL: Record<string, string> = {
   Open: 'Open — waiting for drayage company',
@@ -65,6 +81,52 @@ export default function CustomerDrayageOrderDetail() {
     return t ? `${t.name} (${t.code})` : '—';
   };
 
+  const terminalCoord = (id: string | null): LatLng | null => {
+    if (!id) return null;
+    const t = terminals.find((t) => t.id === id);
+    return t ? validCoord(Number(t.geo_lat), Number(t.geo_lng)) : null;
+  };
+
+  const containerCoord = useMemo(
+    () => (latestTracking ? validCoord(Number(latestTracking.lat), Number(latestTracking.lng)) : null),
+    [latestTracking],
+  );
+
+  const originCoord = useMemo(
+    () => terminalCoord(order?.origin_terminal_id) ?? validCoord(Number(order?.pickup_lat), Number(order?.pickup_lng)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order, terminals],
+  );
+  const destCoord = useMemo(
+    () => terminalCoord(order?.destination_terminal_id) ?? validCoord(Number(order?.delivery_lat), Number(order?.delivery_lng)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order, terminals],
+  );
+
+  const trackPath = useMemo(
+    () =>
+      allTracking
+        .map((t) => validCoord(Number(t.lat), Number(t.lng)))
+        .filter((c): c is LatLng => c != null)
+        .reverse(),
+    [allTracking],
+  );
+
+  const mapRegion = useMemo(() => {
+    const pts = [containerCoord, originCoord, destCoord].filter((c): c is LatLng => c != null);
+    if (pts.length === 0) return null;
+    const lats = pts.map((p) => p.latitude);
+    const lngs = pts.map((p) => p.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.05),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.05),
+    };
+  }, [containerCoord, originCoord, destCoord]);
+
   if (detailsQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading order" /></View>;
   }
@@ -107,6 +169,44 @@ export default function CustomerDrayageOrderDetail() {
             )}
           </View>
         </View>
+
+        {/* Live map */}
+        {mapRegion ? (
+          <Card style={styles.mapCard}>
+            <View style={styles.sectionHeader}>
+              <MapPin size={16} color={C.green} />
+              <Text style={styles.sectionTitle}>Live Map</Text>
+            </View>
+            <View style={styles.mapWrap}>
+              {isWeb || !MapView ? (
+                <View style={styles.mapFallback}>
+                  <Ship size={30} color={C.accent} />
+                  <Text style={styles.mapFallbackText}>Open on your phone to see the live map.</Text>
+                  {containerCoord ? (
+                    <Text style={styles.mapFallbackCoord}>{containerCoord.latitude.toFixed(4)}, {containerCoord.longitude.toFixed(4)}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <MapView style={StyleSheet.absoluteFill} provider={PROVIDER_DEFAULT} region={mapRegion}>
+                  {originCoord && Marker ? (
+                    <Marker coordinate={originCoord} title="Pickup" description={terminalName(order.origin_terminal_id)} pinColor={C.blue} />
+                  ) : null}
+                  {destCoord && Marker ? (
+                    <Marker coordinate={destCoord} title="Destination" description={order.delivery_address || terminalName(order.destination_terminal_id)} pinColor={C.green} />
+                  ) : null}
+                  {trackPath.length > 1 && Polyline ? (
+                    <Polyline coordinates={trackPath} strokeColor={C.accent} strokeWidth={3} />
+                  ) : null}
+                  {containerCoord && Marker ? (
+                    <Marker coordinate={containerCoord} title="Container" description="Current location" pinColor={C.accent}>
+                      <View style={styles.truckMarker}><Truck size={16} color={C.white} /></View>
+                    </Marker>
+                  ) : null}
+                </MapView>
+              )}
+            </View>
+          </Card>
+        ) : null}
 
         {/* Live tracking card */}
         {latestTracking ? (
@@ -305,6 +405,12 @@ const styles = StyleSheet.create({
   statusIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   statusLabel: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   statusSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  mapCard: { gap: 10 },
+  mapWrap: { height: 220, borderRadius: 12, overflow: 'hidden' as const, backgroundColor: C.bgSecondary },
+  mapFallback: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, padding: 20 },
+  mapFallbackText: { fontSize: 13, color: C.textSecondary, textAlign: 'center' as const },
+  mapFallbackCoord: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  truckMarker: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 2, borderColor: C.white },
   trackingCard: { gap: 10 },
   trackingCoordBox: { flexDirection: 'row', gap: 20, backgroundColor: C.bgSecondary, borderRadius: 12, padding: 14 },
   trackingLat: { fontSize: 22, fontWeight: '800' as const, color: C.green, letterSpacing: -0.5 },
