@@ -33,7 +33,7 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { role: 'TruckingCompany', label: 'Fleet / Carrier Company', desc: 'Run a fleet — accept loads & dispatch your drivers' },
   ],
   drayage: [
-    { role: 'FreightForwarder', label: 'Freight Forwarder / Importer', desc: 'Post import & export container orders and track them live' },
+    { role: 'FreightForwarder', label: 'Importer / Exporter / Freight Forwarder', desc: 'Post import & export container orders and track them live' },
     { role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
   ],
 };
