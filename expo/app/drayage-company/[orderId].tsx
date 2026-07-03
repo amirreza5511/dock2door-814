@@ -351,7 +351,7 @@ export default function DrayageOrderDetailScreen() {
           </Card>
         ) : moves.map((m, i) => {
           const next = MOVE_NEXT[m.status];
-          const driverName = drivers.find((d) => d.driver_user_id === m.driver_user_id)?.data?.name ?? (m.driver_user_id ? 'Assigned' : 'Unassigned');
+          const driverName = drivers.find((d) => (d.driver_user_id ?? d.data?.userId) === m.driver_user_id)?.data?.name ?? (m.driver_user_id ? 'Assigned' : 'Unassigned');
           return (
             <Card key={m.id} style={styles.moveCard}>
               <View style={styles.moveTop}>
@@ -505,7 +505,11 @@ export default function DrayageOrderDetailScreen() {
               <TouchableOpacity
                 key={d.id}
                 style={styles.driverItem}
-                onPress={() => void dispatchMutation.mutateAsync({ moveId: dispatchModal?.id, driverUserId: d.driver_user_id ?? d.data?.user_id }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'))}
+                onPress={() => {
+                  const driverUserId = d.driver_user_id ?? d.data?.userId;
+                  if (!driverUserId) { Alert.alert('No driver login', 'This driver has no linked account yet. Edit the driver in Fleet and set the email they signed up with.'); return; }
+                  void dispatchMutation.mutateAsync({ moveId: dispatchModal?.id, driverUserId }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
+                }}
               >
                 <View style={styles.driverIcon}><User size={16} color={C.green} /></View>
                 <View style={{ flex: 1 }}>

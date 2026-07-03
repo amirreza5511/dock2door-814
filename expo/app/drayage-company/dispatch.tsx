@@ -70,8 +70,8 @@ export default function DrayageDispatchScreen() {
 
   const assignDriver = useCallback((driver: any) => {
     if (!dispatchModal) return;
-    const driverUserId = driver.driver_user_id ?? driver.data?.user_id ?? driver.user_id;
-    if (!driverUserId) { Alert.alert('No driver account', 'This fleet entry has no linked driver login.'); return; }
+    const driverUserId = driver.driver_user_id ?? driver.data?.userId ?? driver.user_id;
+    if (!driverUserId) { Alert.alert('No driver login', 'This driver has no linked account yet. Edit the driver in Fleet and set the email they signed up with.'); return; }
     void dispatchMutation
       .mutateAsync({ moveId: dispatchModal.moveId, driverUserId })
       .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
