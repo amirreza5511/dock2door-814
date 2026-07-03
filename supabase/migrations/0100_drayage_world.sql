@@ -331,7 +331,6 @@ create table if not exists public.container_tracking (
   recorded_at timestamptz not null default now()
 );
 create index if not exists idx_container_tracking_order on public.container_tracking(order_id, recorded_at desc);
-create index if not exists idx_container_tracking_latest on public.container_tracking(order_id, recorded_at desc) limit 1;
 
 alter table public.container_tracking enable row level security;
 drop policy if exists "container_tracking_read" on public.container_tracking;
