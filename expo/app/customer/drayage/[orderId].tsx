@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, P
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, CalendarClock, MapPin, Package, Ship, Truck, Anchor, Clock, CheckCircle2, Radio } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { CheckCircle2 as _CC } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -10,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
+import { getSignedUrl } from '@/lib/storage-files';
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 
@@ -73,6 +76,29 @@ export default function CustomerDrayageOrderDetail() {
 
   const order = detailsQuery.data?.order as any;
   const moves = (detailsQuery.data?.moves ?? []) as any[];
+
+  // Resolve signed URLs for any captured pickup/delivery proof photos.
+  const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const paths = moves
+      .flatMap((m) => [m.pickup_photo_path, m.delivery_photo_path])
+      .filter((p): p is string => typeof p === 'string' && p.length > 0);
+    if (paths.length === 0) return;
+    void (async () => {
+      const entries = await Promise.all(
+        paths.map(async (p) => {
+          try { return [p, await getSignedUrl('attachments', p, 60 * 60)] as const; }
+          catch { return null; }
+        }),
+      );
+      setProofUrls((prev) => {
+        const next = { ...prev };
+        for (const e of entries) if (e) next[e[0]] = e[1];
+        return next;
+      });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailsQuery.data]);
   const latestTracking = (detailsQuery.data?.latestTracking ?? allTracking[0]) as any;
 
   const terminalName = (id: string | null) => {
@@ -367,6 +393,36 @@ export default function CustomerDrayageOrderDetail() {
                 <Text style={styles.moveApptText}>Appt: {m.appt_date} {m.appt_time}</Text>
               </View>
             ) : null}
+            {(m.pickup_photo_path || m.delivery_photo_path) ? (
+              <View style={styles.proofRow}>
+                {m.pickup_photo_path ? (
+                  <View style={styles.proofCell}>
+                    <View style={styles.proofHead}>
+                      <_CC size={12} color={C.blue} />
+                      <Text style={[styles.proofLabel, { color: C.blue }]}>Pickup</Text>
+                    </View>
+                    {proofUrls[m.pickup_photo_path] ? (
+                      <Image source={{ uri: proofUrls[m.pickup_photo_path] }} style={styles.proofPhoto} contentFit="cover" />
+                    ) : <View style={[styles.proofPhoto, styles.proofPhotoPlaceholder]} />}
+                    {m.picked_up_at ? <Text style={styles.proofTime}>{new Date(m.picked_up_at).toLocaleString()}</Text> : null}
+                    {m.captured_container_number ? <Text style={styles.proofMeta}>#{m.captured_container_number}</Text> : null}
+                  </View>
+                ) : null}
+                {m.delivery_photo_path ? (
+                  <View style={styles.proofCell}>
+                    <View style={styles.proofHead}>
+                      <_CC size={12} color={C.green} />
+                      <Text style={[styles.proofLabel, { color: C.green }]}>Delivery</Text>
+                    </View>
+                    {proofUrls[m.delivery_photo_path] ? (
+                      <Image source={{ uri: proofUrls[m.delivery_photo_path] }} style={styles.proofPhoto} contentFit="cover" />
+                    ) : <View style={[styles.proofPhoto, styles.proofPhotoPlaceholder]} />}
+                    {m.delivered_at ? <Text style={styles.proofTime}>{new Date(m.delivered_at).toLocaleString()}</Text> : null}
+                    {m.receiver_name ? <Text style={styles.proofMeta}>By {m.receiver_name}</Text> : null}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
           </Card>
         ))}
 
@@ -447,6 +503,14 @@ const styles = StyleSheet.create({
   moveType: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   moveApptRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   moveApptText: { fontSize: 11, color: C.green, fontWeight: '600' as const },
+  proofRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  proofCell: { flex: 1, gap: 4 },
+  proofHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  proofLabel: { fontSize: 10, fontWeight: '800' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  proofPhoto: { width: '100%' as const, height: 96, borderRadius: 10, backgroundColor: C.bgSecondary },
+  proofPhotoPlaceholder: { borderWidth: 1, borderColor: C.border },
+  proofTime: { fontSize: 10, color: C.textMuted },
+  proofMeta: { fontSize: 11, color: C.text, fontWeight: '600' as const },
   historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   historyDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.textMuted },
   historyCoord: { fontSize: 13, fontWeight: '600' as const, color: C.text },

@@ -1,18 +1,23 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert, Platform, Modal } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, ArrowRight, CalendarClock, ChevronRight, Clock, HelpCircle, LogOut, MapPin, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation } from 'lucide-react-native';
+import { Anchor, CalendarClock, Camera, ChevronRight, Clock, HelpCircle, ImageIcon, LogOut, MapPin, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
+import Input from '@/components/ui/Input';
+import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
+import { pickAndUploadFromUri } from '@/lib/storage-files';
 
 type WorkOrder = {
   id: string;
@@ -55,6 +60,15 @@ export default function DriverDrayageWorkOrders() {
   const [sharingLocation, setSharingLocation] = useState(false);
   const [terminals, setTerminals] = useState<any[]>([]);
   const watchRef = React.useRef<Location.LocationSubscription | null>(null);
+
+  // Proof capture (pickup = Loaded, delivery = AtDestination)
+  const [proofOrder, setProofOrder] = useState<WorkOrder | null>(null);
+  const [proofKind, setProofKind] = useState<'pickup' | 'delivery'>('pickup');
+  const [proofNextStatus, setProofNextStatus] = useState<string>('');
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [containerNumberInput, setContainerNumberInput] = useState('');
+  const [receiverName, setReceiverName] = useState('');
+  const [uploadingProof, setUploadingProof] = useState(false);
 
   React.useEffect(() => {
     void (async () => {
@@ -126,9 +140,72 @@ export default function DriverDrayageWorkOrders() {
     return { active, upcoming, done };
   }, [orders]);
 
+  const openProof = (order: WorkOrder, kind: 'pickup' | 'delivery', nextStatus: string) => {
+    setProofOrder(order);
+    setProofKind(kind);
+    setProofNextStatus(nextStatus);
+    setPhotoUri(null);
+    setContainerNumberInput(order.drayage_orders?.container_number ?? '');
+    setReceiverName('');
+  };
+
+  const closeProof = () => {
+    setProofOrder(null);
+    setPhotoUri(null);
+    setContainerNumberInput('');
+    setReceiverName('');
+  };
+
+  const pickProofPhoto = async () => {
+    try {
+      const camera = await ImagePicker.requestCameraPermissionsAsync().catch(() => null);
+      const useCamera = camera?.granted === true && Platform.OS !== 'web';
+      const res = useCamera
+        ? await ImagePicker.launchCameraAsync({ quality: 0.7, mediaTypes: ['images'] })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 0.7, mediaTypes: ['images'] });
+      if (!res.canceled && res.assets[0]) setPhotoUri(res.assets[0].uri);
+    } catch (err) {
+      Alert.alert('Camera error', err instanceof Error ? err.message : 'Unable to open camera');
+    }
+  };
+
+  const submitProof = async () => {
+    if (!proofOrder) return;
+    if (!photoUri) { Alert.alert('Photo required', `Take a ${proofKind} photo of the container to continue.`); return; }
+    if (proofKind === 'delivery' && !receiverName.trim()) { Alert.alert('Receiver required', 'Enter who received the container.'); return; }
+    setUploadingProof(true);
+    try {
+      const filename = `drayage_${proofKind}_${proofOrder.id}_${Date.now()}.jpg`;
+      const meta = await pickAndUploadFromUri({
+        uri: photoUri,
+        bucket: 'attachments',
+        path: `drayage/${proofOrder.order_id}/${filename}`,
+        contentType: 'image/jpeg',
+        entityType: 'drayage_move_proof',
+        entityId: proofOrder.id,
+        companyId: user?.companyId ?? null,
+      });
+      await advanceMutation.mutateAsync({
+        moveId: proofOrder.id,
+        nextStatus: proofNextStatus,
+        proofPhotoPath: meta.path,
+        containerNumber: proofKind === 'pickup' ? containerNumberInput.trim() || null : null,
+        receiverName: proofKind === 'delivery' ? receiverName.trim() : null,
+      });
+      closeProof();
+    } catch (e) {
+      Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setUploadingProof(false);
+    }
+  };
+
   const handleAdvance = (order: WorkOrder) => {
     const next = MOVE_NEXT[order.status];
     if (!next) return;
+    // Require proof capture on the pickup (Loaded) and delivery (AtDestination) legs.
+    if (next.status === 'Loaded') { openProof(order, 'pickup', next.status); return; }
+    if (next.status === 'AtDestination') { openProof(order, 'delivery', next.status); return; }
     Alert.alert(next.label, 'Confirm this action?', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Confirm', onPress: () => void advanceMutation.mutateAsync({ moveId: order.id, nextStatus: next.status }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')) },
@@ -283,6 +360,54 @@ export default function DriverDrayageWorkOrders() {
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Proof capture modal */}
+      <Modal visible={proofOrder !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeProof}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{proofKind === 'pickup' ? 'Pickup Proof' : 'Delivery Proof'}</Text>
+            <TouchableOpacity onPress={closeProof} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalSub}>
+              {proofKind === 'pickup'
+                ? 'Photograph the loaded container and confirm its number before marking it picked up.'
+                : 'Photograph the delivered container and record who received it.'}
+            </Text>
+
+            <Text style={styles.proofLabel}>Photo</Text>
+            <TouchableOpacity onPress={() => void pickProofPhoto()} style={styles.photoBox}>
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.photoPreview} contentFit="cover" />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Camera size={32} color={C.accent} />
+                  <Text style={styles.photoHint}>Tap to take container photo</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            {photoUri ? (
+              <Button label="Retake photo" onPress={() => void pickProofPhoto()} variant="secondary" icon={<ImageIcon size={14} color={C.text} />} />
+            ) : null}
+
+            {proofKind === 'pickup' ? (
+              <Input label="Container number" value={containerNumberInput} onChangeText={setContainerNumberInput} placeholder="e.g. TCLU1234567" autoCapitalize="characters" />
+            ) : (
+              <Input label="Received by" value={receiverName} onChangeText={setReceiverName} placeholder="Receiver name" />
+            )}
+
+            <Button
+              label={proofKind === 'pickup' ? 'Confirm pickup' : 'Confirm delivery'}
+              onPress={() => void submitProof()}
+              loading={uploadingProof || advanceMutation.isPending}
+              fullWidth
+              size="lg"
+              icon={<CheckCircle2 size={16} color={C.white} />}
+            />
+            <Button label="Cancel" onPress={closeProof} variant="ghost" fullWidth />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -325,4 +450,15 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center' as const, paddingVertical: 60, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
   emptyText: { fontSize: 13, color: C.textMuted, textAlign: 'center' as const, maxWidth: 280 },
+  modal: { flex: 1, backgroundColor: C.bg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
+  closeBtn: { width: 32, height: 32, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  modalBody: { padding: 20, gap: 12, paddingBottom: 60 },
+  modalSub: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  proofLabel: { fontSize: 11, color: C.textMuted, fontWeight: '800' as const, textTransform: 'uppercase' as const, letterSpacing: 0.6, marginTop: 4 },
+  photoBox: { height: 200, borderRadius: 14, overflow: 'hidden' as const, borderWidth: 2, borderStyle: 'dashed' as const, borderColor: C.border, backgroundColor: C.card },
+  photoPlaceholder: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8 },
+  photoPreview: { width: '100%' as const, height: '100%' as const },
+  photoHint: { fontSize: 12, color: C.textSecondary },
 });

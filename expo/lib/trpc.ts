@@ -1618,10 +1618,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'drayage.advanceMove': async (input: { moveId: string; nextStatus: string }) => {
+  'drayage.advanceMove': async (input: { moveId: string; nextStatus: string; proofPhotoPath?: string | null; receiverName?: string | null; containerNumber?: string | null }) => {
     const { error } = await supabase.rpc('advance_drayage_move', {
       p_move_id: input.moveId,
       p_next_status: input.nextStatus,
+      p_photo_path: input.proofPhotoPath ?? null,
+      p_receiver_name: input.receiverName ?? null,
+      p_container_number: input.containerNumber ?? null,
     });
     if (error) throwErr(error, 'Unable to advance move');
     return { success: true };
