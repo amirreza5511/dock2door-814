@@ -626,9 +626,9 @@ grant execute on function public.advance_drayage_move(uuid, drayage_move_status)
 -- Record a GPS ping for container tracking
 create or replace function public.ping_container_location(
   p_order_id uuid,
-  p_move_id uuid default null,
   p_lat numeric,
   p_lng numeric,
+  p_move_id uuid default null,
   p_heading numeric default 0,
   p_speed_kph numeric default 0,
   p_accuracy numeric default null
@@ -639,7 +639,7 @@ begin
   values (p_order_id, p_move_id, auth.uid(), p_lat, p_lng, coalesce(p_heading,0), coalesce(p_speed_kph,0), p_accuracy);
 end;
 $$;
-grant execute on function public.ping_container_location(uuid, uuid, numeric, numeric, numeric, numeric, numeric) to authenticated;
+grant execute on function public.ping_container_location(uuid, numeric, numeric, uuid, numeric, numeric, numeric) to authenticated;
 
 -- =========================================================================
 -- 8) SEED BC PORTS + CN/CP RAIL TERMINALS
