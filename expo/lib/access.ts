@@ -4,7 +4,7 @@ import type { CompanyType, User, UserRole } from '@/constants/types';
 export const ENABLE_DOMAINS = true;
 
 /** The product worlds plus the shared admin layer. */
-export type Domain = 'labour' | 'logistics' | 'freight';
+export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage';
 
 /** Roles belonging to the Labour world. */
 export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer'];
@@ -17,8 +17,11 @@ export const LOGISTICS_ROLES: UserRole[] = [
   'GateStaff',
 ];
 
-/** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace + drayage). */
-export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany', 'DrayageCompany'];
+/** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace). */
+export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'];
+
+/** Roles belonging to the Container Drayage world. */
+export const DRAYAGE_ROLES: UserRole[] = ['DrayageCompany'];
 
 /** Roles in the shared admin layer that oversees both worlds. */
 export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
@@ -34,7 +37,7 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   GateStaff: 'logistics',
   Driver: 'freight',
   Shipper: 'freight',
-  DrayageCompany: 'freight',
+  DrayageCompany: 'drayage',
 };
 
 /** Human-friendly labels for each world. */
@@ -42,6 +45,7 @@ export const DOMAIN_LABELS: Record<Domain, string> = {
   labour: 'Labour',
   logistics: 'Logistics & Warehousing',
   freight: 'Freight & Delivery',
+  drayage: 'Container Drayage',
 };
 
 export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
@@ -144,7 +148,7 @@ export function visibleDomains(user: User | null): Domain[] {
     return [];
   }
   if (isAdminRole(user.role) || user.isPlatformAdmin) {
-    return ['labour', 'logistics', 'freight'];
+    return ['labour', 'logistics', 'freight', 'drayage'];
   }
   const domain = DOMAIN_BY_ROLE[user.role];
   return domain ? [domain] : [];

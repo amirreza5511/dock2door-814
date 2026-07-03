@@ -32,9 +32,12 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { role: 'Driver', label: 'Owner-Operator', desc: 'Own one truck — accept & deliver loads yourself' },
     { role: 'TruckingCompany', label: 'Fleet / Carrier Company', desc: 'Run a fleet — accept loads & dispatch your drivers' },
   ],
+  drayage: [
+    { role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
+  ],
 };
 
-const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight'];
+const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage'];
 
 export default function Signup() {
   const router = useRouter();
