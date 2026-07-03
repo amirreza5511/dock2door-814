@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -129,6 +129,15 @@ export default function CustomerDashboard() {
               </View>
               <Text style={styles.actionTitle}>Track Loads</Text>
               <Text style={styles.actionDesc}>See pickup progress live</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.actionsRow, { marginTop: 10 }]}>
+            <TouchableOpacity onPress={() => router.push('/customer/drayage' as any)} style={[styles.actionCard, { borderColor: C.blue + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.blueDim }]}>
+                <Ship size={24} color={C.blue} />
+              </View>
+              <Text style={styles.actionTitle}>Container Drayage</Text>
+              <Text style={styles.actionDesc}>Import / export containers</Text>
             </TouchableOpacity>
           </View>
         </View>

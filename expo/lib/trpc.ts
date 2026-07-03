@@ -1487,6 +1487,220 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // DRAYAGE — World 4: container drayage ecosystem
+  // =========================================================================
+  'drayage.listTerminals': async (input: { type?: string; search?: string } | undefined) => {
+    let q = supabase.from('terminals').select('*').eq('is_active', true).order('terminal_type').order('name');
+    if (input?.type && input.type !== 'all') q = q.eq('terminal_type', input.type);
+    if (input?.search) {
+      const s = input.search.trim();
+      q = q.or(`name.ilike.%${s}%,code.ilike.%${s}%,city.ilike.%${s}%,operator.ilike.%${s}%`);
+    }
+    const { data, error } = await q;
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load terminals');
+    return data ?? [];
+  },
+
+  'drayage.createOrder': async (input: AnyRecord) => {
+    const { data, error } = await supabase.rpc('create_drayage_order', {
+      p_direction: input.direction,
+      p_container_number: input.containerNumber ?? '',
+      p_container_size: input.containerSize ?? '40ft',
+      p_container_type: input.containerType ?? '',
+      p_bol_number: input.bolNumber ?? '',
+      p_booking_number: input.bookingNumber ?? '',
+      p_commodity: input.commodity ?? '',
+      p_weight_kg: input.weightKg ?? 0,
+      p_is_hazmat: input.isHazmat ?? false,
+      p_is_overweight: input.isOverweight ?? false,
+      p_is_oversized: input.isOversized ?? false,
+      p_origin_terminal_id: input.originTerminalId ?? null,
+      p_destination_terminal_id: input.destinationTerminalId ?? null,
+      p_warehouse_company_id: input.warehouseCompanyId ?? null,
+      p_pickup_address: input.pickupAddress ?? '',
+      p_pickup_city: input.pickupCity ?? '',
+      p_pickup_lat: input.pickupLat ?? 0,
+      p_pickup_lng: input.pickupLng ?? 0,
+      p_delivery_address: input.deliveryAddress ?? '',
+      p_delivery_city: input.deliveryCity ?? '',
+      p_delivery_lat: input.deliveryLat ?? 0,
+      p_delivery_lng: input.deliveryLng ?? 0,
+      p_port_reservation_date: input.portReservationDate ?? null,
+      p_port_reservation_time: input.portReservationTime ?? '',
+      p_is_prepull: input.isPrepull ?? false,
+      p_prepull_pickup_date: input.prepullPickupDate ?? null,
+      p_prepull_yard_terminal_id: input.prepullYardTerminalId ?? null,
+      p_notes: input.notes ?? '',
+    });
+    if (isMissingRelation(error)) throw new Error('Drayage module is not ready yet — run migration 0100.');
+    if (error) throwErr(error, 'Unable to create drayage order');
+    return { id: data as string };
+  },
+
+  'drayage.listOrders': async (input: { filter?: 'all' | 'open' | 'mine' | 'customer'; limit?: number } | undefined, ctx) => {
+    const filter = input?.filter ?? 'all';
+    const limit = input?.limit ?? 100;
+    let q = supabase.from('drayage_orders').select('*').order('created_at', { ascending: false }).limit(limit);
+    if (filter === 'open') {
+      q = q.eq('status', 'Open');
+    } else if (filter === 'mine' && ctx.user.companyId) {
+      q = q.eq('drayage_company_id', ctx.user.companyId);
+    } else if (filter === 'customer' && ctx.user.companyId) {
+      q = q.eq('customer_company_id', ctx.user.companyId);
+    }
+    const { data, error } = await q;
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load drayage orders');
+    return data ?? [];
+  },
+
+  'drayage.getOrder': async (input: { id: string }) => {
+    const { data, error } = await supabase.from('drayage_orders').select('*').eq('id', input.id).maybeSingle();
+    if (error || !data) throw new Error(error?.message ?? 'Order not found');
+    return data;
+  },
+
+  'drayage.getOrderDetails': async (input: { id: string }) => {
+    const [orderRes, movesRes, trackingRes] = await Promise.all([
+      supabase.from('drayage_orders').select('*').eq('id', input.id).maybeSingle(),
+      supabase.from('drayage_moves').select('*').eq('order_id', input.id).order('sequence', { ascending: true }),
+      supabase.from('container_tracking').select('*').eq('order_id', input.id).order('recorded_at', { ascending: false }).limit(1),
+    ]);
+    if (orderRes.error || !orderRes.data) throw new Error(orderRes.error?.message ?? 'Order not found');
+    return {
+      order: orderRes.data,
+      moves: movesRes.data ?? [],
+      latestTracking: trackingRes.data?.[0] ?? null,
+    };
+  },
+
+  'drayage.assignOrder': async (input: { orderId: string }) => {
+    const { error } = await supabase.rpc('assign_drayage_order', { p_order_id: input.orderId });
+    if (error) throwErr(error, 'Unable to assign order');
+    return { success: true };
+  },
+
+  'drayage.updatePortReservation': async (input: {
+    orderId: string; reservationDate: string; reservationTime: string; confirmed?: boolean;
+  }) => {
+    const { error } = await supabase.rpc('update_port_reservation', {
+      p_order_id: input.orderId,
+      p_reservation_date: input.reservationDate,
+      p_reservation_time: input.reservationTime,
+      p_confirmed: input.confirmed ?? false,
+    });
+    if (error) throwErr(error, 'Unable to update port reservation');
+    return { success: true };
+  },
+
+  'drayage.listMoves': async (input: { orderId?: string; driverId?: string; status?: string } | undefined) => {
+    let q = supabase.from('drayage_moves').select('*, drayage_orders!inner(*)').order('created_at', { ascending: false });
+    if (input?.orderId) q = q.eq('order_id', input.orderId);
+    if (input?.driverId) q = q.eq('driver_user_id', input.driverId);
+    if (input?.status && input.status !== 'all') q = q.eq('status', input.status);
+    const { data, error } = await q.limit(200);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load drayage moves');
+    return data ?? [];
+  },
+
+  'drayage.dispatchMove': async (input: {
+    moveId: string; driverUserId: string; apptDate?: string; apptTime?: string;
+  }) => {
+    const { error } = await supabase.rpc('dispatch_drayage_move', {
+      p_move_id: input.moveId,
+      p_driver_user_id: input.driverUserId,
+      p_appt_date: input.apptDate ?? null,
+      p_appt_time: input.apptTime ?? '',
+    });
+    if (error) throwErr(error, 'Unable to dispatch move');
+    return { success: true };
+  },
+
+  'drayage.advanceMove': async (input: { moveId: string; nextStatus: string }) => {
+    const { error } = await supabase.rpc('advance_drayage_move', {
+      p_move_id: input.moveId,
+      p_next_status: input.nextStatus,
+    });
+    if (error) throwErr(error, 'Unable to advance move');
+    return { success: true };
+  },
+
+  'drayage.driverWorkOrders': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('drayage_moves')
+      .select('*, drayage_orders!inner(*)')
+      .eq('driver_user_id', ctx.user.id)
+      .order('updated_at', { ascending: false })
+      .limit(100);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load work orders');
+    return data ?? [];
+  },
+
+  'drayage.pingLocation': async (input: {
+    orderId: string; moveId?: string; lat: number; lng: number;
+    heading?: number; speedKph?: number; accuracy?: number;
+  }) => {
+    const { error } = await supabase.rpc('ping_container_location', {
+      p_order_id: input.orderId,
+      p_move_id: input.moveId ?? null,
+      p_lat: input.lat,
+      p_lng: input.lng,
+      p_heading: input.heading ?? 0,
+      p_speed_kph: input.speedKph ?? 0,
+      p_accuracy: input.accuracy ?? null,
+    });
+    if (error) throwErr(error, 'Unable to ping location');
+    return { success: true };
+  },
+
+  'drayage.getTracking': async (input: { orderId: string; limit?: number }) => {
+    const { data, error } = await supabase
+      .from('container_tracking')
+      .select('*')
+      .eq('order_id', input.orderId)
+      .order('recorded_at', { ascending: false })
+      .limit(input.limit ?? 50);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load tracking data');
+    return data ?? [];
+  },
+
+  'drayage.dashboard': async (_input, ctx) => {
+    if (!ctx.user.companyId) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [] };
+    const [openRes, myRes, movesRes, driversRes] = await Promise.all([
+      supabase.from('drayage_orders').select('*').eq('status', 'Open').order('created_at', { ascending: false }).limit(50),
+      supabase.from('drayage_orders').select('*').eq('drayage_company_id', ctx.user.companyId).order('created_at', { ascending: false }).limit(100),
+      supabase.from('drayage_moves').select('*, drayage_orders!inner(*)')
+        .in('status', ['Assigned', 'EnRoute', 'AtOrigin', 'Loaded', 'InTransit', 'AtDestination', 'Unloaded'])
+        .order('updated_at', { ascending: false }).limit(50),
+      supabase.from('fleet').select('*').eq('company_id', ctx.user.companyId).eq('entity', 'drivers').is('archived_at', null).order('created_at', { ascending: false }),
+    ]);
+    if (isMissingRelation(openRes.error)) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [] };
+    return {
+      openOrders: openRes.data ?? [],
+      myOrders: myRes.data ?? [],
+      activeMoves: movesRes.data ?? [],
+      drivers: driversRes.data ?? [],
+    };
+  },
+
+  'drayage.customerOrders': async (_input, ctx) => {
+    let q = supabase.from('drayage_orders').select('*').order('created_at', { ascending: false }).limit(100);
+    if (ctx.user.companyId) {
+      q = q.eq('customer_company_id', ctx.user.companyId);
+    } else {
+      q = q.eq('customer_user_id', ctx.user.id);
+    }
+    const { data, error } = await q;
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load your drayage orders');
+    return data ?? [];
+  },
+
+  // =========================================================================
   // MESSAGING (thread-based)
   // =========================================================================
   'messaging.listThreads': async (_input, ctx) => {

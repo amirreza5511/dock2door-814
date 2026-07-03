@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, Camera, ChevronRight, Clock, FileText, HelpCircle, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, ShieldAlert, ShieldCheck, Truck, X } from 'lucide-react-native';
+import { AlertTriangle, Anchor, Camera, ChevronRight, Clock, FileText, HelpCircle, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, ShieldAlert, ShieldCheck, Truck, X } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@tanstack/react-query';
@@ -321,6 +321,19 @@ export default function DriverHomeScreen() {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity
+          style={styles.drayageBtn}
+          onPress={() => router.push('/driver/drayage' as never)}
+          activeOpacity={0.85}
+        >
+          <Anchor size={18} color={C.blue} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.drayageBtnTitle}>Drayage Work Orders</Text>
+            <Text style={styles.drayageBtnDesc}>Container pickup & delivery assignments</Text>
+          </View>
+          <ChevronRight size={18} color={C.textMuted} />
+        </TouchableOpacity>
+
         {partitioned.active.length > 0 ? (
           <>
             <View style={styles.sectionHeader}>
@@ -398,6 +411,9 @@ const styles = StyleSheet.create({
   marketBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14 },
   marketBtnAlt: { backgroundColor: C.card, borderWidth: 1, borderColor: C.accent },
   marketBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
+  drayageBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.blue + '40', padding: 14 },
+  drayageBtnTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  drayageBtnDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
   jobCard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 10 },

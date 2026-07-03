@@ -22,6 +22,7 @@ const TYPE_COLORS: Record<CompanyType, string> = {
   Employer: C.yellow,
   TruckingCompany: C.purple,
   Shipper: C.blue,
+  DrayageCompany: C.blue,
 };
 
 /**

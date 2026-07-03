@@ -17,8 +17,8 @@ export const LOGISTICS_ROLES: UserRole[] = [
   'GateStaff',
 ];
 
-/** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace). */
-export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'];
+/** Roles belonging to the Freight & Delivery world (Onro-style courier marketplace + drayage). */
+export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany', 'DrayageCompany'];
 
 /** Roles in the shared admin layer that oversees both worlds. */
 export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
@@ -34,6 +34,7 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   GateStaff: 'logistics',
   Driver: 'freight',
   Shipper: 'freight',
+  DrayageCompany: 'freight',
 };
 
 /** Human-friendly labels for each world. */
@@ -53,6 +54,7 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   Driver: '/driver',
   GateStaff: '/gate-staff',
   Shipper: '/shipper',
+  DrayageCompany: '/drayage-company',
   Admin: '/admin',
   SuperAdmin: '/super-admin',
 };
@@ -65,6 +67,7 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'TruckingCompany',
   'GateStaff',
   'Shipper',
+  'DrayageCompany',
 ];
 
 export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
@@ -75,6 +78,7 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   TruckingCompany: 'TruckingCompany',
   GateStaff: 'WarehouseProvider',
   Shipper: 'Shipper',
+  DrayageCompany: 'DrayageCompany',
 };
 
 const ROUTE_PREFIXES: Record<string, UserRole[]> = {
@@ -87,6 +91,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   driver: ['Driver'],
   'gate-staff': ['GateStaff'],
   shipper: ['Shipper'],
+  'drayage-company': ['DrayageCompany'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],
   fulfillment: ['WarehouseProvider', 'Customer', 'Admin', 'SuperAdmin'],

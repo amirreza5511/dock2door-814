@@ -23,6 +23,7 @@ const ROLE_COLORS: Record<UserRole, string> = {
   Driver: C.green,
   GateStaff: C.yellow,
   Shipper: C.blue,
+  DrayageCompany: C.blue,
 };
 
 export default function AdminUsers() {

@@ -8,14 +8,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
-  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen,
+  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen, Anchor,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 
 type WorldDef = {
-  key: 'labour' | 'logistics' | 'freight';
+  key: 'labour' | 'logistics' | 'freight' | 'drayage';
   badge: string;
   color: string;
   bg: string;
@@ -65,6 +65,20 @@ const WORLDS: WorldDef[] = [
       { icon: PackageOpen, label: 'Shippers', sub: 'Post loads — parcel to full truck' },
       { icon: Truck, label: 'Owner-Operators', sub: 'Bring your truck, accept loads' },
       { icon: Truck, label: 'Fleet / Carrier Companies', sub: 'Accept loads & dispatch drivers' },
+    ],
+  },
+  {
+    key: 'drayage',
+    badge: 'Domain 4',
+    color: C.blue,
+    bg: C.blueDim,
+    icon: Anchor,
+    title: 'Container Drayage',
+    desc: 'Post import/export container orders. Drayage companies claim them, dispatch drivers, enter port reservations, and track containers live on a map.',
+    bullets: [
+      { icon: Anchor, label: 'Freight Forwarders', sub: 'Post import/export container orders' },
+      { icon: Truck, label: 'Drayage Companies', sub: 'Claim orders, dispatch & track live' },
+      { icon: Users, label: 'Drivers', sub: 'Receive work orders & advance moves' },
     ],
   },
 ];
