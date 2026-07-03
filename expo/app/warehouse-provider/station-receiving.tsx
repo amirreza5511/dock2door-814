@@ -205,6 +205,10 @@ export default function ReceivingStation() {
     () => locationList.filter((l) => !locIsFull(l) && (palletType === 'standard' || l.accepts_oversize)),
     [locationList, palletType],
   );
+  const totalFreeSlots = useMemo(
+    () => availableLocations.reduce((sum, l) => sum + locFreeSlots(l), 0),
+    [availableLocations],
+  );
   const filteredVariants = useMemo(() => {
     const q = skuSearch.trim().toLowerCase();
     const base = q ? variantList.filter((v) => (v.sku ?? '').toLowerCase().includes(q) || (v.name ?? '').toLowerCase().includes(q)) : variantList;
@@ -258,11 +262,6 @@ export default function ReceivingStation() {
       </View>
     );
   }
-
-  const totalFreeSlots = useMemo(
-    () => availableLocations.reduce((sum, l) => sum + locFreeSlots(l), 0),
-    [availableLocations],
-  );
 
   const autoSubmit = async () => {
     const count = Math.max(Math.floor(Number(bulkCount)) || 0, 0);
