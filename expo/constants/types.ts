@@ -1,5 +1,5 @@
-export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'Admin' | 'SuperAdmin';
-export type CompanyType = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'TruckingCompany' | 'Shipper' | 'DrayageCompany';
+export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'Admin' | 'SuperAdmin';
+export type CompanyType = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'TruckingCompany' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder';
 export type AppRouteRole = Exclude<UserRole, 'SuperAdmin'> | 'SuperAdmin';
 export type CompanyStatus = 'PendingApproval' | 'Approved' | 'Suspended';
 export type CompanyRole = 'Owner' | 'Staff';
