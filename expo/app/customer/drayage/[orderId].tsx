@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, CalendarClock, MapPin, Package, Ship, Truck, Anchor, Clock, CheckCircle2, Radio } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, MapPin, Package, Ship, Truck, Anchor, Clock, CheckCircle2, Radio, DollarSign, Building2 } from 'lucide-react-native';
+import { Alert } from 'react-native';
 import { Image } from 'expo-image';
+import Button from '@/components/ui/Button';
 import { CheckCircle2 as _CC } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -49,7 +51,18 @@ export default function CustomerDrayageOrderDetail() {
   const router = useRouter();
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
 
+  const utils = trpc.useUtils();
   const detailsQuery = trpc.drayage.getOrderDetails.useQuery({ id: orderId }, { refetchInterval: 10000 });
+  const quotesQuery = trpc.drayage.listOrderQuotes.useQuery({ orderId }, { refetchInterval: 15000 });
+  const acceptMutation = trpc.drayage.acceptQuote.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.drayage.getOrderDetails.invalidate({ id: orderId }),
+        utils.drayage.listOrderQuotes.invalidate({ orderId }),
+        utils.drayage.customerOrders.invalidate(),
+      ]);
+    },
+  });
   const [terminals, setTerminals] = useState<any[]>([]);
   const [allTracking, setAllTracking] = useState<any[]>([]);
 
@@ -76,6 +89,21 @@ export default function CustomerDrayageOrderDetail() {
 
   const order = detailsQuery.data?.order as any;
   const moves = (detailsQuery.data?.moves ?? []) as any[];
+  const quotes = useMemo(() => (quotesQuery.data ?? []) as any[], [quotesQuery.data]);
+
+  const acceptQuote = (quoteId: string, name: string, price: number, currency: string) => {
+    Alert.alert(
+      'Accept this quote?',
+      `${name} will be assigned at ${currency} ${price}. Other quotes will be declined.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Accept',
+          onPress: () => void acceptMutation.mutateAsync({ quoteId }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')),
+        },
+      ],
+    );
+  };
 
   // Resolve signed URLs for any captured pickup/delivery proof photos.
   const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
@@ -259,6 +287,41 @@ export default function CustomerDrayageOrderDetail() {
                 <Text style={styles.trackingMetaValue}>{new Date(latestTracking.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
               </View>
             </View>
+          </Card>
+        ) : null}
+
+        {/* Quotes (only while open / awaiting selection) */}
+        {order.status === 'Open' ? (
+          <Card style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <DollarSign size={16} color={C.green} />
+              <Text style={styles.sectionTitle}>Quotes {quotes.length > 0 ? `(${quotes.filter((q) => q.status !== 'Withdrawn').length})` : ''}</Text>
+            </View>
+            {quotes.filter((q) => q.status !== 'Withdrawn').length === 0 ? (
+              <Text style={styles.quotesEmpty}>
+                {order.target_drayage_company_id
+                  ? 'Waiting for the invited company to send a quote…'
+                  : 'No quotes yet — drayage companies will send you prices shortly.'}
+              </Text>
+            ) : quotes.filter((q) => q.status !== 'Withdrawn').map((q) => (
+              <View key={q.id} style={styles.quoteRow}>
+                <View style={styles.quoteIcon}><Building2 size={16} color={C.accent} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quoteCompany}>{q.companies?.name ?? 'Drayage company'}</Text>
+                  {q.eta_note ? <Text style={styles.quoteEta}>{q.eta_note}</Text> : null}
+                  {q.message ? <Text style={styles.quoteMsg}>{q.message}</Text> : null}
+                </View>
+                <View style={styles.quoteRight}>
+                  <Text style={styles.quotePrice}>{q.currency} {q.price}</Text>
+                  <Button
+                    label="Accept"
+                    size="sm"
+                    onPress={() => acceptQuote(q.id, q.companies?.name ?? 'This company', q.price, q.currency)}
+                    loading={acceptMutation.isPending}
+                  />
+                </View>
+              </View>
+            ))}
           </Card>
         ) : null}
 
@@ -482,6 +545,14 @@ const styles = StyleSheet.create({
   detailCell: { width: '48%', gap: 2 },
   detailLabel: { fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   detailValue: { fontSize: 14, fontWeight: '600' as const, color: C.text },
+  quotesEmpty: { fontSize: 12, color: C.textMuted, lineHeight: 18 },
+  quoteRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.border },
+  quoteIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  quoteCompany: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  quoteEta: { fontSize: 11, color: C.textSecondary, marginTop: 2 },
+  quoteMsg: { fontSize: 11, color: C.textMuted, marginTop: 2, fontStyle: 'italic' as const },
+  quoteRight: { alignItems: 'flex-end' as const, gap: 6 },
+  quotePrice: { fontSize: 15, fontWeight: '800' as const, color: C.green },
   commodity: { fontSize: 13, color: C.textSecondary, fontStyle: 'italic' as const },
   flagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' as const },
   flag: { fontSize: 10, fontWeight: '700' as const, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' as const },

@@ -1532,10 +1532,76 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_prepull_pickup_date: input.prepullPickupDate ?? null,
       p_prepull_yard_terminal_id: input.prepullYardTerminalId ?? null,
       p_notes: input.notes ?? '',
+      p_target_drayage_company_id: input.targetDrayageCompanyId ?? null,
     });
     if (isMissingRelation(error)) throw new Error('Drayage module is not ready yet — run migration 0100.');
     if (error) throwErr(error, 'Unable to create drayage order');
     return { id: data as string };
+  },
+
+  // List active drayage companies (for the customer's "invite a company" picker)
+  'drayage.listCompanies': async () => {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name, city, status')
+      .eq('type', 'DrayageCompany')
+      .eq('status', 'Approved')
+      .order('name');
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load drayage companies');
+    return data ?? [];
+  },
+
+  // Quotes on a single order (customer view — see every bid)
+  'drayage.listOrderQuotes': async (input: { orderId: string }) => {
+    const { data, error } = await supabase
+      .from('drayage_quotes')
+      .select('*, companies:drayage_company_id(id, name, city)')
+      .eq('order_id', input.orderId)
+      .order('price', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load quotes');
+    return data ?? [];
+  },
+
+  // The current company's quotes (drayage company view)
+  'drayage.myQuotes': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('drayage_quotes')
+      .select('*')
+      .eq('drayage_company_id', ctx.user.companyId)
+      .order('updated_at', { ascending: false })
+      .limit(200);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load your quotes');
+    return data ?? [];
+  },
+
+  'drayage.submitQuote': async (input: {
+    orderId: string; price: number; currency?: string; etaNote?: string; message?: string;
+  }) => {
+    const { error } = await supabase.rpc('submit_drayage_quote', {
+      p_order_id: input.orderId,
+      p_price: input.price,
+      p_currency: input.currency ?? 'CAD',
+      p_eta_note: input.etaNote ?? '',
+      p_message: input.message ?? '',
+    });
+    if (error) throwErr(error, 'Unable to submit quote');
+    return { success: true };
+  },
+
+  'drayage.acceptQuote': async (input: { quoteId: string }) => {
+    const { error } = await supabase.rpc('accept_drayage_quote', { p_quote_id: input.quoteId });
+    if (error) throwErr(error, 'Unable to accept quote');
+    return { success: true };
+  },
+
+  'drayage.withdrawQuote': async (input: { quoteId: string }) => {
+    const { error } = await supabase.rpc('withdraw_drayage_quote', { p_quote_id: input.quoteId });
+    if (error) throwErr(error, 'Unable to withdraw quote');
+    return { success: true };
   },
 
   'drayage.listOrders': async (input: { filter?: 'all' | 'open' | 'mine' | 'customer'; limit?: number } | undefined, ctx) => {

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -46,6 +46,7 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
     },
   });
   const terminalsQuery = trpc.drayage.listTerminals.useQuery({});
+  const companiesQuery = trpc.drayage.listCompanies.useQuery();
 
   const [showForm, setShowForm] = useState(false);
   const [direction, setDirection] = useState<'Import' | 'Export'>('Import');
@@ -70,9 +71,12 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
   const [isPrepull, setIsPrepull] = useState(false);
   const [prepullDate, setPrepullDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [targetCompanyId, setTargetCompanyId] = useState<string | null>(null);
   const [showTerminalPicker, setShowTerminalPicker] = useState<'origin' | 'destination' | null>(null);
+  const [showCompanyPicker, setShowCompanyPicker] = useState(false);
 
   const terminals = useMemo(() => (terminalsQuery.data ?? []) as any[], [terminalsQuery.data]);
+  const companies = useMemo(() => (companiesQuery.data ?? []) as any[], [companiesQuery.data]);
   const portAndRailTerminals = useMemo(() => terminals.filter((t) => t.terminal_type === 'Port' || t.terminal_type === 'Rail'), [terminals]);
 
   const resetForm = () => {
@@ -81,7 +85,13 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
     setIsHazmat(false); setIsOverweight(false); setIsOversized(false);
     setOriginTerminalId(null); setDestinationTerminalId(null);
     setDeliveryAddress(''); setDeliveryCity(''); setPickupAddress(''); setPickupCity('');
-    setResDate(''); setResTime(''); setIsPrepull(false); setPrepullDate(''); setNotes('');
+    setResDate(''); setResTime(''); setIsPrepull(false); setPrepullDate(''); setNotes(''); setTargetCompanyId(null);
+  };
+
+  const companyName = (id: string | null) => {
+    if (!id) return 'Open to all drayage companies';
+    const c = companies.find((c) => c.id === id);
+    return c ? `${c.name}${c.city ? ` · ${c.city}` : ''}` : 'Selected company';
   };
 
   const terminalName = (id: string | null) => {
@@ -120,6 +130,7 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
         prepullPickupDate: prepullDate.trim() || null,
         prepullYardTerminalId: null,
         notes: notes.trim(),
+        targetDrayageCompanyId: targetCompanyId,
       });
     } catch (e) {
       Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -336,6 +347,18 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
               <Input label="Prepull pickup date" value={prepullDate} onChangeText={setPrepullDate} placeholder="2026-07-14" />
             ) : null}
 
+            {/* Assign to a specific company (option: invite / direct-assign) */}
+            <Text style={styles.fieldLabel}>Send to</Text>
+            <TouchableOpacity style={styles.pickerBtn} onPress={() => setShowCompanyPicker(true)}>
+              {targetCompanyId ? <Building2 size={16} color={C.accent} /> : <Users size={16} color={C.green} />}
+              <Text style={styles.pickerBtnText}>{companyName(targetCompanyId)}</Text>
+            </TouchableOpacity>
+            <Text style={styles.pickerHint}>
+              {targetCompanyId
+                ? 'Only this company will see the order and can quote it.'
+                : 'Every drayage company can see it and send you a quote — you pick the winner.'}
+            </Text>
+
             <Input label="Notes" value={notes} onChangeText={setNotes} placeholder="Special instructions..." multiline numberOfLines={3} />
 
             <Button
@@ -347,6 +370,47 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
               icon={<Ship size={16} color={C.white} />}
             />
             <Button label="Cancel" onPress={() => setShowForm(false)} variant="ghost" fullWidth />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Company Picker Modal */}
+      <Modal visible={showCompanyPicker} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCompanyPicker(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Send Order To</Text>
+            <TouchableOpacity onPress={() => setShowCompanyPicker(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.terminalItem, !targetCompanyId && styles.terminalItemActive]}
+              onPress={() => { setTargetCompanyId(null); setShowCompanyPicker(false); }}
+            >
+              <View style={[styles.terminalItemIcon, { backgroundColor: C.green + '20' }]}>
+                <Users size={16} color={C.green} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.terminalItemName}>Open marketplace</Text>
+                <Text style={styles.terminalItemMeta}>All companies quote · you pick the best</Text>
+              </View>
+            </TouchableOpacity>
+            {companies.length === 0 ? (
+              <Text style={styles.pickerHint}>No approved drayage companies yet — your order will stay open to all.</Text>
+            ) : companies.map((c) => (
+              <TouchableOpacity
+                key={c.id}
+                style={[styles.terminalItem, targetCompanyId === c.id && styles.terminalItemActive]}
+                onPress={() => { setTargetCompanyId(c.id); setShowCompanyPicker(false); }}
+              >
+                <View style={[styles.terminalItemIcon, { backgroundColor: C.accent + '20' }]}>
+                  <Building2 size={16} color={C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.terminalItemName}>{c.name}</Text>
+                  <Text style={styles.terminalItemMeta}>{c.city || 'Drayage company'}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </ScrollView>
         </View>
       </Modal>
@@ -439,7 +503,9 @@ const styles = StyleSheet.create({
   prepullToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   prepullToggleActive: { borderColor: C.purple + '55', backgroundColor: C.purpleDim },
   prepullToggleText: { fontSize: 13, fontWeight: '700' as const, color: C.textMuted },
+  pickerHint: { fontSize: 11, color: C.textMuted, marginTop: -4, lineHeight: 16 },
   terminalItem: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14 },
+  terminalItemActive: { borderColor: C.accent, backgroundColor: C.accentDim },
   terminalItemIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   terminalItemName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   terminalItemMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
