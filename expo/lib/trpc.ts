@@ -2834,7 +2834,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { palletId: data as string };
   },
   'wms.autoPutaway': async (
-    input: { count: number; variantId?: string; palletType?: 'standard' | 'oversize'; unitsPerPallet?: number; receiptId?: string; lotCode?: string; reference?: string },
+    input: { count: number; variantId?: string; palletType?: 'standard' | 'oversize'; unitsPerPallet?: number; receiptId?: string; lotCode?: string; reference?: string; startLocationId?: string },
     ctx,
   ) => {
     // Auto-distribute N identical pallets: one pallet per free slot. Real
@@ -2868,8 +2868,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     }
 
     // Compute a queue of empty slots (respecting capacity + oversize rules).
+    // When the operator picks a starting location, fill its free slots first,
+    // then spill over to the rest of the racking in zone/aisle order.
+    const ordered = input.startLocationId
+      ? [...locs].sort((a, b) => (a.id === input.startLocationId ? -1 : b.id === input.startLocationId ? 1 : 0))
+      : locs;
     const slots: string[] = [];
-    for (const l of locs) {
+    for (const l of ordered) {
       const capacity = Math.max(Number(l.pallet_capacity ?? 1), 1);
       const used = occupancy[l.id as string] ?? 0;
       const free = Math.max(capacity - used, 0);

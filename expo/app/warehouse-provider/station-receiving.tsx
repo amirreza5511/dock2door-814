@@ -72,6 +72,7 @@ export default function ReceivingStation() {
   const [bulkCount, setBulkCount] = useState<string>('');
   const [lot, setLot] = useState<string>('');
   const [palletType, setPalletType] = useState<PalletType>('standard');
+  const [autoMode, setAutoMode] = useState<'auto' | 'choose'>('auto');
   const [placed, setPlaced] = useState<PlacedPallet[]>([]);
   const [reference, setReference] = useState<string>('');
   const [receiptId, setReceiptId] = useState<string>('');
@@ -230,6 +231,10 @@ export default function ReceivingStation() {
     const count = Math.max(Math.floor(Number(bulkCount)) || 0, 0);
     if (count <= 0) { Alert.alert('How many pallets?', 'Enter the number of pallets to put away (e.g. 22).'); return; }
     if (totalFreeSlots <= 0) { Alert.alert('No free slots', 'Add more racking locations below — every empty slot holds one pallet.'); return; }
+    if (autoMode === 'choose' && !locationId.trim()) {
+      Alert.alert('Pick a start location', 'Choose which shelf/rack to fill first — pallets fill it, then continue to the next open slots.');
+      return;
+    }
     try {
       const res = await autoPutaway.mutateAsync({
         count,
@@ -239,6 +244,7 @@ export default function ReceivingStation() {
         receiptId: receiptId.trim() || undefined,
         lotCode: lot.trim() || undefined,
         reference: reference.trim() || undefined,
+        startLocationId: autoMode === 'choose' ? locationId.trim() || undefined : undefined,
       });
       // Mirror the placements into the session list so the operator sees them.
       setPlaced((prev) => {
@@ -424,7 +430,35 @@ export default function ReceivingStation() {
 
         <Text style={styles.sectionTitle}>Auto putaway — whole shipment</Text>
         <View style={styles.card}>
-          <Text style={styles.helpText}>Same SKU on every pallet? Enter the count, pick the SKU, and tap once — each pallet is auto-assigned to its own open slot and added to inventory. One pallet per slot, no hand-typing.</Text>
+          <Text style={styles.helpText}>Same SKU on every pallet? Enter the count, pick the SKU, and tap once — each pallet goes into its own open slot and is added to inventory. One pallet per slot, no hand-typing.</Text>
+
+          <Text style={styles.fieldLabel}>Placement</Text>
+          <View style={styles.typeRow}>
+            {([['auto', 'Auto-assign slots'], ['choose', 'Choose location']] as const).map(([m, label]) => (
+              <TouchableOpacity
+                key={m}
+                style={[styles.typeChip, autoMode === m && styles.typeChipActive]}
+                onPress={() => { setAutoMode(m); if (m === 'auto') setLocationId(''); }}
+                testID={`auto-mode-${m}`}
+              >
+                <Text style={[styles.typeChipText, autoMode === m && styles.typeChipTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {autoMode === 'choose' ? (
+            <>
+              <Text style={styles.fieldLabel}>Start location</Text>
+              <TouchableOpacity style={styles.picker} onPress={() => setLocPickerOpen(true)} testID="auto-pick-location">
+                <MapPin size={16} color={selectedLocation ? C.accent : C.textMuted} />
+                <Text style={[styles.pickerText, !selectedLocation && styles.pickerPlaceholder]} numberOfLines={1}>
+                  {selectedLocation ? `${locLabel(selectedLocation)} · ${locFreeSlots(selectedLocation)} free` : `Pick where to start (${availableLocations.length} open)`}
+                </Text>
+                <ChevronRight size={16} color={C.textMuted} />
+              </TouchableOpacity>
+              <Text style={styles.helpTextMuted}>Pallets fill this location first, then spill over to the next open slots automatically.</Text>
+            </>
+          ) : null}
 
           <Text style={styles.fieldLabel}>Pallet type</Text>
           <View style={styles.typeRow}>
