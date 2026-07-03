@@ -20,7 +20,7 @@ interface StockRow {
   product_variants?: { sku?: string; name?: string } | null;
   warehouse_locations?: { label?: string; zone?: string; bin?: string } | null;
 }
-interface ReceiptRow { id: string; reference?: string | null; status: string; supplier?: string | null; created_at: string }
+interface ReceiptRow { id: string; reference_code?: string | null; status: string; supplier?: string | null; created_at: string }
 interface CycleCountRow { id: string; status: string; variance?: number | null; created_at: string; location_id?: string; variant_id?: string; counted_qty?: number; system_qty?: number }
 
 export default function WmsOperationsScreen() {
@@ -136,14 +136,20 @@ export default function WmsOperationsScreen() {
     } catch (err) { Alert.alert('Unable to create', err instanceof Error ? err.message : 'Unknown'); }
   };
 
+  const openReceipts = useMemo(() => receiptList.filter((r) => r.status !== 'Completed'), [receiptList]);
+
   const submitReceive = async () => {
+    if (!recvForm.receiptId.trim()) {
+      Alert.alert('Pick a receipt', 'Select an open receipt (ASN) first. Check in a booking in the Receiving Station to create one.');
+      return;
+    }
     if (!recvForm.variantId.trim() || !recvForm.locationId.trim() || !recvForm.quantity.trim()) {
       Alert.alert('Missing info', 'Variant, location, and quantity are required.');
       return;
     }
     try {
       await receive.mutateAsync({
-        receiptId: recvForm.receiptId.trim() || undefined,
+        receiptId: recvForm.receiptId.trim(),
         variantId: recvForm.variantId.trim(),
         locationId: recvForm.locationId.trim(),
         quantity: Number(recvForm.quantity) || 0,
@@ -210,22 +216,26 @@ export default function WmsOperationsScreen() {
       </View>
       {recvForm.step === 1 ? (
         <>
-          <Text style={styles.wizardTitle}>Step 1 · Choose receipt (optional)</Text>
-          <Text style={styles.wizardSub}>Scan or pick an ASN to auto-fill.</Text>
-          <Input label="Receipt ID (optional)" value={recvForm.receiptId} onChangeText={(v) => setRecvForm({ ...recvForm, receiptId: v })} placeholder="PO-1024" />
-          <Input label="Reference / Supplier" value={recvForm.reference} onChangeText={(v) => setRecvForm({ ...recvForm, reference: v })} placeholder="ASN or supplier code" />
-          {receiptList.length > 0 ? (
+          <Text style={styles.wizardTitle}>Step 1 · Choose a receipt</Text>
+          <Text style={styles.wizardSub}>Pick an open receipt (ASN). New receipts are created when you check in a booking in the Receiving Station.</Text>
+          {openReceipts.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hlist}>
-              {receiptList.slice(0, 10).map((r) => (
-                <TouchableOpacity key={r.id} onPress={() => setRecvForm({ ...recvForm, receiptId: r.id, reference: r.reference ?? '' })} style={styles.quickPick}>
-                  <Text style={styles.quickPickTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+              {openReceipts.slice(0, 15).map((r) => (
+                <TouchableOpacity
+                  key={r.id}
+                  onPress={() => setRecvForm({ ...recvForm, receiptId: r.id, reference: r.reference_code ?? '' })}
+                  style={[styles.quickPick, recvForm.receiptId === r.id && styles.quickPickActive]}
+                >
+                  <Text style={styles.quickPickTitle}>{r.reference_code || r.id.slice(0, 8)}</Text>
                   <Text style={styles.quickPickMeta}>{r.supplier ?? '—'}</Text>
                   <StatusBadge status={r.status} size="sm" />
                 </TouchableOpacity>
               ))}
             </ScrollView>
-          ) : null}
-          <Button label="Next" onPress={() => setRecvForm({ ...recvForm, step: 2 })} fullWidth />
+          ) : (
+            <EmptyState icon={PackageOpen} title="No open receipts" description="Check in a booking in the Receiving Station to create a receipt, then receive it here." />
+          )}
+          <Button label="Next" onPress={() => setRecvForm({ ...recvForm, step: 2 })} fullWidth disabled={!recvForm.receiptId.trim()} />
         </>
       ) : recvForm.step === 2 ? (
         <>
@@ -465,7 +475,7 @@ export default function WmsOperationsScreen() {
               <View key={r.id} style={styles.listRow}>
                 <PackageOpen size={14} color={C.green} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.listTitle}>{r.reference || r.id.slice(0, 8)}</Text>
+                  <Text style={styles.listTitle}>{r.reference_code || r.id.slice(0, 8)}</Text>
                   <Text style={styles.listMeta}>{r.supplier ?? '—'} · {new Date(r.created_at).toLocaleDateString()}</Text>
                 </View>
                 <StatusBadge status={r.status} size="sm" />
