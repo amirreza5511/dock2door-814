@@ -2833,6 +2833,73 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to put away pallet');
     return { palletId: data as string };
   },
+  'wms.autoPutaway': async (
+    input: { count: number; variantId?: string; palletType?: 'standard' | 'oversize'; unitsPerPallet?: number; receiptId?: string; lotCode?: string; reference?: string },
+    ctx,
+  ) => {
+    // Auto-distribute N identical pallets: one pallet per free slot. Real
+    // racking is one-pallet-per-slot, so we walk empty slots and place a pallet
+    // in each until the count is exhausted or we run out of room.
+    const palletType = input.palletType ?? 'standard';
+    const count = Math.max(Math.floor(input.count) || 0, 0);
+    if (count <= 0) throw new Error('Enter how many pallets to put away.');
+    if (!ctx.user.companyId && !isAdmin(ctx.user.role)) throw new Error('Company context required');
+
+    // Load locations for this warehouse and their current pallet occupancy.
+    const locQ = supabase.from('warehouse_locations').select('*').is('archived_at', null).order('zone').order('aisle');
+    const { data: locData, error: locErr } = isAdmin(ctx.user.role)
+      ? await locQ
+      : await locQ.eq('warehouse_company_id', ctx.user.companyId!);
+    if (locErr) throwErr(locErr, 'Unable to load locations');
+    const locs = locData ?? [];
+    const ids = locs.map((l) => l.id as string);
+    let occupancy: Record<string, number> = {};
+    if (ids.length > 0) {
+      const { data: pallets } = await supabase
+        .from('warehouse_pallets')
+        .select('location_id')
+        .eq('status', 'stored')
+        .in('location_id', ids);
+      occupancy = (pallets ?? []).reduce<Record<string, number>>((acc, p) => {
+        const key = p.location_id as string;
+        acc[key] = (acc[key] ?? 0) + 1;
+        return acc;
+      }, {});
+    }
+
+    // Compute a queue of empty slots (respecting capacity + oversize rules).
+    const slots: string[] = [];
+    for (const l of locs) {
+      const capacity = Math.max(Number(l.pallet_capacity ?? 1), 1);
+      const used = occupancy[l.id as string] ?? 0;
+      const free = Math.max(capacity - used, 0);
+      if (palletType === 'oversize' && !l.accepts_oversize) continue;
+      for (let i = 0; i < free; i++) slots.push(l.id as string);
+    }
+
+    const toPlace = Math.min(count, slots.length);
+    const placed: string[] = [];
+    for (let i = 0; i < toPlace; i++) {
+      const { data, error } = await supabase.rpc('wms_putaway_pallet', {
+        p_variant_id: input.variantId ?? null,
+        p_location_id: slots[i],
+        p_pallet_type: palletType,
+        p_units: input.unitsPerPallet ?? 1,
+        p_receipt_id: input.receiptId ?? null,
+        p_lot_code: input.lotCode ?? null,
+        p_expiry: null,
+        p_reference: input.reference ?? null,
+      });
+      if (error) {
+        // Surface a partial result rather than losing what already placed.
+        if (placed.length === 0) throwErr(error, 'Unable to auto put away pallets');
+        break;
+      }
+      placed.push(data as string);
+    }
+
+    return { placed: placed.length, requested: count, remaining: count - placed.length, freeSlots: slots.length };
+  },
   'wms.adjust': async (input: { variantId: string; locationId: string; delta: number; reason: string }) => {
     // wms_adjust(p_variant_id, p_location_id, p_lot_id, p_delta, p_reason)
     const { error } = await supabase.rpc('wms_adjust', {

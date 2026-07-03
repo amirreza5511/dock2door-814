@@ -56,6 +56,11 @@ export default function ReceivingStation() {
       await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate(), utils.wms.listLocations.invalidate()]);
     },
   });
+  const autoPutaway = trpc.wms.autoPutaway.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.wms.listReceipts.invalidate(), utils.wms.listStockLevels.invalidate(), utils.wms.listLocations.invalidate()]);
+    },
+  });
   const lookup = trpc.bookings.lookupByReference.useMutation();
   const confirmArrival = trpc.bookings.confirmArrival.useMutation({
     onSuccess: async () => { await utils.wms.listReceipts.invalidate(); },
@@ -64,6 +69,7 @@ export default function ReceivingStation() {
   const [variantId, setVariantId] = useState<string>('');
   const [locationId, setLocationId] = useState<string>('');
   const [qty, setQty] = useState<string>('');
+  const [bulkCount, setBulkCount] = useState<string>('');
   const [lot, setLot] = useState<string>('');
   const [palletType, setPalletType] = useState<PalletType>('standard');
   const [placed, setPlaced] = useState<PlacedPallet[]>([]);
@@ -214,6 +220,47 @@ export default function ReceivingStation() {
       </View>
     );
   }
+
+  const totalFreeSlots = useMemo(
+    () => availableLocations.reduce((sum, l) => sum + locFreeSlots(l), 0),
+    [availableLocations],
+  );
+
+  const autoSubmit = async () => {
+    const count = Math.max(Math.floor(Number(bulkCount)) || 0, 0);
+    if (count <= 0) { Alert.alert('How many pallets?', 'Enter the number of pallets to put away (e.g. 22).'); return; }
+    if (totalFreeSlots <= 0) { Alert.alert('No free slots', 'Add more racking locations below — every empty slot holds one pallet.'); return; }
+    try {
+      const res = await autoPutaway.mutateAsync({
+        count,
+        variantId: variantId.trim() || undefined,
+        palletType,
+        unitsPerPallet: Math.max(Number(qty) || 1, 1),
+        receiptId: receiptId.trim() || undefined,
+        lotCode: lot.trim() || undefined,
+        reference: reference.trim() || undefined,
+      });
+      // Mirror the placements into the session list so the operator sees them.
+      setPlaced((prev) => {
+        const base = prev.length;
+        const rows: PlacedPallet[] = Array.from({ length: res.placed }, (_, i) => ({
+          n: base + i + 1,
+          location: 'auto-assigned',
+          type: palletType,
+          sku: selectedVariant ? selectedVariant.sku : '—',
+        }));
+        return [...rows.reverse(), ...prev];
+      });
+      setBulkCount('');
+      if (res.remaining > 0) {
+        Alert.alert('Partly put away', `Placed ${res.placed} of ${res.requested} pallets — ran out of free slots. Add ${res.remaining} more slot${res.remaining > 1 ? 's' : ''} of racking to finish.`);
+      } else {
+        Alert.alert('Put away ✅', `All ${res.placed} pallets were auto-assigned to open slots and added to inventory.`);
+      }
+    } catch (err) {
+      Alert.alert('Auto putaway failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  };
 
   const submit = async () => {
     if (!locationId.trim()) {
@@ -375,9 +422,53 @@ export default function ReceivingStation() {
           </TouchableOpacity>
         ))}
 
+        <Text style={styles.sectionTitle}>Auto putaway — whole shipment</Text>
+        <View style={styles.card}>
+          <Text style={styles.helpText}>Same SKU on every pallet? Enter the count, pick the SKU, and tap once — each pallet is auto-assigned to its own open slot and added to inventory. One pallet per slot, no hand-typing.</Text>
+
+          <Text style={styles.fieldLabel}>Pallet type</Text>
+          <View style={styles.typeRow}>
+            {(['standard', 'oversize'] as const).map((t) => (
+              <TouchableOpacity
+                key={t}
+                style={[styles.typeChip, palletType === t && styles.typeChipActive]}
+                onPress={() => { setPalletType(t); setLocationId(''); }}
+                testID={`auto-pallet-type-${t}`}
+              >
+                <Text style={[styles.typeChipText, palletType === t && styles.typeChipTextActive]}>{t === 'standard' ? 'Standard pallet' : 'Over-standard'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.fieldLabel}>SKU (optional)</Text>
+          <TouchableOpacity style={styles.picker} onPress={() => setSkuPickerOpen(true)} testID="auto-pick-sku">
+            <Boxes size={16} color={selectedVariant ? C.accent : C.textMuted} />
+            <Text style={[styles.pickerText, !selectedVariant && styles.pickerPlaceholder]} numberOfLines={1}>
+              {selectedVariant ? varLabel(selectedVariant) : 'Select or add a SKU'}
+            </Text>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.twoCol}>
+            <View style={{ flex: 1 }}><Input label="Number of pallets" value={bulkCount} onChangeText={setBulkCount} keyboardType="numeric" placeholder="22" /></View>
+            <View style={{ flex: 1 }}><Input label="Units per pallet" value={qty} onChangeText={setQty} keyboardType="numeric" placeholder="48" /></View>
+          </View>
+          <View style={styles.slotHint}>
+            <MapPin size={13} color={C.textSecondary} />
+            <Text style={styles.slotHintText}>{totalFreeSlots} open slot{totalFreeSlots === 1 ? '' : 's'} available{palletType === 'oversize' ? ' (oversize-capable)' : ''}</Text>
+          </View>
+          <Button label={`Auto put away${bulkCount ? ` ${bulkCount} pallets` : ' all pallets'}`} onPress={() => void autoSubmit()} loading={autoPutaway.isPending} fullWidth icon={<Boxes size={15} color={C.white} />} />
+          {autoPutaway.error ? (
+            <View style={styles.errBox}>
+              <AlertTriangle size={13} color={C.red} />
+              <Text style={styles.errText}>{autoPutaway.error.message}</Text>
+            </View>
+          ) : null}
+        </View>
+
         <Text style={styles.sectionTitle}>Putaway — one pallet per slot</Text>
         <View style={styles.card}>
-          <Text style={styles.helpText}>Each shelf slot holds one standard pallet. Place pallets one at a time — the SKU and pallet type stay selected so you can put away a stack quickly. Over-standard pallets need an oversize-capable slot.</Text>
+          <Text style={styles.helpText}>Need to place a single pallet in a specific slot? Use this. Each shelf slot holds one standard pallet. Over-standard pallets need an oversize-capable slot.</Text>
 
           {reference ? (
             <View style={styles.linkedRef}>
@@ -632,6 +723,8 @@ const styles = StyleSheet.create({
   emptyHint: { fontSize: 12, color: C.textMuted, textAlign: 'center' as const, paddingVertical: 18 },
   addBox: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, gap: 8 },
   addTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  slotHint: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  slotHintText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
   inboundHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   jobRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12 },
   jobDot: { width: 8, height: 8, borderRadius: 4 },
