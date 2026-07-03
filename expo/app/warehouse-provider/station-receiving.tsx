@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, RefreshControl, Modal, Platform, KeyboardAvoidingView, TextInput } from 'react-native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +50,7 @@ export default function ReceivingStation() {
   const variants = trpc.inventory.listAllVariants.useQuery();
   const issuedGrns = trpc.grn.listIssued.useQuery();
   const createLoc = trpc.wms.createLocation.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
+  const generateLocs = trpc.wms.generateLocations.useMutation({ onSuccess: async () => { await utils.wms.listLocations.invalidate(); } });
   const createProduct = trpc.inventory.createProduct.useMutation();
   const upsertVariant = trpc.inventory.upsertVariant.useMutation({ onSuccess: async () => { await utils.inventory.listAllVariants.invalidate(); } });
   const putaway = trpc.wms.putawayPallet.useMutation({
@@ -138,9 +139,19 @@ export default function ReceivingStation() {
   // Inbound schedule: bookings for this warehouse that are accepted/active and
   // expected to arrive. Sorted by expected date so today's arrivals surface first.
   const { warehouseListings, warehouseBookings, companies } = bootstrap.data;
-  const myListingIds = useMemo(
-    () => warehouseListings.filter((l) => l.companyId === activeCompanyId).map((l) => l.id),
+  const myListings = useMemo(
+    () => warehouseListings.filter((l) => l.companyId === activeCompanyId),
     [warehouseListings, activeCompanyId],
+  );
+  const myListingIds = useMemo(() => myListings.map((l) => l.id), [myListings]);
+  // Total pallet positions the provider declared across their listings.
+  const declaredCapacity = useMemo(
+    () => myListings.reduce((sum, l) => sum + Math.max(Number(l.availablePalletCapacity ?? 0), 0), 0),
+    [myListings],
+  );
+  const primaryListing = useMemo(
+    () => myListings.slice().sort((a, b) => Number(b.availablePalletCapacity ?? 0) - Number(a.availablePalletCapacity ?? 0))[0] ?? null,
+    [myListings],
   );
   const today = new Date().toISOString().slice(0, 10);
   const inbound = useMemo(() => {
@@ -167,6 +178,18 @@ export default function ReceivingStation() {
     return map;
   }, [issuedGrns.data]);
   const foundGrn = found?.booking?.id ? grnByBooking.get(found.booking.id) ?? null : null;
+
+  // Auto-build the racking layout from declared capacity the first time an
+  // operator opens Receiving with zero locations. No manual shelf creation.
+  const autoGenTried = useRef<boolean>(false);
+  useEffect(() => {
+    if (autoGenTried.current) return;
+    if (locations.isLoading || bootstrap.isLoading) return;
+    if ((locations.data ?? []).length > 0) return;
+    if (!primaryListing || declaredCapacity <= 0) return;
+    autoGenTried.current = true;
+    generateLocs.mutate({ listingId: primaryListing.id, count: declaredCapacity });
+  }, [locations.isLoading, locations.data, bootstrap.isLoading, primaryListing, declaredCapacity, generateLocs]);
 
   const openJob = (ref: string) => { setRefInput(ref); void runLookup(ref); };
   const openGrn = (id: string) => router.push(`/fulfillment/grn/${id}` as never);

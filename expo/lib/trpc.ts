@@ -2801,6 +2801,17 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to create location');
     return { id: data!.id };
   },
+  // Auto-build a full racking layout from the listing's declared pallet capacity
+  // so operators never hand-create shelves. Idempotent: tops up missing slots.
+  'wms.generateLocations': async (input: { listingId: string; count?: number }, ctx) => {
+    if (!ctx.user.companyId && !isAdmin(ctx.user.role)) throw new Error('Company context required');
+    const { data, error } = await supabase.rpc('wms_generate_locations', {
+      p_listing_id: input.listingId,
+      p_count: input.count ?? null,
+    });
+    if (error) throwErr(error, 'Unable to generate locations');
+    return { created: Number(data ?? 0) };
+  },
   'wms.listStockLevels': async (input: { variantId?: string; locationId?: string } | undefined, ctx) => {
     let q = supabase.from('stock_levels').select('*, product_variants(sku,name), warehouse_locations(code,zone,aisle,bin)').order('updated_at', { ascending: false }).limit(500);
     if (input?.variantId) q = q.eq('variant_id', input.variantId);
