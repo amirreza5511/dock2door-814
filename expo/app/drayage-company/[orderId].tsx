@@ -18,6 +18,22 @@ import { getSignedUrl } from '@/lib/storage-files';
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 
+// react-native-maps does not render on web (needs a Google Maps loader/key), so we
+// only pull it in on native and show a graceful fallback on web.
+const isWeb = Platform.OS === 'web';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Maps = isWeb ? null : require('react-native-maps');
+const MapView = Maps?.default ?? null;
+const Marker = Maps?.Marker ?? null;
+const Polyline = Maps?.Polyline ?? null;
+const PROVIDER_DEFAULT = Maps?.PROVIDER_DEFAULT ?? undefined;
+
+type LatLng = { latitude: number; longitude: number };
+const validCoord = (lat?: number | null, lng?: number | null): LatLng | null =>
+  lat != null && lng != null && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)
+    ? { latitude: lat, longitude: lng }
+    : null;
+
 const MOVE_NEXT: Record<string, { label: string; status: string } | null> = {
   Pending: { label: 'Assign driver', status: 'Assigned' },
   Assigned: { label: 'Start trip', status: 'EnRoute' },
@@ -59,6 +75,7 @@ export default function DrayageOrderDetailScreen() {
   const [resTime, setResTime] = useState('');
   const [drivers, setDrivers] = useState<any[]>([]);
   const [terminals, setTerminals] = useState<any[]>([]);
+  const [allTracking, setAllTracking] = useState<any[]>([]);
 
   const order = detailsQuery.data?.order as any;
   const moves = (detailsQuery.data?.moves ?? []) as any[];
@@ -115,11 +132,68 @@ export default function DrayageOrderDetailScreen() {
     })();
   }, []);
 
+  // Fetch full tracking history so ops can see the truck's path on the map.
+  useEffect(() => {
+    if (!orderId) return;
+    void (async () => {
+      const { data } = await supabase
+        .from('container_tracking')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('recorded_at', { ascending: false })
+        .limit(20);
+      setAllTracking(data ?? []);
+    })();
+  }, [orderId, detailsQuery.data]);
+
   const terminalName = (id: string | null) => {
     if (!id) return '—';
     const t = terminals.find((t) => t.id === id);
     return t ? `${t.name} (${t.code})` : '—';
   };
+
+  const terminalCoord = (id: string | null): LatLng | null => {
+    if (!id) return null;
+    const t = terminals.find((t) => t.id === id);
+    return t ? validCoord(Number(t.geo_lat), Number(t.geo_lng)) : null;
+  };
+
+  const containerCoord = useMemo(
+    () => (latestTracking ? validCoord(Number(latestTracking.lat), Number(latestTracking.lng)) : null),
+    [latestTracking],
+  );
+  const originCoord = useMemo(
+    () => terminalCoord(order?.origin_terminal_id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order, terminals],
+  );
+  const destCoord = useMemo(
+    () => terminalCoord(order?.destination_terminal_id),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order, terminals],
+  );
+  const trackPath = useMemo(
+    () =>
+      allTracking
+        .map((t) => validCoord(Number(t.lat), Number(t.lng)))
+        .filter((c): c is LatLng => c != null)
+        .reverse(),
+    [allTracking],
+  );
+  const mapRegion = useMemo(() => {
+    const pts = [containerCoord, originCoord, destCoord].filter((c): c is LatLng => c != null);
+    if (pts.length === 0) return null;
+    const lats = pts.map((p) => p.latitude);
+    const lngs = pts.map((p) => p.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.05),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.05),
+    };
+  }, [containerCoord, originCoord, destCoord]);
 
   const handleSavePortReservation = async () => {
     if (!resDate.trim() || !resTime.trim()) {
@@ -346,8 +420,48 @@ export default function DrayageOrderDetailScreen() {
           );
         })}
 
-        {/* Live tracking */}
-        {latestTracking ? (
+        {/* Live map */}
+        {mapRegion ? (
+          <Card style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <MapPin size={16} color={C.green} />
+              <Text style={styles.sectionTitle}>Live Truck Location</Text>
+            </View>
+            <View style={styles.mapWrap}>
+              {isWeb || !MapView ? (
+                <View style={styles.mapFallback}>
+                  <Ship size={30} color={C.accent} />
+                  <Text style={styles.mapFallbackText}>Open on your phone to see the live map.</Text>
+                  {containerCoord ? (
+                    <Text style={styles.mapFallbackCoord}>{containerCoord.latitude.toFixed(4)}, {containerCoord.longitude.toFixed(4)}</Text>
+                  ) : null}
+                </View>
+              ) : (
+                <MapView style={StyleSheet.absoluteFill} provider={PROVIDER_DEFAULT} region={mapRegion}>
+                  {originCoord && Marker ? (
+                    <Marker coordinate={originCoord} title="Pickup" description={terminalName(order.origin_terminal_id)} pinColor={C.blue} />
+                  ) : null}
+                  {destCoord && Marker ? (
+                    <Marker coordinate={destCoord} title="Destination" description={order.delivery_address || terminalName(order.destination_terminal_id)} pinColor={C.green} />
+                  ) : null}
+                  {trackPath.length > 1 && Polyline ? (
+                    <Polyline coordinates={trackPath} strokeColor={C.accent} strokeWidth={3} />
+                  ) : null}
+                  {containerCoord && Marker ? (
+                    <Marker coordinate={containerCoord} title="Truck" description="Current location" pinColor={C.accent}>
+                      <View style={styles.truckMarker}><Truck size={16} color={C.white} /></View>
+                    </Marker>
+                  ) : null}
+                </MapView>
+              )}
+            </View>
+            {latestTracking ? (
+              <Text style={styles.trackingTime}>
+                {latestTracking.lat.toFixed(4)}, {latestTracking.lng.toFixed(4)} · updated {new Date(latestTracking.recorded_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+            ) : null}
+          </Card>
+        ) : latestTracking ? (
           <Card style={styles.sectionCard}>
             <View style={styles.sectionHeader}>
               <MapPin size={16} color={C.green} />
@@ -453,6 +567,11 @@ const styles = StyleSheet.create({
   proofMeta: { fontSize: 11, color: C.textSecondary, fontWeight: '600' as const },
   trackingCoord: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   trackingTime: { fontSize: 12, color: C.textMuted, marginTop: 2 },
+  mapWrap: { height: 220, borderRadius: 12, overflow: 'hidden' as const, backgroundColor: C.bgSecondary },
+  mapFallback: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, padding: 20 },
+  mapFallbackText: { fontSize: 13, color: C.textSecondary, textAlign: 'center' as const },
+  mapFallbackCoord: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  truckMarker: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 2, borderColor: C.white },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },
