@@ -235,6 +235,9 @@ export default function Landing() {
               { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green },
               { role: 'Owner-Operator', desc: 'Own one truck, deliver loads', icon: Truck, color: C.green },
               { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green },
+              { role: 'Freight Forwarder', desc: 'Post import/export containers', icon: Anchor, color: C.blue },
+              { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue },
+              { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue },
               { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
             ].map((r) => (
               <View key={r.role} style={styles.roleCard}>
