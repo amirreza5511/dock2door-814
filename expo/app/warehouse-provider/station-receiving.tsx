@@ -96,7 +96,7 @@ export default function ReceivingStation() {
       const res = await confirmArrival.mutateAsync({ reference: ref });
       setReceiptId(res.receiptId);
       setReference(found?.booking?.reference_number ?? ref);
-      Alert.alert('Cargo received ✅', 'The shipment is checked in. Now enter the SKU, location and quantity below to putaway into the WMS.');
+      Alert.alert('Cargo received ✅', 'The shipment is checked in. Next: tap “Inspect & issue GRN” to inspect and accept it — that automatically adds the goods to the customer’s inventory.');
       // refresh the lookup so the receipt/status shows as arrived
       try { const again = await lookup.mutateAsync({ reference: ref }); setFound(again as LookupResult); } catch { /* noop */ }
     } catch (err) {
@@ -287,8 +287,9 @@ export default function ReceivingStation() {
           </TouchableOpacity>
         ))}
 
-        <Text style={styles.sectionTitle}>Receive line</Text>
+        <Text style={styles.sectionTitle}>Advanced: bin-level putaway (optional)</Text>
         <View style={styles.card}>
+          <Text style={styles.helpText}>Issuing the GRN already adds the received goods to the customer’s inventory. Use this only if you also track exact SKU + bin locations in the WMS.</Text>
           <Input label="Receipt / ASN id" value={receiptId} onChangeText={setReceiptId} placeholder="optional" />
           <Input label="Variant / SKU id" value={variantId} onChangeText={setVariantId} placeholder="variant_…" />
           <Input label="Location id" value={locationId} onChangeText={setLocationId} placeholder="location_…" />

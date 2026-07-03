@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import * as Print from 'expo-print';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Printer, Package, ClipboardCheck, CheckCircle2, AlertTriangle, XCircle, Building2 } from 'lucide-react-native';
+import { ArrowLeft, Printer, Package, ClipboardCheck, CheckCircle2, AlertTriangle, XCircle, Building2, Boxes, ArrowRight } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -305,7 +305,33 @@ export default function GoodsReceivedNoteScreen() {
         ) : null}
 
         {grn ? (
-          <Button label="Print / Save PDF" onPress={() => void doPrint()} fullWidth size="lg" icon={<Printer size={16} color={C.white} />} />
+          <>
+            {effStatus !== 'rejected' ? (
+              <View style={styles.nextCard}>
+                <View style={styles.nextHead}>
+                  <View style={[styles.iconBubble, { width: 30, height: 30, borderRadius: 9, backgroundColor: C.green + '20' }]}>
+                    <Boxes size={16} color={C.green} />
+                  </View>
+                  <Text style={styles.nextTitle}>On hand & ready to ship</Text>
+                </View>
+                <Text style={styles.nextBody}>
+                  {`${grn.pieces_received ?? grn.pallets_received} ${grn.pieces_received != null ? 'pieces' : 'pallets'} were added to this booking's inventory. Create an outbound order to pick, pack and ship them.`}
+                </Text>
+                <Button
+                  label="Go to Fulfillment"
+                  onPress={() => router.push(`/fulfillment/${booking.id}` as never)}
+                  fullWidth
+                  variant="outline"
+                  icon={<ArrowRight size={15} color={C.accent} />}
+                />
+              </View>
+            ) : (
+              <View style={styles.nextCard}>
+                <Text style={styles.nextBody}>This shipment was rejected — nothing was added to inventory. Coordinate the return with the customer.</Text>
+              </View>
+            )}
+            <Button label="Print / Save PDF" onPress={() => void doPrint()} fullWidth size="lg" icon={<Printer size={16} color={C.white} />} />
+          </>
         ) : null}
       </ScrollView>
     </View>
@@ -352,4 +378,8 @@ const styles = StyleSheet.create({
   twoCol: { flexDirection: 'row', gap: 10 },
   hint: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   waitText: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  nextCard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.green + '44', padding: 14, gap: 10 },
+  nextHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  nextTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  nextBody: { fontSize: 12, color: C.textSecondary, lineHeight: 18 },
 });
