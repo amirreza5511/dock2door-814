@@ -8,6 +8,7 @@ export default function DrayageCompanyLayout() {
       <Stack.Screen name="board" />
       <Stack.Screen name="dispatch" />
       <Stack.Screen name="terminals" />
+      <Stack.Screen name="fleet" />
       <Stack.Screen name="[orderId]" />
     </Stack>
   );

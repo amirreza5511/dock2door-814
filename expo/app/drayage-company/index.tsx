@@ -103,7 +103,7 @@ export default function DrayageCompanyDashboard() {
             <Text style={styles.actionTitle}>Terminals</Text>
             <Text style={styles.actionText}>BC ports, CN & CP rail terminals</Text>
           </Card>
-          <Card onPress={() => router.push('/trucking-company/fleet' as never)} style={styles.actionCard}>
+          <Card onPress={() => router.push('/drayage-company/fleet' as never)} style={styles.actionCard}>
             <Users size={20} color={C.yellow} />
             <Text style={styles.actionTitle}>Fleet</Text>
             <Text style={styles.actionText}>Manage drivers & trucks</Text>
