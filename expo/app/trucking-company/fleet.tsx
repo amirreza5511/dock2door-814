@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Package, Plus, Truck, UserRound, Container } from 'lucide-react-native';
+import { ChevronLeft, Package, Plus, Truck, UserRound, Container } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -35,6 +36,9 @@ interface FleetFormState {
   trailerNumber: string;
   containerNumber: string;
   containerType: string;
+  trailerType: string;
+  truckNumber: string;
+  chassisNumber: string;
   licenseNumber: string;
   phone: string;
   email: string;
@@ -50,12 +54,19 @@ const INITIAL_FORM: FleetFormState = {
   trailerNumber: '',
   containerNumber: '',
   containerType: '',
+  trailerType: '',
+  truckNumber: '',
+  chassisNumber: '',
   licenseNumber: '',
   phone: '',
   email: '',
   status: 'Active',
   notes: '',
 };
+
+const TRAILER_TYPE_OPTIONS: string[] = ['20ft', '40ft', '53ft', 'Chassis 20/40 Combo', 'Tri-axle'];
+const CONTAINER_TYPE_OPTIONS: string[] = ['20GP', '40GP', '40HC', '45HC', 'Reefer'];
+const CHASSIS_TYPE_OPTIONS: string[] = ['20ft', '40ft', '20/40 Combo', 'Tri-axle', 'Slider'];
 
 function readText(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
@@ -112,6 +123,9 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     trailerNumber: readText(item.trailer_number),
     containerNumber: readText(item.container_number),
     containerType: readText(item.container_type),
+    trailerType: readText(data.trailerType, readText(item.container_type)),
+    truckNumber: readText(data.truckNumber),
+    chassisNumber: readText(data.chassisNumber),
     licenseNumber: readText(item.license_number),
     phone: readText(item.phone),
     email: readText(data.email),
@@ -120,8 +134,27 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
   };
 }
 
+function ChipSelect({ label, options, value, onChange, testID }: { label: string; options: string[]; value: string; onChange: (v: string) => void; testID?: string }) {
+  return (
+    <View>
+      <Text style={styles.chipLabel}>{label}</Text>
+      <View style={styles.chipRow}>
+        {options.map((opt) => {
+          const selected = value === opt;
+          return (
+            <TouchableOpacity key={opt} activeOpacity={0.8} onPress={() => onChange(selected ? '' : opt)} style={[styles.chip, selected && styles.chipActive]} testID={testID ? `${testID}-${opt}` : undefined}>
+              <Text style={[styles.chipText, selected && styles.chipTextActive]}>{opt}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 export default function TruckingFleetScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const utils = trpc.useUtils();
   const [entity, setEntity] = useState<FleetEntity>('drivers');
   const [search, setSearch] = useState<string>('');
@@ -177,6 +210,9 @@ export default function TruckingFleetScreen() {
             trailerNumber: form.trailerNumber,
             containerNumber: form.containerNumber,
             containerType: form.containerType || null,
+            trailerType: form.trailerType || null,
+            truckNumber: form.truckNumber || null,
+            chassisNumber: form.chassisNumber || null,
             licenseNumber: form.licenseNumber || null,
             phone: form.phone || null,
             email: form.email || null,
@@ -194,6 +230,9 @@ export default function TruckingFleetScreen() {
             trailerNumber: form.trailerNumber,
             containerNumber: form.containerNumber,
             containerType: form.containerType || null,
+            trailerType: form.trailerType || null,
+            truckNumber: form.truckNumber || null,
+            chassisNumber: form.chassisNumber || null,
             licenseNumber: form.licenseNumber || null,
             phone: form.phone || null,
             email: form.email || null,
@@ -231,9 +270,16 @@ export default function TruckingFleetScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}> 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Fleet Control</Text>
-        <Text style={styles.subtitle}>Backend-wired CRUD for drivers, trucks, trailers, and containers.</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+        <TouchableOpacity onPress={() => (router.canGoBack() ? router.back() : router.replace('/' as never))} style={styles.backBtn} testID="fleet-back">
+          <ChevronLeft size={22} color={C.text} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Fleet</Text>
+          <Text style={styles.subtitle}>Drivers, trucks, trailers & containers</Text>
+        </View>
+      </View>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: 12, paddingBottom: insets.bottom + 100 }]} showsVerticalScrollIndicator={false}>
 
         <View style={styles.segmentRow}>
           {([
@@ -263,6 +309,8 @@ export default function TruckingFleetScreen() {
                 <Input label="License number" value={form.licenseNumber} onChangeText={(value) => setForm((current) => ({ ...current, licenseNumber: value }))} placeholder="DL-7781" testID="fleet-driver-license" />
                 <Input label="Phone" value={form.phone} onChangeText={(value) => setForm((current) => ({ ...current, phone: value }))} placeholder="604-555-0101" keyboardType="phone-pad" testID="fleet-driver-phone" />
                 <Input label="Email" value={form.email} onChangeText={(value) => setForm((current) => ({ ...current, email: value }))} placeholder="driver@dock2door.com" autoCapitalize="none" keyboardType="email-address" testID="fleet-driver-email" />
+                <Input label="Truck number" value={form.truckNumber} onChangeText={(value) => setForm((current) => ({ ...current, truckNumber: value }))} placeholder="TRK-102" testID="fleet-driver-truck" />
+                <Input label="Chassis number" value={form.chassisNumber} onChangeText={(value) => setForm((current) => ({ ...current, chassisNumber: value }))} placeholder="CH-2201" testID="fleet-driver-chassis" />
               </>
             ) : null}
             {entity === 'trucks' ? (
@@ -275,13 +323,15 @@ export default function TruckingFleetScreen() {
               <>
                 <Input label="Trailer number" value={form.trailerNumber} onChangeText={(value) => setForm((current) => ({ ...current, trailerNumber: value }))} placeholder="TRL-88" testID="fleet-trailer-number" />
                 <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="e.g. XYZ 5678" testID="fleet-trailer-plate" />
+                <ChipSelect label="Trailer type" options={TRAILER_TYPE_OPTIONS} value={form.trailerType} onChange={(v) => setForm((current) => ({ ...current, trailerType: v }))} testID="fleet-trailer-type" />
               </>
             ) : null}
             {entity === 'containers' ? (
               <>
                 <Input label="Container number" value={form.containerNumber} onChangeText={(value) => setForm((current) => ({ ...current, containerNumber: value }))} placeholder="MSKU1234567" testID="fleet-container-number" />
-                <Input label="Container type" value={form.containerType} onChangeText={(value) => setForm((current) => ({ ...current, containerType: value }))} placeholder="40HC" testID="fleet-container-type" />
-                <Input label="Plate / chassis note" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="CH-2201" testID="fleet-container-plate" />
+                <ChipSelect label="Container type" options={CONTAINER_TYPE_OPTIONS} value={form.containerType} onChange={(v) => setForm((current) => ({ ...current, containerType: v }))} testID="fleet-container-type" />
+                <ChipSelect label="Chassis type" options={CHASSIS_TYPE_OPTIONS} value={form.trailerType} onChange={(v) => setForm((current) => ({ ...current, trailerType: v }))} testID="fleet-container-chassis-type" />
+                <Input label="Chassis number" value={form.plateNumber} onChangeText={(value) => setForm((current) => ({ ...current, plateNumber: value }))} placeholder="CH-2201" testID="fleet-container-plate" />
               </>
             ) : null}
             <Input label="Status" value={form.status} onChangeText={(value) => setForm((current) => ({ ...current, status: value }))} placeholder="Active" testID="fleet-status" />
@@ -323,9 +373,17 @@ export default function TruckingFleetScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   centered: { justifyContent: 'center', padding: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  backBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
   scroll: { paddingHorizontal: 20, gap: 16 },
-  title: { fontSize: 24, fontWeight: '800' as const, color: C.text },
-  subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 4 },
+  title: { fontSize: 22, fontWeight: '800' as const, color: C.text },
+  subtitle: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
+  chipLabel: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, marginBottom: 8 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  chipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  chipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  chipTextActive: { color: C.accent, fontWeight: '700' as const },
   segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   segment: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
   segmentActive: { backgroundColor: C.accentDim, borderColor: C.accent },

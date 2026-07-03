@@ -958,12 +958,19 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         license_number: p.licenseNumber ?? '',
         phone: p.phone ?? '',
         // data JSONB stores email + linked auth userId so dispatcher can set driver_user_id on appointments.
-        data: { name: p.name ?? '', email: p.email ?? '', ...(linkedUserId ? { userId: linkedUserId } : {}) },
+        data: {
+          name: p.name ?? '',
+          email: p.email ?? '',
+          truckNumber: p.truckNumber ?? '',
+          chassisNumber: p.chassisNumber ?? '',
+          notes: p.notes ?? '',
+          ...(linkedUserId ? { userId: linkedUserId } : {}),
+        },
       };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '', make: p.make ?? '', model: p.model ?? '' };
     } else if (input.entity === 'trailers') {
-      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '' };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
@@ -988,12 +995,19 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         name: p.name ?? '',
         license_number: p.licenseNumber ?? '',
         phone: p.phone ?? '',
-        data: { name: p.name ?? '', email: p.email ?? '', ...(linkedUserId ? { userId: linkedUserId } : {}) },
+        data: {
+          name: p.name ?? '',
+          email: p.email ?? '',
+          truckNumber: p.truckNumber ?? '',
+          chassisNumber: p.chassisNumber ?? '',
+          notes: p.notes ?? '',
+          ...(linkedUserId ? { userId: linkedUserId } : {}),
+        },
       };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '' };
     } else if (input.entity === 'trailers') {
-      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '' };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
