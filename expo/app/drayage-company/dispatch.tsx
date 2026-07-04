@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, Package, Ship, Truck, User, X, Zap } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Navigation, Package, Radio, Ship, Truck, User, X, Zap } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -16,12 +16,55 @@ import { trpc } from '@/lib/trpc';
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 const ACTIVE_STATUSES = ['Assigned', 'Dispatched', 'EnRoute', 'PickedUp', 'InTransit', 'AtOrigin', 'Loaded', 'AtDestination', 'Unloaded'];
 
+// react-native-maps doesn't render on web, so only require it on native.
+const isWeb = Platform.OS === 'web';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const Maps = isWeb ? null : require('react-native-maps');
+const MapView = Maps?.default ?? null;
+const Marker = Maps?.Marker ?? null;
+const PROVIDER_DEFAULT = Maps?.PROVIDER_DEFAULT ?? undefined;
+
+type LatLng = { latitude: number; longitude: number };
+const validCoord = (lat?: number | null, lng?: number | null): LatLng | null =>
+  lat != null && lng != null && (Math.abs(lat) > 0.0001 || Math.abs(lng) > 0.0001)
+    ? { latitude: lat, longitude: lng }
+    : null;
+
+const timeAgo = (iso?: string | null): string => {
+  if (!iso) return 'no GPS yet';
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  return `${Math.floor(secs / 3600)}h ago`;
+};
+
 export default function DrayageDispatchScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
 
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 20000 });
+  const fleetQuery = trpc.drayage.fleetLive.useQuery(undefined, { refetchInterval: 8000 });
+
+  const trucks = useMemo(() => (fleetQuery.data?.trucks ?? []) as any[], [fleetQuery.data]);
+  const locatedTrucks = useMemo(
+    () => trucks.filter((t) => validCoord(t.lat, t.lng) != null),
+    [trucks],
+  );
+  const fleetRegion = useMemo(() => {
+    const pts = locatedTrucks.map((t) => validCoord(t.lat, t.lng)).filter((c): c is LatLng => c != null);
+    if (pts.length === 0) return null;
+    const lats = pts.map((p) => p.latitude);
+    const lngs = pts.map((p) => p.longitude);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.08),
+      longitudeDelta: Math.max((maxLng - minLng) * 1.6, 0.08),
+    };
+  }, [locatedTrucks]);
 
   const [portModal, setPortModal] = useState<any | null>(null);
   const [dispatchModal, setDispatchModal] = useState<any | null>(null);
@@ -111,6 +154,68 @@ export default function DrayageDispatchScreen() {
           />
         ) : (
           <>
+            {/* Live fleet map */}
+            <View style={styles.sectionRow}>
+              <Radio size={16} color={C.green} />
+              <Text style={styles.sectionTitle}>Live fleet</Text>
+              <View style={styles.countPill}><Text style={styles.countPillText}>{trucks.length}</Text></View>
+            </View>
+            {trucks.length === 0 ? (
+              <Text style={styles.emptyLine}>No trucks on the road right now. Dispatch a driver to see them here.</Text>
+            ) : (
+              <Card style={styles.fleetCard}>
+                <View style={styles.mapWrap}>
+                  {isWeb || !MapView || !fleetRegion ? (
+                    <View style={styles.mapFallback}>
+                      <MapPin size={28} color={C.accent} />
+                      <Text style={styles.mapFallbackText}>
+                        {fleetRegion ? 'Open on your phone for the live map.' : 'Waiting for drivers to share GPS…'}
+                      </Text>
+                    </View>
+                  ) : (
+                    <MapView style={StyleSheet.absoluteFill} provider={PROVIDER_DEFAULT} region={fleetRegion}>
+                      {locatedTrucks.map((t) => {
+                        const coord = validCoord(t.lat, t.lng);
+                        if (!coord) return null;
+                        return (
+                          <Marker key={t.moveId} coordinate={coord} title={t.driverName} description={`${t.referenceCode ?? ''} · ${t.status}`}>
+                            <View style={styles.truckMarker}><Truck size={15} color={C.white} /></View>
+                          </Marker>
+                        );
+                      })}
+                    </MapView>
+                  )}
+                </View>
+                {trucks.map((t) => {
+                  const coord = validCoord(t.lat, t.lng);
+                  return (
+                    <TouchableOpacity
+                      key={t.moveId}
+                      style={styles.truckRow}
+                      onPress={() => router.push({ pathname: '/drayage-company/[orderId]', params: { orderId: t.orderId } } as never)}
+                    >
+                      <View style={[styles.truckDot, { backgroundColor: coord ? C.green : C.textMuted }]}>
+                        <Truck size={14} color={C.white} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.truckName}>{t.driverName}{t.truck ? ` · ${t.truck}` : ''}</Text>
+                        <Text style={styles.truckMeta}>{t.referenceCode ?? '—'} · {t.containerSize ?? ''}</Text>
+                      </View>
+                      <View style={styles.truckRight}>
+                        <StatusBadge status={t.status} />
+                        <View style={styles.gpsMeta}>
+                          {coord ? <Navigation size={10} color={C.green} /> : <MapPin size={10} color={C.textMuted} />}
+                          <Text style={[styles.gpsMetaText, { color: coord ? C.green : C.textMuted }]}>
+                            {coord ? `${Math.round(t.speedKph)} km/h · ${timeAgo(t.recordedAt)}` : 'no GPS yet'}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </Card>
+            )}
+
             {/* Needs port reservation */}
             <View style={styles.sectionRow}>
               <CalendarClock size={16} color={C.yellow} />
@@ -259,4 +364,16 @@ const styles = StyleSheet.create({
   driverAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent + '20', alignItems: 'center', justifyContent: 'center' },
   driverName: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  fleetCard: { gap: 0, padding: 0, overflow: 'hidden' as const },
+  mapWrap: { height: 220, backgroundColor: C.bgSecondary },
+  mapFallback: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, padding: 20 },
+  mapFallbackText: { fontSize: 13, color: C.textSecondary, textAlign: 'center' as const },
+  truckMarker: { width: 30, height: 30, borderRadius: 15, backgroundColor: C.accent, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 2, borderColor: C.white },
+  truckRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderTopWidth: 1, borderTopColor: C.border },
+  truckDot: { width: 34, height: 34, borderRadius: 17, alignItems: 'center' as const, justifyContent: 'center' as const },
+  truckName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  truckMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  truckRight: { alignItems: 'flex-end' as const, gap: 4 },
+  gpsMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  gpsMetaText: { fontSize: 11, fontWeight: '600' as const },
 });

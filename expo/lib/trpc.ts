@@ -1770,6 +1770,82 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
   },
 
+  // Live fleet view for dispatch: every active driver + their most recent GPS ping,
+  // so a drayage company can see where all their trucks are right now (app & web).
+  'drayage.fleetLive': async (_input, ctx) => {
+    if (!ctx.user.companyId) return { trucks: [] as any[] };
+    const movesRes = await supabase
+      .from('drayage_moves')
+      .select('id, order_id, status, driver_user_id, move_type, drayage_orders!inner(id, reference_code, container_number, container_size, direction, drayage_company_id)')
+      .eq('drayage_orders.drayage_company_id', ctx.user.companyId)
+      .in('status', ['Assigned', 'EnRoute', 'AtOrigin', 'Loaded', 'InTransit', 'AtDestination', 'Unloaded'])
+      .not('driver_user_id', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(100);
+    if (isMissingRelation(movesRes.error)) return { trucks: [] as any[] };
+    if (movesRes.error) throwErr(movesRes.error, 'Unable to load live fleet');
+    const moves = (movesRes.data ?? []) as any[];
+    if (moves.length === 0) return { trucks: [] as any[] };
+
+    const orderIds = Array.from(new Set(moves.map((m) => m.order_id)));
+    const driverIds = Array.from(new Set(moves.map((m) => m.driver_user_id).filter(Boolean)));
+
+    const [trackRes, driversRes] = await Promise.all([
+      supabase
+        .from('container_tracking')
+        .select('order_id, move_id, driver_user_id, lat, lng, heading, speed_kph, recorded_at')
+        .in('order_id', orderIds)
+        .order('recorded_at', { ascending: false })
+        .limit(500),
+      supabase
+        .from('drivers')
+        .select('*')
+        .eq('company_id', ctx.user.companyId),
+    ]);
+    const tracks = (trackRes.data ?? []) as any[];
+    const fleetDrivers = (driversRes.data ?? []) as any[];
+
+    // Latest ping per move (fallback: latest per order).
+    const latestByMove = new Map<string, any>();
+    const latestByOrder = new Map<string, any>();
+    for (const t of tracks) {
+      if (t.move_id && !latestByMove.has(t.move_id)) latestByMove.set(t.move_id, t);
+      if (!latestByOrder.has(t.order_id)) latestByOrder.set(t.order_id, t);
+    }
+
+    const driverName = (userId: string): { name: string; truck: string | null } => {
+      const d = fleetDrivers.find((x) => (x.driver_user_id ?? x.data?.userId) === userId);
+      return {
+        name: d?.name ?? d?.data?.name ?? 'Driver',
+        truck: d?.data?.truck_plate ?? d?.data?.truck_number ?? null,
+      };
+    };
+
+    const trucks = moves.map((m) => {
+      const ping = latestByMove.get(m.id) ?? latestByOrder.get(m.order_id) ?? null;
+      const info = driverName(m.driver_user_id);
+      return {
+        moveId: m.id,
+        orderId: m.order_id,
+        status: m.status,
+        moveType: m.move_type,
+        driverUserId: m.driver_user_id,
+        driverName: info.name,
+        truck: info.truck,
+        referenceCode: m.drayage_orders?.reference_code ?? null,
+        containerNumber: m.drayage_orders?.container_number ?? null,
+        containerSize: m.drayage_orders?.container_size ?? null,
+        direction: m.drayage_orders?.direction ?? null,
+        lat: ping ? Number(ping.lat) : null,
+        lng: ping ? Number(ping.lng) : null,
+        heading: ping ? Number(ping.heading) : 0,
+        speedKph: ping ? Number(ping.speed_kph) : 0,
+        recordedAt: ping?.recorded_at ?? null,
+      };
+    });
+    return { trucks };
+  },
+
   'drayage.customerOrders': async (_input, ctx) => {
     let q = supabase.from('drayage_orders').select('*').order('created_at', { ascending: false }).limit(100);
     if (ctx.user.companyId) {
