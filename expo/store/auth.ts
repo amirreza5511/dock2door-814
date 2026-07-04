@@ -28,6 +28,8 @@ interface RegisterInput {
   role: UserRole;
   companyName?: string;
   city?: string;
+  /** Optional fleet join code — links a self-registering driver to a company fleet. */
+  fleetCode?: string;
 }
 
 interface AuthState {
@@ -476,6 +478,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             role: data.role,
             company_name: data.companyName ?? '',
             city: data.city ?? '',
+            fleet_code: data.fleetCode ? data.fleetCode.trim().toUpperCase() : '',
           },
         },
       });

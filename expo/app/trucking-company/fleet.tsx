@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronLeft, Package, Plus, Truck, UserRound, Container } from 'lucide-react-native';
+import { ChevronLeft, Package, Plus, Truck, UserRound, Container, Copy, Check } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Button from '@/components/ui/Button';
@@ -165,6 +166,21 @@ export default function TruckingFleetScreen() {
   const [entity, setEntity] = useState<FleetEntity>('drivers');
   const [search, setSearch] = useState<string>('');
   const [form, setForm] = useState<FleetFormState>(INITIAL_FORM);
+  const [codeCopied, setCodeCopied] = useState<boolean>(false);
+
+  const fleetCodeQuery = trpc.operations.myFleetCode.useQuery();
+  const fleetCode = fleetCodeQuery.data?.fleetCode ?? null;
+
+  const copyCode = useCallback(async () => {
+    if (!fleetCode) return;
+    try {
+      await Clipboard.setStringAsync(fleetCode);
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 1800);
+    } catch {
+      // no-op
+    }
+  }, [fleetCode]);
 
   const driversQuery = trpc.operations.listFleet.useQuery({ entity: 'drivers', search });
   const trucksQuery = trpc.operations.listFleet.useQuery({ entity: 'trucks', search });
@@ -300,6 +316,20 @@ export default function TruckingFleetScreen() {
           ))}
         </View>
 
+        {entity === 'drivers' && fleetCode ? (
+          <Card elevated style={styles.codeCard}>
+            <Text style={styles.codeLabel}>YOUR FLEET CODE</Text>
+            <View style={styles.codeRow}>
+              <Text style={styles.codeValue} testID="fleet-code-value">{fleetCode}</Text>
+              <TouchableOpacity onPress={() => void copyCode()} style={styles.copyBtn} activeOpacity={0.8} testID="fleet-code-copy">
+                {codeCopied ? <Check size={16} color={C.green} /> : <Copy size={16} color={C.accent} />}
+                <Text style={[styles.copyText, codeCopied && { color: C.green }]}>{codeCopied ? 'Copied' : 'Copy'}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.codeHint}>Share this code with your drivers. When they sign up as a Driver and enter it, they join your fleet automatically and appear in this list.</Text>
+          </Card>
+        ) : null}
+
         <Card elevated>
           <View style={styles.cardHeader}>
             <View style={styles.iconWrap}><Icon size={18} color={C.accent} /></View>
@@ -406,4 +436,11 @@ const styles = StyleSheet.create({
   itemTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   itemTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   itemMeta: { fontSize: 12, color: C.textSecondary, marginTop: 3 },
+  codeCard: { gap: 8, borderColor: C.accent + '55', backgroundColor: C.accentDim },
+  codeLabel: { fontSize: 11, fontWeight: '800' as const, color: C.accent, letterSpacing: 1.2 },
+  codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  codeValue: { fontSize: 30, fontWeight: '900' as const, color: C.text, letterSpacing: 4 },
+  copyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  copyText: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  codeHint: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
 });

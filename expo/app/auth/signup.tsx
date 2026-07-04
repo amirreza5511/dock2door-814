@@ -50,6 +50,7 @@ export default function Signup() {
   const [password, setPassword] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
+  const [fleetCode, setFleetCode] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -65,7 +66,7 @@ export default function Signup() {
 
     setLoading(true);
     try {
-      const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim() });
+      const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim() });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
       } else if (result.needsEmailConfirmation) {
@@ -146,6 +147,21 @@ export default function Signup() {
               <Input label="Company Name" value={companyName} onChangeText={setCompanyName} placeholder="Dock2Door Logistics Ltd." testID="input-company-name" />
               <Input label="City" value={city} onChangeText={setCity} placeholder="e.g. Chicago" testID="input-city" />
             </>
+          ) : null}
+          {selectedRole === 'Driver' ? (
+            <View style={styles.fleetCodeBox}>
+              <Input
+                label="Fleet code (optional)"
+                value={fleetCode}
+                onChangeText={(v) => setFleetCode(v.toUpperCase())}
+                placeholder="e.g. AB7K2P"
+                autoCapitalize="characters"
+                testID="input-fleet-code"
+              />
+              <Text style={styles.fleetCodeHint}>
+                Joining a fleet or carrier company? Enter the code your dispatcher gave you and you’ll show up in their fleet automatically. Leave blank if you’re an independent owner-operator.
+              </Text>
+            </View>
           ) : null}
 
           <View>
@@ -229,6 +245,8 @@ const styles = StyleSheet.create({
   roleTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 2 },
   roleTitleSelected: { color: C.accent },
   roleDesc: { fontSize: 12, color: C.textSecondary },
+  fleetCodeBox: { gap: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14 },
+  fleetCodeHint: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   error: { fontSize: 13, color: C.red, textAlign: 'center' },
   confirmWrap: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
   confirmIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },

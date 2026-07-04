@@ -929,6 +929,22 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
   },
 
+  'operations.myFleetCode': async (_input, ctx) => {
+    if (!ctx.user.companyId) return { fleetCode: null as string | null };
+    let { data } = await supabase.from('companies').select('fleet_code, type').eq('id', ctx.user.companyId).maybeSingle();
+    let code = (data?.fleet_code as string | null) ?? null;
+    // Self-heal: if this fleet company has no code yet, mint one now.
+    if (!code && (data?.type === 'TruckingCompany' || data?.type === 'DrayageCompany')) {
+      const { data: gen } = await supabase.rpc('gen_fleet_code');
+      const newCode = typeof gen === 'string' ? gen : null;
+      if (newCode) {
+        await supabase.from('companies').update({ fleet_code: newCode }).eq('id', ctx.user.companyId);
+        code = newCode;
+      }
+    }
+    return { fleetCode: code };
+  },
+
   'operations.listFleet': async (input: { entity: 'drivers' | 'trucks' | 'trailers' | 'containers'; search?: string }, ctx) => {
     if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
     let q = supabase.from(input.entity).select('*').is('archived_at', null).order('updated_at', { ascending: false });
