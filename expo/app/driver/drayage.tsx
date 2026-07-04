@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, CalendarClock, Camera, ChevronRight, Clock, HelpCircle, ImageIcon, LogOut, MapPin, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation } from 'lucide-react-native';
+import { Anchor, CalendarClock, Camera, ChevronRight, Clock, HelpCircle, ImageIcon, LogOut, MapPin, MessageCircle, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -57,6 +57,14 @@ export default function DriverDrayageWorkOrders() {
     },
   });
   const pingMutation = trpc.drayage.pingLocation.useMutation();
+  const openThreadMutation = trpc.drayage.openThread.useMutation();
+
+  const messageDispatch = React.useCallback((order: WorkOrder) => {
+    void openThreadMutation
+      .mutateAsync({ orderId: order.order_id })
+      .then((res) => router.push(`/messages/${res.threadId}` as never))
+      .catch((e) => Alert.alert('Unable to open chat', e instanceof Error ? e.message : 'Unknown'));
+  }, [openThreadMutation, router]);
   const [sharingLocation, setSharingLocation] = useState(false);
   const [terminals, setTerminals] = useState<any[]>([]);
   const watchRef = React.useRef<Location.LocationSubscription | null>(null);
@@ -272,6 +280,15 @@ export default function DriverDrayageWorkOrders() {
             <ChevronRight size={16} color={C.white} />
           </TouchableOpacity>
         ) : null}
+
+        <TouchableOpacity
+          onPress={() => messageDispatch(order)}
+          disabled={openThreadMutation.isPending}
+          style={[styles.msgBtn, openThreadMutation.isPending && { opacity: 0.6 }]}
+        >
+          <MessageCircle size={15} color={C.accent} />
+          <Text style={styles.msgBtnText}>Message dispatch</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -446,6 +463,8 @@ const styles = StyleSheet.create({
   flagsRow: { flexDirection: 'row', gap: 6 },
   flag: { fontSize: 10, fontWeight: '700' as const, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' as const },
   primaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent, borderRadius: 12, paddingVertical: 14 },
+  msgBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.accent + '15', borderRadius: 12, borderWidth: 1, borderColor: C.accent + '40', paddingVertical: 11 },
+  msgBtnText: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
   primaryBtnText: { flex: 1, textAlign: 'center' as const, color: C.white, fontSize: 15, fontWeight: '800' as const },
   empty: { alignItems: 'center' as const, paddingVertical: 60, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },

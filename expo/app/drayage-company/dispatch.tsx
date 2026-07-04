@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Navigation, Package, Radio, Ship, Truck, User, X, Zap } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, X, Zap } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -78,6 +78,14 @@ export default function DrayageDispatchScreen() {
       setPortModal(null);
     },
   });
+  const openThreadMutation = trpc.drayage.openThread.useMutation();
+  const messageDriver = useCallback((orderId: string) => {
+    void openThreadMutation
+      .mutateAsync({ orderId })
+      .then((res) => router.push(`/messages/${res.threadId}` as never))
+      .catch((e) => Alert.alert('Unable to open chat', e instanceof Error ? e.message : 'Unknown'));
+  }, [openThreadMutation, router]);
+
   const dispatchMutation = trpc.drayage.dispatchMove.useMutation({
     onSuccess: async () => {
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -210,6 +218,13 @@ export default function DrayageDispatchScreen() {
                           </Text>
                         </View>
                       </View>
+                      <TouchableOpacity
+                        onPress={() => messageDriver(t.orderId)}
+                        style={styles.msgIconBtn}
+                        hitSlop={8}
+                      >
+                        <MessageCircle size={16} color={C.accent} />
+                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })}
@@ -376,4 +391,5 @@ const styles = StyleSheet.create({
   truckRight: { alignItems: 'flex-end' as const, gap: 4 },
   gpsMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   gpsMetaText: { fontSize: 11, fontWeight: '600' as const },
+  msgIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center' as const, justifyContent: 'center' as const },
 });

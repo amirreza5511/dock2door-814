@@ -1739,6 +1739,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // Open (or reuse) the driver <-> dispatch chat thread for a drayage order.
+  'drayage.openThread': async (input: { orderId: string }) => {
+    const { data, error } = await supabase.rpc('open_drayage_thread', { p_order_id: input.orderId });
+    if (error) throwErr(error, 'Unable to open conversation');
+    return { threadId: data as string };
+  },
+
   'drayage.getTracking': async (input: { orderId: string; limit?: number }) => {
     const { data, error } = await supabase
       .from('container_tracking')
