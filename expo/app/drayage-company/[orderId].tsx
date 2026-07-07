@@ -62,12 +62,6 @@ export default function DrayageOrderDetailScreen() {
       setDispatchModal(null);
     },
   });
-  const advanceMutation = trpc.drayage.advanceMove.useMutation({
-    onSuccess: async () => {
-      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await utils.drayage.getOrderDetails.invalidate({ id: orderId });
-    },
-  });
 
   const [portModal, setPortModal] = useState(false);
   const [dispatchModal, setDispatchModal] = useState<any | null>(null);
@@ -212,16 +206,6 @@ export default function DrayageOrderDetailScreen() {
     }
   };
 
-  const handleAdvance = async (move: any) => {
-    const next = MOVE_NEXT[move.status];
-    if (!next) return;
-    try {
-      await advanceMutation.mutateAsync({ moveId: move.id, nextStatus: next.status });
-    } catch (e) {
-      Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown');
-    }
-  };
-
   if (detailsQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading order" /></View>;
   }
@@ -349,7 +333,6 @@ export default function DrayageOrderDetailScreen() {
             <EmptyState icon={Truck} title="No moves yet" description="Moves are generated when you dispatch drivers for this order." />
           </Card>
         ) : moves.map((m, i) => {
-          const next = MOVE_NEXT[m.status];
           const driverName = drivers.find((d) => (d.driver_user_id ?? d.data?.userId) === m.driver_user_id)?.data?.name ?? (m.driver_user_id ? 'Assigned' : 'Unassigned');
           return (
             <Card key={m.id} style={styles.moveCard}>
@@ -406,14 +389,13 @@ export default function DrayageOrderDetailScreen() {
                   icon={<User size={14} color={C.accent} />}
                   fullWidth
                 />
-              ) : next ? (
-                <Button
-                  label={next.label}
-                  size="sm"
-                  onPress={() => handleAdvance(m)}
-                  loading={advanceMutation.isPending}
-                  fullWidth
-                />
+              ) : m.driver_user_id && m.status !== 'Completed' && m.status !== 'Cancelled' ? (
+                <View style={styles.driverStepHint}>
+                  <Truck size={13} color={C.textMuted} />
+                  <Text style={styles.driverStepHintText}>
+                    Driver handles pickup, transit & drop-off from their app. Track live progress here.
+                  </Text>
+                </View>
               ) : null}
             </Card>
           );
@@ -585,4 +567,6 @@ const styles = StyleSheet.create({
   driverIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.greenDim, alignItems: 'center', justifyContent: 'center' },
   driverName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  driverStepHint: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bgSecondary, borderRadius: 10, padding: 10 },
+  driverStepHintText: { flex: 1, fontSize: 11, color: C.textMuted, lineHeight: 16 },
 });

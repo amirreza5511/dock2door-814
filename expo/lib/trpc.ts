@@ -1799,7 +1799,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   'drayage.dashboard': async (_input, ctx) => {
-    if (!ctx.user.companyId) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [] };
+    if (!ctx.user.companyId) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [], pendingDrivers: [] };
     const [openRes, myRes, movesRes, driversRes] = await Promise.all([
       supabase.from('drayage_orders').select('*').eq('status', 'Open').order('created_at', { ascending: false }).limit(50),
       supabase.from('drayage_orders').select('*').eq('drayage_company_id', ctx.user.companyId).order('created_at', { ascending: false }).limit(100),
@@ -1808,13 +1808,28 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         .order('updated_at', { ascending: false }).limit(50),
       supabase.from('drivers').select('*').eq('company_id', ctx.user.companyId).is('archived_at', null).order('created_at', { ascending: false }),
     ]);
-    if (isMissingRelation(openRes.error)) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [] };
+    if (isMissingRelation(openRes.error)) return { openOrders: [], myOrders: [], activeMoves: [], drivers: [], pendingDrivers: [] };
+    const allDrivers = (driversRes.data ?? []) as AnyRecord[];
+    // Only approved (non-pending) drivers can be dispatched; pending ones await approval.
+    const pendingDrivers = allDrivers.filter((d) => d.status === 'PendingApproval');
+    const activeDrivers = allDrivers.filter((d) => d.status !== 'PendingApproval');
     return {
       openOrders: openRes.data ?? [],
       myOrders: myRes.data ?? [],
       activeMoves: movesRes.data ?? [],
-      drivers: driversRes.data ?? [],
+      drivers: activeDrivers,
+      pendingDrivers,
     };
+  },
+
+  // Approve (-> Active) or reject (-> archived) a driver who requested to join the fleet.
+  'drayage.approveDriver': async (input: { driverId: string; approve: boolean }) => {
+    const { error } = await supabase.rpc('approve_fleet_driver', {
+      p_driver_id: input.driverId,
+      p_approve: input.approve,
+    });
+    if (error) throwErr(error, 'Unable to update driver request');
+    return { success: true };
   },
 
   // Live fleet view for dispatch: every active driver + their most recent GPS ping,

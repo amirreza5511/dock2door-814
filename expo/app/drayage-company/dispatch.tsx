@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, X, Zap } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, UserPlus, X, XCircle, Zap } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -94,7 +94,26 @@ export default function DrayageDispatchScreen() {
     },
   });
 
+  const approveDriverMutation = trpc.drayage.approveDriver.useMutation({
+    onSuccess: async () => {
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await utils.drayage.dashboard.invalidate();
+    },
+  });
+
   const drivers = useMemo(() => (dashboardQuery.data?.drivers ?? []) as any[], [dashboardQuery.data]);
+  const pendingDrivers = useMemo(() => (dashboardQuery.data?.pendingDrivers ?? []) as any[], [dashboardQuery.data]);
+
+  const decideDriver = useCallback((driver: any, approve: boolean) => {
+    const act = () => void approveDriverMutation
+      .mutateAsync({ driverId: driver.id, approve })
+      .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
+    if (approve) { act(); return; }
+    Alert.alert('Decline request?', `${driver.name ?? driver.data?.name ?? 'This driver'} will not be able to join your fleet.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Decline', style: 'destructive', onPress: act },
+    ]);
+  }, [approveDriverMutation]);
 
   const myOrders = useMemo(() => {
     const orders = (dashboardQuery.data?.myOrders ?? []) as any[];
@@ -162,6 +181,47 @@ export default function DrayageDispatchScreen() {
           />
         ) : (
           <>
+            {/* Driver join requests */}
+            {pendingDrivers.length > 0 ? (
+              <>
+                <View style={styles.sectionRow}>
+                  <UserPlus size={16} color={C.yellow} />
+                  <Text style={styles.sectionTitle}>Driver requests</Text>
+                  <View style={styles.countPill}><Text style={styles.countPillText}>{pendingDrivers.length}</Text></View>
+                </View>
+                {pendingDrivers.map((d) => (
+                  <Card key={d.id} style={styles.requestCard}>
+                    <View style={styles.requestRow}>
+                      <View style={styles.driverAvatar}><User size={18} color={C.accent} /></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.driverName}>{d.name ?? d.data?.name ?? 'Driver'}</Text>
+                        {d.data?.email ? <Text style={styles.driverMeta}>{d.data.email}</Text> : null}
+                        <Text style={styles.requestHint}>Wants to join your fleet</Text>
+                      </View>
+                    </View>
+                    <View style={styles.requestBtns}>
+                      <TouchableOpacity
+                        style={[styles.requestBtn, styles.declineBtn]}
+                        disabled={approveDriverMutation.isPending}
+                        onPress={() => decideDriver(d, false)}
+                      >
+                        <XCircle size={15} color={C.red} />
+                        <Text style={[styles.requestBtnText, { color: C.red }]}>Decline</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.requestBtn, styles.approveBtn]}
+                        disabled={approveDriverMutation.isPending}
+                        onPress={() => decideDriver(d, true)}
+                      >
+                        <CheckCircle2 size={15} color={C.white} />
+                        <Text style={[styles.requestBtnText, { color: C.white }]}>Approve</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                ))}
+              </>
+            ) : null}
+
             {/* Live fleet map */}
             <View style={styles.sectionRow}>
               <Radio size={16} color={C.green} />
@@ -379,6 +439,14 @@ const styles = StyleSheet.create({
   driverAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.accent + '20', alignItems: 'center', justifyContent: 'center' },
   driverName: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  requestCard: { gap: 12, borderColor: C.yellow + '55' },
+  requestRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  requestHint: { fontSize: 12, color: C.yellow, marginTop: 2, fontWeight: '600' as const },
+  requestBtns: { flexDirection: 'row', gap: 10 },
+  requestBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 11 },
+  declineBtn: { backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40' },
+  approveBtn: { backgroundColor: C.accent },
+  requestBtnText: { fontSize: 14, fontWeight: '700' as const },
   fleetCard: { gap: 0, padding: 0, overflow: 'hidden' as const },
   mapWrap: { height: 220, backgroundColor: C.bgSecondary },
   mapFallback: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8, padding: 20 },
