@@ -23,6 +23,10 @@ export default function TruckingCompanyLayout() {
       <Tabs.Screen name="finance" options={{ title: 'Finance', tabBarIcon: ({ color }) => <CreditCard size={22} color={color} /> }} />
       <Tabs.Screen name="messages" options={{ title: 'Inbox', tabBarIcon: ({ color }) => <MessagesSquare size={22} color={color} /> }} />
       <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: ({ color }) => <UsersRound size={22} color={color} /> }} />
+      <Tabs.Screen name="rates" options={{ href: null }} />
+      <Tabs.Screen name="loads" options={{ href: null }} />
+      <Tabs.Screen name="my-loads" options={{ href: null }} />
+      <Tabs.Screen name="post-load" options={{ href: null }} />
     </Tabs>
   );
 }

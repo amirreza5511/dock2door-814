@@ -34,6 +34,7 @@ export default function WarehouseProviderLayout() {
       <Tabs.Screen name="staff" options={{ title: 'Staff', tabBarIcon: ({ color }) => <Users size={22} color={color} />, href: canStaff ? undefined : null }} />
       <Tabs.Screen name="wms" options={{ title: 'WMS', tabBarIcon: ({ color }) => <Archive size={22} color={color} />, href: canWms ? undefined : null }} />
       <Tabs.Screen name="stripe-connect" options={{ title: 'Payouts', tabBarIcon: ({ color }) => <Wallet size={22} color={color} />, href: canPayouts ? undefined : null }} />
+      <Tabs.Screen name="rates" options={{ href: null }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
       <Tabs.Screen name="carriers" options={{ href: null }} />
       <Tabs.Screen name="station-receiving" options={{ href: null }} />

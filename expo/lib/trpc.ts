@@ -2057,6 +2057,141 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // -------------------------------------------------------------------------
+  // UNIVERSAL PROVIDER PRICING — zones, rate cards & accessorials for every
+  // vertical (warehouse, trucking, labor, service, forwarding). Migration 0116.
+  // -------------------------------------------------------------------------
+
+  'pricing.myZones': async (input: { vertical: string }, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('provider_zones')
+      .select('*')
+      .eq('company_id', ctx.user.companyId)
+      .eq('vertical', input.vertical)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load zones');
+    return data ?? [];
+  },
+
+  'pricing.upsertZone': async (input: { id?: string | null; vertical: string; name: string; description?: string; sortOrder?: number; isActive?: boolean }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('No company associated with your account');
+    const row: AnyRecord = {
+      company_id: ctx.user.companyId,
+      vertical: input.vertical,
+      name: input.name.trim(),
+      description: input.description ?? '',
+      sort_order: input.sortOrder ?? 0,
+      is_active: input.isActive ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.id) row.id = input.id;
+    const { data, error } = await supabase.from('provider_zones').upsert(row).select().single();
+    if (error) throwErr(error, 'Unable to save zone');
+    return data;
+  },
+
+  'pricing.deleteZone': async (input: { id: string }) => {
+    const { error } = await supabase.from('provider_zones').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete zone');
+    return { success: true };
+  },
+
+  'pricing.myRateCards': async (input: { vertical: string }, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('provider_rate_cards')
+      .select('*, provider_zone_rates(*), customer:customer_company_id(id, name)')
+      .eq('company_id', ctx.user.companyId)
+      .eq('vertical', input.vertical)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load rate cards');
+    return data ?? [];
+  },
+
+  'pricing.upsertRateCard': async (input: AnyRecord, ctx) => {
+    if (!ctx.user.companyId) throw new Error('No company associated with your account');
+    const row: AnyRecord = {
+      company_id: ctx.user.companyId,
+      vertical: String(input.vertical),
+      customer_company_id: input.customerCompanyId ?? null,
+      name: String(input.name ?? 'Standard rates').trim(),
+      currency: input.currency ?? 'CAD',
+      base_unit: input.baseUnit ?? '',
+      is_default: input.isDefault ?? false,
+      is_active: input.isActive ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.accessorials !== undefined) row.accessorials = input.accessorials;
+    if (input.id) row.id = input.id;
+    const { data, error } = await supabase.from('provider_rate_cards').upsert(row).select().single();
+    if (error) throwErr(error, 'Unable to save rate card');
+    return data;
+  },
+
+  'pricing.deleteRateCard': async (input: { id: string }) => {
+    const { error } = await supabase.from('provider_rate_cards').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete rate card');
+    return { success: true };
+  },
+
+  'pricing.setZoneRate': async (input: { rateCardId: string; zoneId: string; baseRate: number }) => {
+    const { error } = await supabase.from('provider_zone_rates').upsert(
+      { rate_card_id: input.rateCardId, zone_id: input.zoneId, base_rate: input.baseRate, updated_at: new Date().toISOString() },
+      { onConflict: 'rate_card_id,zone_id' },
+    );
+    if (error) throwErr(error, 'Unable to save zone rate');
+    return { success: true };
+  },
+
+  // Companies a provider can scope a private card to (any other approved company).
+  'pricing.listCustomerCompanies': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name, city, type, status')
+      .eq('status', 'Approved')
+      .order('name', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load companies');
+    return (data ?? []).filter((c) => c.id !== ctx.user.companyId);
+  },
+
+  // Resolve the published card + zones that apply to a (company, vertical, customer)
+  // so a customer-facing screen can show the pricing and estimate a charge.
+  'pricing.cardForCompany': async (input: { companyId: string; vertical: string; customerCompanyId?: string | null }) => {
+    if (!input.companyId) return { card: null, zones: [], zoneRates: [] };
+    const [zonesRes, cardsRes] = await Promise.all([
+      supabase.from('provider_zones').select('*').eq('company_id', input.companyId).eq('vertical', input.vertical).eq('is_active', true).order('sort_order'),
+      supabase.from('provider_rate_cards').select('*, provider_zone_rates(*)').eq('company_id', input.companyId).eq('vertical', input.vertical).eq('is_active', true),
+    ]);
+    if (isMissingRelation(zonesRes.error) || isMissingRelation(cardsRes.error)) return { card: null, zones: [], zoneRates: [] };
+    const cards = (cardsRes.data ?? []) as AnyRecord[];
+    const custCard = input.customerCompanyId
+      ? cards.find((c) => c.customer_company_id === input.customerCompanyId)
+      : null;
+    const card = custCard ?? cards.find((c) => c.is_default) ?? cards.find((c) => !c.customer_company_id) ?? null;
+    return {
+      card,
+      zones: zonesRes.data ?? [],
+      zoneRates: (card?.provider_zone_rates ?? []) as AnyRecord[],
+    };
+  },
+
+  // Authoritative server-side quote for a chosen card + zone + selected add-ons.
+  'pricing.computeQuote': async (input: { cardId: string; zoneId?: string | null; selected?: Record<string, number> }) => {
+    const { data, error } = await supabase.rpc('provider_compute_quote', {
+      p_card_id: input.cardId,
+      p_zone_id: input.zoneId ?? null,
+      p_selected: input.selected ?? {},
+    });
+    if (error) throwErr(error, 'Unable to compute quote');
+    return data as { currency: string; base: number; lines: { key: string; label: string; amount: number }[]; total: number };
+  },
+
   // =========================================================================
   // MESSAGING (thread-based)
   // =========================================================================

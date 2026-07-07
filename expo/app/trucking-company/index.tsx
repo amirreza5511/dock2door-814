@@ -116,8 +116,13 @@ export default function TruckingCompanyDashboard() {
           </Card>
         </View>
         <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/trucking-company/finance' as never)} style={styles.actionCard}>
+          <Card onPress={() => router.push('/trucking-company/rates' as never)} style={styles.actionCard}>
             <CreditCard size={20} color={C.green} />
+            <Text style={styles.actionTitle}>Rates & lanes</Text>
+            <Text style={styles.actionText}>Publish lane pricing, fuel & add-ons.</Text>
+          </Card>
+          <Card onPress={() => router.push('/trucking-company/finance' as never)} style={styles.actionCard}>
+            <CreditCard size={20} color={C.accent} />
             <Text style={styles.actionTitle}>Finance visibility</Text>
             <Text style={styles.actionText}>Payments, invoices, and payouts.</Text>
           </Card>

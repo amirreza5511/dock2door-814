@@ -742,6 +742,7 @@ export default function EmployerDashboard() {
               { label: stats.pendingApplicants > 0 ? `Review Applicants (${stats.pendingApplicants})` : 'Review Applicants', icon: Users, color: stats.pendingApplicants > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.pendingApplicants > 0 ? stats.pendingApplicants : undefined },
               { label: stats.hoursToConfirmCount > 0 ? `Confirm Hours (${stats.hoursToConfirmCount})` : 'Confirm Hours', icon: Clock, color: stats.hoursToConfirmCount > 0 ? C.yellow : C.textMuted, path: '/employer/shifts', badge: stats.hoursToConfirmCount > 0 ? stats.hoursToConfirmCount : undefined },
               { label: 'My Account', icon: UserCircle2, color: C.blue, path: '/employer/account' },
+              { label: 'Labor Rates & Categories', icon: DollarSign, color: C.green, path: '/employer/rates' },
               { label: 'Company Profile', icon: Building2, color: C.accent, path: '/employer/company-profile' },
               { label: 'Billing & Invoices', icon: DollarSign, color: C.green, path: '/employer/billing' },
               { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },

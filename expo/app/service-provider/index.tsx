@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut } from 'lucide-react-native';
+import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -116,6 +116,20 @@ export default function ServiceProviderDashboard() {
         </View>
 
         <View style={styles.section}>
+          <Card onPress={() => router.push('/service-provider/rates' as any)} style={styles.ratesCard}>
+            <View style={styles.ratesRow}>
+              <View style={[styles.catBadge, { backgroundColor: C.greenDim }]}>
+                <Tag size={16} color={C.green} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listingCat}>Service Rates</Text>
+                <Text style={styles.listingDetail}>Publish pricing, areas & add-on fees</Text>
+              </View>
+            </View>
+          </Card>
+        </View>
+
+        <View style={styles.section}>
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>My Services</Text>
             <TouchableOpacity onPress={() => router.push('/service-provider/listings' as any)}><Text style={styles.seeAll}>Manage</Text></TouchableOpacity>
@@ -174,4 +188,6 @@ const styles = StyleSheet.create({
   listingCat: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   listingDetail: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   emptyText: { fontSize: 14, color: C.textSecondary, textAlign: 'center' },
+  ratesCard: { marginBottom: 0 },
+  ratesRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
 });
