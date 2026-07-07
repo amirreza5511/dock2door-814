@@ -184,9 +184,14 @@ export default function AdBanner() {
     clickM.mutate({ id: current.id, linkType: link.type });
     const normalized = resolveLink(link.type, link.value);
     if (!normalized) return;
-    const ok = await Linking.canOpenURL(normalized).catch(() => false);
-    if (ok) await Linking.openURL(normalized);
-    else if (/^https?:/i.test(normalized)) await Linking.openURL(normalized).catch(() => {});
+    try {
+      const ok = await Linking.canOpenURL(normalized).catch(() => false);
+      if (ok || /^https?:/i.test(normalized)) {
+        await Linking.openURL(normalized);
+      }
+    } catch (err) {
+      console.warn('[AdBanner] failed to open link', link.type, err);
+    }
   }, [current, clickM]);
 
   const onPress = useCallback(() => { void openLink(primaryLink); }, [openLink, primaryLink]);
