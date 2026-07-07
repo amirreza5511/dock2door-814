@@ -68,6 +68,8 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
   const [pickupCity, setPickupCity] = useState('');
   const [resDate, setResDate] = useState('');
   const [resTime, setResTime] = useState('');
+  const [handlingMode, setHandlingMode] = useState<'LiveLoad' | 'LiveUnload' | 'DropPick'>('LiveUnload');
+  const [pickupBackDate, setPickupBackDate] = useState('');
   const [isPrepull, setIsPrepull] = useState(false);
   const [prepullDate, setPrepullDate] = useState('');
   const [notes, setNotes] = useState('');
@@ -85,7 +87,7 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
     setIsHazmat(false); setIsOverweight(false); setIsOversized(false);
     setOriginTerminalId(null); setDestinationTerminalId(null);
     setDeliveryAddress(''); setDeliveryCity(''); setPickupAddress(''); setPickupCity('');
-    setResDate(''); setResTime(''); setIsPrepull(false); setPrepullDate(''); setNotes(''); setTargetCompanyId(null);
+    setResDate(''); setResTime(''); setHandlingMode('LiveUnload'); setPickupBackDate(''); setIsPrepull(false); setPrepullDate(''); setNotes(''); setTargetCompanyId(null);
   };
 
   const companyName = (id: string | null) => {
@@ -126,6 +128,8 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
         deliveryCity: deliveryCity.trim(),
         portReservationDate: resDate.trim() || null,
         portReservationTime: resTime.trim(),
+        handlingMode,
+        pickupBackDate: handlingMode === 'DropPick' ? (pickupBackDate.trim() || null) : null,
         isPrepull,
         prepullPickupDate: prepullDate.trim() || null,
         prepullYardTerminalId: null,
@@ -375,6 +379,33 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
               <Text style={styles.pickerBtnText}>{terminalName(destinationTerminalId)}</Text>
             </TouchableOpacity>
 
+            {/* Handling mode: how the container is handled at the warehouse stop */}
+            <Text style={styles.fieldLabel}>Handling at the stop</Text>
+            <View style={styles.handlingGrid}>
+              {([
+                { key: 'LiveLoad' as const, icon: Boxes, title: 'Live load', desc: 'Driver waits while it’s loaded' },
+                { key: 'LiveUnload' as const, icon: Package, title: 'Live unload', desc: 'Driver waits while it’s unloaded' },
+                { key: 'DropPick' as const, icon: Truck, title: 'Drop & pick', desc: 'Drop now, pick up after load/unload' },
+              ]).map((m) => {
+                const active = handlingMode === m.key;
+                return (
+                  <TouchableOpacity
+                    key={m.key}
+                    onPress={() => setHandlingMode(m.key)}
+                    style={[styles.handlingCard, active && styles.handlingCardActive]}
+                    activeOpacity={0.85}
+                  >
+                    <m.icon size={18} color={active ? C.accent : C.textMuted} />
+                    <Text style={[styles.handlingTitle, active && { color: C.text }]}>{m.title}</Text>
+                    <Text style={styles.handlingDesc}>{m.desc}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {handlingMode === 'DropPick' ? (
+              <Input label="Pick-up back date (when to collect after load/unload)" value={pickupBackDate} onChangeText={setPickupBackDate} placeholder="2026-07-16" />
+            ) : null}
+
             {/* Port reservation */}
             <Text style={styles.fieldLabel}>Port reservation (optional — drayage company can enter later)</Text>
             <View style={styles.resInputs}>
@@ -558,6 +589,11 @@ const styles = StyleSheet.create({
   pickerBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 14 },
   pickerBtnText: { fontSize: 14, color: C.text, fontWeight: '600' as const, flex: 1 },
   resInputs: { flexDirection: 'row', gap: 10 },
+  handlingGrid: { flexDirection: 'row', gap: 8 },
+  handlingCard: { flex: 1, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 12, gap: 4, alignItems: 'flex-start' },
+  handlingCardActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  handlingTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textMuted },
+  handlingDesc: { fontSize: 10, color: C.textSecondary, lineHeight: 14 },
   prepullToggle: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   prepullToggleActive: { borderColor: C.purple + '55', backgroundColor: C.purpleDim },
   prepullToggleText: { fontSize: 13, fontWeight: '700' as const, color: C.textMuted },

@@ -1563,6 +1563,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_prepull_yard_terminal_id: input.prepullYardTerminalId ?? null,
       p_notes: input.notes ?? '',
       p_target_drayage_company_id: input.targetDrayageCompanyId ?? null,
+      p_handling_mode: input.handlingMode ?? 'LiveUnload',
+      p_pickup_back_date: input.pickupBackDate ?? null,
     });
     if (isMissingRelation(error)) throw new Error('Drayage module is not ready yet — run migration 0100.');
     if (error) throwErr(error, 'Unable to create drayage order');
