@@ -13,6 +13,7 @@ import C from '@/constants/colors';
 import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
 import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
 import { registerPushTokenAsync } from '@/lib/push';
+import AdBanner from '@/components/AdBanner';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -224,6 +225,7 @@ export default function RootLayout() {
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
                 <StatusBar style="light" />
                 <RootLayoutNav />
+                <AdBanner />
                 <BootstrapController />
                 <AuthGuard />
               </GestureHandlerRootView>

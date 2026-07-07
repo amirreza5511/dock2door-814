@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
-  Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle,
+  Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle, Megaphone,
 } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Card from '@/components/ui/Card';
@@ -421,6 +421,21 @@ export default function SuperAdminOverviewScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>Support Inbox</Text>
               <Text style={styles.toolMeta}>Read and reply to every support conversation</Text>
+            </View>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/super-admin/ads' as never)}
+            style={styles.toolRow}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: C.accentDim }]}>
+              <Megaphone size={16} color={C.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolTitle}>Advertising</Text>
+              <Text style={styles.toolMeta}>Manage sponsored banners shown across the app</Text>
             </View>
             <ChevronRight size={16} color={C.textMuted} />
           </TouchableOpacity>

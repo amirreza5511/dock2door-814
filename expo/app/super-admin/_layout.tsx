@@ -26,6 +26,7 @@ export default function SuperAdminLayout() {
       <Tabs.Screen name="controls" options={{ title: 'Controls', tabBarIcon: ({ color }) => <Shield size={22} color={color} /> }} />
       <Tabs.Screen name="data-manager" options={{ title: 'Data', tabBarIcon: ({ color }) => <Database size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
+      <Tabs.Screen name="ads" options={{ href: null }} />
     </Tabs>
   );
 }

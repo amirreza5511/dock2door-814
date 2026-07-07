@@ -2727,6 +2727,122 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // ADVERTISEMENTS
+  // =========================================================================
+  // ads.serve — active ads for the given placement (a role segment key) plus
+  // any 'all' placements, filtered to the current flight window. Ordered by
+  // priority so the highest-value sponsor wins the rotation slot.
+  'ads.serve': async (input: { placement?: string } | undefined) => {
+    const placement = input?.placement ?? 'all';
+    const nowIso = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('advertisements')
+      .select('id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at')
+      .eq('status', 'Active')
+      .in('placement', Array.from(new Set([placement, 'all'])))
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load ads');
+    }
+    return (data ?? []).filter((a) => {
+      const startsAt = (a as AnyRecord).starts_at as string | null;
+      const endsAt = (a as AnyRecord).ends_at as string | null;
+      if (startsAt && startsAt > nowIso) return false;
+      if (endsAt && endsAt < nowIso) return false;
+      return true;
+    });
+  },
+
+  'ads.recordImpression': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('ad_record_impression', { p_id: input.id });
+    if (error && !isMissingRelation(error)) {
+      // Impression tracking is best-effort — never surface to the user.
+      return { success: false };
+    }
+    return { success: true };
+  },
+
+  'ads.recordClick': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('ad_record_click', { p_id: input.id });
+    if (error && !isMissingRelation(error)) {
+      return { success: false };
+    }
+    return { success: true };
+  },
+
+  // ── Admin ad management ────────────────────────────────────────────────
+  'admin.listAds': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase
+      .from('advertisements')
+      .select('*')
+      .order('status', { ascending: true })
+      .order('priority', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load ads');
+    }
+    return data ?? [];
+  },
+
+  'admin.upsertAd': async (input: {
+    id?: string | null;
+    title: string; body?: string; imageUrl?: string; targetUrl?: string; ctaLabel?: string;
+    advertiserName?: string; advertiserCompanyId?: string | null;
+    placement?: string; status?: string; priority?: number;
+    startsAt?: string | null; endsAt?: string | null;
+  }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const row = {
+      title: input.title,
+      body: input.body ?? '',
+      image_url: input.imageUrl ?? '',
+      target_url: input.targetUrl ?? '',
+      cta_label: input.ctaLabel && input.ctaLabel.length > 0 ? input.ctaLabel : 'Learn more',
+      advertiser_name: input.advertiserName ?? '',
+      advertiser_company_id: input.advertiserCompanyId ?? null,
+      placement: input.placement && input.placement.length > 0 ? input.placement : 'all',
+      status: input.status && input.status.length > 0 ? input.status : 'Active',
+      priority: input.priority ?? 0,
+      starts_at: input.startsAt ?? null,
+      ends_at: input.endsAt ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.id) {
+      const { data, error } = await supabase.from('advertisements').update(row).eq('id', input.id).select('id').maybeSingle();
+      if (error) throwErr(error, 'Unable to update ad');
+      return { id: String((data as AnyRecord | null)?.id ?? input.id) };
+    }
+    const { data, error } = await supabase
+      .from('advertisements')
+      .insert({ ...row, created_by: ctx.user.id })
+      .select('id')
+      .maybeSingle();
+    if (error) throwErr(error, 'Unable to create ad');
+    return { id: String((data as AnyRecord | null)?.id ?? '') };
+  },
+
+  'admin.setAdStatus': async (input: { id: string; status: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase
+      .from('advertisements')
+      .update({ status: input.status, updated_at: new Date().toISOString() })
+      .eq('id', input.id);
+    if (error) throwErr(error, 'Unable to update ad status');
+    return { success: true };
+  },
+
+  'admin.deleteAd': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.from('advertisements').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete ad');
+    return { success: true };
+  },
+
+  // =========================================================================
   // ANALYTICS
   // =========================================================================
   // commissionBreakdown — platform commission earned by marketplace area, derived
