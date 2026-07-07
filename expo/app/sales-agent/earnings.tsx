@@ -58,7 +58,8 @@ export default function SalesAgentEarnings() {
         <View style={styles.center}><ScreenFeedback state="loading" title="Loading commissions" /></View>
       ) : filtered.length === 0 ? (
         <View style={styles.center}>
-          <ScreenFeedback state="empty" title="No commissions yet" message="When an account you onboard signs up with your code, your bounty and recurring commissions appear here." />
+          <Text style={styles.emptyTitle}>No commissions yet</Text>
+          <Text style={styles.emptyMsg}>When an account you onboard signs up with your code, your bounty and recurring commissions appear here.</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 30 }]} showsVerticalScrollIndicator={false}>
@@ -99,6 +100,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   chipTextActive: { color: C.white },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, textAlign: 'center' as const },
+  emptyMsg: { fontSize: 13, color: C.textSecondary, textAlign: 'center' as const, marginTop: 8, lineHeight: 19 },
   list: { padding: 16, gap: 10 },
   entryCard: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   entryIcon: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

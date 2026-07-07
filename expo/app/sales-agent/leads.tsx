@@ -105,7 +105,8 @@ export default function SalesAgentLeads() {
         <View style={styles.center}><ScreenFeedback state="loading" title="Loading leads" /></View>
       ) : filtered.length === 0 ? (
         <View style={styles.center}>
-          <ScreenFeedback state="empty" title="No leads yet" message="Add a prospect you're working — a warehouse, driver, employer or company — and move them through your pipeline." />
+          <Text style={styles.emptyTitle}>No leads yet</Text>
+          <Text style={styles.emptyMsg}>Add a prospect you&apos;re working — a warehouse, driver, employer or company — and move them through your pipeline.</Text>
           <Button label="Add your first lead" onPress={openNew} icon={<Plus size={16} color={C.white} />} style={{ marginTop: 16 }} />
         </View>
       ) : (
@@ -183,6 +184,8 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   chipTextActive: { color: C.white },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  emptyTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, textAlign: 'center' as const },
+  emptyMsg: { fontSize: 13, color: C.textSecondary, textAlign: 'center' as const, marginTop: 8, lineHeight: 19 },
   list: { padding: 16, gap: 10 },
   leadCard: { padding: 14, gap: 4 },
   leadTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
