@@ -14,27 +14,28 @@ import C from '@/constants/colors';
 import type { UserRole } from '@/constants/types';
 import { COMPANY_REQUIRED_ROLES, type Domain, DOMAIN_LABELS, getRoleRoute } from '@/lib/access';
 
-type RoleOption = { role: UserRole; label: string; desc: string };
+type RoleOption = { id: string; role: UserRole; label: string; desc: string };
 
 const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
   labour: [
-    { role: 'Employer', label: 'Employer', desc: 'Post and manage work shifts' },
-    { role: 'Worker', label: 'Worker', desc: 'Find and apply for shifts' },
+    { id: 'Employer', role: 'Employer', label: 'Employer', desc: 'Post and manage work shifts' },
+    { id: 'Worker', role: 'Worker', label: 'Worker', desc: 'Find and apply for shifts' },
   ],
   logistics: [
-    { role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
-    { role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
-    { role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
-    { role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
+    { id: 'Customer', role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },
+    { id: 'WarehouseProvider', role: 'WarehouseProvider', label: 'Warehouse Provider', desc: 'List and manage storage space' },
+    { id: 'ServiceProvider', role: 'ServiceProvider', label: 'Service Provider', desc: 'Offer industrial services' },
+    { id: 'GateStaff', role: 'GateStaff', label: 'Gate Staff', desc: 'Run dock and gate check-ins' },
   ],
   freight: [
-    { role: 'Shipper', label: 'Shipper', desc: 'Post deliveries — parcel to full load' },
-    { role: 'Driver', label: 'Owner-Operator', desc: 'Own one truck — accept & deliver loads yourself' },
-    { role: 'TruckingCompany', label: 'Fleet / Carrier Company', desc: 'Run a fleet — accept loads & dispatch your drivers' },
+    { id: 'Shipper', role: 'Shipper', label: 'Shipper', desc: 'Post deliveries — parcel to full load' },
+    { id: 'Driver', role: 'Driver', label: 'Owner-Operator', desc: 'Own one truck — accept & deliver loads yourself' },
+    { id: 'TruckingCompany', role: 'TruckingCompany', label: 'Fleet / Carrier Company', desc: 'Run a fleet — accept loads & dispatch your drivers' },
   ],
   drayage: [
-    { role: 'FreightForwarder', label: 'Importer / Exporter / Freight Forwarder', desc: 'Post import & export container orders and track them live' },
-    { role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
+    { id: 'FreightForwarder', role: 'FreightForwarder', label: 'Importer / Exporter / Freight Forwarder', desc: 'Post import & export container orders and track them live' },
+    { id: 'DrayageCompany', role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
+    { id: 'DrayageDriver', role: 'Driver', label: 'Drayage Driver', desc: 'Drive container moves — enter your drayage company’s fleet code' },
   ],
 };
 
@@ -51,7 +52,10 @@ export default function Signup() {
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
   const [fleetCode, setFleetCode] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedRole: UserRole | null = selectedId
+    ? (WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]).find((r) => r.id === selectedId)?.role ?? null)
+    : null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [confirmEmailSent, setConfirmEmailSent] = useState(false);
@@ -171,14 +175,14 @@ export default function Signup() {
                 <Text style={styles.worldHeading}>{DOMAIN_LABELS[world]}</Text>
                 <View style={styles.rolesGrid}>
                   {ROLES_BY_WORLD[world].map((r) => {
-                    const selected = selectedRole === r.role;
+                    const selected = selectedId === r.id;
                     return (
                       <TouchableOpacity
-                        key={r.role}
-                        onPress={() => setSelectedRole(r.role)}
+                        key={r.id}
+                        onPress={() => setSelectedId(r.id)}
                         style={[styles.roleCard, selected && styles.roleCardSelected]}
                         activeOpacity={0.8}
-                        testID={`role-${r.role}`}
+                        testID={`role-${r.id}`}
                       >
                         {selected && (
                           <View style={styles.checkIcon}>
