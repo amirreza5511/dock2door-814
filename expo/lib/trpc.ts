@@ -2918,6 +2918,130 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // ── Self-serve advertising (members advertise their own business) ────────
+  // A member submits an ad → super admin sets a price (quote) → member pays →
+  // super admin approves → the ad goes live. See migration 0123.
+  'ads.mySubmissions': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('advertisements')
+      .select('*')
+      .eq('submitted_by', ctx.user.id)
+      .eq('source', 'self_serve')
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error) || isMissingColumn(error)) return [];
+      throwErr(error, 'Unable to load your ads');
+    }
+    return data ?? [];
+  },
+
+  'ads.submitAd': async (input: {
+    id?: string | null;
+    title: string; body?: string; imageUrl?: string; ctaLabel?: string;
+    advertiserName?: string; placements?: string[];
+    mediaType?: string; videoUrl?: string;
+    links?: { type: string; value: string }[];
+  }, ctx) => {
+    if (!input.title || input.title.trim().length === 0) throw new Error('Give your ad a title.');
+    const placements = (input.placements ?? []).filter((p) => p && p.length > 0);
+    const primaryPlacement = placements.includes('all')
+      ? 'all'
+      : (placements[0] ?? 'all');
+    const links = (input.links ?? []).filter((l) => l && l.value && l.value.trim().length > 0)
+      .map((l) => ({ type: l.type, value: l.value.trim() }));
+    const primaryLink = links[0];
+    const row: AnyRecord = {
+      title: input.title.trim(),
+      body: (input.body ?? '').trim(),
+      image_url: (input.imageUrl ?? '').trim(),
+      target_url: primaryLink?.value ?? '',
+      cta_label: input.ctaLabel && input.ctaLabel.trim().length > 0 ? input.ctaLabel.trim() : 'Learn more',
+      advertiser_name: (input.advertiserName ?? '').trim(),
+      advertiser_company_id: ctx.user.companyId,
+      owner_company_id: ctx.user.companyId,
+      placement: primaryPlacement,
+      placements: placements.length > 0 ? placements : [primaryPlacement],
+      links,
+      media_type: input.mediaType && input.mediaType.length > 0 ? input.mediaType : 'image',
+      video_url: (input.videoUrl ?? '').trim(),
+      link_type: primaryLink?.type ?? 'website',
+      updated_at: new Date().toISOString(),
+    };
+    if (input.id) {
+      // Edit an existing draft — RLS only allows this while Pending.
+      const { error } = await supabase.from('advertisements')
+        .update(row).eq('id', input.id).eq('submitted_by', ctx.user.id);
+      if (error) throwErr(error, 'Unable to update your ad');
+      return { id: input.id };
+    }
+    const { data, error } = await supabase.from('advertisements')
+      .insert({
+        ...row,
+        source: 'self_serve',
+        submitted_by: ctx.user.id,
+        status: 'Paused',
+        review_status: 'Pending',
+        price: 0,
+        weight: 1,
+        priority: 0,
+        created_by: ctx.user.id,
+      })
+      .select('id').maybeSingle();
+    if (error) throwErr(error, 'Unable to submit your ad');
+    return { id: String((data as AnyRecord | null)?.id ?? '') };
+  },
+
+  'ads.payAd': async (input: { id: string }, ctx) => {
+    // Confirm the member owns this ad and it is awaiting payment, then record
+    // the payment via the SECURITY DEFINER function (0123).
+    const { error } = await supabase.rpc('ad_mark_paid', { p_id: input.id });
+    if (error) throwErr(error, 'Unable to record payment');
+    return { success: true };
+  },
+
+  'ads.cancelSubmission': async (input: { id: string }, ctx) => {
+    const { error } = await supabase.from('advertisements')
+      .delete().eq('id', input.id).eq('submitted_by', ctx.user.id);
+    if (error) throwErr(error, 'Unable to cancel your ad');
+    return { success: true };
+  },
+
+  'admin.quoteAd': async (input: { id: string; price: number; currency?: string; note?: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.from('advertisements').update({
+      price: Math.max(0, Number(input.price) || 0),
+      currency: input.currency && input.currency.length > 0 ? input.currency : 'CAD',
+      review_status: 'Quoted',
+      admin_note: input.note ?? '',
+      updated_at: new Date().toISOString(),
+    }).eq('id', input.id);
+    if (error) throwErr(error, 'Unable to send quote');
+    return { success: true };
+  },
+
+  'admin.approveAd': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.from('advertisements').update({
+      review_status: 'Approved',
+      status: 'Active',
+      updated_at: new Date().toISOString(),
+    }).eq('id', input.id);
+    if (error) throwErr(error, 'Unable to approve ad');
+    return { success: true };
+  },
+
+  'admin.rejectAd': async (input: { id: string; note?: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.from('advertisements').update({
+      review_status: 'Rejected',
+      status: 'Paused',
+      admin_note: input.note ?? '',
+      updated_at: new Date().toISOString(),
+    }).eq('id', input.id);
+    if (error) throwErr(error, 'Unable to reject ad');
+    return { success: true };
+  },
+
   // =========================================================================
   // ANALYTICS
   // =========================================================================

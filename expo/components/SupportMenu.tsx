@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  LifeBuoy, Sparkles, BookOpen, MessageCircle, Phone, X, ChevronRight,
+  LifeBuoy, Sparkles, BookOpen, MessageCircle, Phone, X, ChevronRight, Megaphone,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
@@ -106,6 +106,13 @@ export default function SupportMenu({ tint }: { tint?: string }) {
               title="Call support"
               subtitle="Talk to a person on the dock2door team"
               onPress={() => void call()}
+            />
+            <SupportRow
+              icon={<Megaphone size={20} color={C.accent} />}
+              tint={C.accentDim}
+              title="Advertise your business"
+              subtitle="Promote your business across the app"
+              onPress={() => go('/advertise')}
               last
             />
           </Pressable>

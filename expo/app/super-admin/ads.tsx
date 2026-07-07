@@ -9,6 +9,7 @@ import {
   Megaphone, Plus, X, Pencil, Trash2, ChevronLeft, ExternalLink,
   Eye, MousePointerClick, Play, Pause, Image as ImageIcon, Video as VideoIcon,
   Youtube, Globe, Phone, Instagram, MessageCircle, Mail,
+  CreditCard, CheckCircle2, XCircle, Clock, Building2,
 } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -39,7 +40,15 @@ type Ad = {
   placements?: string[] | null;
   links?: { type: string; value: string }[] | null;
   link_clicks?: Record<string, number> | null;
+  source?: string | null;
+  review_status?: string | null;
+  price?: number | null;
+  currency?: string | null;
+  admin_note?: string | null;
 };
+
+const money = (n: number | null | undefined, cur: string | null | undefined): string =>
+  `${cur ?? 'CAD'} ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
 const LINK_META: Record<string, { label: string; Icon: typeof Globe }> = {
   website: { label: 'Website', Icon: Globe },
@@ -129,11 +138,71 @@ export default function SuperAdminAdsScreen() {
   const upsertM = trpc.admin.upsertAd.useMutation();
   const setStatusM = trpc.admin.setAdStatus.useMutation();
   const deleteM = trpc.admin.deleteAd.useMutation();
+  const quoteM = trpc.admin.quoteAd.useMutation();
+  const approveM = trpc.admin.approveAd.useMutation();
+  const rejectM = trpc.admin.rejectAd.useMutation();
 
   const [editorOpen, setEditorOpen] = useState<boolean>(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  const [quoteFor, setQuoteFor] = useState<Ad | null>(null);
+  const [quotePrice, setQuotePrice] = useState<string>('');
+  const [quoteNote, setQuoteNote] = useState<string>('');
 
-  const ads = useMemo<Ad[]>(() => (adsQuery.data as Ad[] | undefined) ?? [], [adsQuery.data]);
+  const allAds = useMemo<Ad[]>(() => (adsQuery.data as Ad[] | undefined) ?? [], [adsQuery.data]);
+  // Member-submitted ads still moving through the review pipeline (not yet live).
+  const requests = useMemo<Ad[]>(
+    () => allAds.filter((a) => a.source === 'self_serve' && (a.review_status ?? 'Pending') !== 'Approved'),
+    [allAds],
+  );
+  // Everything else: admin ads + already-approved member ads (managed as normal ads).
+  const ads = useMemo<Ad[]>(
+    () => allAds.filter((a) => !(a.source === 'self_serve' && (a.review_status ?? 'Pending') !== 'Approved')),
+    [allAds],
+  );
+
+  const openQuote = useCallback((ad: Ad) => {
+    setQuoteFor(ad);
+    setQuotePrice(ad.price && ad.price > 0 ? String(ad.price) : '');
+    setQuoteNote(ad.admin_note ?? '');
+  }, []);
+
+  const sendQuote = useCallback(async () => {
+    if (!quoteFor) return;
+    const price = Number.parseFloat(quotePrice);
+    if (!Number.isFinite(price) || price <= 0) { Alert.alert('Enter a price', 'Set a price greater than zero.'); return; }
+    try {
+      await quoteM.mutateAsync({ id: quoteFor.id, price, currency: 'CAD', note: quoteNote.trim() });
+      setQuoteFor(null);
+      await adsQuery.refetch();
+    } catch (error) {
+      Alert.alert('Unable to send quote', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [quoteFor, quotePrice, quoteNote, quoteM, adsQuery]);
+
+  const approveRequest = useCallback(async (ad: Ad) => {
+    try {
+      await approveM.mutateAsync({ id: ad.id });
+      await adsQuery.refetch();
+    } catch (error) {
+      Alert.alert('Unable to approve', error instanceof Error ? error.message : 'Unknown error');
+    }
+  }, [approveM, adsQuery]);
+
+  const rejectRequest = useCallback((ad: Ad) => {
+    Alert.alert('Reject ad', `Reject "${ad.title}"? The advertiser can edit and resubmit.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reject', style: 'destructive', onPress: async () => {
+          try {
+            await rejectM.mutateAsync({ id: ad.id, note: '' });
+            await adsQuery.refetch();
+          } catch (error) {
+            Alert.alert('Unable to reject', error instanceof Error ? error.message : 'Unknown error');
+          }
+        },
+      },
+    ]);
+  }, [rejectM, adsQuery]);
 
   const openNew = useCallback(() => { setDraft(emptyDraft); setEditorOpen(true); }, []);
   const openEdit = useCallback((ad: Ad) => {
@@ -273,6 +342,25 @@ export default function SuperAdminAdsScreen() {
           Sponsored banners shown under every page. {activeCount} active · {ads.length} total.
         </Text>
 
+        {requests.length > 0 ? (
+          <View style={styles.requestsWrap}>
+            <View style={styles.reqHeadRow}>
+              <Building2 size={15} color={C.accent} />
+              <Text style={styles.reqHeadText}>Member requests · {requests.length}</Text>
+            </View>
+            {requests.map((ad) => (
+              <AdRequestCard
+                key={ad.id}
+                ad={ad}
+                onQuote={() => openQuote(ad)}
+                onApprove={() => void approveRequest(ad)}
+                onReject={() => rejectRequest(ad)}
+                approving={approveM.isPending}
+              />
+            ))}
+          </View>
+        ) : null}
+
         <TouchableOpacity onPress={openNew} style={styles.newBtn} activeOpacity={0.85}>
           <Plus size={18} color={C.white} />
           <Text style={styles.newBtnText}>New advertisement</Text>
@@ -333,6 +421,29 @@ export default function SuperAdminAdsScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <Modal visible={!!quoteFor} transparent animationType="slide" onRequestClose={() => setQuoteFor(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setQuoteFor(null)}>
+          <Pressable style={[styles.sheet, { paddingBottom: insets.bottom + 20 }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Set a price</Text>
+              <TouchableOpacity onPress={() => setQuoteFor(null)} style={styles.closeBtn}><X size={18} color={C.textSecondary} /></TouchableOpacity>
+            </View>
+            {quoteFor ? (
+              <Text style={styles.quoteSub} numberOfLines={2}>
+                {quoteFor.title}{quoteFor.advertiser_name ? ` · ${quoteFor.advertiser_name}` : ''}
+              </Text>
+            ) : null}
+            <Field label="Price (CAD)">
+              <TextInput style={styles.input} value={quotePrice} onChangeText={(t) => setQuotePrice(t.replace(/[^0-9.]/g, ''))} placeholder="e.g. 250" placeholderTextColor={C.textMuted} keyboardType="decimal-pad" />
+            </Field>
+            <Field label="Note to advertiser (optional)">
+              <TextInput style={styles.input} value={quoteNote} onChangeText={setQuoteNote} placeholder="e.g. 30-day run across 3 pages" placeholderTextColor={C.textMuted} />
+            </Field>
+            <Button label="Send price to advertiser" onPress={() => void sendQuote()} fullWidth loading={quoteM.isPending} style={{ marginTop: 8 }} />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <Modal visible={editorOpen} transparent animationType="slide" onRequestClose={() => setEditorOpen(false)}>
         <Pressable style={styles.backdrop} onPress={() => setEditorOpen(false)}>
@@ -478,6 +589,69 @@ export default function SuperAdminAdsScreen() {
   );
 }
 
+/** Review lifecycle status meta for a member-submitted ad. */
+function reqStatusMeta(ad: Ad): { label: string; color: string; tint: string; Icon: typeof Clock } {
+  const rs = ad.review_status ?? 'Pending';
+  if (rs === 'Paid') return { label: 'Paid · approve to publish', color: C.purple, tint: C.purpleDim, Icon: CreditCard };
+  if (rs === 'Quoted') return { label: 'Quoted · awaiting payment', color: C.blue, tint: C.blueDim, Icon: Clock };
+  if (rs === 'Rejected') return { label: 'Rejected', color: C.red, tint: C.redDim, Icon: XCircle };
+  return { label: 'New · needs a price', color: C.yellow, tint: C.yellowDim, Icon: Clock };
+}
+
+/** One member-submitted ad awaiting review, with quote / approve / reject controls. */
+function AdRequestCard({
+  ad, onQuote, onApprove, onReject, approving,
+}: {
+  ad: Ad; onQuote: () => void; onApprove: () => void; onReject: () => void; approving: boolean;
+}) {
+  const meta = reqStatusMeta(ad);
+  const StatusIcon = meta.Icon;
+  const rs = ad.review_status ?? 'Pending';
+  const isPaid = rs === 'Paid';
+  return (
+    <View style={styles.reqCard}>
+      <View style={styles.adTop}>
+        <View style={styles.adThumbWrap}>
+          {ad.image_url ? (
+            <Image source={{ uri: ad.image_url }} style={styles.adThumb} resizeMode="cover" />
+          ) : (
+            <View style={[styles.adThumb, styles.adThumbFallback]}><Megaphone size={18} color={C.accent} /></View>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.adTitle} numberOfLines={1}>{ad.title}</Text>
+          {ad.advertiser_name ? <Text style={styles.adAdvertiser} numberOfLines={1}>{ad.advertiser_name}</Text> : null}
+          <View style={[styles.reqStatusPill, { backgroundColor: meta.tint }]}>
+            <StatusIcon size={12} color={meta.color} />
+            <Text style={[styles.reqStatusText, { color: meta.color }]}>{meta.label}</Text>
+          </View>
+        </View>
+        {ad.price && ad.price > 0 ? (
+          <View style={styles.priceWrap}>
+            <Text style={styles.priceLabel}>Price</Text>
+            <Text style={styles.priceValue}>{money(ad.price, ad.currency)}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.reqPlaceRow}>
+        {(Array.isArray(ad.placements) && ad.placements.length > 0 ? ad.placements : [ad.placement]).map((p) => (
+          <View key={p} style={styles.placePill}><Text style={styles.placePillText}>{placementLabel(p)}</Text></View>
+        ))}
+      </View>
+
+      <View style={styles.actionsRow}>
+        {isPaid ? (
+          <Button label="Approve & publish" onPress={onApprove} size="sm" loading={approving} icon={<CheckCircle2 size={14} color={C.white} />} />
+        ) : (
+          <Button label={rs === 'Quoted' ? 'Update price' : 'Set price'} onPress={onQuote} size="sm" icon={<CreditCard size={14} color={C.white} />} />
+        )}
+        <Button label="Reject" onPress={onReject} size="sm" variant="outline" icon={<XCircle size={14} color={C.red} />} />
+      </View>
+    </View>
+  );
+}
+
 /** Per-destination click breakdown for one ad (which button people tap most). */
 function LinkClicks({ ad }: { ad: Ad }) {
   const breakdown = useMemo<{ type: string; count: number }[]>(() => {
@@ -530,6 +704,18 @@ const styles = StyleSheet.create({
 
   newBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14 },
   newBtnText: { fontSize: 15, fontWeight: '700' as const, color: C.white },
+
+  requestsWrap: { backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '40', borderRadius: 16, padding: 12, gap: 10 },
+  reqHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  reqHeadText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
+  reqCard: { backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 12, gap: 10 },
+  reqStatusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, marginTop: 6 },
+  reqStatusText: { fontSize: 10.5, fontWeight: '700' as const },
+  reqPlaceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  priceWrap: { alignItems: 'flex-end' },
+  priceLabel: { fontSize: 10, fontWeight: '600' as const, color: C.textMuted },
+  priceValue: { fontSize: 14, fontWeight: '800' as const, color: C.text, marginTop: 1 },
+  quoteSub: { fontSize: 13, color: C.textSecondary, marginBottom: 12 },
 
   empty: { alignItems: 'center', gap: 8, paddingVertical: 40 },
   emptyTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
