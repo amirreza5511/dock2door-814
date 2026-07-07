@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
   Megaphone, Plus, X, Pencil, Trash2, ChevronLeft, ExternalLink,
-  Eye, MousePointerClick, Play, Pause,
+  Eye, MousePointerClick, Play, Pause, Image as ImageIcon, Video as VideoIcon,
+  Youtube, Globe, Phone, Instagram, MessageCircle, Mail,
 } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -30,7 +31,30 @@ type Ad = {
   ends_at: string | null;
   impressions: number;
   clicks: number;
+  media_type?: string | null;
+  video_url?: string | null;
+  link_type?: string | null;
+  max_impressions?: number | null;
+  weight?: number | null;
 };
+
+type MediaType = 'image' | 'video' | 'youtube';
+type LinkType = 'website' | 'instagram' | 'phone' | 'whatsapp' | 'youtube' | 'email';
+
+const MEDIA_TYPES: { key: MediaType; label: string; Icon: typeof ImageIcon }[] = [
+  { key: 'image', label: 'Image', Icon: ImageIcon },
+  { key: 'video', label: 'Video', Icon: VideoIcon },
+  { key: 'youtube', label: 'YouTube', Icon: Youtube },
+];
+
+const LINK_TYPES: { key: LinkType; label: string; Icon: typeof Globe; placeholder: string }[] = [
+  { key: 'website', label: 'Website', Icon: Globe, placeholder: 'https://advertiser.com' },
+  { key: 'instagram', label: 'Instagram', Icon: Instagram, placeholder: '@handle or profile URL' },
+  { key: 'phone', label: 'Call', Icon: Phone, placeholder: '+1 555 123 4567' },
+  { key: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle, placeholder: '+1 555 123 4567' },
+  { key: 'youtube', label: 'YouTube', Icon: Youtube, placeholder: 'https://youtu.be/...' },
+  { key: 'email', label: 'Email', Icon: Mail, placeholder: 'sales@advertiser.com' },
+];
 
 const PLACEMENTS: { key: string; label: string }[] = [
   { key: 'all', label: 'Every page' },
@@ -61,11 +85,17 @@ type Draft = {
   placement: string;
   priority: string;
   active: boolean;
+  mediaType: MediaType;
+  videoUrl: string;
+  linkType: LinkType;
+  maxImpressions: string;
+  weight: string;
 };
 
 const emptyDraft: Draft = {
   id: null, title: '', body: '', imageUrl: '', targetUrl: '', ctaLabel: 'Learn more',
   advertiserName: '', placement: 'all', priority: '0', active: true,
+  mediaType: 'image', videoUrl: '', linkType: 'website', maxImpressions: '0', weight: '1',
 };
 
 export default function SuperAdminAdsScreen() {
@@ -94,6 +124,11 @@ export default function SuperAdminAdsScreen() {
       placement: ad.placement || 'all',
       priority: String(ad.priority ?? 0),
       active: ad.status === 'Active',
+      mediaType: (ad.media_type as MediaType) || 'image',
+      videoUrl: ad.video_url ?? '',
+      linkType: (ad.link_type as LinkType) || 'website',
+      maxImpressions: String(ad.max_impressions ?? 0),
+      weight: String(ad.weight ?? 1),
     });
     setEditorOpen(true);
   }, []);
@@ -112,6 +147,11 @@ export default function SuperAdminAdsScreen() {
         placement: draft.placement,
         status: draft.active ? 'Active' : 'Paused',
         priority: Number.parseInt(draft.priority, 10) || 0,
+        mediaType: draft.mediaType,
+        videoUrl: draft.videoUrl.trim(),
+        linkType: draft.linkType,
+        maxImpressions: Number.parseInt(draft.maxImpressions, 10) || 0,
+        weight: Math.max(1, Math.min(10, Number.parseInt(draft.weight, 10) || 1)),
       });
       setEditorOpen(false);
       await adsQuery.refetch();
@@ -254,11 +294,50 @@ export default function SuperAdminAdsScreen() {
               <Field label="Advertiser name">
                 <TextInput style={styles.input} value={draft.advertiserName} onChangeText={(t) => setDraft((d) => ({ ...d, advertiserName: t }))} placeholder="e.g. Maple Logistics" placeholderTextColor={C.textMuted} />
               </Field>
-              <Field label="Image URL">
-                <TextInput style={styles.input} value={draft.imageUrl} onChangeText={(t) => setDraft((d) => ({ ...d, imageUrl: t }))} placeholder="https://…" placeholderTextColor={C.textMuted} autoCapitalize="none" />
+              <Field label="Creative type">
+                <View style={styles.segRow}>
+                  {MEDIA_TYPES.map(({ key, label, Icon }) => {
+                    const on = draft.mediaType === key;
+                    return (
+                      <TouchableOpacity key={key} onPress={() => setDraft((d) => ({ ...d, mediaType: key }))} style={[styles.seg, on && styles.segOn]} activeOpacity={0.85}>
+                        <Icon size={15} color={on ? C.accent : C.textSecondary} />
+                        <Text style={[styles.segText, on && styles.segTextOn]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
               </Field>
-              <Field label="Destination link (opens on tap)">
-                <TextInput style={styles.input} value={draft.targetUrl} onChangeText={(t) => setDraft((d) => ({ ...d, targetUrl: t }))} placeholder="https://advertiser.com" placeholderTextColor={C.textMuted} autoCapitalize="none" keyboardType="url" />
+
+              {draft.mediaType === 'image' ? (
+                <Field label="Image URL">
+                  <TextInput style={styles.input} value={draft.imageUrl} onChangeText={(t) => setDraft((d) => ({ ...d, imageUrl: t }))} placeholder="https://…" placeholderTextColor={C.textMuted} autoCapitalize="none" />
+                </Field>
+              ) : (
+                <>
+                  <Field label={draft.mediaType === 'youtube' ? 'YouTube video link' : 'Video URL (.mp4)'}>
+                    <TextInput style={styles.input} value={draft.videoUrl} onChangeText={(t) => setDraft((d) => ({ ...d, videoUrl: t }))} placeholder={draft.mediaType === 'youtube' ? 'https://youtu.be/…' : 'https://cdn.com/clip.mp4'} placeholderTextColor={C.textMuted} autoCapitalize="none" keyboardType="url" />
+                  </Field>
+                  <Field label="Poster image URL (optional fallback)">
+                    <TextInput style={styles.input} value={draft.imageUrl} onChangeText={(t) => setDraft((d) => ({ ...d, imageUrl: t }))} placeholder="https://…" placeholderTextColor={C.textMuted} autoCapitalize="none" />
+                  </Field>
+                </>
+              )}
+
+              <Field label="On tap, open">
+                <View style={styles.segRow}>
+                  {LINK_TYPES.map(({ key, label, Icon }) => {
+                    const on = draft.linkType === key;
+                    return (
+                      <TouchableOpacity key={key} onPress={() => setDraft((d) => ({ ...d, linkType: key }))} style={[styles.linkChip, on && styles.linkChipOn]} activeOpacity={0.85}>
+                        <Icon size={13} color={on ? C.accent : C.textSecondary} />
+                        <Text style={[styles.linkChipText, on && styles.linkChipTextOn]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Field>
+              <Field label={LINK_TYPES.find((l) => l.key === draft.linkType)?.label + ' destination'}>
+                <TextInput style={styles.input} value={draft.targetUrl} onChangeText={(t) => setDraft((d) => ({ ...d, targetUrl: t }))} placeholder={LINK_TYPES.find((l) => l.key === draft.linkType)?.placeholder} placeholderTextColor={C.textMuted} autoCapitalize="none" keyboardType={draft.linkType === 'phone' || draft.linkType === 'whatsapp' ? 'phone-pad' : draft.linkType === 'email' ? 'email-address' : 'url'} />
               </Field>
               <Field label="Button label">
                 <TextInput style={styles.input} value={draft.ctaLabel} onChangeText={(t) => setDraft((d) => ({ ...d, ctaLabel: t }))} placeholder="Learn more" placeholderTextColor={C.textMuted} />
@@ -282,8 +361,22 @@ export default function SuperAdminAdsScreen() {
                 </View>
               </Field>
 
-              <Field label="Priority (higher shows first)">
-                <TextInput style={styles.input} value={draft.priority} onChangeText={(t) => setDraft((d) => ({ ...d, priority: t.replace(/[^0-9]/g, '') }))} placeholder="0" placeholderTextColor={C.textMuted} keyboardType="number-pad" />
+              <View style={styles.dualRow}>
+                <View style={{ flex: 1 }}>
+                  <Field label="Priority">
+                    <TextInput style={styles.input} value={draft.priority} onChangeText={(t) => setDraft((d) => ({ ...d, priority: t.replace(/[^0-9]/g, '') }))} placeholder="0" placeholderTextColor={C.textMuted} keyboardType="number-pad" />
+                  </Field>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label="Rotation weight (1–10)">
+                    <TextInput style={styles.input} value={draft.weight} onChangeText={(t) => setDraft((d) => ({ ...d, weight: t.replace(/[^0-9]/g, '') }))} placeholder="1" placeholderTextColor={C.textMuted} keyboardType="number-pad" />
+                  </Field>
+                </View>
+              </View>
+
+              <Field label="Max plays (0 = unlimited)">
+                <TextInput style={styles.input} value={draft.maxImpressions} onChangeText={(t) => setDraft((d) => ({ ...d, maxImpressions: t.replace(/[^0-9]/g, '') }))} placeholder="0" placeholderTextColor={C.textMuted} keyboardType="number-pad" />
+                <Text style={styles.hint}>The ad stops showing after this many total views. Leave 0 to run forever.</Text>
               </Field>
 
               <View style={styles.activeRow}>
@@ -365,6 +458,18 @@ const styles = StyleSheet.create({
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary, marginBottom: 6 },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 14, color: C.text },
+
+  segRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  seg: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  segOn: { backgroundColor: C.accentDim, borderColor: C.accent },
+  segText: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary },
+  segTextOn: { color: C.accent },
+  linkChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7 },
+  linkChipOn: { backgroundColor: C.accentDim, borderColor: C.accent },
+  linkChipText: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary },
+  linkChipTextOn: { color: C.accent },
+  dualRow: { flexDirection: 'row', gap: 10 },
+  hint: { fontSize: 11, color: C.textMuted, marginTop: 6 },
 
   placeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   placeChip: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },

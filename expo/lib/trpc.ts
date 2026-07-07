@@ -95,6 +95,22 @@ function isMissingRelation(error: unknown): boolean {
 }
 
 /**
+ * Detects a missing COLUMN (undefined_column 42703, or a PostgREST schema-cache
+ * miss that names a column). Used to gracefully fall back to a base schema when
+ * an additive migration (e.g. 0120 ad media columns) hasn't been applied yet.
+ */
+function isMissingColumn(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === '42703') return true;
+  const msg = (e.message ?? '').toLowerCase();
+  return (
+    (msg.includes('column') && (msg.includes('does not exist') || msg.includes('schema cache'))) ||
+    (msg.includes('could not find') && msg.includes('column'))
+  );
+}
+
+/**
  * Narrowly detects that the `loads` TABLE itself is absent (migrations 0082/0083
  * never applied). Unlike isMissingRelation, this does NOT match a missing
  * dependency (invoices/payments columns, payouts), an RLS denial, or a business
@@ -2735,22 +2751,45 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'ads.serve': async (input: { placement?: string } | undefined) => {
     const placement = input?.placement ?? 'all';
     const nowIso = new Date().toISOString();
-    const { data, error } = await supabase
-      .from('advertisements')
-      .select('id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at')
-      .eq('status', 'Active')
-      .in('placement', Array.from(new Set([placement, 'all'])))
-      .order('priority', { ascending: false })
-      .order('created_at', { ascending: false });
+    // Try the rich schema first (0120). Fall back to the base columns if the
+    // migration hasn't been applied yet, so the banner never hard-fails.
+    const richCols = 'id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at,media_type,video_url,link_type,max_impressions,weight,impressions';
+    let data: AnyRecord[] | null = null;
+    let error: unknown = null;
+    {
+      const res = await supabase
+        .from('advertisements')
+        .select(richCols)
+        .eq('status', 'Active')
+        .in('placement', Array.from(new Set([placement, 'all'])))
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: false });
+      data = res.data as AnyRecord[] | null;
+      error = res.error;
+    }
+    if (error && isMissingColumn(error)) {
+      const res = await supabase
+        .from('advertisements')
+        .select('id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at')
+        .eq('status', 'Active')
+        .in('placement', Array.from(new Set([placement, 'all'])))
+        .order('priority', { ascending: false })
+        .order('created_at', { ascending: false });
+      data = res.data as AnyRecord[] | null;
+      error = res.error;
+    }
     if (error) {
       if (isMissingRelation(error)) return [];
       throwErr(error, 'Unable to load ads');
     }
     return (data ?? []).filter((a) => {
-      const startsAt = (a as AnyRecord).starts_at as string | null;
-      const endsAt = (a as AnyRecord).ends_at as string | null;
+      const startsAt = a.starts_at as string | null;
+      const endsAt = a.ends_at as string | null;
       if (startsAt && startsAt > nowIso) return false;
       if (endsAt && endsAt < nowIso) return false;
+      const cap = Number(a.max_impressions ?? 0);
+      const shown = Number(a.impressions ?? 0);
+      if (cap > 0 && shown >= cap) return false;
       return true;
     });
   },
@@ -2794,9 +2833,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     advertiserName?: string; advertiserCompanyId?: string | null;
     placement?: string; status?: string; priority?: number;
     startsAt?: string | null; endsAt?: string | null;
+    mediaType?: string; videoUrl?: string; linkType?: string;
+    maxImpressions?: number; weight?: number;
   }, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
-    const row = {
+    const baseRow: AnyRecord = {
       title: input.title,
       body: input.body ?? '',
       image_url: input.imageUrl ?? '',
@@ -2811,18 +2852,27 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       ends_at: input.endsAt ?? null,
       updated_at: new Date().toISOString(),
     };
-    if (input.id) {
-      const { data, error } = await supabase.from('advertisements').update(row).eq('id', input.id).select('id').maybeSingle();
-      if (error) throwErr(error, 'Unable to update ad');
-      return { id: String((data as AnyRecord | null)?.id ?? input.id) };
+    const richRow: AnyRecord = {
+      ...baseRow,
+      media_type: input.mediaType && input.mediaType.length > 0 ? input.mediaType : 'image',
+      video_url: input.videoUrl ?? '',
+      link_type: input.linkType && input.linkType.length > 0 ? input.linkType : 'website',
+      max_impressions: input.maxImpressions ?? 0,
+      weight: input.weight ?? 1,
+    };
+    const runUpsert = async (row: AnyRecord) => {
+      if (input.id) {
+        return supabase.from('advertisements').update(row).eq('id', input.id).select('id').maybeSingle();
+      }
+      return supabase.from('advertisements').insert({ ...row, created_by: ctx.user.id }).select('id').maybeSingle();
+    };
+    let res = await runUpsert(richRow);
+    if (res.error && isMissingColumn(res.error)) {
+      // 0120 not applied yet — persist the base creative so the ad still saves.
+      res = await runUpsert(baseRow);
     }
-    const { data, error } = await supabase
-      .from('advertisements')
-      .insert({ ...row, created_by: ctx.user.id })
-      .select('id')
-      .maybeSingle();
-    if (error) throwErr(error, 'Unable to create ad');
-    return { id: String((data as AnyRecord | null)?.id ?? '') };
+    if (res.error) throwErr(res.error, input.id ? 'Unable to update ad' : 'Unable to create ad');
+    return { id: String((res.data as AnyRecord | null)?.id ?? input.id ?? '') };
   },
 
   'admin.setAdStatus': async (input: { id: string; status: string }, ctx) => {
