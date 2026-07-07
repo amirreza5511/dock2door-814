@@ -2753,7 +2753,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const nowIso = new Date().toISOString();
     // Try the rich schema first (0120). Fall back to the base columns if the
     // migration hasn't been applied yet, so the banner never hard-fails.
-    const richCols = 'id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at,media_type,video_url,link_type,max_impressions,weight,impressions';
+    const richCols = 'id,title,body,image_url,target_url,cta_label,advertiser_name,placement,placements,links,priority,starts_at,ends_at,media_type,video_url,link_type,max_impressions,weight,impressions';
     let data: AnyRecord[] | null = null;
     let error: unknown = null;
     {
@@ -2761,7 +2761,6 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         .from('advertisements')
         .select(richCols)
         .eq('status', 'Active')
-        .in('placement', Array.from(new Set([placement, 'all'])))
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
       data = res.data as AnyRecord[] | null;
@@ -2772,7 +2771,6 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         .from('advertisements')
         .select('id,title,body,image_url,target_url,cta_label,advertiser_name,placement,priority,starts_at,ends_at')
         .eq('status', 'Active')
-        .in('placement', Array.from(new Set([placement, 'all'])))
         .order('priority', { ascending: false })
         .order('created_at', { ascending: false });
       data = res.data as AnyRecord[] | null;
@@ -2783,6 +2781,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       throwErr(error, 'Unable to load ads');
     }
     return (data ?? []).filter((a) => {
+      // Placement membership: an ad shows if it targets 'all', the current
+      // placement, or lists it in the multi-placement array.
+      const list = Array.isArray(a.placements) && (a.placements as string[]).length > 0
+        ? (a.placements as string[])
+        : [a.placement as string];
+      if (!list.includes('all') && !list.includes(placement)) return false;
       const startsAt = a.starts_at as string | null;
       const endsAt = a.ends_at as string | null;
       if (startsAt && startsAt > nowIso) return false;
@@ -2831,21 +2835,31 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     id?: string | null;
     title: string; body?: string; imageUrl?: string; targetUrl?: string; ctaLabel?: string;
     advertiserName?: string; advertiserCompanyId?: string | null;
-    placement?: string; status?: string; priority?: number;
+    placement?: string; placements?: string[]; status?: string; priority?: number;
     startsAt?: string | null; endsAt?: string | null;
     mediaType?: string; videoUrl?: string; linkType?: string;
+    links?: { type: string; value: string }[];
     maxImpressions?: number; weight?: number;
   }, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    // Normalise the multi-placement list; fall back to the single placement / 'all'.
+    const placements = (input.placements ?? []).filter((p) => p && p.length > 0);
+    const primaryPlacement = placements.includes('all')
+      ? 'all'
+      : (placements[0] ?? (input.placement && input.placement.length > 0 ? input.placement : 'all'));
+    // Normalise the link list; keep only entries with a value.
+    const links = (input.links ?? []).filter((l) => l && l.value && l.value.trim().length > 0)
+      .map((l) => ({ type: l.type, value: l.value.trim() }));
+    const primaryLink = links[0];
     const baseRow: AnyRecord = {
       title: input.title,
       body: input.body ?? '',
       image_url: input.imageUrl ?? '',
-      target_url: input.targetUrl ?? '',
+      target_url: primaryLink?.value ?? input.targetUrl ?? '',
       cta_label: input.ctaLabel && input.ctaLabel.length > 0 ? input.ctaLabel : 'Learn more',
       advertiser_name: input.advertiserName ?? '',
       advertiser_company_id: input.advertiserCompanyId ?? null,
-      placement: input.placement && input.placement.length > 0 ? input.placement : 'all',
+      placement: primaryPlacement,
       status: input.status && input.status.length > 0 ? input.status : 'Active',
       priority: input.priority ?? 0,
       starts_at: input.startsAt ?? null,
@@ -2854,9 +2868,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
     const richRow: AnyRecord = {
       ...baseRow,
+      placements: placements.length > 0 ? placements : [primaryPlacement],
+      links,
       media_type: input.mediaType && input.mediaType.length > 0 ? input.mediaType : 'image',
       video_url: input.videoUrl ?? '',
-      link_type: input.linkType && input.linkType.length > 0 ? input.linkType : 'website',
+      link_type: primaryLink?.type ?? (input.linkType && input.linkType.length > 0 ? input.linkType : 'website'),
       max_impressions: input.maxImpressions ?? 0,
       weight: input.weight ?? 1,
     };

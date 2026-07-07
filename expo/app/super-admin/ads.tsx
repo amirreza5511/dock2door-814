@@ -36,6 +36,8 @@ type Ad = {
   link_type?: string | null;
   max_impressions?: number | null;
   weight?: number | null;
+  placements?: string[] | null;
+  links?: { type: string; value: string }[] | null;
 };
 
 type MediaType = 'image' | 'video' | 'youtube';
@@ -79,23 +81,35 @@ type Draft = {
   title: string;
   body: string;
   imageUrl: string;
-  targetUrl: string;
   ctaLabel: string;
   advertiserName: string;
-  placement: string;
+  placements: string[];
   priority: string;
   active: boolean;
   mediaType: MediaType;
   videoUrl: string;
-  linkType: LinkType;
+  links: Record<LinkType, string>;
   maxImpressions: string;
   weight: string;
 };
 
+const emptyLinks: Record<LinkType, string> = {
+  website: '', instagram: '', phone: '', whatsapp: '', youtube: '', email: '',
+};
+
 const emptyDraft: Draft = {
-  id: null, title: '', body: '', imageUrl: '', targetUrl: '', ctaLabel: 'Learn more',
-  advertiserName: '', placement: 'all', priority: '0', active: true,
-  mediaType: 'image', videoUrl: '', linkType: 'website', maxImpressions: '0', weight: '1',
+  id: null, title: '', body: '', imageUrl: '', ctaLabel: 'Learn more',
+  advertiserName: '', placements: ['all'], priority: '0', active: true,
+  mediaType: 'image', videoUrl: '', links: { ...emptyLinks }, maxImpressions: '0', weight: '1',
+};
+
+/** All selectable page keys (excludes the 'all' meta-option). */
+const PAGE_KEYS: string[] = PLACEMENTS.filter((p) => p.key !== 'all').map((p) => p.key);
+
+const placementsSummary = (keys: string[]): string => {
+  if (keys.includes('all') || keys.length === 0) return 'Every page';
+  if (keys.length === 1) return placementLabel(keys[0]);
+  return `${keys.length} pages`;
 };
 
 export default function SuperAdminAdsScreen() {
@@ -113,43 +127,75 @@ export default function SuperAdminAdsScreen() {
 
   const openNew = useCallback(() => { setDraft(emptyDraft); setEditorOpen(true); }, []);
   const openEdit = useCallback((ad: Ad) => {
+    const placements = Array.isArray(ad.placements) && ad.placements.length > 0
+      ? ad.placements
+      : [ad.placement || 'all'];
+    const links: Record<LinkType, string> = { ...emptyLinks };
+    if (Array.isArray(ad.links) && ad.links.length > 0) {
+      for (const l of ad.links) {
+        if (l && l.type && (l.type as LinkType) in links) links[l.type as LinkType] = l.value ?? '';
+      }
+    } else if (ad.target_url) {
+      const lt = (ad.link_type as LinkType) || 'website';
+      if (lt in links) links[lt] = ad.target_url;
+    }
     setDraft({
       id: ad.id,
       title: ad.title,
       body: ad.body,
       imageUrl: ad.image_url,
-      targetUrl: ad.target_url,
       ctaLabel: ad.cta_label || 'Learn more',
       advertiserName: ad.advertiser_name,
-      placement: ad.placement || 'all',
+      placements,
       priority: String(ad.priority ?? 0),
       active: ad.status === 'Active',
       mediaType: (ad.media_type as MediaType) || 'image',
       videoUrl: ad.video_url ?? '',
-      linkType: (ad.link_type as LinkType) || 'website',
+      links,
       maxImpressions: String(ad.max_impressions ?? 0),
       weight: String(ad.weight ?? 1),
     });
     setEditorOpen(true);
   }, []);
 
+  const togglePlacement = useCallback((key: string) => {
+    setDraft((d) => {
+      if (key === 'all') return { ...d, placements: ['all'] };
+      const withoutAll = d.placements.filter((p) => p !== 'all');
+      const has = withoutAll.includes(key);
+      const next = has ? withoutAll.filter((p) => p !== key) : [...withoutAll, key];
+      return { ...d, placements: next.length === 0 ? ['all'] : next };
+    });
+  }, []);
+
+  const selectAllPages = useCallback(() => {
+    setDraft((d) => ({
+      ...d,
+      placements: d.placements.length >= PAGE_KEYS.length && !d.placements.includes('all')
+        ? ['all']
+        : [...PAGE_KEYS],
+    }));
+  }, []);
+
   const save = useCallback(async () => {
     if (!draft.title.trim()) { Alert.alert('Title required', 'Give the ad a short title.'); return; }
     try {
+      const links = (Object.keys(draft.links) as LinkType[])
+        .map((type) => ({ type, value: draft.links[type].trim() }))
+        .filter((l) => l.value.length > 0);
       await upsertM.mutateAsync({
         id: draft.id,
         title: draft.title.trim(),
         body: draft.body.trim(),
         imageUrl: draft.imageUrl.trim(),
-        targetUrl: draft.targetUrl.trim(),
         ctaLabel: draft.ctaLabel.trim() || 'Learn more',
         advertiserName: draft.advertiserName.trim(),
-        placement: draft.placement,
+        placements: draft.placements,
         status: draft.active ? 'Active' : 'Paused',
         priority: Number.parseInt(draft.priority, 10) || 0,
         mediaType: draft.mediaType,
         videoUrl: draft.videoUrl.trim(),
-        linkType: draft.linkType,
+        links,
         maxImpressions: Number.parseInt(draft.maxImpressions, 10) || 0,
         weight: Math.max(1, Math.min(10, Number.parseInt(draft.weight, 10) || 1)),
       });
@@ -323,34 +369,53 @@ export default function SuperAdminAdsScreen() {
                 </>
               )}
 
-              <Field label="On tap, open">
-                <View style={styles.segRow}>
-                  {LINK_TYPES.map(({ key, label, Icon }) => {
-                    const on = draft.linkType === key;
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Tap destinations</Text>
+                <Text style={styles.hint}>Fill in any you want — website, YouTube, Instagram, phone and more. Users get a button for each. Leave the rest blank.</Text>
+                <View style={{ gap: 10, marginTop: 8 }}>
+                  {LINK_TYPES.map(({ key, label, Icon, placeholder }) => {
+                    const filled = draft.links[key].trim().length > 0;
                     return (
-                      <TouchableOpacity key={key} onPress={() => setDraft((d) => ({ ...d, linkType: key }))} style={[styles.linkChip, on && styles.linkChipOn]} activeOpacity={0.85}>
-                        <Icon size={13} color={on ? C.accent : C.textSecondary} />
-                        <Text style={[styles.linkChipText, on && styles.linkChipTextOn]}>{label}</Text>
-                      </TouchableOpacity>
+                      <View key={key} style={[styles.linkRow, filled && styles.linkRowOn]}>
+                        <View style={[styles.linkRowIcon, filled && styles.linkRowIconOn]}>
+                          <Icon size={15} color={filled ? C.accent : C.textSecondary} />
+                        </View>
+                        <TextInput
+                          style={styles.linkRowInput}
+                          value={draft.links[key]}
+                          onChangeText={(t) => setDraft((d) => ({ ...d, links: { ...d.links, [key]: t } }))}
+                          placeholder={`${label} — ${placeholder}`}
+                          placeholderTextColor={C.textMuted}
+                          autoCapitalize="none"
+                          keyboardType={key === 'phone' || key === 'whatsapp' ? 'phone-pad' : key === 'email' ? 'email-address' : 'url'}
+                        />
+                      </View>
                     );
                   })}
                 </View>
-              </Field>
-              <Field label={LINK_TYPES.find((l) => l.key === draft.linkType)?.label + ' destination'}>
-                <TextInput style={styles.input} value={draft.targetUrl} onChangeText={(t) => setDraft((d) => ({ ...d, targetUrl: t }))} placeholder={LINK_TYPES.find((l) => l.key === draft.linkType)?.placeholder} placeholderTextColor={C.textMuted} autoCapitalize="none" keyboardType={draft.linkType === 'phone' || draft.linkType === 'whatsapp' ? 'phone-pad' : draft.linkType === 'email' ? 'email-address' : 'url'} />
-              </Field>
+              </View>
               <Field label="Button label">
                 <TextInput style={styles.input} value={draft.ctaLabel} onChangeText={(t) => setDraft((d) => ({ ...d, ctaLabel: t }))} placeholder="Learn more" placeholderTextColor={C.textMuted} />
               </Field>
 
-              <Field label="Show on">
+              <View style={styles.field}>
+                <View style={styles.placeHead}>
+                  <Text style={styles.fieldLabel}>Show on · {placementsSummary(draft.placements)}</Text>
+                  <TouchableOpacity onPress={selectAllPages} activeOpacity={0.8}>
+                    <Text style={styles.selectAllText}>
+                      {draft.placements.includes('all') ? 'Clear' : 'Select all pages'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
                 <View style={styles.placeGrid}>
                   {PLACEMENTS.map((p) => {
-                    const selected = draft.placement === p.key;
+                    const selected = p.key === 'all'
+                      ? draft.placements.includes('all')
+                      : draft.placements.includes(p.key);
                     return (
                       <TouchableOpacity
                         key={p.key}
-                        onPress={() => setDraft((d) => ({ ...d, placement: p.key }))}
+                        onPress={() => togglePlacement(p.key)}
                         style={[styles.placeChip, selected && styles.placeChipOn]}
                         activeOpacity={0.8}
                       >
@@ -359,7 +424,7 @@ export default function SuperAdminAdsScreen() {
                     );
                   })}
                 </View>
-              </Field>
+              </View>
 
               <View style={styles.dualRow}>
                 <View style={{ flex: 1 }}>
@@ -468,6 +533,13 @@ const styles = StyleSheet.create({
   linkChipOn: { backgroundColor: C.accentDim, borderColor: C.accent },
   linkChipText: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary },
   linkChipTextOn: { color: C.accent },
+  linkRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingRight: 12, paddingLeft: 8, paddingVertical: 6 },
+  linkRowOn: { borderColor: C.accent, backgroundColor: C.accentDim },
+  linkRowIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: C.bgSecondary, alignItems: 'center', justifyContent: 'center' },
+  linkRowIconOn: { backgroundColor: C.card },
+  linkRowInput: { flex: 1, fontSize: 13, color: C.text, paddingVertical: 6 },
+  placeHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
+  selectAllText: { fontSize: 12, fontWeight: '700' as const, color: C.accent },
   dualRow: { flexDirection: 'row', gap: 10 },
   hint: { fontSize: 11, color: C.textMuted, marginTop: 6 },
 

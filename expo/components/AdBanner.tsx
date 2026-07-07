@@ -7,7 +7,7 @@ import { useSegments } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { WebView } from 'react-native-webview';
 import {
-  ExternalLink, X, Megaphone, Phone, Instagram, Play, MessageCircle, Youtube,
+  ExternalLink, X, Megaphone, Phone, Instagram, Play, MessageCircle, Youtube, Mail,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
@@ -27,6 +27,18 @@ type Ad = {
   video_url?: string | null;
   link_type?: string | null;
   weight?: number | null;
+  links?: { type: string; value: string }[] | null;
+};
+
+type AdLink = { type: string; value: string };
+
+const LINK_ICON: Record<string, typeof ExternalLink> = {
+  phone: Phone,
+  whatsapp: MessageCircle,
+  instagram: Instagram,
+  youtube: Youtube,
+  email: Mail,
+  website: ExternalLink,
 };
 
 // Root segments that render inside a bottom Tabs bar. The banner is lifted above
@@ -141,7 +153,23 @@ export default function AdBanner() {
 
   const current = ads.length > 0 ? ads[step % ads.length] : null;
   const mediaType = (current?.media_type ?? 'image') as string;
-  const linkType = (current?.link_type ?? 'website') as string;
+
+  // All tappable destinations for this ad. Prefer the multi-link list; fall back
+  // to the legacy single link_type/target_url.
+  const links = useMemo<AdLink[]>(() => {
+    if (!current) return [];
+    const raw = current.links;
+    if (Array.isArray(raw)) {
+      const cleaned = raw.filter((l): l is AdLink => !!l && !!l.value && l.value.trim().length > 0);
+      if (cleaned.length > 0) return cleaned;
+    }
+    if (current.target_url) return [{ type: current.link_type ?? 'website', value: current.target_url }];
+    if (mediaType === 'youtube' && current.video_url) return [{ type: 'youtube', value: current.video_url }];
+    return [];
+  }, [current, mediaType]);
+
+  const primaryLink = links[0] ?? null;
+  const linkType = (primaryLink?.type ?? 'website') as string;
 
   useEffect(() => {
     if (!current) return;
@@ -151,16 +179,17 @@ export default function AdBanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id]);
 
-  const onPress = useCallback(async () => {
-    if (!current) return;
+  const openLink = useCallback(async (link: AdLink | null) => {
+    if (!current || !link) return;
     clickM.mutate({ id: current.id });
-    const raw = linkType === 'youtube' ? (current.video_url || current.target_url) : current.target_url;
-    const normalized = resolveLink(linkType, raw ?? '');
+    const normalized = resolveLink(link.type, link.value);
     if (!normalized) return;
     const ok = await Linking.canOpenURL(normalized).catch(() => false);
     if (ok) await Linking.openURL(normalized);
     else if (/^https?:/i.test(normalized)) await Linking.openURL(normalized).catch(() => {});
-  }, [current, clickM, linkType]);
+  }, [current, clickM]);
+
+  const onPress = useCallback(() => { void openLink(primaryLink); }, [openLink, primaryLink]);
 
   if (isHidden || dismissed || !current) return null;
 
@@ -172,11 +201,8 @@ export default function AdBanner() {
   const isYoutube = mediaType === 'youtube' && !!youtubeId(current.video_url || current.target_url || '');
   const isRichMedia = isVideo || isYoutube;
 
-  const CtaIcon = linkType === 'phone' ? Phone
-    : linkType === 'whatsapp' ? MessageCircle
-    : linkType === 'instagram' ? Instagram
-    : linkType === 'youtube' ? Youtube
-    : ExternalLink;
+  const CtaIcon = LINK_ICON[linkType] ?? ExternalLink;
+  const extraLinks = links.slice(1);
 
   return (
     <View style={[styles.wrap, { bottom: bottomOffset }]} pointerEvents="box-none">
@@ -207,9 +233,19 @@ export default function AdBanner() {
                   <Text style={styles.titleLight} numberOfLines={1}>{current.title}</Text>
                   {current.body ? <Text style={styles.subLight} numberOfLines={1}>{current.body}</Text> : null}
                 </View>
-                <View style={styles.ctaSolid}>
-                  <Text style={styles.ctaSolidText} numberOfLines={1}>{current.cta_label || 'Learn more'}</Text>
-                  <CtaIcon size={13} color={C.white} />
+                <View style={styles.ctaGroup} pointerEvents="box-none">
+                  {extraLinks.map((l) => {
+                    const Icon = LINK_ICON[l.type] ?? ExternalLink;
+                    return (
+                      <TouchableOpacity key={l.type} onPress={() => void openLink(l)} style={styles.ctaIconSolid} accessibilityLabel={l.type}>
+                        <Icon size={15} color={C.white} />
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity onPress={() => void openLink(primaryLink)} style={styles.ctaSolid} accessibilityLabel={current.cta_label || 'Learn more'}>
+                    <Text style={styles.ctaSolidText} numberOfLines={1}>{current.cta_label || 'Learn more'}</Text>
+                    <CtaIcon size={13} color={C.white} />
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -235,9 +271,19 @@ export default function AdBanner() {
               <Text style={styles.title} numberOfLines={1}>{current.title}</Text>
               {current.body ? <Text style={styles.sub} numberOfLines={1}>{current.body}</Text> : null}
             </View>
-            <View style={styles.cta}>
-              <Text style={styles.ctaText} numberOfLines={1}>{current.cta_label || 'Learn more'}</Text>
-              <CtaIcon size={13} color={C.accent} />
+            <View style={styles.ctaGroup}>
+              {extraLinks.map((l) => {
+                const Icon = LINK_ICON[l.type] ?? ExternalLink;
+                return (
+                  <TouchableOpacity key={l.type} onPress={() => void openLink(l)} style={styles.ctaIcon} accessibilityLabel={l.type}>
+                    <Icon size={15} color={C.accent} />
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity onPress={() => void openLink(primaryLink)} style={styles.cta} accessibilityLabel={current.cta_label || 'Learn more'}>
+                <Text style={styles.ctaText} numberOfLines={1}>{current.cta_label || 'Learn more'}</Text>
+                <CtaIcon size={13} color={C.accent} />
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -357,6 +403,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 7,
   },
   ctaText: { fontSize: 12, fontWeight: '700' as const, color: C.accent, maxWidth: 90 },
+  ctaGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  ctaIcon: {
+    width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: C.accentDim,
+  },
+  ctaIconSolid: {
+    width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
 
   // Rich media (video / youtube)
   mediaStage: {
