@@ -17,6 +17,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import SupportMenu from '@/components/SupportMenu';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -397,6 +398,7 @@ export default function EmployerDashboard() {
         </View>
         <View style={styles.headerRight}>
           <WorldSwitcher />
+          <SupportMenu />
           <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.iconBtn}>
             <Bell size={18} color={C.text} />
             {unreadCount > 0 && (

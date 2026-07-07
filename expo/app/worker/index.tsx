@@ -18,6 +18,7 @@ import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import SupportMenu from '@/components/SupportMenu';
 import ReviewModal from '@/components/ReviewModal';
 import { checkAtSite, SITE_RADIUS_METERS } from '@/lib/geo';
 
@@ -529,6 +530,7 @@ export default function WorkerDashboard() {
         </View>
         <View style={styles.headerRight}>
           <WorldSwitcher />
+          <SupportMenu />
           <TouchableOpacity onPress={() => router.push('/notifications' as any)} style={styles.notifBtn}>
             <Bell size={18} color={C.text} />
             {unreadCount > 0 && (

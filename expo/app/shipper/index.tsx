@@ -9,6 +9,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { CARGO_LABEL, CargoType, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
@@ -54,9 +55,7 @@ export default function ShipperDashboard() {
         </View>
         <View style={styles.headerActions}>
           <WorldSwitcher />
-          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.logoutBtn} testID="help-btn">
-            <HelpCircle size={18} color={C.textMuted} />
-          </TouchableOpacity>
+          <SupportMenu />
           <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn">
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>

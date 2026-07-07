@@ -14,6 +14,7 @@ import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
+import SupportMenu from '@/components/SupportMenu';
 import { trpc } from '@/lib/trpc';
 
 type JobRow = {
@@ -250,15 +251,7 @@ export default function DriverHomeScreen() {
               <Text style={styles.greeting}>Today</Text>
               <Text style={styles.heroTitle}>{partitioned.active.length + partitioned.upcoming.length} jobs assigned</Text>
             </View>
-            <TouchableOpacity
-              testID="driver-help"
-              onPress={() => router.push('/help' as never)}
-              style={styles.helpBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Help center"
-            >
-              <HelpCircle size={16} color={C.accent} />
-            </TouchableOpacity>
+            <SupportMenu />
             <TouchableOpacity
               testID="driver-logout"
               onPress={logout}

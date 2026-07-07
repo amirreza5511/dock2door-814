@@ -12,6 +12,7 @@ import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import WorldSwitcher from '@/components/WorldSwitcher';
+import SupportMenu from '@/components/SupportMenu';
 
 export default function CustomerDashboard() {
   const insets = useSafeAreaInsets();
@@ -64,9 +65,7 @@ export default function CustomerDashboard() {
           <TouchableOpacity onPress={() => router.push('/customer/team' as never)} style={styles.logoutBtn} testID="team-btn">
             <Users size={18} color={C.textMuted} />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.logoutBtn} testID="help-btn">
-            <HelpCircle size={18} color={C.textMuted} />
-          </TouchableOpacity>
+          <SupportMenu />
           <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn">
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>

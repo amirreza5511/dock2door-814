@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag, Receipt } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
+import SupportMenu from '@/components/SupportMenu';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -60,7 +61,7 @@ export default function ServiceProviderDashboard() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />
-          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.helpBtn} testID="service-help-btn"><HelpCircle size={18} color={C.accent} /></TouchableOpacity>
+          <SupportMenu />
           <TouchableOpacity onPress={logout} style={styles.logoutBtn}><LogOut size={18} color={C.textMuted} /></TouchableOpacity>
         </View>
       </View>

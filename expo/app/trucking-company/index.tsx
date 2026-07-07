@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CalendarClock, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Receipt, Truck, Users } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
+import SupportMenu from '@/components/SupportMenu';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -53,9 +54,7 @@ export default function TruckingCompanyDashboard() {
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />
-          <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.logoutBtn} testID="trucking-help-btn">
-            <HelpCircle size={18} color={C.textMuted} />
-          </TouchableOpacity>
+          <SupportMenu />
           <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn} testID="trucking-logout-btn">
             <LogOut size={18} color={C.textMuted} />
           </TouchableOpacity>
