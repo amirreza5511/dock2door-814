@@ -3078,20 +3078,52 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return totals;
   },
 
+  // overview — platform-wide report. Counts real operational activity across ALL
+  // job types (warehouse bookings, drayage moves, worker shifts) so completed test
+  // jobs show up, not just warehouse bookings. Field names match analytics.tsx.
   'analytics.overview': async () => {
-    const [bookings, payments, companies, disputes] = await Promise.all([
-      supabase.from('warehouse_bookings').select('id,status,proposed_price,final_price'),
+    const [bookings, payments, companies, disputes, moves, assignments] = await Promise.all([
+      supabase.from('warehouse_bookings').select('id,status'),
       supabase.from('payments').select('gross_amount,status'),
       supabase.from('companies').select('id,status'),
       supabase.from('disputes').select('id,status'),
+      supabase.from('drayage_moves').select('id,status'),
+      supabase.from('shift_assignments').select('id,status'),
     ]);
+
+    const settled = ['Paid', 'Captured'];
     const gmv = (payments.data ?? [])
-      .filter((p) => p.status === 'Paid')
+      .filter((p) => settled.includes(String(p.status)))
       .reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+
+    const bookingRows = bookings.data ?? [];
+    const moveRows = moves.data ?? [];
+    const shiftRows = assignments.data ?? [];
+
+    const bookingDone = ['Completed', 'CheckedOut', 'Fulfilled'];
+    const shiftDone = ['Completed', 'HoursConfirmed', 'Confirmed'];
+
+    // Every operational job the platform has run, of any type.
+    const bookingVolume = bookingRows.length + moveRows.length + shiftRows.length;
+
+    const completed =
+      bookingRows.filter((b) => bookingDone.includes(String(b.status))).length +
+      moveRows.filter((m) => String(m.status) === 'Completed').length +
+      shiftRows.filter((a) => shiftDone.includes(String(a.status))).length;
+
+    const utilizationRate = bookingVolume > 0 ? Math.round((completed / bookingVolume) * 100) : 0;
+    const activeCompanies = (companies.data ?? []).filter((c) => c.status === 'Approved').length;
+
     return {
-      totalBookings: bookings.data?.length ?? 0,
-      grossBookingValue: gmv,
-      activeCompanies: (companies.data ?? []).filter((c) => c.status === 'Approved').length,
+      bookingVolume,
+      revenue: Math.round(gmv),
+      utilizationRate,
+      companyPerformance: completed,
+      grossBookingValue: Math.round(gmv),
+      // extra fields kept for any other consumers
+      totalBookings: bookingVolume,
+      completedJobs: completed,
+      activeCompanies,
       openDisputes: (disputes.data ?? []).filter((d) => d.status === 'Open' || d.status === 'UnderReview').length,
     };
   },
