@@ -1,4 +1,70 @@
-export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'Admin' | 'SuperAdmin';
+export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'SalesAgent' | 'Admin' | 'SuperAdmin';
+
+/** Sales-agent CRM verticals an agent can onboard accounts for. */
+export type SalesVertical =
+  | 'warehouse' | 'drayage' | 'freight_forwarder' | 'employer' | 'trucking'
+  | 'shipper' | 'customer' | 'service' | 'worker' | 'driver' | 'owner_operator';
+
+export type LeadStatus = 'New' | 'Contacted' | 'Onboarding' | 'Won' | 'Lost';
+export type CommissionKind = 'bounty' | 'recurring' | 'referral' | 'bonus';
+export type CommissionStatus = 'Pending' | 'Approved' | 'Paid' | 'Rejected';
+
+export interface SalesAgentRecord {
+  id: string;
+  agentCode: string;
+  planId: string | null;
+  status: 'Active' | 'Suspended';
+  territory: string;
+  phone: string;
+  notes: string;
+  createdAt: string;
+}
+
+export interface CommissionPlanConfig {
+  bounty: Partial<Record<SalesVertical, number>>;
+  recurring: Partial<Record<SalesVertical, number>>;
+  referral: Partial<Record<'worker' | 'driver' | 'owner_operator', number>>;
+  tiers: { threshold: number; bonus: number }[];
+}
+
+export interface CommissionPlan {
+  id: string;
+  name: string;
+  description: string;
+  config: CommissionPlanConfig;
+  isDefault: boolean;
+  active: boolean;
+}
+
+export interface AgentLead {
+  id: string;
+  agentId: string;
+  businessName: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  vertical: SalesVertical;
+  status: LeadStatus;
+  notes: string;
+  linkedUserId: string | null;
+  linkedCompanyId: string | null;
+  createdAt: string;
+}
+
+export interface CommissionEntry {
+  id: string;
+  agentId: string;
+  kind: CommissionKind;
+  vertical: string;
+  amount: number;
+  currency: string;
+  status: CommissionStatus;
+  sourceType: string;
+  description: string;
+  createdAt: string;
+  approvedAt: string | null;
+  paidAt: string | null;
+}
 export type CompanyType = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'TruckingCompany' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder';
 export type AppRouteRole = Exclude<UserRole, 'SuperAdmin'> | 'SuperAdmin';
 export type CompanyStatus = 'PendingApproval' | 'Approved' | 'Suspended';

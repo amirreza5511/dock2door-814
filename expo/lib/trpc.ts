@@ -3458,6 +3458,179 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const { data } = await supabase.from('review_summaries').select('*').eq('target_kind', 'worker').eq('target_id', input.userId).maybeSingle();
     return data ?? { count: 0, avg_rating: 0 };
   },
+
+  // =========================================================================
+  // SALES AGENT CRM — agents, leads, attributions, commission ledger, plans
+  // =========================================================================
+  // Current agent's own record (self-heals a missing agent row + code).
+  'sales.myAgent': async (_input, ctx) => {
+    let { data } = await supabase.from('sales_agents').select('*').eq('id', ctx.user.id).maybeSingle();
+    if (!data) {
+      const { data: gen } = await supabase.rpc('ensure_sales_agent', { p_user_id: ctx.user.id });
+      const code = typeof gen === 'string' ? gen : null;
+      const res = await supabase.from('sales_agents').select('*').eq('id', ctx.user.id).maybeSingle();
+      data = res.data ?? (code ? { id: ctx.user.id, agent_code: code, status: 'Active' } : null);
+    }
+    if (!data) return null;
+    let plan: AnyRecord | null = null;
+    if (data.plan_id) {
+      const { data: p } = await supabase.from('commission_plans').select('*').eq('id', data.plan_id as string).maybeSingle();
+      plan = (p as AnyRecord | null) ?? null;
+    }
+    return { ...data, plan };
+  },
+
+  // Aggregated dashboard totals for the current agent.
+  'sales.dashboard': async (_input, ctx) => {
+    const [entries, attrs, leads] = await Promise.all([
+      supabase.from('commission_entries').select('amount, status, kind').eq('agent_id', ctx.user.id),
+      supabase.from('agent_attributions').select('id, vertical').eq('agent_id', ctx.user.id),
+      supabase.from('agent_leads').select('id, status').eq('agent_id', ctx.user.id),
+    ]);
+    const rows = (entries.data as { amount: number; status: string }[] | null) ?? [];
+    const sum = (s: string) => rows.filter((r) => r.status === s).reduce((a, r) => a + Number(r.amount || 0), 0);
+    const leadRows = (leads.data as { status: string }[] | null) ?? [];
+    return {
+      pending: sum('Pending'),
+      approved: sum('Approved'),
+      paid: sum('Paid'),
+      lifetime: sum('Pending') + sum('Approved') + sum('Paid'),
+      accounts: (attrs.data ?? []).length,
+      leads: leadRows.length,
+      openLeads: leadRows.filter((l) => l.status !== 'Won' && l.status !== 'Lost').length,
+    };
+  },
+
+  'sales.leads': async (_input, ctx) => {
+    const { data, error } = await supabase.from('agent_leads').select('*').eq('agent_id', ctx.user.id).order('created_at', { ascending: false });
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load leads'); }
+    return data ?? [];
+  },
+
+  'sales.upsertLead': async (input: AnyRecord) => {
+    const { data, error } = await supabase.rpc('agent_upsert_lead', {
+      p_id: (input.id as string | undefined) ?? null,
+      p_business_name: (input.businessName as string) ?? '',
+      p_contact_name: (input.contactName as string) ?? '',
+      p_contact_email: (input.contactEmail as string) ?? '',
+      p_contact_phone: (input.contactPhone as string) ?? '',
+      p_vertical: (input.vertical as string) ?? 'warehouse',
+      p_status: (input.status as string) ?? 'New',
+      p_notes: (input.notes as string) ?? '',
+    });
+    if (error) throwErr(error, 'Unable to save lead');
+    return { id: data as string };
+  },
+
+  'sales.commissions': async (_input, ctx) => {
+    const { data, error } = await supabase.from('commission_entries').select('*').eq('agent_id', ctx.user.id).order('created_at', { ascending: false });
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load commissions'); }
+    return data ?? [];
+  },
+
+  'sales.accounts': async (_input, ctx) => {
+    const { data, error } = await supabase.from('agent_attributions').select('*').eq('agent_id', ctx.user.id).order('created_at', { ascending: false });
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load accounts'); }
+    return data ?? [];
+  },
+
+  // ---- Admin console ------------------------------------------------------
+  'sales.adminAgents': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data: agents, error } = await supabase.from('sales_agents').select('*').order('created_at', { ascending: false });
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load agents'); }
+    const list = (agents as AnyRecord[] | null) ?? [];
+    if (list.length === 0) return [];
+    const ids = list.map((a) => a.id as string);
+    const [profiles, entries, attrs] = await Promise.all([
+      supabase.from('profiles').select('id, name, email').in('id', ids),
+      supabase.from('commission_entries').select('agent_id, amount, status').in('agent_id', ids),
+      supabase.from('agent_attributions').select('agent_id').in('agent_id', ids),
+    ]);
+    const profMap = new Map((profiles.data ?? []).map((p) => [p.id as string, p]));
+    const entryRows = (entries.data as { agent_id: string; amount: number; status: string }[] | null) ?? [];
+    const attrRows = (attrs.data as { agent_id: string }[] | null) ?? [];
+    return list.map((a) => {
+      const id = a.id as string;
+      const mine = entryRows.filter((e) => e.agent_id === id);
+      const sum = (s: string) => mine.filter((e) => e.status === s).reduce((acc, e) => acc + Number(e.amount || 0), 0);
+      const prof = profMap.get(id) as { name?: string; email?: string } | undefined;
+      return {
+        ...a,
+        name: prof?.name ?? 'Agent',
+        email: prof?.email ?? '',
+        accounts: attrRows.filter((t) => t.agent_id === id).length,
+        pending: sum('Pending'),
+        approved: sum('Approved'),
+        paid: sum('Paid'),
+      };
+    });
+  },
+
+  'sales.adminPlans': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.from('commission_plans').select('*').order('is_default', { ascending: false }).order('name');
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load plans'); }
+    return data ?? [];
+  },
+
+  'sales.adminUpsertPlan': async (input: AnyRecord) => {
+    const { data, error } = await supabase.rpc('admin_upsert_commission_plan', {
+      p_id: (input.id as string | undefined) ?? null,
+      p_name: (input.name as string) ?? 'Plan',
+      p_description: (input.description as string) ?? '',
+      p_config: (input.config as AnyRecord) ?? {},
+      p_is_default: (input.isDefault as boolean) ?? false,
+      p_active: (input.active as boolean) ?? true,
+    });
+    if (error) throwErr(error, 'Unable to save plan');
+    return { id: data as string };
+  },
+
+  'sales.adminUpdateAgent': async (input: { agentId: string; planId?: string | null; status?: string }) => {
+    const { error } = await supabase.rpc('admin_update_agent', {
+      p_agent_id: input.agentId,
+      p_plan_id: input.planId ?? null,
+      p_status: input.status ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update agent');
+    return { success: true };
+  },
+
+  'sales.adminCommissions': async (input: { status?: string } | undefined, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    let q = supabase.from('commission_entries').select('*').order('created_at', { ascending: false }).limit(500);
+    if (input?.status) q = q.eq('status', input.status);
+    const { data, error } = await q;
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load commissions'); }
+    const rows = (data as AnyRecord[] | null) ?? [];
+    if (rows.length === 0) return [];
+    const ids = Array.from(new Set(rows.map((r) => r.agent_id as string)));
+    const { data: profiles } = await supabase.from('profiles').select('id, name, email').in('id', ids);
+    const profMap = new Map((profiles ?? []).map((p) => [p.id as string, p]));
+    return rows.map((r) => {
+      const prof = profMap.get(r.agent_id as string) as { name?: string; email?: string } | undefined;
+      return { ...r, agentName: prof?.name ?? 'Agent', agentEmail: prof?.email ?? '' };
+    });
+  },
+
+  'sales.adminSetCommissionStatus': async (input: { id: string; status: string }) => {
+    const { error } = await supabase.rpc('admin_set_commission_status', { p_id: input.id, p_status: input.status });
+    if (error) throwErr(error, 'Unable to update commission');
+    return { success: true };
+  },
+
+  'sales.adminAwardCommission': async (input: { agentId: string; kind: string; vertical: string; amount: number; description: string }) => {
+    const { data, error } = await supabase.rpc('admin_award_commission', {
+      p_agent_id: input.agentId,
+      p_kind: input.kind,
+      p_vertical: input.vertical ?? '',
+      p_amount: input.amount,
+      p_description: input.description ?? '',
+    });
+    if (error) throwErr(error, 'Unable to award commission');
+    return { id: data as string };
+  },
 };
 
 // ---------------------------------------------------------------------------

@@ -50,6 +50,7 @@ export const DOMAIN_LABELS: Record<Domain, string> = {
 };
 
 export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
+  SalesAgent: '/sales-agent',
   Customer: '/customer',
   WarehouseProvider: '/warehouse-provider',
   ServiceProvider: '/service-provider',
@@ -101,6 +102,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   shipper: ['Shipper'],
   'drayage-company': ['DrayageCompany'],
   'freight-forwarder': ['FreightForwarder'],
+  'sales-agent': ['SalesAgent'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],
   fulfillment: ['WarehouseProvider', 'Customer', 'Admin', 'SuperAdmin'],

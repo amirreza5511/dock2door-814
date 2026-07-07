@@ -30,6 +30,8 @@ interface RegisterInput {
   city?: string;
   /** Optional fleet join code — links a self-registering driver to a company fleet. */
   fleetCode?: string;
+  /** Optional sales-agent referral code — attributes this new account to that agent. */
+  agentCode?: string;
 }
 
 interface AuthState {
@@ -479,6 +481,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             company_name: data.companyName ?? '',
             city: data.city ?? '',
             fleet_code: data.fleetCode ? data.fleetCode.trim().toUpperCase() : '',
+            agent_code: data.agentCode ? data.agentCode.trim().toUpperCase() : '',
           },
         },
       });

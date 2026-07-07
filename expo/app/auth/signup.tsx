@@ -41,6 +41,14 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
 
 const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage'];
 
+/** Standalone cross-vertical role: sales agents onboard accounts and earn commission. */
+const SALES_ROLE: RoleOption = {
+  id: 'SalesAgent', role: 'SalesAgent', label: 'Sales Agent',
+  desc: 'Onboard warehouses, drivers, employers & more — earn commission from Dock2Door',
+};
+
+const NO_COMPANY_ROLES: UserRole[] = ['Worker', 'Driver', 'SalesAgent', 'SuperAdmin'];
+
 export default function Signup() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -52,9 +60,10 @@ export default function Signup() {
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
   const [fleetCode, setFleetCode] = useState('');
+  const [agentCode, setAgentCode] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedRole: UserRole | null = selectedId
-    ? (WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]).find((r) => r.id === selectedId)?.role ?? null)
+    ? ([...WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]), SALES_ROLE].find((r) => r.id === selectedId)?.role ?? null)
     : null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -66,11 +75,11 @@ export default function Signup() {
     if (!email.trim()) { setError('Email is required'); return; }
     if (!password || password.length < 6) { setError('Password must be at least 6 characters'); return; }
     if (!selectedRole) { setError('Please select your role'); return; }
-    if (!['Worker', 'Driver', 'SuperAdmin'].includes(selectedRole) && !companyName.trim()) { setError('Company name is required for this role'); return; }
+    if (!NO_COMPANY_ROLES.includes(selectedRole) && !companyName.trim()) { setError('Company name is required for this role'); return; }
 
     setLoading(true);
     try {
-      const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim() });
+      const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim(), agentCode: agentCode.trim() });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
       } else if (result.needsEmailConfirmation) {
@@ -146,7 +155,7 @@ export default function Signup() {
           <Input label="Full Name" value={name} onChangeText={setName} placeholder="Jane Smith" testID="input-name" />
           <Input label="Email" value={email} onChangeText={setEmail} placeholder="you@company.com" keyboardType="email-address" autoCapitalize="none" testID="input-email" />
           <Input label="Password" value={password} onChangeText={setPassword} placeholder="Min. 6 characters" secureTextEntry testID="input-password" />
-          {!['Worker', 'Driver', 'SuperAdmin'].includes(selectedRole ?? '') ? (
+          {!NO_COMPANY_ROLES.includes((selectedRole ?? '') as UserRole) ? (
             <>
               <Input label="Company Name" value={companyName} onChangeText={setCompanyName} placeholder="Dock2Door Logistics Ltd." testID="input-company-name" />
               <Input label="City" value={city} onChangeText={setCity} placeholder="e.g. Chicago" testID="input-city" />
@@ -164,6 +173,22 @@ export default function Signup() {
               />
               <Text style={styles.fleetCodeHint}>
                 Joining a fleet or carrier company? Enter the code your dispatcher gave you and you’ll show up in their fleet automatically. Leave blank if you’re an independent owner-operator.
+              </Text>
+            </View>
+          ) : null}
+
+          {selectedRole && selectedRole !== 'SalesAgent' ? (
+            <View style={styles.fleetCodeBox}>
+              <Input
+                label="Referral code (optional)"
+                value={agentCode}
+                onChangeText={(v) => setAgentCode(v.toUpperCase())}
+                placeholder="e.g. AG7K2PQ"
+                autoCapitalize="characters"
+                testID="input-agent-code"
+              />
+              <Text style={styles.fleetCodeHint}>
+                Were you referred by a Dock2Door sales agent? Enter their code so they get credit for bringing you on board. Leave blank if not.
               </Text>
             </View>
           ) : null}
@@ -197,6 +222,32 @@ export default function Signup() {
                 </View>
               </View>
             ))}
+
+            <View style={styles.worldGroup}>
+              <Text style={styles.worldHeading}>Sales & Partnerships</Text>
+              <View style={styles.rolesGrid}>
+                {[SALES_ROLE].map((r) => {
+                  const selected = selectedId === r.id;
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      onPress={() => setSelectedId(r.id)}
+                      style={[styles.roleCard, selected && styles.roleCardSelected]}
+                      activeOpacity={0.8}
+                      testID={`role-${r.id}`}
+                    >
+                      {selected && (
+                        <View style={styles.checkIcon}>
+                          <Check size={12} color={C.white} />
+                        </View>
+                      )}
+                      <Text style={[styles.roleTitle, selected && styles.roleTitleSelected]}>{r.label}</Text>
+                      <Text style={styles.roleDesc}>{r.desc}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
           </View>
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
