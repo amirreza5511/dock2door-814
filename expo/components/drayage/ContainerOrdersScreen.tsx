@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users, Boxes, Truck, CheckCircle2, MapPin } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -139,6 +139,15 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
 
   const orders = useMemo(() => (ordersQuery.data ?? []) as any[], [ordersQuery.data]);
 
+  const stats = useMemo(() => {
+    const active = orders.filter((o) => !['Delivered', 'Cancelled'].includes(o.status));
+    const inTransit = orders.filter((o) => ['EnRoute', 'PickedUp', 'InTransit', 'Dispatched'].includes(o.status));
+    const delivered = orders.filter((o) => o.status === 'Delivered');
+    return { total: orders.length, active: active.length, inTransit: inTransit.length, delivered: delivered.length };
+  }, [orders]);
+
+  const isHome = !showBack;
+
   const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 
   return (
@@ -169,6 +178,24 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
+        {/* Stats overview (role home only) */}
+        {isHome ? (
+          <View style={styles.statsGrid}>
+            {[
+              { label: 'Total Orders', value: stats.total, icon: Boxes, color: C.accent },
+              { label: 'Active', value: stats.active, icon: Truck, color: C.yellow },
+              { label: 'In Transit', value: stats.inTransit, icon: MapPin, color: C.blue },
+              { label: 'Delivered', value: stats.delivered, icon: CheckCircle2, color: C.green },
+            ].map((s) => (
+              <View key={s.label} style={styles.statCard}>
+                <View style={[styles.statIconWrap, { backgroundColor: s.color + '20' }]}><s.icon size={18} color={s.color} /></View>
+                <Text style={styles.statValue}>{s.value}</Text>
+                <Text style={styles.statLabel}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {/* CTA */}
         <TouchableOpacity style={styles.cta} onPress={() => setShowForm(true)} activeOpacity={0.85}>
           <View style={styles.ctaIcon}><Plus size={22} color={C.white} /></View>
@@ -178,6 +205,26 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
           </View>
           <Ship size={18} color={C.white} />
         </TouchableOpacity>
+
+        {/* How it works (role home only) */}
+        {isHome ? (
+          <View style={styles.guideCard}>
+            <Text style={styles.guideTitle}>How it works</Text>
+            {[
+              { n: '1', icon: Ship, color: C.blue, title: 'Post a container', text: 'Add your import or export container with terminal, appointment and commodity details.' },
+              { n: '2', icon: Building2, color: C.accent, title: 'Get it claimed', text: 'Send it to a specific drayage company or open it to the marketplace for quotes.' },
+              { n: '3', icon: MapPin, color: C.green, title: 'Track live', text: 'Follow every move on the map and see port reservations, pickup and delivery in real time.' },
+            ].map((g) => (
+              <View key={g.n} style={styles.guideRow}>
+                <View style={[styles.guideIcon, { backgroundColor: g.color + '20' }]}><g.icon size={16} color={g.color} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.guideRowTitle}>{g.title}</Text>
+                  <Text style={styles.guideRowText}>{g.text}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* Orders list */}
         <View style={styles.sectionRow}>
@@ -462,6 +509,17 @@ const styles = StyleSheet.create({
   ctaIcon: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#FFFFFF22', alignItems: 'center', justifyContent: 'center' },
   ctaTitle: { fontSize: 16, fontWeight: '800' as const, color: C.white },
   ctaDesc: { fontSize: 12, color: '#FFFFFFCC', marginTop: 2 },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  statCard: { flex: 1, minWidth: '47%', backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 4 },
+  statIconWrap: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  statValue: { fontSize: 22, fontWeight: '800' as const, color: C.text, letterSpacing: -0.5 },
+  statLabel: { fontSize: 11, color: C.textSecondary },
+  guideCard: { backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 16, gap: 14 },
+  guideTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  guideRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  guideIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  guideRowTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text, marginBottom: 2 },
+  guideRowText: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text },
   orderCard: { gap: 8 },
