@@ -13,6 +13,7 @@ import {
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
+import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
@@ -103,9 +104,12 @@ export default function SalesAgentHome() {
               <Text style={styles.name}>{user?.name ?? 'Welcome back'}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn}>
-            <LogOut size={18} color={C.textSecondary} />
-          </TouchableOpacity>
+          <View style={styles.topActions}>
+            <SupportMenu />
+            <TouchableOpacity onPress={() => void logout()} style={styles.logoutBtn}>
+              <LogOut size={18} color={C.textSecondary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Text style={styles.lifetimeLabel}>Lifetime commission</Text>
@@ -244,6 +248,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, gap: 14 },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  topActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandBadge: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
   hello: { fontSize: 12, color: C.accent, fontWeight: '700' as const, letterSpacing: 1, textTransform: 'uppercase' as const },
   name: { fontSize: 18, color: C.text, fontWeight: '800' as const },

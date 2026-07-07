@@ -6,6 +6,7 @@ import { ArrowLeft, ChevronRight, Plus, Building2, UserRound } from 'lucide-reac
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
+import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 
@@ -47,7 +48,10 @@ export default function SalesAgentClients() {
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}><ArrowLeft size={20} color={C.text} /></TouchableOpacity>
         <Text style={styles.title}>My clients</Text>
-        <TouchableOpacity onPress={() => router.push('/sales-agent/onboard' as never)} style={[styles.iconBtn, styles.addBtn]}><Plus size={20} color={C.white} /></TouchableOpacity>
+        <View style={styles.headerActions}>
+          <SupportMenu />
+          <TouchableOpacity onPress={() => router.push('/sales-agent/onboard' as never)} style={[styles.iconBtn, styles.addBtn]}><Plus size={20} color={C.white} /></TouchableOpacity>
+        </View>
       </View>
 
       {clientsQuery.isLoading ? (
@@ -115,6 +119,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.bgSecondary },
   iconBtn: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   addBtn: { backgroundColor: C.accent, borderColor: C.accent },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, textAlign: 'center' as const },

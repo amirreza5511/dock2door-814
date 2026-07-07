@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
+import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import type { LeadStatus, SalesVertical } from '@/constants/types';
@@ -90,7 +91,10 @@ export default function SalesAgentLeads() {
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}><ArrowLeft size={20} color={C.text} /></TouchableOpacity>
         <Text style={styles.title}>Leads pipeline</Text>
-        <TouchableOpacity onPress={openNew} style={[styles.iconBtn, styles.addBtn]}><Plus size={20} color={C.white} /></TouchableOpacity>
+        <View style={styles.headerActions}>
+          <SupportMenu />
+          <TouchableOpacity onPress={openNew} style={[styles.iconBtn, styles.addBtn]}><Plus size={20} color={C.white} /></TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar} contentContainerStyle={styles.filterContent}>
@@ -176,6 +180,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.bgSecondary },
   iconBtn: { width: 40, height: 40, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   addBtn: { backgroundColor: C.accent, borderColor: C.accent },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   filterBar: { maxHeight: 56, flexGrow: 0 },
   filterContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },

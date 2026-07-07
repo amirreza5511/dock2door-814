@@ -9,6 +9,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
+import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import type { SalesVertical } from '@/constants/types';
@@ -90,7 +91,7 @@ export default function OnboardClient() {
       <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}><ArrowLeft size={20} color={C.text} /></TouchableOpacity>
         <Text style={styles.title}>Onboard a client</Text>
-        <View style={{ width: 40 }} />
+        <SupportMenu />
       </View>
 
       <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 32 }]} showsVerticalScrollIndicator={false}>

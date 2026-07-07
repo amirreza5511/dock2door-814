@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, Clock, HelpCircle, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users, Boxes, Truck, CheckCircle2, MapPin, Tag } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Clock, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users, Boxes, Truck, CheckCircle2, MapPin, Tag } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -12,6 +12,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
+import SupportMenu from '@/components/SupportMenu';
 import { trpc } from '@/lib/trpc';
 
 const CONTAINER_SIZES = ['20ft', '40ft', '40HC', '45HC', '53ft'];
@@ -175,9 +176,7 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
                 <Tag size={18} color={C.green} />
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity onPress={() => router.push('/help' as never)} style={styles.iconBtn}>
-              <HelpCircle size={18} color={C.textMuted} />
-            </TouchableOpacity>
+            <SupportMenu />
             <TouchableOpacity onPress={() => void logout()} style={styles.iconBtn}>
               <LogOut size={18} color={C.textMuted} />
             </TouchableOpacity>
