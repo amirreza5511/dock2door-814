@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, CalendarClock, HelpCircle, LogOut, MapPin, Package, Plus, Ship, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, CalendarClock, DollarSign, HelpCircle, LogOut, MapPin, Package, Plus, Ship, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -108,6 +108,14 @@ export default function DrayageCompanyDashboard() {
             <Text style={styles.actionTitle}>Fleet</Text>
             <Text style={styles.actionText}>Manage drivers & trucks</Text>
           </Card>
+        </View>
+        <View style={styles.actionsRow}>
+          <Card onPress={() => router.push('/drayage-company/rates' as never)} style={styles.actionCard}>
+            <DollarSign size={20} color={C.green} />
+            <Text style={styles.actionTitle}>Rates & Zones</Text>
+            <Text style={styles.actionText}>Set zone pricing, fuel, prepull & waiting</Text>
+          </Card>
+          <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
         </View>
 
         {/* Open Orders */}

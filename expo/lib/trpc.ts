@@ -1921,6 +1921,142 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
+  // -------------------------------------------------------------------------
+  // DRAYAGE RATES — zones, rate cards & accessorials (0115)
+  // -------------------------------------------------------------------------
+
+  // The current drayage company's zones.
+  'drayage.myZones': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('drayage_zones')
+      .select('*')
+      .eq('drayage_company_id', ctx.user.companyId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load zones');
+    return data ?? [];
+  },
+
+  'drayage.upsertZone': async (input: { id?: string | null; name: string; description?: string; sortOrder?: number; isActive?: boolean }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('No company associated with your account');
+    const row: AnyRecord = {
+      drayage_company_id: ctx.user.companyId,
+      name: input.name.trim(),
+      description: input.description ?? '',
+      sort_order: input.sortOrder ?? 0,
+      is_active: input.isActive ?? true,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.id) row.id = input.id;
+    const { data, error } = await supabase.from('drayage_zones').upsert(row).select().single();
+    if (error) throwErr(error, 'Unable to save zone');
+    return data;
+  },
+
+  'drayage.deleteZone': async (input: { id: string }) => {
+    const { error } = await supabase.from('drayage_zones').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete zone');
+    return { success: true };
+  },
+
+  // The current drayage company's rate cards, with their per-zone rates attached.
+  'drayage.myRateCards': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('drayage_rate_cards')
+      .select('*, drayage_zone_rates(*), customer:customer_company_id(id, name)')
+      .eq('drayage_company_id', ctx.user.companyId)
+      .order('is_default', { ascending: false })
+      .order('created_at', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load rate cards');
+    return data ?? [];
+  },
+
+  'drayage.upsertRateCard': async (input: AnyRecord, ctx) => {
+    if (!ctx.user.companyId) throw new Error('No company associated with your account');
+    const row: AnyRecord = {
+      drayage_company_id: ctx.user.companyId,
+      customer_company_id: input.customerCompanyId ?? null,
+      name: String(input.name ?? 'Standard rates').trim(),
+      currency: input.currency ?? 'CAD',
+      is_default: input.isDefault ?? false,
+      is_active: input.isActive ?? true,
+      fuel_surcharge_pct: input.fuelSurchargePct ?? 0,
+      prepull_fee: input.prepullFee ?? 0,
+      drop_pick_fee: input.dropPickFee ?? 0,
+      chassis_per_day: input.chassisPerDay ?? 0,
+      waiting_free_min: input.waitingFreeMin ?? 120,
+      waiting_per_hour: input.waitingPerHour ?? 0,
+      hourly_rate: input.hourlyRate ?? 0,
+      hazmat_fee: input.hazmatFee ?? 0,
+      overweight_fee: input.overweightFee ?? 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (input.id) row.id = input.id;
+    const { data, error } = await supabase.from('drayage_rate_cards').upsert(row).select().single();
+    if (error) throwErr(error, 'Unable to save rate card');
+    return data;
+  },
+
+  'drayage.deleteRateCard': async (input: { id: string }) => {
+    const { error } = await supabase.from('drayage_rate_cards').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete rate card');
+    return { success: true };
+  },
+
+  // Set (or clear) the base linehaul rate for a zone on a card.
+  'drayage.setZoneRate': async (input: { rateCardId: string; zoneId: string; baseRate: number }) => {
+    const { error } = await supabase.from('drayage_zone_rates').upsert(
+      { rate_card_id: input.rateCardId, zone_id: input.zoneId, base_rate: input.baseRate, updated_at: new Date().toISOString() },
+      { onConflict: 'rate_card_id,zone_id' },
+    );
+    if (error) throwErr(error, 'Unable to save zone rate');
+    return { success: true };
+  },
+
+  // Resolve the published rate card + zones that apply to a given order, so both
+  // the customer and the drayage company can see the pricing and estimate it.
+  'drayage.rateCardForOrder': async (input: { orderId: string }) => {
+    const { data: order, error: oErr } = await supabase
+      .from('drayage_orders')
+      .select('id, drayage_company_id, target_drayage_company_id, customer_company_id, zone_id, rate_card_id')
+      .eq('id', input.orderId)
+      .maybeSingle();
+    if (oErr) throwErr(oErr, 'Unable to load order');
+    const companyId = order?.drayage_company_id ?? order?.target_drayage_company_id ?? null;
+    if (!companyId) return { card: null, zones: [], zoneRates: [] };
+
+    const [zonesRes, cardsRes] = await Promise.all([
+      supabase.from('drayage_zones').select('*').eq('drayage_company_id', companyId).eq('is_active', true).order('sort_order'),
+      supabase.from('drayage_rate_cards').select('*, drayage_zone_rates(*)').eq('drayage_company_id', companyId).eq('is_active', true),
+    ]);
+    if (isMissingRelation(zonesRes.error) || isMissingRelation(cardsRes.error)) return { card: null, zones: [], zoneRates: [] };
+    const cards = (cardsRes.data ?? []) as AnyRecord[];
+    // Prefer a customer-specific card, else the default.
+    const custCard = order?.customer_company_id
+      ? cards.find((c) => c.customer_company_id === order.customer_company_id)
+      : null;
+    const card = custCard ?? cards.find((c) => c.is_default) ?? cards.find((c) => !c.customer_company_id) ?? null;
+    return {
+      card,
+      zones: zonesRes.data ?? [],
+      zoneRates: (card?.drayage_zone_rates ?? []) as AnyRecord[],
+    };
+  },
+
+  // Lock the price onto the order using a chosen zone (authoritative server calc).
+  'drayage.applyRate': async (input: { orderId: string; zoneId: string }) => {
+    const { error } = await supabase.rpc('apply_drayage_rate', {
+      p_order_id: input.orderId,
+      p_zone_id: input.zoneId,
+    });
+    if (error) throwErr(error, 'Unable to apply rate');
+    return { success: true };
+  },
+
   // =========================================================================
   // MESSAGING (thread-based)
   // =========================================================================

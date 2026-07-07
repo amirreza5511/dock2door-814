@@ -11,6 +11,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
+import DrayagePricingCard from '@/components/drayage/DrayagePricingCard';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
@@ -279,6 +280,9 @@ export default function DrayageOrderDetailScreen() {
             </>
           )}
         </Card>
+
+        {/* Pricing */}
+        <DrayagePricingCard orderId={orderId} order={order} canApply={!!order.drayage_company_id} />
 
         {/* Port reservation card */}
         <Card style={styles.sectionCard}>

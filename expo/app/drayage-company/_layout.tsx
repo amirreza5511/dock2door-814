@@ -9,6 +9,7 @@ export default function DrayageCompanyLayout() {
       <Stack.Screen name="dispatch" />
       <Stack.Screen name="terminals" />
       <Stack.Screen name="fleet" />
+      <Stack.Screen name="rates" />
       <Stack.Screen name="[orderId]" />
     </Stack>
   );

@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import EmptyState from '@/components/ui/EmptyState';
+import DrayagePricingCard from '@/components/drayage/DrayagePricingCard';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
@@ -324,6 +325,9 @@ export default function CustomerDrayageOrderDetail() {
             ))}
           </Card>
         ) : null}
+
+        {/* Pricing — what the drayage company charges */}
+        <DrayagePricingCard orderId={orderId} order={order} canApply={false} />
 
         {/* Container details */}
         <Card style={styles.sectionCard}>
