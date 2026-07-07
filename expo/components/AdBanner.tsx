@@ -181,7 +181,7 @@ export default function AdBanner() {
 
   const openLink = useCallback(async (link: AdLink | null) => {
     if (!current || !link) return;
-    clickM.mutate({ id: current.id });
+    clickM.mutate({ id: current.id, linkType: link.type });
     const normalized = resolveLink(link.type, link.value);
     if (!normalized) return;
     const ok = await Linking.canOpenURL(normalized).catch(() => false);

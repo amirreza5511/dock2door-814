@@ -2807,7 +2807,17 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'ads.recordClick': async (input: { id: string }) => {
+  'ads.recordClick': async (input: { id: string; linkType?: string }) => {
+    // Prefer the per-link tracker (0122): it bumps the total click counter AND
+    // the per-destination breakdown in one call. Fall back to the legacy total-
+    // only counter if the migration/function isn't present yet.
+    if (input.linkType && input.linkType.length > 0) {
+      const res = await supabase.rpc('ad_record_link_click', {
+        p_id: input.id,
+        p_link_type: input.linkType,
+      });
+      if (!res.error) return { success: true };
+    }
     const { error } = await supabase.rpc('ad_record_click', { p_id: input.id });
     if (error && !isMissingRelation(error)) {
       return { success: false };

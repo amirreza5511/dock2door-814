@@ -38,6 +38,16 @@ type Ad = {
   weight?: number | null;
   placements?: string[] | null;
   links?: { type: string; value: string }[] | null;
+  link_clicks?: Record<string, number> | null;
+};
+
+const LINK_META: Record<string, { label: string; Icon: typeof Globe }> = {
+  website: { label: 'Website', Icon: Globe },
+  instagram: { label: 'Instagram', Icon: Instagram },
+  phone: { label: 'Call', Icon: Phone },
+  whatsapp: { label: 'WhatsApp', Icon: MessageCircle },
+  youtube: { label: 'YouTube', Icon: Youtube },
+  email: { label: 'Email', Icon: Mail },
 };
 
 type MediaType = 'image' | 'video' | 'youtube';
@@ -304,6 +314,8 @@ export default function SuperAdminAdsScreen() {
               ) : null}
             </View>
 
+            <LinkClicks ad={ad} />
+
             <View style={styles.actionsRow}>
               <Button
                 label={ad.status === 'Active' ? 'Pause' : 'Activate'}
@@ -466,6 +478,35 @@ export default function SuperAdminAdsScreen() {
   );
 }
 
+/** Per-destination click breakdown for one ad (which button people tap most). */
+function LinkClicks({ ad }: { ad: Ad }) {
+  const breakdown = useMemo<{ type: string; count: number }[]>(() => {
+    const raw = ad.link_clicks;
+    if (!raw || typeof raw !== 'object') return [];
+    return Object.entries(raw)
+      .map(([type, count]) => ({ type, count: Number(count) || 0 }))
+      .filter((e) => e.count > 0)
+      .sort((a, b) => b.count - a.count);
+  }, [ad.link_clicks]);
+
+  if (breakdown.length === 0) return null;
+  return (
+    <View style={styles.linkClicksRow}>
+      {breakdown.map(({ type, count }) => {
+        const meta = LINK_META[type] ?? { label: type, Icon: ExternalLink };
+        const Icon = meta.Icon;
+        return (
+          <View key={type} style={styles.linkClickPill}>
+            <Icon size={12} color={C.accent} />
+            <Text style={styles.linkClickLabel}>{meta.label}</Text>
+            <Text style={styles.linkClickCount}>{count}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View style={styles.field}>
@@ -548,6 +589,11 @@ const styles = StyleSheet.create({
   placeChipOn: { backgroundColor: C.accentDim, borderColor: C.accent },
   placeChipText: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary },
   placeChipTextOn: { color: C.accent },
+
+  linkClicksRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: -2 },
+  linkClickPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accentDim, borderRadius: 999, paddingLeft: 8, paddingRight: 9, paddingVertical: 4 },
+  linkClickLabel: { fontSize: 11, fontWeight: '600' as const, color: C.textSecondary },
+  linkClickCount: { fontSize: 11, fontWeight: '800' as const, color: C.accent },
 
   activeRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14, marginTop: 2 },
   activeLabel: { fontSize: 14, fontWeight: '700' as const, color: C.text },
