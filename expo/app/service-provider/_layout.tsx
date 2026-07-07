@@ -24,6 +24,7 @@ export default function ServiceProviderLayout() {
       <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: ({ color }) => <UsersRound size={22} color={color} /> }} />
       <Tabs.Screen name="billing" options={{ title: 'Billing', tabBarIcon: ({ color }) => <Receipt size={22} color={color} /> }} />
       <Tabs.Screen name="rates" options={{ href: null }} />
+      <Tabs.Screen name="invoicing" options={{ href: null }} />
     </Tabs>
   );
 }

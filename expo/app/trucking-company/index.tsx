@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { CalendarClock, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Truck, Users } from 'lucide-react-native';
+import { CalendarClock, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Receipt, Truck, Users } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -125,6 +125,11 @@ export default function TruckingCompanyDashboard() {
             <CreditCard size={20} color={C.accent} />
             <Text style={styles.actionTitle}>Finance visibility</Text>
             <Text style={styles.actionText}>Payments, invoices, and payouts.</Text>
+          </Card>
+          <Card onPress={() => router.push('/trucking-company/invoicing' as never)} style={styles.actionCard}>
+            <Receipt size={20} color={C.blue} />
+            <Text style={styles.actionTitle}>Invoicing</Text>
+            <Text style={styles.actionText}>Send invoices, track A/R & expenses.</Text>
           </Card>
           <Card onPress={() => router.push('/trucking-company/messages' as never)} style={styles.actionCard}>
             <MessagesSquare size={20} color={C.accent} />

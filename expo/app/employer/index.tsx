@@ -745,6 +745,7 @@ export default function EmployerDashboard() {
               { label: 'Labor Rates & Categories', icon: DollarSign, color: C.green, path: '/employer/rates' },
               { label: 'Company Profile', icon: Building2, color: C.accent, path: '/employer/company-profile' },
               { label: 'Billing & Invoices', icon: DollarSign, color: C.green, path: '/employer/billing' },
+              { label: 'Invoicing & Accounting', icon: BookOpen, color: C.blue, path: '/employer/invoicing' },
               { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },
               { label: 'Help Center & Manual', icon: BookOpen, color: C.green, path: '/help' },
               { label: 'Reviews', icon: Star, color: C.yellow, path: '/reviews' },

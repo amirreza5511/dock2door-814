@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag } from 'lucide-react-native';
+import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag, Receipt } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import StatusBadge from '@/components/ui/StatusBadge';
@@ -124,6 +124,17 @@ export default function ServiceProviderDashboard() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.listingCat}>Service Rates</Text>
                 <Text style={styles.listingDetail}>Publish pricing, areas & add-on fees</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/service-provider/invoicing' as any)} style={[styles.ratesCard, { marginTop: 10 }]}>
+            <View style={styles.ratesRow}>
+              <View style={[styles.catBadge, { backgroundColor: C.blueDim }]}>
+                <Receipt size={16} color={C.blue} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listingCat}>Invoicing & Accounting</Text>
+                <Text style={styles.listingDetail}>Send invoices, track A/R, expenses & net</Text>
               </View>
             </View>
           </Card>

@@ -3286,6 +3286,118 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // INVOICING — provider-authored invoices + light accounting
+  // =========================================================================
+  // Companies this provider can bill (approved companies, excluding self).
+  'invoicing.customerCompanies': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('id, name, type, city, status')
+      .eq('status', 'Approved')
+      .order('name', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load companies');
+    return (data ?? [])
+      .filter((c) => String(c.id) !== String(ctx.user.companyId ?? ''))
+      .map((c) => ({ id: String(c.id), name: String((c as AnyRecord).name ?? 'Company'), type: String((c as AnyRecord).type ?? ''), city: String((c as AnyRecord).city ?? '') }));
+  },
+  // Full invoice with its line items.
+  'invoicing.getWithLines': async (input: { invoiceId: string }) => {
+    if (!input.invoiceId) throw new Error('Invoice id required');
+    const { data: inv, error } = await supabase.from('invoices').select('*').eq('id', input.invoiceId).maybeSingle();
+    if (error || !inv) throw new Error('Invoice not found');
+    const { data: lines } = await supabase.from('invoice_lines').select('*').eq('invoice_id', input.invoiceId).order('sort_order', { ascending: true });
+    return { invoice: inv, lines: lines ?? [] };
+  },
+  // Create + optionally issue a custom invoice to a customer.
+  'invoicing.create': async (input: {
+    customerCompanyId?: string | null;
+    customerName?: string;
+    customerEmail?: string;
+    currency?: string;
+    taxRate?: number;
+    dueDays?: number;
+    notes?: string;
+    status?: 'Draft' | 'Issued';
+    lines: { description: string; quantity: number; unitPrice: number }[];
+  }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('You must belong to a company to send invoices');
+    const cleanLines = (input.lines ?? [])
+      .filter((l) => (l.description ?? '').trim().length > 0)
+      .map((l) => ({ description: l.description.trim(), quantity: Number(l.quantity) || 0, unit_price: Number(l.unitPrice) || 0 }));
+    if (cleanLines.length === 0) throw new Error('Add at least one line item');
+    const { data, error } = await supabase.rpc('create_provider_invoice', {
+      p_provider_company_id: ctx.user.companyId,
+      p_customer_company_id: input.customerCompanyId ?? null,
+      p_customer_name: input.customerName ?? '',
+      p_customer_email: input.customerEmail ?? '',
+      p_currency: input.currency ?? 'CAD',
+      p_tax_rate: Number(input.taxRate) || 0,
+      p_due_days: Number.isFinite(input.dueDays) ? Number(input.dueDays) : 14,
+      p_notes: input.notes ?? '',
+      p_lines: cleanLines,
+      p_status: input.status ?? 'Issued',
+    });
+    if (error) throwErr(error, 'Unable to create invoice');
+    return { id: data as string };
+  },
+  // Owner-side status change: Issue / Void / Paid (records payment when Paid).
+  'invoicing.setStatus': async (input: { id: string; status: 'Issued' | 'Void' | 'Paid'; method?: string }) => {
+    if (!input.id) throw new Error('Invoice id required');
+    const { data, error } = await supabase.rpc('provider_set_invoice_status', {
+      p_invoice_id: input.id,
+      p_status: input.status,
+      p_method: input.method ?? 'manual',
+    });
+    if (error) throwErr(error, 'Unable to update invoice');
+    return { success: true, paymentId: (data as string) ?? null };
+  },
+  // =========================================================================
+  // ACCOUNTING — company-level bookkeeping summary + expenses
+  // =========================================================================
+  'accounting.summary': async (_input, ctx) => {
+    if (!ctx.user.companyId) {
+      return { collected: 0, outstanding: 0, overdue: 0, draft: 0, expenses: 0, net: 0, invoiceCount: 0, aging: { current: 0, d1_30: 0, d31_60: 0, d60_plus: 0 } };
+    }
+    const { data, error } = await supabase.rpc('company_accounting_summary', { p_company_id: ctx.user.companyId });
+    if (error) throwErr(error, 'Unable to load accounting summary');
+    return data as AnyRecord;
+  },
+  'accounting.listExpenses': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('company_expenses')
+      .select('*')
+      .eq('company_id', ctx.user.companyId)
+      .order('incurred_on', { ascending: false });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load expenses');
+    return data ?? [];
+  },
+  'accounting.addExpense': async (input: { category?: string; vendor?: string; description?: string; amount: number; currency?: string; incurredOn?: string; status?: string }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('You must belong to a company to record expenses');
+    if (!(Number(input.amount) > 0)) throw new Error('Amount must be greater than 0');
+    const { data, error } = await supabase.from('company_expenses').insert({
+      company_id: ctx.user.companyId,
+      category: input.category ?? 'general',
+      vendor: input.vendor ?? '',
+      description: input.description ?? '',
+      amount: Number(input.amount),
+      currency: input.currency ?? 'CAD',
+      incurred_on: input.incurredOn ?? new Date().toISOString().slice(0, 10),
+      status: input.status ?? 'Recorded',
+    }).select('id').single();
+    if (error) throwErr(error, 'Unable to record expense');
+    return { id: data!.id as string };
+  },
+  'accounting.deleteExpense': async (input: { id: string }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Not authorized');
+    const { error } = await supabase.from('company_expenses').delete().eq('id', input.id).eq('company_id', ctx.user.companyId);
+    if (error) throwErr(error, 'Unable to delete expense');
+    return { success: true };
+  },
+
+  // =========================================================================
   // SHIPPING — EasyPost label purchase + shipments + tracking
   // =========================================================================
   'shipping.listShipments': async (_input, ctx) => {

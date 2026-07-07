@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, HelpCircle, Tag } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, HelpCircle, Tag, Receipt } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -182,6 +182,17 @@ export default function WarehouseProviderDashboard() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.createTitle}>Rates & Zones</Text>
                 <Text style={styles.createDesc}>Publish storage pricing, zones & fees</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/warehouse-provider/invoicing' as any)} elevated style={{ marginTop: 10 }}>
+            <View style={styles.createRow}>
+              <View style={[styles.createIcon, { backgroundColor: C.blueDim }]}>
+                <Receipt size={22} color={C.blue} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.createTitle}>Invoicing & Accounting</Text>
+                <Text style={styles.createDesc}>Send invoices, track A/R, expenses & net profit</Text>
               </View>
             </View>
           </Card>
