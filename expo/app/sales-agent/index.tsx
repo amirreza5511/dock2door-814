@@ -1,18 +1,22 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Share, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   TrendingUp, Users, Wallet, Copy, Share2, ClipboardList,
-  ChevronRight, Sparkles, LogOut, CheckCheck,
+  ChevronRight, Sparkles, LogOut, CheckCheck, UserPlus, Building2,
+  CircleUserRound, CheckCircle2, Circle, PlayCircle,
 } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
+import Button from '@/components/ui/Button';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
+import { WELCOME_SEEN_KEY } from './welcome';
 
 function money(n: number): string {
   return `$${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
@@ -28,12 +32,46 @@ export default function SalesAgentHome() {
   const agentQuery = trpc.sales.myAgent.useQuery();
   const dashQuery = trpc.sales.dashboard.useQuery();
 
-  const agent = agentQuery.data as { agent_code?: string; plan?: { name?: string } } | null | undefined;
+  const agent = agentQuery.data as { agent_code?: string; phone?: string; territory?: string; payout_method?: string; plan?: { name?: string } } | null | undefined;
   const dash = dashQuery.data as
     | { pending: number; approved: number; paid: number; lifetime: number; accounts: number; leads: number; openLeads: number }
     | undefined;
 
   const code = agent?.agent_code ?? '——————';
+
+  // First-run: send brand-new agents through the guided welcome once.
+  const agentLoaded = agentQuery.isSuccess;
+  useEffect(() => {
+    if (!agentLoaded) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const seen = await AsyncStorage.getItem(WELCOME_SEEN_KEY);
+        if (!cancelled && !seen) router.push('/sales-agent/welcome' as never);
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [agentLoaded, router]);
+
+  // Refresh dashboards when returning to this screen (e.g. after onboarding).
+  useFocusEffect(useCallback(() => {
+    void agentQuery.refetch();
+    void dashQuery.refetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []));
+
+  const profileComplete = Boolean((agent?.phone ?? '').trim() && (agent?.territory ?? '').trim() && (agent?.payout_method ?? '').trim());
+  const checklist = useMemo(() => {
+    const items = [
+      { key: 'profile', label: 'Complete your agent profile', done: profileComplete, onPress: () => router.push('/sales-agent/profile' as never) },
+      { key: 'code', label: 'Share your referral code', done: (dash?.accounts ?? 0) > 0 || (dash?.leads ?? 0) > 0, onPress: () => router.push('/sales-agent/onboard' as never) },
+      { key: 'lead', label: 'Add your first lead', done: (dash?.leads ?? 0) > 0, onPress: () => router.push('/sales-agent/leads' as never) },
+      { key: 'client', label: 'Onboard your first client', done: (dash?.accounts ?? 0) > 0, onPress: () => router.push('/sales-agent/onboard' as never) },
+    ];
+    return items;
+  }, [profileComplete, dash?.accounts, dash?.leads, router]);
+  const doneCount = checklist.filter((i) => i.done).length;
+  const allDone = doneCount === checklist.length;
 
   const copyCode = useCallback(async () => {
     if (!agent?.agent_code) return;
@@ -84,6 +122,34 @@ export default function SalesAgentHome() {
           </View>
         </View>
 
+        <Button
+          label="Onboard a new client"
+          onPress={() => router.push('/sales-agent/onboard' as never)}
+          icon={<UserPlus size={18} color={C.white} />}
+          fullWidth
+          size="lg"
+          style={styles.onboardBtn}
+        />
+
+        {!allDone ? (
+          <Card style={styles.checklistCard}>
+            <View style={styles.checklistHead}>
+              <Text style={styles.checklistTitle}>Getting started</Text>
+              <Text style={styles.checklistCount}>{doneCount}/{checklist.length}</Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${(doneCount / checklist.length) * 100}%` }]} />
+            </View>
+            {checklist.map((item) => (
+              <TouchableOpacity key={item.key} onPress={item.onPress} activeOpacity={0.8} style={styles.checkRow} disabled={item.done}>
+                {item.done ? <CheckCircle2 size={20} color={C.green} /> : <Circle size={20} color={C.textMuted} />}
+                <Text style={[styles.checkLabel, item.done && styles.checkLabelDone]}>{item.label}</Text>
+                {!item.done ? <ChevronRight size={16} color={C.textMuted} /> : null}
+              </TouchableOpacity>
+            ))}
+          </Card>
+        ) : null}
+
         <Card elevated style={styles.codeCard}>
           <Text style={styles.codeLabel}>YOUR REFERRAL CODE</Text>
           <Text style={styles.codeValue}>{code}</Text>
@@ -106,7 +172,13 @@ export default function SalesAgentHome() {
         </View>
 
         <NavRow
-          icon={<ClipboardList size={20} color={C.accent} />}
+          icon={<Building2 size={20} color={C.accent} />}
+          title="My clients"
+          subtitle={`${dash?.accounts ?? 0} onboarded · manage & track each one`}
+          onPress={() => router.push('/sales-agent/clients' as never)}
+        />
+        <NavRow
+          icon={<ClipboardList size={20} color={C.purple} />}
           title="My leads pipeline"
           subtitle={`${dash?.leads ?? 0} leads · track prospects to won`}
           onPress={() => router.push('/sales-agent/leads' as never)}
@@ -122,6 +194,18 @@ export default function SalesAgentHome() {
           title="My commission plan"
           subtitle={agent?.plan?.name ?? 'Default plan'}
           onPress={() => router.push('/sales-agent/earnings' as never)}
+        />
+        <NavRow
+          icon={<CircleUserRound size={20} color={C.accent} />}
+          title="Agent profile"
+          subtitle={profileComplete ? 'Contact & payout details set' : 'Add your phone, territory & payout'}
+          onPress={() => router.push('/sales-agent/profile' as never)}
+        />
+        <NavRow
+          icon={<PlayCircle size={20} color={C.textSecondary} />}
+          title="Replay welcome tour"
+          subtitle="See how the sales agent role works"
+          onPress={() => router.push('/sales-agent/welcome' as never)}
         />
       </ScrollView>
     </View>
@@ -169,6 +253,16 @@ const styles = StyleSheet.create({
   pillRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' as const },
   pill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
   pillLabel: { fontSize: 12, fontWeight: '700' as const },
+  onboardBtn: { marginTop: 10 },
+  checklistCard: { padding: 16, gap: 10, marginTop: 2 },
+  checklistHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  checklistTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  checklistCount: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  progressTrack: { height: 6, borderRadius: 999, backgroundColor: C.bgSecondary, overflow: 'hidden' as const },
+  progressFill: { height: 6, borderRadius: 999, backgroundColor: C.accent },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 6 },
+  checkLabel: { flex: 1, fontSize: 14, color: C.textSecondary, fontWeight: '600' as const },
+  checkLabelDone: { color: C.textMuted, textDecorationLine: 'line-through' as const },
   codeCard: { padding: 18, marginTop: 6, gap: 6 },
   codeLabel: { fontSize: 11, color: C.textSecondary, fontWeight: '700' as const, letterSpacing: 1.2 },
   codeValue: { fontSize: 30, fontWeight: '800' as const, color: C.accent, letterSpacing: 4 },

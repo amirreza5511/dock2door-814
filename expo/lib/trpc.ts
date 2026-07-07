@@ -3917,6 +3917,99 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
+  // The agent's book of business: every onboarded account, enriched with its
+  // name, type, onboarding status and commission earned from that client.
+  'sales.clients': async (_input, ctx) => {
+    const { data: attrs, error } = await supabase
+      .from('agent_attributions').select('*').eq('agent_id', ctx.user.id)
+      .order('created_at', { ascending: false });
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load clients'); }
+    const rows = (attrs as AnyRecord[] | null) ?? [];
+    if (rows.length === 0) return [];
+
+    const companyIds = Array.from(new Set(rows.map((r) => r.account_company_id as string | null).filter(Boolean))) as string[];
+    const userIds = Array.from(new Set(rows.map((r) => r.account_user_id as string | null).filter(Boolean))) as string[];
+    const attrIds = rows.map((r) => r.id as string);
+
+    const [companies, profiles, entries] = await Promise.all([
+      companyIds.length ? supabase.from('companies').select('id, name, type, status, city').in('id', companyIds) : Promise.resolve({ data: [] }),
+      userIds.length ? supabase.from('profiles').select('id, name, email').in('id', userIds) : Promise.resolve({ data: [] }),
+      supabase.from('commission_entries').select('amount, status, source_id').eq('agent_id', ctx.user.id).in('source_id', attrIds),
+    ]);
+    const compMap = new Map(((companies.data as AnyRecord[] | null) ?? []).map((c) => [c.id as string, c]));
+    const profMap = new Map(((profiles.data as AnyRecord[] | null) ?? []).map((p) => [p.id as string, p]));
+    const entryRows = (entries.data as { amount: number; status: string; source_id: string }[] | null) ?? [];
+
+    return rows.map((r) => {
+      const comp = r.account_company_id ? compMap.get(r.account_company_id as string) : undefined;
+      const prof = r.account_user_id ? profMap.get(r.account_user_id as string) : undefined;
+      const compStatus = (comp?.status as string | undefined) ?? undefined;
+      let onboardStatus: 'Signed up' | 'Setting up' | 'Active' = 'Signed up';
+      if (comp) onboardStatus = compStatus === 'Approved' ? 'Active' : 'Setting up';
+      else if (prof) onboardStatus = 'Active';
+      const mine = entryRows.filter((e) => e.source_id === (r.id as string));
+      const earned = mine.reduce((a, e) => a + Number(e.amount || 0), 0);
+      return {
+        id: r.id as string,
+        name: (comp?.name as string | undefined) ?? (prof?.name as string | undefined) ?? 'Client',
+        email: (prof?.email as string | undefined) ?? '',
+        city: (comp?.city as string | undefined) ?? '',
+        vertical: r.vertical as string,
+        source: r.source as string,
+        onboardStatus,
+        companyStatus: compStatus ?? '',
+        earned,
+        createdAt: r.created_at as string,
+      };
+    });
+  },
+
+  // One client's full detail: contact, onboarding progress + its commissions.
+  'sales.clientDetail': async (input: { id: string }, ctx) => {
+    const { data: attr, error } = await supabase
+      .from('agent_attributions').select('*').eq('id', input.id).eq('agent_id', ctx.user.id).maybeSingle();
+    if (error) throwErr(error, 'Unable to load client');
+    if (!attr) return null;
+    const a = attr as AnyRecord;
+    const [company, profile, entries] = await Promise.all([
+      a.account_company_id ? supabase.from('companies').select('id, name, type, status, city, address').eq('id', a.account_company_id as string).maybeSingle() : Promise.resolve({ data: null }),
+      a.account_user_id ? supabase.from('profiles').select('id, name, email, role').eq('id', a.account_user_id as string).maybeSingle() : Promise.resolve({ data: null }),
+      supabase.from('commission_entries').select('*').eq('agent_id', ctx.user.id).eq('source_id', a.id as string).order('created_at', { ascending: false }),
+    ]);
+    const comp = company.data as AnyRecord | null;
+    const prof = profile.data as AnyRecord | null;
+    const compStatus = (comp?.status as string | undefined) ?? undefined;
+    let onboardStatus: 'Signed up' | 'Setting up' | 'Active' = 'Signed up';
+    if (comp) onboardStatus = compStatus === 'Approved' ? 'Active' : 'Setting up';
+    else if (prof) onboardStatus = 'Active';
+    return {
+      id: a.id as string,
+      name: (comp?.name as string | undefined) ?? (prof?.name as string | undefined) ?? 'Client',
+      email: (prof?.email as string | undefined) ?? '',
+      city: (comp?.city as string | undefined) ?? '',
+      address: (comp?.address as string | undefined) ?? '',
+      vertical: a.vertical as string,
+      source: a.source as string,
+      onboardStatus,
+      companyStatus: compStatus ?? '',
+      hasCompany: Boolean(comp),
+      createdAt: a.created_at as string,
+      commissions: (entries.data as AnyRecord[] | null) ?? [],
+    };
+  },
+
+  // Self-service profile update (phone, territory, payout details).
+  'sales.updateProfile': async (input: { phone?: string; territory?: string; payoutMethod?: string; payoutDetails?: string }) => {
+    const { error } = await supabase.rpc('agent_update_profile', {
+      p_phone: input.phone ?? null,
+      p_territory: input.territory ?? null,
+      p_payout_method: input.payoutMethod ?? null,
+      p_payout_details: input.payoutDetails ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update profile');
+    return { success: true };
+  },
+
   // ---- Admin console ------------------------------------------------------
   'sales.adminAgents': async (_input, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Admins only');

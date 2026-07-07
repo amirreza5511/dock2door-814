@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Check, MailCheck } from 'lucide-react-native';
@@ -53,6 +53,8 @@ export default function Signup() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const register = useAuthStore((s) => s.register);
+  const params = useLocalSearchParams<{ ref?: string }>();
+  const invitedCode = typeof params.ref === 'string' ? params.ref.trim().toUpperCase() : '';
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -60,7 +62,7 @@ export default function Signup() {
   const [companyName, setCompanyName] = useState('');
   const [city, setCity] = useState('');
   const [fleetCode, setFleetCode] = useState('');
-  const [agentCode, setAgentCode] = useState('');
+  const [agentCode, setAgentCode] = useState(invitedCode);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedRole: UserRole | null = selectedId
     ? ([...WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]), SALES_ROLE].find((r) => r.id === selectedId)?.role ?? null)
