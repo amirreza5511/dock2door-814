@@ -945,6 +945,17 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { fleetCode: code };
   },
 
+  'operations.joinFleetByCode': async (input: { code: string }, ctx) => {
+    if (!ctx.user) throw new Error('Not authenticated');
+    const code = (input.code ?? '').trim().toUpperCase();
+    if (code.length < 4) throw new Error('Enter a valid fleet code');
+    const { data, error } = await supabase.rpc('join_fleet_by_code', { p_code: code });
+    if (error) throwErr(error, 'Unable to join fleet');
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.company_id) throw new Error('Invalid fleet code');
+    return { companyId: row.company_id as string, companyName: (row.company_name as string) ?? 'your fleet' };
+  },
+
   'operations.listFleet': async (input: { entity: 'drivers' | 'trucks' | 'trailers' | 'containers'; search?: string }, ctx) => {
     if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
     let q = supabase.from(input.entity).select('*').is('archived_at', null).order('updated_at', { ascending: false });

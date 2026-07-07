@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, CalendarClock, Camera, ChevronRight, Clock, HelpCircle, ImageIcon, LogOut, MapPin, MessageCircle, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation } from 'lucide-react-native';
+import { Anchor, CalendarClock, Camera, ChevronRight, Clock, HelpCircle, ImageIcon, LogOut, MapPin, MessageCircle, Package, Play, Radio, Ship, Truck, X, CheckCircle2, Navigation, Users } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -58,6 +58,29 @@ export default function DriverDrayageWorkOrders() {
   });
   const pingMutation = trpc.drayage.pingLocation.useMutation();
   const openThreadMutation = trpc.drayage.openThread.useMutation();
+
+  // Join a fleet by code (for drivers created without a fleet code at signup)
+  const [joinVisible, setJoinVisible] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const joinMutation = trpc.operations.joinFleetByCode.useMutation({
+    onSuccess: async (res: { companyName: string }) => {
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setJoinVisible(false);
+      setJoinCode('');
+      await utils.drayage.driverWorkOrders.invalidate();
+      Alert.alert('Joined fleet', `You're now linked to ${res.companyName}. Dispatch can assign you container moves.`);
+    },
+    onError: (e: Error) => {
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Unable to join', e.message);
+    },
+  });
+
+  const submitJoin = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 4) { Alert.alert('Fleet code required', 'Enter the code your drayage company shared with you.'); return; }
+    void joinMutation.mutateAsync({ code });
+  };
 
   const messageDispatch = React.useCallback((order: WorkOrder) => {
     void openThreadMutation
@@ -325,6 +348,16 @@ export default function DriverDrayageWorkOrders() {
           </View>
         </View>
 
+        {/* Join a fleet */}
+        <TouchableOpacity style={styles.joinBtn} onPress={() => { setJoinCode(''); setJoinVisible(true); }} activeOpacity={0.85}>
+          <Users size={16} color={C.blue} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.joinBtnTitle}>Join a drayage fleet</Text>
+            <Text style={styles.joinBtnDesc}>Enter your company's fleet code to get assigned work</Text>
+          </View>
+          <ChevronRight size={16} color={C.textMuted} />
+        </TouchableOpacity>
+
         {/* GPS share */}
         <TouchableOpacity
           style={[styles.gpsBtn, sharingLocation && styles.gpsBtnActive]}
@@ -373,10 +406,36 @@ export default function DriverDrayageWorkOrders() {
           <View style={styles.empty}>
             <Anchor size={44} color={C.textMuted} />
             <Text style={styles.emptyTitle}>No work orders yet</Text>
-            <Text style={styles.emptyText}>Your dispatcher will assign drayage moves to you.</Text>
+            <Text style={styles.emptyText}>Not seeing any moves? Make sure you've joined your drayage company's fleet using their fleet code.</Text>
+            <Button label="Join a fleet" onPress={() => { setJoinCode(''); setJoinVisible(true); }} variant="secondary" icon={<Users size={14} color={C.text} />} />
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Join fleet modal */}
+      <Modal visible={joinVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setJoinVisible(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Join a drayage fleet</Text>
+            <TouchableOpacity onPress={() => setJoinVisible(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} showsVerticalScrollIndicator={false}>
+            <Text style={styles.modalSub}>
+              Ask your drayage company for their fleet code — they'll find it on their Fleet screen under the Drivers tab. Enter it below to link your account so dispatch can assign you container moves.
+            </Text>
+            <Input label="Fleet code" value={joinCode} onChangeText={setJoinCode} placeholder="e.g. 7KQ4MP" autoCapitalize="characters" />
+            <Button
+              label="Join fleet"
+              onPress={submitJoin}
+              loading={joinMutation.isPending}
+              fullWidth
+              size="lg"
+              icon={<Users size={16} color={C.white} />}
+            />
+            <Button label="Cancel" onPress={() => setJoinVisible(false)} variant="ghost" fullWidth />
+          </ScrollView>
+        </View>
+      </Modal>
 
       {/* Proof capture modal */}
       <Modal visible={proofOrder !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeProof}>
@@ -443,6 +502,9 @@ const styles = StyleSheet.create({
   heroStatLabel: { fontSize: 10, color: C.textMuted, marginTop: 2, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   helpBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center', justifyContent: 'center' },
   logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40', alignItems: 'center', justifyContent: 'center' },
+  joinBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.blue + '40', padding: 14 },
+  joinBtnTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  joinBtnDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   gpsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.accent, paddingVertical: 14 },
   gpsBtnActive: { backgroundColor: C.accent, borderColor: C.accent },
   gpsBtnText: { fontSize: 14, fontWeight: '700' as const, color: C.accent },
