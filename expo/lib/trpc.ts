@@ -1566,8 +1566,19 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_handling_mode: input.handlingMode ?? 'LiveUnload',
       p_pickup_back_date: input.pickupBackDate ?? null,
     });
-    if (isMissingRelation(error)) throw new Error('Drayage module is not ready yet — run migration 0100.');
-    if (error) throwErr(error, 'Unable to create drayage order');
+    if (error) {
+      const e = error as { code?: string; message?: string; details?: string; hint?: string };
+      const detail = [e.code, e.message, e.details, e.hint].filter(Boolean).join(' | ');
+      // Surface the REAL database error so a half-applied migration or signature
+      // mismatch is diagnosable, instead of a misleading generic "run migration" text.
+      if (e.code === '42P01' || e.code === 'PGRST205') {
+        throw new Error(`Drayage tables are missing on the server — apply migration 0100. [${detail}]`);
+      }
+      if (e.code === 'PGRST202' || (e.message ?? '').toLowerCase().includes('could not find the function')) {
+        throw new Error(`The drayage order function signature is out of date — apply the latest migration (0108). [${detail}]`);
+      }
+      throw new Error(`Unable to create drayage order. [${detail}]`);
+    }
     return { id: data as string };
   },
 
