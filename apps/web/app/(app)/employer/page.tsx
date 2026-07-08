@@ -156,7 +156,8 @@ export default function EmployerPage() {
       if (appErr) throw appErr;
 
       // 4) Fetch worker names manually (avoid fragile FK embedding)
-      const workerIds = Array.from(new Set((apps ?? []).map((a) => a.worker_user_id)));
+      type RawAppRow = { id: string; shift_id: string; worker_user_id: string; status: string; applied_at: string };
+      const workerIds = Array.from(new Set((apps ?? []).map((a: RawAppRow) => a.worker_user_id)));
       const nameMap = new Map<string, string>();
       if (workerIds.length > 0) {
         const { data: profs } = await supabase
@@ -166,7 +167,7 @@ export default function EmployerPage() {
         for (const p of profs ?? []) nameMap.set(p.id, p.name ?? "Unknown");
       }
 
-      return (apps ?? []).map((a) => ({
+      return (apps ?? []).map((a: RawAppRow) => ({
         id: a.id,
         shift_id: a.shift_id,
         worker_user_id: a.worker_user_id,

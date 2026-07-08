@@ -94,14 +94,14 @@ export default function EmployerHoursPage() {
         .order("end_timestamp", { ascending: false });
       if (error) throw error;
 
-      const workerIds = Array.from(new Set((entries ?? []).map((e) => assignMap.get(e.assignment_id)?.worker_user_id).filter(Boolean) as string[]));
+      const workerIds = Array.from(new Set((entries ?? []).map((e: TimeEntryRow) => assignMap.get(e.assignment_id)?.worker_user_id).filter(Boolean) as string[]));
       const nameMap = new Map<string, string>();
       if (workerIds.length > 0) {
         const { data: profs } = await supabase.from("profiles").select("id, name").in("id", workerIds);
         for (const p of profs ?? []) nameMap.set(p.id, p.name ?? "Unknown");
       }
 
-      return (entries ?? []).map((e) => {
+      return (entries ?? []).map((e: TimeEntryRow) => {
         const a = assignMap.get(e.assignment_id);
         const s = a ? shiftMap.get(a.shift_id) : null;
         return {
@@ -143,7 +143,7 @@ export default function EmployerHoursPage() {
         .in("status", ["Scheduled", "InProgress"]);
       if (error) throw error;
 
-      const workerIds = Array.from(new Set((assigns ?? []).map((a) => a.worker_user_id)));
+      const workerIds = Array.from(new Set((assigns ?? []).map((a: AssignmentRow) => a.worker_user_id)));
       const nameMap = new Map<string, string>();
       if (workerIds.length > 0) {
         const { data: profs } = await supabase.from("profiles").select("id, name").in("id", workerIds);
@@ -152,7 +152,7 @@ export default function EmployerHoursPage() {
 
       const now = Date.now();
       return (assigns ?? [])
-        .map((a) => {
+        .map((a: AssignmentRow) => {
           const s = shiftMap.get(a.shift_id);
           return {
             ...a,
@@ -162,7 +162,7 @@ export default function EmployerHoursPage() {
             worker_name: nameMap.get(a.worker_user_id) ?? "Unknown",
           };
         })
-        .filter((a) => {
+        .filter((a: AssignmentRow) => {
           if (a.worker_confirmed === false) return true;
           if (!a.shift_date || !a.shift_end) return false;
           const endTs = new Date(`${a.shift_date}T${a.shift_end}`).getTime();

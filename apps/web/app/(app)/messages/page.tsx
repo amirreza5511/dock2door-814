@@ -38,7 +38,7 @@ export default function MessagesPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
       if (data.user) setCurrentUserId(data.user.id);
     });
   }, []);
@@ -129,7 +129,7 @@ export default function MessagesPage() {
             ) : (threadsQ.data ?? []).length === 0 ? (
               <p className="p-4 text-xs text-muted-foreground">No conversations yet.</p>
             ) : (
-              (threadsQ.data ?? []).map((t) => (
+              (threadsQ.data ?? []).map((t: Thread) => (
                 <button
                   key={t.id}
                   onClick={() => setSelectedThread(t)}
@@ -175,7 +175,7 @@ export default function MessagesPage() {
                 ) : (messagesQ.data ?? []).length === 0 ? (
                   <p className="text-xs text-muted-foreground text-center">No messages yet. Start the conversation.</p>
                 ) : (
-                  (messagesQ.data ?? []).map((m) => {
+                  (messagesQ.data ?? []).map((m: Message) => {
                     const isMe = m.sender_user_id === currentUserId;
                     return (
                       <div key={m.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>

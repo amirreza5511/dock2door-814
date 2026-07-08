@@ -51,6 +51,7 @@ export default function ServiceProviderPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<ServiceJob | null>(null);
+  const [declineReason, setDeclineReason] = useState("");
 
   const jobsQ = useQuery({
     queryKey: ["service-provider", "jobs"],

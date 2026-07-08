@@ -109,7 +109,7 @@ export default function CustomerBookingsPage() {
         </div>
       ),
       sortable: true,
-      sortValue: (b) => b.listing_name,
+      sortValue: (b) => b.listing_name ?? null,
     },
     {
       key: "status",

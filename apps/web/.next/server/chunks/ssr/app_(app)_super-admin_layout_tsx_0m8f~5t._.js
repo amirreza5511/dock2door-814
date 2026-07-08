@@ -1,0 +1,3 @@
+module.exports=[6776,a=>{"use strict";var b=a.i(7997);a.i(70396);var c=a.i(73727),d=a.i(98310);async function e({children:a}){let f=await (0,d.getCurrentSessionContext)();return f.user||(0,c.redirect)("/login"),f.isSuperAdmin||(0,c.redirect)("/dashboard"),(0,b.jsx)(b.Fragment,{children:a})}a.s(["default",0,e])},6932,a=>{a.n(a.i(6776))}];
+
+//# sourceMappingURL=app_%28app%29_super-admin_layout_tsx_0m8f~5t._.js.map

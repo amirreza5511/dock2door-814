@@ -12,7 +12,7 @@ export interface Column<T> {
   className?: string;
   render: (row: T) => React.ReactNode;
   sortable?: boolean;
-  sortValue?: (row: T) => string | number | null;
+  sortValue?: (row: T) => string | number | null | undefined;
 }
 
 interface DataTableProps<T> {
