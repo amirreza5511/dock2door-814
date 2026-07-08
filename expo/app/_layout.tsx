@@ -14,6 +14,7 @@ import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
 import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
 import { registerPushTokenAsync } from '@/lib/push';
 import AdBanner from '@/components/AdBanner';
+import LegalGate from '@/components/LegalGate';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -229,6 +230,7 @@ export default function RootLayout() {
                 <AdBanner />
                 <BootstrapController />
                 <AuthGuard />
+                <LegalGate />
               </GestureHandlerRootView>
             </SafeAreaProvider>
           </CurrentWorldProvider>
