@@ -61,45 +61,48 @@ Questions about these Terms can be sent to Dock2Door support through the app.
 By ticking "I agree", you confirm that you have read, understood and accept these Terms & Conditions and the Privacy Policy.`,
 };
 
-export const SALES_AGENT_NDA: LegalDoc = {
+export const NDA_AGREEMENT: LegalDoc = {
   key: 'nda',
-  title: 'Sales Agent Non-Disclosure Agreement',
+  title: 'Non-Disclosure Agreement',
   version: NDA_VERSION,
-  summary: 'I have read and agree to be bound by the Sales Agent Non-Disclosure Agreement.',
-  body: `Dock2Door — Sales Agent Non-Disclosure Agreement (NDA)
+  summary: 'I have read and agree to be bound by the Non-Disclosure Agreement.',
+  body: `Dock2Door — Non-Disclosure Agreement (NDA)
 Last updated: 2026
 
-This Non-Disclosure Agreement ("Agreement") is entered into between Dock2Door ("Company") and you, the individual registering as a Sales Agent ("Agent"), as of the date you accept it electronically.
+This Non-Disclosure Agreement ("Agreement") is entered into between Dock2Door ("Company") and you, the individual or business registering for the Dock2Door platform ("You"), as of the date you accept it electronically. It applies to every user, regardless of role.
 
 1. Purpose
-As a Sales Agent you will be given access to confidential information in order to introduce, onboard and support businesses and individuals on the Dock2Door platform. This Agreement protects that information.
+While using the Dock2Door platform you may be given access to, or come into contact with, confidential information belonging to the Company or to other users. This Agreement protects that information.
 
 2. Confidential information
-"Confidential Information" means any non-public information disclosed to or accessed by the Agent in connection with the Company, including but not limited to: customer, lead and prospect lists and contact details; pricing, commission structures and financial data; business plans and strategy; product and technical information; and any information marked or reasonably understood to be confidential.
+"Confidential Information" means any non-public information disclosed to or accessed by You in connection with the Company or other users, including but not limited to: customer, lead and prospect lists and contact details; pricing, rates, commission structures and financial data; business plans and strategy; operations, routes, shipment and inventory data; product and technical information; and any information marked or reasonably understood to be confidential.
 
-3. Agent obligations
-The Agent agrees to: (a) keep all Confidential Information strictly confidential; (b) use it only to perform their role for the Company; (c) not disclose it to any third party without the Company's prior written consent; (d) not use it for personal gain or to compete with the Company; and (e) protect it with at least reasonable care.
+3. Your obligations
+You agree to: (a) keep all Confidential Information strictly confidential; (b) use it only for the purpose of using the Service as intended; (c) not disclose it to any third party without prior written consent; (d) not use it for personal gain or to compete unfairly with the Company or other users; and (e) protect it with at least reasonable care.
 
-4. Leads and customers belong to the Company
-All leads, prospects, customers and accounts generated, accessed or onboarded through the platform are the property of the Company. The Agent will not solicit, divert or take those relationships outside the platform, during the engagement or after it ends.
+4. Data belongs to its owner
+Customer, partner, shipment and account data accessed through the platform remains the property of its rightful owner. You will not solicit, divert, copy or take those relationships or that data outside the platform, during your use of the Service or after it ends.
 
-5. Non-solicitation and non-circumvention
-During the engagement and for 12 months after it ends, the Agent will not circumvent the Company to transact directly with any lead, customer or partner introduced through the platform, nor solicit Company staff or other agents to leave.
+5. Non-circumvention
+Where you are introduced to another party through the platform, you will not circumvent the Company to transact off-platform in a way that avoids applicable fees, for the duration described in the Terms.
 
 6. Return of information
-On request or when the engagement ends, the Agent will stop using and will delete or return all Confidential Information in their possession.
+On request or when your account ends, you will stop using and will delete or return all Confidential Information in your possession.
 
 7. Term
-The confidentiality obligations in this Agreement survive the end of the Agent's engagement and remain in effect for as long as the information stays confidential.
+The confidentiality obligations in this Agreement survive the end of your account and remain in effect for as long as the information stays confidential.
 
 8. No employment
-This Agreement does not create an employment relationship. It governs confidentiality only and is separate from any commission or engagement terms.
+This Agreement does not create an employment relationship. It governs confidentiality only and is separate from any commission, service or engagement terms.
 
 9. Remedies
-The Agent agrees that a breach may cause the Company irreparable harm for which money alone is not an adequate remedy, and that the Company may seek injunctive relief in addition to any other remedy.
+You agree that a breach may cause irreparable harm for which money alone is not an adequate remedy, and that the affected party may seek injunctive relief in addition to any other remedy.
 
 10. Electronic signature
 By typing your full legal name and accepting below, you agree that your electronic signature is legally binding and has the same effect as a handwritten signature on this Agreement.`,
 };
 
-export const ALL_LEGAL_DOCS: LegalDoc[] = [TERMS_AND_CONDITIONS, SALES_AGENT_NDA];
+/** Back-compat alias — the NDA now applies to every role, not just sales agents. */
+export const SALES_AGENT_NDA = NDA_AGREEMENT;
+
+export const ALL_LEGAL_DOCS: LegalDoc[] = [TERMS_AND_CONDITIONS, NDA_AGREEMENT];

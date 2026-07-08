@@ -14,7 +14,7 @@ import LegalDocSheet from '@/components/LegalDocSheet';
 import C from '@/constants/colors';
 import type { UserRole } from '@/constants/types';
 import { COMPANY_REQUIRED_ROLES, type Domain, DOMAIN_LABELS, getRoleRoute } from '@/lib/access';
-import { TERMS_AND_CONDITIONS, SALES_AGENT_NDA, TERMS_VERSION, NDA_VERSION, type LegalDoc } from '@/constants/legal';
+import { TERMS_AND_CONDITIONS, NDA_AGREEMENT, TERMS_VERSION, NDA_VERSION, type LegalDoc } from '@/constants/legal';
 
 type RoleOption = { id: string; role: UserRole; label: string; desc: string };
 
@@ -73,7 +73,6 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
-  const isSalesAgent = selectedRole === 'SalesAgent';
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedNda, setAcceptedNda] = useState(false);
   const [ndaName, setNdaName] = useState('');
@@ -87,10 +86,8 @@ export default function Signup() {
     if (!selectedRole) { setError('Please select your role'); return; }
     if (!NO_COMPANY_ROLES.includes(selectedRole) && !companyName.trim()) { setError('Company name is required for this role'); return; }
     if (!acceptedTerms) { setError('Please accept the Terms & Conditions to continue'); return; }
-    if (selectedRole === 'SalesAgent') {
-      if (!acceptedNda) { setError('Sales Agents must agree to the Non-Disclosure Agreement'); return; }
-      if (!ndaName.trim()) { setError('Type your full legal name to sign the NDA'); return; }
-    }
+    if (!acceptedNda) { setError('You must agree to the Non-Disclosure Agreement'); return; }
+    if (!ndaName.trim()) { setError('Type your full legal name to sign the NDA'); return; }
 
     setLoading(true);
     try {
@@ -98,9 +95,9 @@ export default function Signup() {
         name: name.trim(), email: email.trim(), password, role: selectedRole,
         companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim(), agentCode: agentCode.trim(),
         acceptedTerms, termsVersion: TERMS_VERSION,
-        acceptedNda: selectedRole === 'SalesAgent' ? acceptedNda : false,
+        acceptedNda,
         ndaVersion: NDA_VERSION,
-        ndaSignedName: selectedRole === 'SalesAgent' ? ndaName.trim() : '',
+        ndaSignedName: ndaName.trim(),
       });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
@@ -274,39 +271,37 @@ export default function Signup() {
 
           {selectedRole ? (
             <View style={styles.legalBox}>
-              {isSalesAgent ? (
-                <View style={styles.ndaBlock}>
-                  <View style={styles.ndaHead}>
-                    <ShieldCheck size={16} color={C.accent} />
-                    <Text style={styles.ndaHeadText}>Sales Agent agreement</Text>
-                  </View>
-                  <Text style={styles.ndaHint}>As a Sales Agent you handle confidential leads and customer data, so you must sign our NDA before you start.</Text>
-                  <TouchableOpacity
-                    onPress={() => setAcceptedNda((v) => !v)}
-                    activeOpacity={0.8}
-                    style={styles.checkRow}
-                    testID="accept-nda"
-                  >
-                    <View style={[styles.checkbox, acceptedNda && styles.checkboxOn]}>
-                      {acceptedNda ? <Check size={14} color={C.white} /> : null}
-                    </View>
-                    <Text style={styles.checkText}>
-                      I have read and agree to the{' '}
-                      <Text style={styles.legalLink} onPress={() => setViewingDoc(SALES_AGENT_NDA)}>Non-Disclosure Agreement</Text>.
-                    </Text>
-                  </TouchableOpacity>
-                  {acceptedNda ? (
-                    <Input
-                      label="Type your full legal name to sign"
-                      value={ndaName}
-                      onChangeText={setNdaName}
-                      placeholder="e.g. Jane A. Smith"
-                      autoCapitalize="words"
-                      testID="nda-signature"
-                    />
-                  ) : null}
+              <View style={styles.ndaBlock}>
+                <View style={styles.ndaHead}>
+                  <ShieldCheck size={16} color={C.accent} />
+                  <Text style={styles.ndaHeadText}>Non-Disclosure Agreement</Text>
                 </View>
-              ) : null}
+                <Text style={styles.ndaHint}>Everyone on Dock2Door may access confidential business, customer and shipment data, so you must read and sign our NDA before you start.</Text>
+                <TouchableOpacity
+                  onPress={() => setAcceptedNda((v) => !v)}
+                  activeOpacity={0.8}
+                  style={styles.checkRow}
+                  testID="accept-nda"
+                >
+                  <View style={[styles.checkbox, acceptedNda && styles.checkboxOn]}>
+                    {acceptedNda ? <Check size={14} color={C.white} /> : null}
+                  </View>
+                  <Text style={styles.checkText}>
+                    I have read and agree to the{' '}
+                    <Text style={styles.legalLink} onPress={() => setViewingDoc(NDA_AGREEMENT)}>Non-Disclosure Agreement</Text>.
+                  </Text>
+                </TouchableOpacity>
+                {acceptedNda ? (
+                  <Input
+                    label="Type your full legal name to sign"
+                    value={ndaName}
+                    onChangeText={setNdaName}
+                    placeholder="e.g. Jane A. Smith"
+                    autoCapitalize="words"
+                    testID="nda-signature"
+                  />
+                ) : null}
+              </View>
 
               <TouchableOpacity
                 onPress={() => setAcceptedTerms((v) => !v)}
@@ -339,7 +334,7 @@ export default function Signup() {
             loading={loading}
             fullWidth
             size="lg"
-            disabled={!selectedRole || !acceptedTerms || (isSalesAgent && (!acceptedNda || !ndaName.trim()))}
+            disabled={!selectedRole || !acceptedTerms || !acceptedNda || !ndaName.trim()}
           />
 
           <TouchableOpacity onPress={() => router.push('/auth/login' as any)} style={styles.switchRow}>
