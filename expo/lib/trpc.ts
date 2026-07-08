@@ -3126,19 +3126,40 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   // job types (warehouse bookings, drayage moves, worker shifts) so completed test
   // jobs show up, not just warehouse bookings. Field names match analytics.tsx.
   'analytics.overview': async () => {
-    const [bookings, payments, companies, disputes, moves, assignments] = await Promise.all([
+    const [bookings, payments, companies, disputes, moves, assignments, ads] = await Promise.all([
       supabase.from('warehouse_bookings').select('id,status'),
-      supabase.from('payments').select('gross_amount,status'),
+      supabase.from('payments').select('gross_amount,commission_amount,category,status'),
       supabase.from('companies').select('id,status'),
       supabase.from('disputes').select('id,status'),
       supabase.from('drayage_moves').select('id,status'),
       supabase.from('shift_assignments').select('id,status'),
+      supabase.from('advertisements').select('id,status,impressions,clicks,billed_amount'),
     ]);
 
     const settled = ['Paid', 'Captured'];
-    const gmv = (payments.data ?? [])
-      .filter((p) => settled.includes(String(p.status)))
-      .reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+    const settledPayments = (payments.data ?? []).filter((p) => settled.includes(String(p.status)));
+    const gmv = settledPayments.reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+
+    // Platform revenue = commission we actually keep, by marketplace area.
+    const commission = { trucking: 0, warehouse: 0, service: 0, labour: 0, advertising: 0, other: 0, total: 0 };
+    for (const p of settledPayments) {
+      const amt = Number(p.commission_amount ?? 0);
+      if (amt <= 0) continue;
+      const cat = String(p.category ?? 'other');
+      if (cat in commission) (commission as Record<string, number>)[cat] += amt;
+      else commission.other += amt;
+      commission.total += amt;
+    }
+
+    // Advertising delivery + revenue.
+    const adRows = ads.data ?? [];
+    const adStats = {
+      active: adRows.filter((a) => String(a.status) === 'Active').length,
+      total: adRows.length,
+      impressions: adRows.reduce((s, a) => s + Number(a.impressions ?? 0), 0),
+      clicks: adRows.reduce((s, a) => s + Number(a.clicks ?? 0), 0),
+      revenue: Math.round(adRows.reduce((s, a) => s + Number(a.billed_amount ?? 0), 0)),
+    };
 
     const bookingRows = bookings.data ?? [];
     const moveRows = moves.data ?? [];
@@ -3160,10 +3181,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
     return {
       bookingVolume,
-      revenue: Math.round(gmv),
+      revenue: Math.round(commission.total),
       utilizationRate,
       companyPerformance: completed,
       grossBookingValue: Math.round(gmv),
+      commission: {
+        trucking: Math.round(commission.trucking),
+        warehouse: Math.round(commission.warehouse),
+        service: Math.round(commission.service),
+        labour: Math.round(commission.labour),
+        advertising: Math.round(commission.advertising),
+        other: Math.round(commission.other),
+        total: Math.round(commission.total),
+      },
+      ads: adStats,
       // extra fields kept for any other consumers
       totalBookings: bookingVolume,
       completedJobs: completed,
