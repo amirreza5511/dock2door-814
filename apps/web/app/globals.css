@@ -52,15 +52,23 @@
   font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
 }
 
-.hero-shell {
+.landing-bg {
   --ink: 222 60% 4%;
   --teal: 168 84% 52%;
   --teal-soft: 172 66% 40%;
   --violet: 258 90% 66%;
   background:
-    radial-gradient(1200px 700px at 78% -10%, hsl(258 90% 30% / 0.35), transparent 60%),
-    radial-gradient(900px 600px at 8% 12%, hsl(172 90% 32% / 0.28), transparent 55%),
-    linear-gradient(180deg, hsl(222 62% 6%), hsl(224 64% 3%));
+    radial-gradient(1200px 700px at 78% -6%, hsl(258 90% 30% / 0.30), transparent 60%),
+    radial-gradient(900px 600px at 8% 8%, hsl(172 90% 32% / 0.24), transparent 55%),
+    linear-gradient(180deg, hsl(222 62% 6%), hsl(224 66% 3%) 60%, hsl(224 64% 2%));
+  color: #fff;
+}
+
+.hero-shell {
+  --ink: 222 60% 4%;
+  --teal: 168 84% 52%;
+  --teal-soft: 172 66% 40%;
+  --violet: 258 90% 66%;
   color: #fff;
 }
 

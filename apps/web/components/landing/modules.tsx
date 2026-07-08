@@ -1,4 +1,5 @@
 import { Warehouse, Ship, Truck, Users, Package, Briefcase } from "lucide-react";
+import { Reveal } from "@/components/landing/reveal";
 
 const MODULES = [
   {
@@ -42,9 +43,9 @@ const MODULES = [
 /** Modules grid — mirrors the modules available in the mobile app. */
 export function Modules() {
   return (
-    <section id="platform" className="relative scroll-mt-8 overflow-hidden bg-[#04121a] py-24">
+    <section id="platform" className="relative scroll-mt-8 overflow-hidden py-24">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-[#2de2c7]">
             Everything the app does
           </span>
@@ -56,15 +57,16 @@ export function Modules() {
             Whatever your role in the supply chain, you get the exact same tools on the web
             that you have in the mobile app — nothing left behind.
           </p>
-        </div>
+        </Reveal>
 
         <div className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {MODULES.map((m) => {
+          {MODULES.map((m, i) => {
             const Icon = m.icon;
             return (
-              <div
+              <Reveal
                 key={m.title}
-                className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-7 transition-all duration-300 hover:border-[#2de2c7]/30"
+                delay={(i % 3) * 90}
+                className="group relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-7 transition-all duration-300 hover:-translate-y-1.5 hover:border-[#2de2c7]/30"
               >
                 <span
                   className={`grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br ${m.accent} text-[#04121a] transition-transform duration-300 group-hover:scale-110`}
@@ -73,7 +75,7 @@ export function Modules() {
                 </span>
                 <h3 className="font-display mt-5 text-lg font-semibold text-white">{m.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/55">{m.body}</p>
-              </div>
+              </Reveal>
             );
           })}
         </div>

@@ -1,4 +1,5 @@
 import { Search, CalendarCheck, Radar, BadgeDollarSign } from "lucide-react";
+import { Reveal } from "@/components/landing/reveal";
 
 const STEPS = [
   {
@@ -26,9 +27,9 @@ const STEPS = [
 /** "How it works" — target of the hero's #how anchor. */
 export function HowItWorks() {
   return (
-    <section id="how" className="relative scroll-mt-8 bg-[#04121a] py-24">
+    <section id="how" className="relative scroll-mt-8 py-24">
       <div className="mx-auto max-w-7xl px-6">
-        <div className="mx-auto max-w-2xl text-center">
+        <Reveal className="mx-auto max-w-2xl text-center">
           <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-[#2de2c7]">
             How it works
           </span>
@@ -40,14 +41,15 @@ export function HowItWorks() {
             No spreadsheets, no phone tag. Dock2Door turns the whole logistics workflow into a
             few taps — the same experience on web and mobile.
           </p>
-        </div>
+        </Reveal>
 
         <div className="mt-16 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {STEPS.map((s, i) => {
             const Icon = s.icon;
             return (
-              <div
+              <Reveal
                 key={s.title}
+                delay={i * 90}
                 className="group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 transition-transform duration-300 hover:-translate-y-1.5"
               >
                 <div
@@ -63,7 +65,7 @@ export function HowItWorks() {
                 </span>
                 <h3 className="font-display mt-5 text-lg font-semibold text-white">{s.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-white/55">{s.body}</p>
-              </div>
+              </Reveal>
             );
           })}
         </div>

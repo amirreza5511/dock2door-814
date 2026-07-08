@@ -56,7 +56,7 @@ export function Showcase3D() {
   };
 
   return (
-    <section className="relative overflow-hidden bg-[#04121a] py-24">
+    <section className="relative overflow-hidden py-24">
       <div
         className="pointer-events-none absolute left-1/2 top-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
         style={{ background: "radial-gradient(circle, rgba(45,226,199,0.18), transparent 70%)" }}

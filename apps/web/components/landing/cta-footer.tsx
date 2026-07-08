@@ -3,7 +3,7 @@ import { ArrowRight } from "lucide-react";
 export function CtaFooter() {
   return (
     <>
-      <section className="relative overflow-hidden bg-[#04121a] py-24">
+      <section className="relative overflow-hidden py-24">
         <div className="mx-auto max-w-5xl px-6">
           <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-[#0a2230] to-[#04121a] px-8 py-16 text-center">
             <div
@@ -43,7 +43,7 @@ export function CtaFooter() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10 bg-[#04121a] py-12">
+      <footer className="relative border-t border-white/10 py-12">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-6 sm:flex-row">
           <div className="flex items-center gap-2.5">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[#2de2c7] to-[#818cf8] font-display text-sm font-bold text-[#04121a]">
