@@ -69,6 +69,12 @@ export default function AdminSalesAgents() {
   const upsertPlan = trpc.sales.adminUpsertPlan.useMutation({
     onSuccess: async () => { await utils.sales.adminPlans.invalidate(); },
   });
+  const awardCommission = trpc.sales.adminAwardCommission.useMutation({
+    onSuccess: async () => {
+      await utils.sales.adminCommissions.invalidate();
+      await utils.sales.adminAgents.invalidate();
+    },
+  });
 
   const agents = useMemo(() => (agentsQuery.data as AgentRow[] | undefined) ?? [], [agentsQuery.data]);
   const commissions = useMemo(() => (commissionsQuery.data as CommissionRow[] | undefined) ?? [], [commissionsQuery.data]);
@@ -79,6 +85,8 @@ export default function AdminSalesAgents() {
 
   const [planDraft, setPlanDraft] = useState<PlanRow | null>(null);
   const [assignAgent, setAssignAgent] = useState<AgentRow | null>(null);
+  const [awardAmount, setAwardAmount] = useState<string>('');
+  const [awardNote, setAwardNote] = useState<string>('');
 
   const totals = useMemo(() => {
     const sum = (s: CommissionStatus) => commissions.filter((c) => c.status === s).reduce((a, c) => a + Number(c.amount || 0), 0);
@@ -91,6 +99,16 @@ export default function AdminSalesAgents() {
       { text: next, onPress: () => setStatus.mutate({ id: row.id, status: next }) },
     ]);
   }, [setStatus]);
+
+  const submitAward = useCallback(() => {
+    if (!assignAgent) return;
+    const amount = Number(awardAmount.replace(/[^0-9.]/g, '')) || 0;
+    if (amount <= 0) { Alert.alert('Enter an amount', 'Set a dollar amount to award.'); return; }
+    awardCommission.mutate(
+      { agentId: assignAgent.id, kind: 'manual', vertical: '', amount, description: awardNote.trim() || 'Manual adjustment by admin' },
+      { onSuccess: () => { setAwardAmount(''); setAwardNote(''); Alert.alert('Commission added', `${money(amount)} added to ${assignAgent.name} as Pending.`); } },
+    );
+  }, [assignAgent, awardAmount, awardNote, awardCommission]);
 
   const savePlan = useCallback(() => {
     if (!planDraft) return;
@@ -259,7 +277,8 @@ export default function AdminSalesAgents() {
               <TouchableOpacity onPress={() => setAssignAgent(null)}><X size={22} color={C.textSecondary} /></TouchableOpacity>
             </View>
             <Text style={styles.sheetSub}>{assignAgent?.name} · {assignAgent?.agent_code}</Text>
-            <ScrollView style={{ maxHeight: 340 }}>
+            <ScrollView style={{ maxHeight: 420 }}>
+              <Text style={styles.awardGroupTitle}>Commission plan</Text>
               {plans.map((p) => (
                 <TouchableOpacity
                   key={p.id}
@@ -273,6 +292,18 @@ export default function AdminSalesAgents() {
                   {assignAgent?.plan_id === p.id && <Check size={18} color={C.accent} />}
                 </TouchableOpacity>
               ))}
+
+              <Text style={styles.awardGroupTitle}>Award / adjust commission</Text>
+              <Text style={styles.awardHint}>Add a one-off commission line for this agent (e.g. a manual bonus or correction). It lands as Pending in Payouts.</Text>
+              <View style={styles.awardRow}>
+                <View style={{ width: 130 }}>
+                  <Input value={awardAmount} onChangeText={setAwardAmount} keyboardType="numeric" placeholder="$ amount" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Input value={awardNote} onChangeText={setAwardNote} placeholder="Reason (optional)" />
+                </View>
+              </View>
+              <Button title={awardCommission.isPending ? 'Adding…' : 'Add commission'} onPress={submitAward} disabled={awardCommission.isPending} style={{ marginTop: 4 }} />
             </ScrollView>
           </View>
         </View>
@@ -479,6 +510,9 @@ const styles = StyleSheet.create({
   planPickActive: { borderColor: C.accent, backgroundColor: C.accentDim },
   planPickName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   planPickMeta: { fontSize: 11, color: C.textMuted, marginTop: 1 },
+  awardGroupTitle: { fontSize: 13, fontWeight: '800' as const, color: C.accent, marginTop: 14, marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  awardHint: { fontSize: 12, color: C.textSecondary, marginBottom: 10, lineHeight: 17 },
+  awardRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
 
   toggleRow: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 4 },
   toggle: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },

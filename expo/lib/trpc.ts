@@ -4455,6 +4455,201 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to award commission');
     return { id: data as string };
   },
+
+  // =========================================================================
+  // FINANCE — internal "sandbox" payment engine (fake Stripe). Simulates money
+  // movement so the whole platform reconciles without a real gateway.
+  // =========================================================================
+  'finance.settings': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data } = await supabase.from('platform_settings').select('*').limit(1).maybeSingle();
+    const row = (data ?? {}) as AnyRecord;
+    return {
+      paymentsMode: (row.payments_mode as string) ?? 'sandbox',
+      drayageCommissionPercentage: Number(row.drayage_commission_percentage ?? 10),
+      warehouseCommissionPercentage: Number(row.warehouse_commission_percentage ?? 8),
+      serviceCommissionPercentage: Number(row.service_commission_percentage ?? 20),
+      labourCommissionPercentage: Number(row.labour_commission_percentage ?? 15),
+    };
+  },
+
+  'finance.setPaymentsMode': async (input: { mode: 'sandbox' | 'stripe' | 'off' }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('admin_set_payments_mode', { p_mode: input.mode });
+    if (error) throwErr(error, 'Unable to change payments mode');
+    return { success: true };
+  },
+
+  // Money overview across the sandbox: revenue (platform commission), collected
+  // (gross), provider/worker/agent payouts owed vs paid, and how many completed
+  // jobs still need settling.
+  'finance.overview': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const [paymentsRes, payoutsRes, payablesRes, commissionsRes, invoicesRes] = await Promise.all([
+      supabase.from('payments').select('gross_amount,commission_amount,net_amount,status,category'),
+      supabase.from('payouts').select('net_amount,status').is('archived_at', null),
+      supabase.from('worker_payables').select('gross_pay,status'),
+      supabase.from('commission_entries').select('amount,status'),
+      supabase.from('invoices').select('id,status'),
+    ]);
+    const settled = ['Paid', 'Captured'];
+    const payments = (paymentsRes.data as AnyRecord[] | null) ?? [];
+    const captured = payments.filter((p) => settled.includes(String(p.status)));
+    const collected = captured.reduce((s, p) => s + Number(p.gross_amount ?? 0), 0);
+    const revenue = captured.reduce((s, p) => s + Number(p.commission_amount ?? 0), 0);
+    const byCategory: Record<string, number> = {};
+    for (const p of captured) {
+      const key = String(p.category ?? 'other');
+      byCategory[key] = (byCategory[key] ?? 0) + Number(p.commission_amount ?? 0);
+    }
+    const payouts = (payoutsRes.data as AnyRecord[] | null) ?? [];
+    const payables = (payablesRes.data as AnyRecord[] | null) ?? [];
+    const commissions = (commissionsRes.data as AnyRecord[] | null) ?? [];
+    const invoices = (invoicesRes.data as AnyRecord[] | null) ?? [];
+    const sum = (rows: AnyRecord[], field: string, statuses: string[]) =>
+      rows.filter((r) => statuses.includes(String(r.status))).reduce((s, r) => s + Number(r[field] ?? 0), 0);
+    return {
+      collected: Math.round(collected),
+      revenue: Math.round(revenue),
+      revenueByCategory: byCategory,
+      providerPayoutsPending: Math.round(sum(payouts, 'net_amount', ['Pending', 'Processing'])),
+      providerPayoutsPaid: Math.round(sum(payouts, 'net_amount', ['Paid'])),
+      workerPayoutsPending: Math.round(sum(payables, 'gross_pay', ['Pending', 'Approved'])),
+      workerPayoutsPaid: Math.round(sum(payables, 'gross_pay', ['Paid'])),
+      agentCommissionsPending: Math.round(sum(commissions, 'amount', ['Pending', 'Approved'])),
+      agentCommissionsPaid: Math.round(sum(commissions, 'amount', ['Paid'])),
+      invoiceCount: invoices.length,
+      paidInvoiceCount: invoices.filter((i) => String(i.status) === 'Paid').length,
+    };
+  },
+
+  // Completed operational jobs that have no invoice yet — the settle queue.
+  'finance.unsettled': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const [orders, bookings, jobs, invoices] = await Promise.all([
+      supabase.from('drayage_orders').select('id,status,total_price,currency,created_at').in('status', ['Delivered', 'EmptyReturned']),
+      supabase.from('warehouse_bookings').select('id,status,final_price,counter_offer_price,proposed_price,created_at').in('status', ['Completed', 'InProgress']),
+      supabase.from('service_jobs').select('id,status,total_price,created_at').eq('status', 'Completed'),
+      supabase.from('invoices').select('drayage_order_id,booking_id,service_job_id'),
+    ]);
+    const inv = (invoices.data as AnyRecord[] | null) ?? [];
+    const invDray = new Set(inv.map((i) => String(i.drayage_order_id)).filter((x) => x !== 'null'));
+    const invBook = new Set(inv.map((i) => String(i.booking_id)).filter((x) => x !== 'null'));
+    const invJob = new Set(inv.map((i) => String(i.service_job_id)).filter((x) => x !== 'null'));
+    const dray = ((orders.data as AnyRecord[] | null) ?? [])
+      .filter((o) => Number(o.total_price ?? 0) > 0 && !invDray.has(String(o.id)))
+      .map((o) => ({ id: String(o.id), kind: 'drayage' as const, amount: Number(o.total_price ?? 0), createdAt: String(o.created_at) }));
+    const book = ((bookings.data as AnyRecord[] | null) ?? [])
+      .map((b) => ({ id: String(b.id), amount: Number(b.final_price ?? b.counter_offer_price ?? b.proposed_price ?? 0), createdAt: String(b.created_at) }))
+      .filter((b) => b.amount > 0 && !invBook.has(b.id))
+      .map((b) => ({ id: b.id, kind: 'warehouse' as const, amount: b.amount, createdAt: b.createdAt }));
+    const job = ((jobs.data as AnyRecord[] | null) ?? [])
+      .filter((j) => Number(j.total_price ?? 0) > 0 && !invJob.has(String(j.id)))
+      .map((j) => ({ id: String(j.id), kind: 'service' as const, amount: Number(j.total_price ?? 0), createdAt: String(j.created_at) }));
+    return [...dray, ...book, ...job].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  },
+
+  'finance.settleDrayageOrder': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('settle_drayage_order', { p_order_id: input.id });
+    if (error) throwErr(error, 'Unable to settle drayage order');
+    return { success: true };
+  },
+  'finance.settleBooking': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('settle_booking_invoice', { p_booking_id: input.id });
+    if (error) throwErr(error, 'Unable to settle booking');
+    return { success: true };
+  },
+  'finance.settleServiceJob': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('settle_service_job_invoice', { p_job_id: input.id });
+    if (error) throwErr(error, 'Unable to settle service job');
+    return { success: true };
+  },
+  'finance.settleAdvertisement': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('admin_settle_advertisement', { p_id: input.id });
+    if (error) throwErr(error, 'Unable to settle advertisement');
+    return { success: true };
+  },
+
+  // One-tap: settle every completed-but-unbilled job through the sandbox engine.
+  'finance.settleAllCompleted': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const [orders, bookings, jobs, invoices] = await Promise.all([
+      supabase.from('drayage_orders').select('id,total_price').in('status', ['Delivered', 'EmptyReturned']),
+      supabase.from('warehouse_bookings').select('id,final_price,counter_offer_price,proposed_price').in('status', ['Completed', 'InProgress']),
+      supabase.from('service_jobs').select('id,total_price').eq('status', 'Completed'),
+      supabase.from('invoices').select('drayage_order_id,booking_id,service_job_id'),
+    ]);
+    const inv = (invoices.data as AnyRecord[] | null) ?? [];
+    const invDray = new Set(inv.map((i) => String(i.drayage_order_id)).filter((x) => x !== 'null'));
+    const invBook = new Set(inv.map((i) => String(i.booking_id)).filter((x) => x !== 'null'));
+    const invJob = new Set(inv.map((i) => String(i.service_job_id)).filter((x) => x !== 'null'));
+    let settled = 0;
+    for (const o of (orders.data as AnyRecord[] | null) ?? []) {
+      if (Number(o.total_price ?? 0) <= 0 || invDray.has(String(o.id))) continue;
+      const { error } = await supabase.rpc('settle_drayage_order', { p_order_id: String(o.id) });
+      if (!error) settled += 1;
+    }
+    for (const b of (bookings.data as AnyRecord[] | null) ?? []) {
+      const amount = Number(b.final_price ?? b.counter_offer_price ?? b.proposed_price ?? 0);
+      if (amount <= 0 || invBook.has(String(b.id))) continue;
+      const { error } = await supabase.rpc('settle_booking_invoice', { p_booking_id: String(b.id) });
+      if (!error) settled += 1;
+    }
+    for (const j of (jobs.data as AnyRecord[] | null) ?? []) {
+      if (Number(j.total_price ?? 0) <= 0 || invJob.has(String(j.id))) continue;
+      const { error } = await supabase.rpc('settle_service_job_invoice', { p_job_id: String(j.id) });
+      if (!error) settled += 1;
+    }
+    return { settled };
+  },
+
+  // Payout rails (sandbox transfers).
+  'finance.payouts': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.from('payouts').select('*').is('archived_at', null).order('created_at', { ascending: false }).limit(200);
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load payouts'); }
+    const rows = (data as AnyRecord[] | null) ?? [];
+    const ids = Array.from(new Set(rows.map((r) => r.company_id as string).filter(Boolean)));
+    const { data: companies } = ids.length ? await supabase.from('companies').select('id,name').in('id', ids) : { data: [] as AnyRecord[] };
+    const nameMap = new Map(((companies as AnyRecord[] | null) ?? []).map((c) => [c.id as string, c.name as string]));
+    return rows.map((r) => ({ ...r, companyName: nameMap.get(r.company_id as string) ?? 'Provider' }));
+  },
+  'finance.runPayout': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('sandbox_pay_payout', { p_payout_id: input.id });
+    if (error) throwErr(error, 'Unable to run payout');
+    return { success: true };
+  },
+  'finance.runAllPayouts': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data } = await supabase.from('payouts').select('id').in('status', ['Pending', 'Processing']).is('archived_at', null);
+    let paid = 0;
+    for (const p of (data as AnyRecord[] | null) ?? []) {
+      const { error } = await supabase.rpc('sandbox_pay_payout', { p_payout_id: String(p.id) });
+      if (!error) paid += 1;
+    }
+    return { paid };
+  },
+  'finance.workerPayables': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.from('worker_payables').select('*').order('created_at', { ascending: false }).limit(200);
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load worker payables'); }
+    const rows = (data as AnyRecord[] | null) ?? [];
+    const ids = Array.from(new Set(rows.map((r) => r.worker_user_id as string).filter(Boolean)));
+    const { data: profiles } = ids.length ? await supabase.from('profiles').select('id,name').in('id', ids) : { data: [] as AnyRecord[] };
+    const nameMap = new Map(((profiles as AnyRecord[] | null) ?? []).map((p) => [p.id as string, p.name as string]));
+    return rows.map((r) => ({ ...r, workerName: nameMap.get(r.worker_user_id as string) ?? 'Worker' }));
+  },
+  'finance.payWorker': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { error } = await supabase.rpc('sandbox_pay_worker', { p_payable_id: input.id });
+    if (error) throwErr(error, 'Unable to pay worker');
+    return { success: true };
+  },
 };
 
 // ---------------------------------------------------------------------------

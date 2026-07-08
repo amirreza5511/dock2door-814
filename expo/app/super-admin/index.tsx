@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
   Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle, Megaphone, Activity,
+  Wallet, TrendingUp,
 } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Card from '@/components/ui/Card';
@@ -436,6 +437,36 @@ export default function SuperAdminOverviewScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>Advertising</Text>
               <Text style={styles.toolMeta}>Manage sponsored banners shown across the app</Text>
+            </View>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/super-admin/finance' as never)}
+            style={styles.toolRow}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: C.greenDim }]}>
+              <Wallet size={16} color={C.green} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolTitle}>Payments & Finance</Text>
+              <Text style={styles.toolMeta}>Internal payment engine, settle jobs, run payouts</Text>
+            </View>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/admin/sales-agents' as never)}
+            style={styles.toolRow}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: C.accentDim }]}>
+              <TrendingUp size={16} color={C.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolTitle}>Sales Agents & Commissions</Text>
+              <Text style={styles.toolMeta}>Control agents, tune commission plans, approve payouts</Text>
             </View>
             <ChevronRight size={16} color={C.textMuted} />
           </TouchableOpacity>
