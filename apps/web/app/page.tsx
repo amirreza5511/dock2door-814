@@ -1,5 +1,9 @@
-import { redirect } from "next/navigation";
+import { Hero } from "@/components/landing/hero";
 
-export default function RootIndexPage() {
-  redirect("/dashboard");
+export default function LandingPage() {
+  return (
+    <main className="bg-[#04121a]">
+      <Hero />
+    </main>
+  );
 }
