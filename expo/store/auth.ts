@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { Platform } from 'react-native';
 import type { User, UserRole } from '@/constants/types';
 import { DEMO_AUTH_EMAIL, DEMO_AUTH_PASSWORD, type DemoAccount, findDemoAccount } from '@/constants/demo-accounts';
 import { getRoleRoute } from '@/lib/access';
@@ -32,6 +33,12 @@ interface RegisterInput {
   fleetCode?: string;
   /** Optional sales-agent referral code — attributes this new account to that agent. */
   agentCode?: string;
+  /** Legal acceptance captured at signup. */
+  acceptedTerms?: boolean;
+  termsVersion?: string;
+  acceptedNda?: boolean;
+  ndaVersion?: string;
+  ndaSignedName?: string;
 }
 
 interface AuthState {
@@ -482,6 +489,12 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
             city: data.city ?? '',
             fleet_code: data.fleetCode ? data.fleetCode.trim().toUpperCase() : '',
             agent_code: data.agentCode ? data.agentCode.trim().toUpperCase() : '',
+            accepted_terms: data.acceptedTerms ? 'true' : '',
+            terms_version: data.termsVersion ?? '',
+            accepted_nda: data.acceptedNda ? 'true' : '',
+            nda_version: data.ndaVersion ?? '',
+            nda_signed_name: data.ndaSignedName?.trim() ?? '',
+            signup_platform: Platform.OS,
           },
         },
       });

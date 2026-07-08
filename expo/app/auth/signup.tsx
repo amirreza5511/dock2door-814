@@ -6,13 +6,15 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Check, MailCheck } from 'lucide-react-native';
+import { ArrowLeft, Check, MailCheck, FileText, ShieldCheck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import LegalDocSheet from '@/components/LegalDocSheet';
 import C from '@/constants/colors';
 import type { UserRole } from '@/constants/types';
 import { COMPANY_REQUIRED_ROLES, type Domain, DOMAIN_LABELS, getRoleRoute } from '@/lib/access';
+import { TERMS_AND_CONDITIONS, SALES_AGENT_NDA, TERMS_VERSION, NDA_VERSION, type LegalDoc } from '@/constants/legal';
 
 type RoleOption = { id: string; role: UserRole; label: string; desc: string };
 
@@ -71,6 +73,12 @@ export default function Signup() {
   const [error, setError] = useState('');
   const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
+  const isSalesAgent = selectedRole === 'SalesAgent';
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedNda, setAcceptedNda] = useState(false);
+  const [ndaName, setNdaName] = useState('');
+  const [viewingDoc, setViewingDoc] = useState<LegalDoc | null>(null);
+
   const handleRegister = async () => {
     setError('');
     if (!name.trim()) { setError('Name is required'); return; }
@@ -78,10 +86,22 @@ export default function Signup() {
     if (!password || password.length < 6) { setError('Password must be at least 6 characters'); return; }
     if (!selectedRole) { setError('Please select your role'); return; }
     if (!NO_COMPANY_ROLES.includes(selectedRole) && !companyName.trim()) { setError('Company name is required for this role'); return; }
+    if (!acceptedTerms) { setError('Please accept the Terms & Conditions to continue'); return; }
+    if (selectedRole === 'SalesAgent') {
+      if (!acceptedNda) { setError('Sales Agents must agree to the Non-Disclosure Agreement'); return; }
+      if (!ndaName.trim()) { setError('Type your full legal name to sign the NDA'); return; }
+    }
 
     setLoading(true);
     try {
-      const result = await register({ name: name.trim(), email: email.trim(), password, role: selectedRole, companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim(), agentCode: agentCode.trim() });
+      const result = await register({
+        name: name.trim(), email: email.trim(), password, role: selectedRole,
+        companyName: companyName.trim(), city: city.trim(), fleetCode: fleetCode.trim(), agentCode: agentCode.trim(),
+        acceptedTerms, termsVersion: TERMS_VERSION,
+        acceptedNda: selectedRole === 'SalesAgent' ? acceptedNda : false,
+        ndaVersion: NDA_VERSION,
+        ndaSignedName: selectedRole === 'SalesAgent' ? ndaName.trim() : '',
+      });
       if (!result.success) {
         setError(result.error ?? 'Registration failed');
       } else if (result.needsEmailConfirmation) {
@@ -252,6 +272,65 @@ export default function Signup() {
             </View>
           </View>
 
+          {selectedRole ? (
+            <View style={styles.legalBox}>
+              {isSalesAgent ? (
+                <View style={styles.ndaBlock}>
+                  <View style={styles.ndaHead}>
+                    <ShieldCheck size={16} color={C.accent} />
+                    <Text style={styles.ndaHeadText}>Sales Agent agreement</Text>
+                  </View>
+                  <Text style={styles.ndaHint}>As a Sales Agent you handle confidential leads and customer data, so you must sign our NDA before you start.</Text>
+                  <TouchableOpacity
+                    onPress={() => setAcceptedNda((v) => !v)}
+                    activeOpacity={0.8}
+                    style={styles.checkRow}
+                    testID="accept-nda"
+                  >
+                    <View style={[styles.checkbox, acceptedNda && styles.checkboxOn]}>
+                      {acceptedNda ? <Check size={14} color={C.white} /> : null}
+                    </View>
+                    <Text style={styles.checkText}>
+                      I have read and agree to the{' '}
+                      <Text style={styles.legalLink} onPress={() => setViewingDoc(SALES_AGENT_NDA)}>Non-Disclosure Agreement</Text>.
+                    </Text>
+                  </TouchableOpacity>
+                  {acceptedNda ? (
+                    <Input
+                      label="Type your full legal name to sign"
+                      value={ndaName}
+                      onChangeText={setNdaName}
+                      placeholder="e.g. Jane A. Smith"
+                      autoCapitalize="words"
+                      testID="nda-signature"
+                    />
+                  ) : null}
+                </View>
+              ) : null}
+
+              <TouchableOpacity
+                onPress={() => setAcceptedTerms((v) => !v)}
+                activeOpacity={0.8}
+                style={styles.checkRow}
+                testID="accept-terms"
+              >
+                <View style={[styles.checkbox, acceptedTerms && styles.checkboxOn]}>
+                  {acceptedTerms ? <Check size={14} color={C.white} /> : null}
+                </View>
+                <Text style={styles.checkText}>
+                  I agree to the{' '}
+                  <Text style={styles.legalLink} onPress={() => setViewingDoc(TERMS_AND_CONDITIONS)}>Terms &amp; Conditions</Text>
+                  {' '}and Privacy Policy.
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => setViewingDoc(TERMS_AND_CONDITIONS)} style={styles.readLink}>
+                <FileText size={13} color={C.textMuted} />
+                <Text style={styles.readLinkText}>Read the full documents</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <Button
@@ -260,7 +339,7 @@ export default function Signup() {
             loading={loading}
             fullWidth
             size="lg"
-            disabled={!selectedRole}
+            disabled={!selectedRole || !acceptedTerms || (isSalesAgent && (!acceptedNda || !ndaName.trim()))}
           />
 
           <TouchableOpacity onPress={() => router.push('/auth/login' as any)} style={styles.switchRow}>
@@ -269,6 +348,7 @@ export default function Signup() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      <LegalDocSheet doc={viewingDoc} visible={!!viewingDoc} onClose={() => setViewingDoc(null)} />
     </KeyboardAvoidingView>
   );
 }
@@ -305,6 +385,18 @@ const styles = StyleSheet.create({
   fleetCodeBox: { gap: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14 },
   fleetCodeHint: { fontSize: 11, color: C.textMuted, lineHeight: 16 },
   error: { fontSize: 13, color: C.red, textAlign: 'center' },
+  legalBox: { gap: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14 },
+  ndaBlock: { gap: 10, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
+  ndaHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  ndaHeadText: { fontSize: 13, fontWeight: '800' as const, color: C.text, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
+  ndaHint: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
+  checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  checkboxOn: { backgroundColor: C.accent, borderColor: C.accent },
+  checkText: { flex: 1, fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  legalLink: { color: C.accent, fontWeight: '700' as const },
+  readLink: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  readLinkText: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const },
   confirmWrap: { flex: 1, backgroundColor: C.bg, paddingHorizontal: 24, alignItems: 'center', justifyContent: 'center' },
   confirmIcon: { width: 76, height: 76, borderRadius: 38, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
   confirmTitle: { fontSize: 28, fontWeight: '800' as const, color: C.text, letterSpacing: -0.6, marginBottom: 12, textAlign: 'center' as const },

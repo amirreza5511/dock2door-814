@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, X, Check, DollarSign, Users, SlidersHorizontal, CircleCheck, Clock } from 'lucide-react-native';
+import { ArrowLeft, X, Check, DollarSign, Users, SlidersHorizontal, CircleCheck, Clock, FileText, ShieldCheck, BadgeCheck } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -85,6 +85,15 @@ export default function AdminSalesAgents() {
 
   const [planDraft, setPlanDraft] = useState<PlanRow | null>(null);
   const [assignAgent, setAssignAgent] = useState<AgentRow | null>(null);
+  const [detailAgent, setDetailAgent] = useState<AgentRow | null>(null);
+  const detailQuery = trpc.sales.adminAgentDetail.useQuery(
+    { agentId: detailAgent?.id ?? '' },
+    { enabled: !!detailAgent },
+  );
+  const detail = detailQuery.data as {
+    agent?: Record<string, unknown> | null;
+    legal?: { doc_type: string; doc_version: string; signed_name: string; accepted_at: string }[];
+  } | null | undefined;
   const [awardAmount, setAwardAmount] = useState<string>('');
   const [awardNote, setAwardNote] = useState<string>('');
 
@@ -176,8 +185,12 @@ export default function AdminSalesAgents() {
                     <MiniStat label="Paid" value={money(a.paid)} tint={C.green} />
                   </View>
                   <View style={styles.agentActions}>
+                    <TouchableOpacity onPress={() => setDetailAgent(a)} style={styles.smallBtn}>
+                      <FileText size={13} color={C.textSecondary} />
+                      <Text style={styles.smallBtnText}>Profile</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity onPress={() => setAssignAgent(a)} style={styles.smallBtn}>
-                      <Text style={styles.smallBtnText}>{plan?.name ?? 'Default plan'} · Change</Text>
+                      <Text style={styles.smallBtnText} numberOfLines={1}>{plan?.name ?? 'Default plan'} · Change</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => updateAgent.mutate({ agentId: a.id, status: a.status === 'Active' ? 'Paused' : 'Active' })}
@@ -305,6 +318,68 @@ export default function AdminSalesAgents() {
               </View>
               <Button title={awardCommission.isPending ? 'Adding…' : 'Add commission'} onPress={submitAward} disabled={awardCommission.isPending} style={{ marginTop: 4 }} />
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Agent professional profile + agreements */}
+      <Modal visible={!!detailAgent} transparent animationType="slide" onRequestClose={() => setDetailAgent(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 20, maxHeight: '90%' }]}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Agent profile</Text>
+              <TouchableOpacity onPress={() => setDetailAgent(null)}><X size={22} color={C.textSecondary} /></TouchableOpacity>
+            </View>
+            <Text style={styles.sheetSub}>{detailAgent?.name} · {detailAgent?.agent_code}</Text>
+            {detailQuery.isLoading ? (
+              <View style={{ paddingVertical: 30 }}><ScreenFeedback state="loading" title="Loading" /></View>
+            ) : (
+              <ScrollView style={{ maxHeight: 460 }} showsVerticalScrollIndicator={false}>
+                {(() => {
+                  const ag = (detail?.agent ?? {}) as Record<string, string | null>;
+                  const rows: { label: string; value: string }[] = [
+                    { label: 'Legal name', value: ag.legal_name ?? '' },
+                    { label: 'Business name', value: ag.business_name ?? '' },
+                    { label: 'Phone', value: ag.phone ?? '' },
+                    { label: 'Email', value: detailAgent?.email ?? '' },
+                    { label: 'Territory', value: ag.territory ?? '' },
+                    { label: 'Address', value: [ag.address_line1, ag.address_line2, ag.city, ag.region, ag.postal_code, ag.country].filter(Boolean).join(', ') },
+                    { label: 'Date of birth', value: ag.date_of_birth ?? '' },
+                    { label: 'Tax / business no.', value: ag.tax_id ?? '' },
+                    { label: 'ID', value: [ag.id_type, ag.id_number].filter(Boolean).join(' · ') },
+                    { label: 'Website', value: ag.website ?? '' },
+                    { label: 'LinkedIn', value: ag.linkedin ?? '' },
+                    { label: 'Emergency', value: [ag.emergency_name, ag.emergency_phone].filter(Boolean).join(' · ') },
+                    { label: 'Payout', value: [ag.payout_method, ag.payout_details].filter(Boolean).join(' · ') },
+                  ];
+                  return (
+                    <>
+                      {ag.bio ? <Text style={styles.detailBio}>{ag.bio}</Text> : null}
+                      {rows.map((r) => (
+                        <View key={r.label} style={styles.detailRow}>
+                          <Text style={styles.detailLabel}>{r.label}</Text>
+                          <Text style={styles.detailValue}>{r.value?.trim() ? r.value : '—'}</Text>
+                        </View>
+                      ))}
+                      <Text style={styles.awardGroupTitle}>Agreements</Text>
+                      {(['terms', 'nda'] as const).map((dt) => {
+                        const rec = detail?.legal?.find((l) => l.doc_type === dt);
+                        return (
+                          <View key={dt} style={styles.legalRow}>
+                            {dt === 'nda' ? <ShieldCheck size={16} color={rec ? C.green : C.textMuted} /> : <FileText size={16} color={rec ? C.green : C.textMuted} />}
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.legalTitle}>{dt === 'nda' ? 'Non-Disclosure Agreement' : 'Terms & Conditions'}</Text>
+                              <Text style={styles.legalMeta}>{rec ? `${rec.signed_name || 'Accepted'} · v${rec.doc_version} · ${new Date(rec.accepted_at).toLocaleDateString()}` : 'Not on file'}</Text>
+                            </View>
+                            {rec ? <BadgeCheck size={18} color={C.green} /> : null}
+                          </View>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </ScrollView>
+            )}
           </View>
         </View>
       </Modal>
@@ -512,6 +587,13 @@ const styles = StyleSheet.create({
   planPickMeta: { fontSize: 11, color: C.textMuted, marginTop: 1 },
   awardGroupTitle: { fontSize: 13, fontWeight: '800' as const, color: C.accent, marginTop: 14, marginBottom: 8, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   awardHint: { fontSize: 12, color: C.textSecondary, marginBottom: 10, lineHeight: 17 },
+  detailBio: { fontSize: 13, color: C.textSecondary, lineHeight: 19, marginBottom: 10, fontStyle: 'italic' as const },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
+  detailLabel: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const, width: 120 },
+  detailValue: { fontSize: 13, color: C.text, flex: 1, textAlign: 'right' as const },
+  legalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  legalTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  legalMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
   awardRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
 
   toggleRow: { flexDirection: 'row', gap: 10, marginTop: 6, marginBottom: 4 },

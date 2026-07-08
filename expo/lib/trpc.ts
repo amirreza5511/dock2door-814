@@ -4251,15 +4251,26 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   'sales.upsertLead': async (input: AnyRecord) => {
-    const { data, error } = await supabase.rpc('agent_upsert_lead', {
-      p_id: (input.id as string | undefined) ?? null,
-      p_business_name: (input.businessName as string) ?? '',
-      p_contact_name: (input.contactName as string) ?? '',
-      p_contact_email: (input.contactEmail as string) ?? '',
-      p_contact_phone: (input.contactPhone as string) ?? '',
-      p_vertical: (input.vertical as string) ?? 'warehouse',
-      p_status: (input.status as string) ?? 'New',
-      p_notes: (input.notes as string) ?? '',
+    const { data, error } = await supabase.rpc('agent_save_lead', {
+      p: {
+        id: (input.id as string | undefined) ?? null,
+        business_name: (input.businessName as string) ?? '',
+        contact_name: (input.contactName as string) ?? '',
+        contact_title: (input.contactTitle as string) ?? '',
+        contact_email: (input.contactEmail as string) ?? '',
+        contact_phone: (input.contactPhone as string) ?? '',
+        company_website: (input.companyWebsite as string) ?? '',
+        city: (input.city as string) ?? '',
+        vertical: (input.vertical as string) ?? 'warehouse',
+        status: (input.status as string) ?? 'New',
+        priority: (input.priority as string) ?? 'Medium',
+        source: (input.source as string) ?? '',
+        estimated_value: Number(input.estimatedValue ?? 0) || 0,
+        next_action: (input.nextAction as string) ?? '',
+        next_action_at: (input.nextActionAt as string) ?? '',
+        last_contact_at: (input.lastContactAt as string) ?? '',
+        notes: (input.notes as string) ?? '',
+      },
     });
     if (error) throwErr(error, 'Unable to save lead');
     return { id: data as string };
@@ -4358,16 +4369,62 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     };
   },
 
-  // Self-service profile update (phone, territory, payout details).
-  'sales.updateProfile': async (input: { phone?: string; territory?: string; payoutMethod?: string; payoutDetails?: string }) => {
-    const { error } = await supabase.rpc('agent_update_profile', {
-      p_phone: input.phone ?? null,
-      p_territory: input.territory ?? null,
-      p_payout_method: input.payoutMethod ?? null,
-      p_payout_details: input.payoutDetails ?? null,
+  // Self-service professional profile update (full details + payout).
+  'sales.updateProfile': async (input: AnyRecord) => {
+    const { error } = await supabase.rpc('agent_save_profile', {
+      p: {
+        legal_name: (input.legalName as string) ?? undefined,
+        business_name: (input.businessName as string) ?? undefined,
+        phone: (input.phone as string) ?? undefined,
+        territory: (input.territory as string) ?? undefined,
+        address_line1: (input.addressLine1 as string) ?? undefined,
+        address_line2: (input.addressLine2 as string) ?? undefined,
+        city: (input.city as string) ?? undefined,
+        region: (input.region as string) ?? undefined,
+        postal_code: (input.postalCode as string) ?? undefined,
+        country: (input.country as string) ?? undefined,
+        tax_id: (input.taxId as string) ?? undefined,
+        website: (input.website as string) ?? undefined,
+        linkedin: (input.linkedin as string) ?? undefined,
+        bio: (input.bio as string) ?? undefined,
+        id_type: (input.idType as string) ?? undefined,
+        id_number: (input.idNumber as string) ?? undefined,
+        date_of_birth: (input.dateOfBirth as string) ?? undefined,
+        emergency_name: (input.emergencyName as string) ?? undefined,
+        emergency_phone: (input.emergencyPhone as string) ?? undefined,
+        payout_method: (input.payoutMethod as string) ?? undefined,
+        payout_details: (input.payoutDetails as string) ?? undefined,
+      },
     });
     if (error) throwErr(error, 'Unable to update profile');
     return { success: true };
+  },
+
+  // Legal acceptances for the current user (Terms, NDA).
+  'sales.myLegal': async (_input, ctx) => {
+    const { data, error } = await supabase.from('legal_acceptances').select('*').eq('user_id', ctx.user.id);
+    if (error) { if (isMissingRelation(error)) return []; throwErr(error, 'Unable to load legal records'); }
+    return data ?? [];
+  },
+
+  // Record an acceptance/signature from inside the app (post-signup).
+  'sales.recordLegal': async (input: { docType: string; docVersion: string; signedName?: string; platform?: string }) => {
+    const { error } = await supabase.rpc('record_legal_acceptance', {
+      p_doc_type: input.docType,
+      p_doc_version: input.docVersion ?? '1.0',
+      p_signed_name: input.signedName ?? '',
+      p_platform: input.platform ?? '',
+    });
+    if (error) throwErr(error, 'Unable to record acceptance');
+    return { success: true };
+  },
+
+  // Admin: full detail for one agent (professional profile + legal records).
+  'sales.adminAgentDetail': async (input: { agentId: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('admin_agent_detail', { p_agent_id: input.agentId });
+    if (error) throwErr(error, 'Unable to load agent detail');
+    return data ?? null;
   },
 
   // ---- Admin console ------------------------------------------------------
