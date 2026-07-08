@@ -3021,6 +3021,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   'admin.approveAd': async (input: { id: string }, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    // Run the sandbox settle engine so a paid member ad produces a real invoice
+    // + captured payment before it goes live. Ignore "already settled" so
+    // approving twice is safe; a genuine failure still surfaces below.
+    const { data: ad } = await supabase.from('advertisements')
+      .select('source, price').eq('id', input.id).maybeSingle();
+    const adRow = ad as { source?: string | null; price?: number | null } | null;
+    if (adRow?.source === 'self_serve' && Number(adRow.price ?? 0) > 0) {
+      const { error: settleError } = await supabase.rpc('admin_settle_advertisement', { p_id: input.id });
+      if (settleError && !/already|settled|exists/i.test(settleError.message ?? '')) {
+        throwErr(settleError, 'Unable to bill this ad');
+      }
+    }
     const { error } = await supabase.from('advertisements').update({
       review_status: 'Approved',
       status: 'Active',
