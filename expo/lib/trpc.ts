@@ -2753,7 +2753,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const nowIso = new Date().toISOString();
     // Try the rich schema first (0120). Fall back to the base columns if the
     // migration hasn't been applied yet, so the banner never hard-fails.
-    const richCols = 'id,title,body,image_url,target_url,cta_label,advertiser_name,placement,placements,links,priority,starts_at,ends_at,media_type,video_url,link_type,max_impressions,weight,impressions';
+    const richCols = 'id,title,body,image_url,target_url,cta_label,advertiser_name,placement,placements,links,priority,starts_at,ends_at,media_type,video_url,link_type,max_impressions,weight,impressions,clicks,pricing_model,cpm_rate,cpc_rate,budget_cap';
     let data: AnyRecord[] | null = null;
     let error: unknown = null;
     {
@@ -2794,6 +2794,17 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       const cap = Number(a.max_impressions ?? 0);
       const shown = Number(a.impressions ?? 0);
       if (cap > 0 && shown >= cap) return false;
+      // Budget cap: stop serving once delivery has earned the ad's whole budget.
+      const budget = Number(a.budget_cap ?? 0);
+      if (budget > 0) {
+        const model = String(a.pricing_model ?? 'flat');
+        const accrued = model === 'cpm'
+          ? (shown / 1000) * Number(a.cpm_rate ?? 0)
+          : model === 'cpc'
+            ? Number(a.clicks ?? 0) * Number(a.cpc_rate ?? 0)
+            : 0;
+        if (accrued >= budget) return false;
+      }
       return true;
     });
   },
@@ -2850,6 +2861,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     mediaType?: string; videoUrl?: string; linkType?: string;
     links?: { type: string; value: string }[];
     maxImpressions?: number; weight?: number;
+    pricingModel?: string; price?: number; cpmRate?: number; cpcRate?: number; budgetCap?: number;
   }, ctx) => {
     if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
     // Normalise the multi-placement list; fall back to the single placement / 'all'.
@@ -2886,19 +2898,39 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       max_impressions: input.maxImpressions ?? 0,
       weight: input.weight ?? 1,
     };
+    const usageRow: AnyRecord = {
+      pricing_model: input.pricingModel && input.pricingModel.length > 0 ? input.pricingModel : 'flat',
+      price: Math.max(0, Number(input.price ?? 0)),
+      cpm_rate: Math.max(0, Number(input.cpmRate ?? 0)),
+      cpc_rate: Math.max(0, Number(input.cpcRate ?? 0)),
+      budget_cap: Math.max(0, Number(input.budgetCap ?? 0)),
+    };
     const runUpsert = async (row: AnyRecord) => {
       if (input.id) {
         return supabase.from('advertisements').update(row).eq('id', input.id).select('id').maybeSingle();
       }
       return supabase.from('advertisements').insert({ ...row, created_by: ctx.user.id }).select('id').maybeSingle();
     };
-    let res = await runUpsert(richRow);
+    let res = await runUpsert({ ...richRow, ...usageRow });
+    if (res.error && isMissingColumn(res.error)) {
+      // 0127 not applied yet — retry without the usage-billing columns.
+      res = await runUpsert(richRow);
+    }
     if (res.error && isMissingColumn(res.error)) {
       // 0120 not applied yet — persist the base creative so the ad still saves.
       res = await runUpsert(baseRow);
     }
     if (res.error) throwErr(res.error, input.id ? 'Unable to update ad' : 'Unable to create ad');
     return { id: String((res.data as AnyRecord | null)?.id ?? input.id ?? '') };
+  },
+
+  // Bill the unbilled delivery of an ad (CPM/CPC/flat) — issues an invoice +
+  // captured payment via the sandbox engine and advances the billed watermarks.
+  'admin.billAdUsage': async (input: { id: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('admin_bill_ad_usage', { p_id: input.id });
+    if (error) throwErr(error, 'Unable to bill this ad');
+    return { billed: Number(data ?? 0) };
   },
 
   'admin.setAdStatus': async (input: { id: string; status: string }, ctx) => {

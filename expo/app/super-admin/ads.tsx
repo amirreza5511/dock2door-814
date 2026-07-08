@@ -45,6 +45,40 @@ type Ad = {
   price?: number | null;
   currency?: string | null;
   admin_note?: string | null;
+  pricing_model?: string | null;
+  cpm_rate?: number | null;
+  cpc_rate?: number | null;
+  budget_cap?: number | null;
+  billed_amount?: number | null;
+};
+
+type PricingModel = 'flat' | 'cpm' | 'cpc';
+
+const PRICING_MODELS: { key: PricingModel; label: string; sub: string }[] = [
+  { key: 'flat', label: 'Flat fee', sub: 'One-time' },
+  { key: 'cpm', label: 'Per 1,000 views', sub: 'CPM' },
+  { key: 'cpc', label: 'Per click', sub: 'CPC' },
+];
+
+const pricingLabel = (m: string | null | undefined): string =>
+  PRICING_MODELS.find((p) => p.key === (m ?? 'flat'))?.label ?? 'Flat fee';
+
+/** Earned-to-date spend for an ad, derived from its live counters (capped to budget). */
+const accruedSpend = (ad: Ad): number => {
+  const model = (ad.pricing_model ?? 'flat') as PricingModel;
+  let raw = 0;
+  if (model === 'cpm') raw = (Number(ad.impressions ?? 0) / 1000) * Number(ad.cpm_rate ?? 0);
+  else if (model === 'cpc') raw = Number(ad.clicks ?? 0) * Number(ad.cpc_rate ?? 0);
+  else raw = Number(ad.price ?? 0);
+  const cap = Number(ad.budget_cap ?? 0);
+  if (cap > 0) raw = Math.min(raw, cap);
+  return Math.round(raw * 100) / 100;
+};
+
+const ctrOf = (ad: Ad): number => {
+  const imp = Number(ad.impressions ?? 0);
+  if (imp <= 0) return 0;
+  return (Number(ad.clicks ?? 0) / imp) * 100;
 };
 
 const money = (n: number | null | undefined, cur: string | null | undefined): string =>
@@ -110,6 +144,11 @@ type Draft = {
   links: Record<LinkType, string>;
   maxImpressions: string;
   weight: string;
+  pricingModel: PricingModel;
+  flatPrice: string;
+  cpmRate: string;
+  cpcRate: string;
+  budgetCap: string;
 };
 
 const emptyLinks: Record<LinkType, string> = {
@@ -120,6 +159,7 @@ const emptyDraft: Draft = {
   id: null, title: '', body: '', imageUrl: '', ctaLabel: 'Learn more',
   advertiserName: '', placements: ['all'], priority: '0', active: true,
   mediaType: 'image', videoUrl: '', links: { ...emptyLinks }, maxImpressions: '0', weight: '1',
+  pricingModel: 'flat', flatPrice: '0', cpmRate: '', cpcRate: '', budgetCap: '0',
 };
 
 /** All selectable page keys (excludes the 'all' meta-option). */
@@ -139,12 +179,14 @@ export default function SuperAdminAdsScreen() {
   const setStatusM = trpc.admin.setAdStatus.useMutation();
   const deleteM = trpc.admin.deleteAd.useMutation();
   const quoteM = trpc.admin.quoteAd.useMutation();
+  const billM = trpc.admin.billAdUsage.useMutation();
   const approveM = trpc.admin.approveAd.useMutation();
   const rejectM = trpc.admin.rejectAd.useMutation();
 
   const [editorOpen, setEditorOpen] = useState<boolean>(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [quoteFor, setQuoteFor] = useState<Ad | null>(null);
+  const [billingId, setBillingId] = useState<string | null>(null);
   const [quotePrice, setQuotePrice] = useState<string>('');
   const [quoteNote, setQuoteNote] = useState<string>('');
 
@@ -204,6 +246,31 @@ export default function SuperAdminAdsScreen() {
     ]);
   }, [rejectM, adsQuery]);
 
+  const billUsage = useCallback((ad: Ad) => {
+    const amount = Math.round((accruedSpend(ad) - Number(ad.billed_amount ?? 0)) * 100) / 100;
+    Alert.alert(
+      'Bill this ad',
+      `Charge ${money(amount, ad.currency)} for delivery so far (${ad.impressions ?? 0} views, ${ad.clicks ?? 0} clicks)? An invoice and payment are recorded.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Bill now', onPress: async () => {
+            setBillingId(ad.id);
+            try {
+              const res = await billM.mutateAsync({ id: ad.id });
+              await adsQuery.refetch();
+              Alert.alert('Ad billed', `Charged ${money(res.billed, ad.currency)}.`);
+            } catch (error) {
+              Alert.alert('Unable to bill', error instanceof Error ? error.message : 'Unknown error');
+            } finally {
+              setBillingId(null);
+            }
+          },
+        },
+      ],
+    );
+  }, [billM, adsQuery]);
+
   const openNew = useCallback(() => { setDraft(emptyDraft); setEditorOpen(true); }, []);
   const openEdit = useCallback((ad: Ad) => {
     const placements = Array.isArray(ad.placements) && ad.placements.length > 0
@@ -233,6 +300,11 @@ export default function SuperAdminAdsScreen() {
       links,
       maxImpressions: String(ad.max_impressions ?? 0),
       weight: String(ad.weight ?? 1),
+      pricingModel: (ad.pricing_model as PricingModel) || 'flat',
+      flatPrice: String(ad.price ?? 0),
+      cpmRate: ad.cpm_rate && ad.cpm_rate > 0 ? String(ad.cpm_rate) : '',
+      cpcRate: ad.cpc_rate && ad.cpc_rate > 0 ? String(ad.cpc_rate) : '',
+      budgetCap: String(ad.budget_cap ?? 0),
     });
     setEditorOpen(true);
   }, []);
@@ -277,6 +349,11 @@ export default function SuperAdminAdsScreen() {
         links,
         maxImpressions: Number.parseInt(draft.maxImpressions, 10) || 0,
         weight: Math.max(1, Math.min(10, Number.parseInt(draft.weight, 10) || 1)),
+        pricingModel: draft.pricingModel,
+        price: draft.pricingModel === 'flat' ? Number.parseFloat(draft.flatPrice) || 0 : 0,
+        cpmRate: draft.pricingModel === 'cpm' ? Number.parseFloat(draft.cpmRate) || 0 : 0,
+        cpcRate: draft.pricingModel === 'cpc' ? Number.parseFloat(draft.cpcRate) || 0 : 0,
+        budgetCap: Number.parseFloat(draft.budgetCap) || 0,
       });
       setEditorOpen(false);
       await adsQuery.refetch();
@@ -403,6 +480,8 @@ export default function SuperAdminAdsScreen() {
             </View>
 
             <LinkClicks ad={ad} />
+
+            <AdBillingPanel ad={ad} onBill={() => billUsage(ad)} billing={billingId === ad.id} />
 
             <View style={styles.actionsRow}>
               <Button
@@ -567,6 +646,40 @@ export default function SuperAdminAdsScreen() {
                 <Text style={styles.hint}>The ad stops showing after this many total views. Leave 0 to run forever.</Text>
               </Field>
 
+              <View style={styles.billingBlock}>
+                <Text style={styles.billingHeading}>How you charge this advertiser</Text>
+                <View style={styles.segRow}>
+                  {PRICING_MODELS.map(({ key, label, sub }) => {
+                    const on = draft.pricingModel === key;
+                    return (
+                      <TouchableOpacity key={key} onPress={() => setDraft((d) => ({ ...d, pricingModel: key }))} style={[styles.pmSeg, on && styles.segOn]} activeOpacity={0.85}>
+                        <Text style={[styles.pmSegLabel, on && styles.segTextOn]}>{label}</Text>
+                        <Text style={[styles.pmSegSub, on && { color: C.accent }]}>{sub}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {draft.pricingModel === 'cpm' ? (
+                  <Field label="Price per 1,000 views (CAD)">
+                    <TextInput style={styles.input} value={draft.cpmRate} onChangeText={(t) => setDraft((d) => ({ ...d, cpmRate: t.replace(/[^0-9.]/g, '') }))} placeholder="e.g. 100" placeholderTextColor={C.textMuted} keyboardType="decimal-pad" />
+                  </Field>
+                ) : draft.pricingModel === 'cpc' ? (
+                  <Field label="Price per click (CAD)">
+                    <TextInput style={styles.input} value={draft.cpcRate} onChangeText={(t) => setDraft((d) => ({ ...d, cpcRate: t.replace(/[^0-9.]/g, '') }))} placeholder="e.g. 0.75" placeholderTextColor={C.textMuted} keyboardType="decimal-pad" />
+                  </Field>
+                ) : (
+                  <Field label="Flat price (CAD)">
+                    <TextInput style={styles.input} value={draft.flatPrice} onChangeText={(t) => setDraft((d) => ({ ...d, flatPrice: t.replace(/[^0-9.]/g, '') }))} placeholder="e.g. 500" placeholderTextColor={C.textMuted} keyboardType="decimal-pad" />
+                  </Field>
+                )}
+                {draft.pricingModel !== 'flat' ? (
+                  <Field label="Budget cap (0 = unlimited)">
+                    <TextInput style={styles.input} value={draft.budgetCap} onChangeText={(t) => setDraft((d) => ({ ...d, budgetCap: t.replace(/[^0-9.]/g, '') }))} placeholder="0" placeholderTextColor={C.textMuted} keyboardType="decimal-pad" />
+                    <Text style={styles.hint}>The ad auto-pauses once it has earned this much. Leave 0 to run until you pause it.</Text>
+                  </Field>
+                ) : null}
+              </View>
+
               <View style={styles.activeRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.activeLabel}>Active</Text>
@@ -648,6 +761,66 @@ function AdRequestCard({
         )}
         <Button label="Reject" onPress={onReject} size="sm" variant="outline" icon={<XCircle size={14} color={C.red} />} />
       </View>
+    </View>
+  );
+}
+
+/** Delivery + revenue panel for one ad: reach, CTR, pricing model, spend and a
+ * Bill button that invoices the delivery earned since the last bill. */
+function AdBillingPanel({ ad, onBill, billing }: { ad: Ad; onBill: () => void; billing: boolean }) {
+  const model = (ad.pricing_model ?? 'flat') as PricingModel;
+  const accrued = accruedSpend(ad);
+  const billed = Number(ad.billed_amount ?? 0);
+  const outstanding = Math.round((accrued - billed) * 100) / 100;
+  const budget = Number(ad.budget_cap ?? 0);
+  const ctr = ctrOf(ad);
+
+  const rateText =
+    model === 'cpm' ? `${money(ad.cpm_rate, ad.currency)} / 1,000 views`
+    : model === 'cpc' ? `${money(ad.cpc_rate, ad.currency)} / click`
+    : money(ad.price, ad.currency);
+
+  return (
+    <View style={styles.billPanel}>
+      <View style={styles.billTopRow}>
+        <View style={styles.pricingTag}>
+          <Text style={styles.pricingTagText}>{pricingLabel(model)}</Text>
+        </View>
+        <Text style={styles.rateText}>{rateText}</Text>
+        {budget > 0 ? <Text style={styles.budgetText}>· cap {money(budget, ad.currency)}</Text> : null}
+      </View>
+
+      <View style={styles.spendGrid}>
+        <View style={styles.spendCell}>
+          <Text style={styles.spendVal}>{ctr.toFixed(1)}%</Text>
+          <Text style={styles.spendKey}>CTR</Text>
+        </View>
+        <View style={styles.spendCell}>
+          <Text style={styles.spendVal}>{money(accrued, ad.currency)}</Text>
+          <Text style={styles.spendKey}>Earned</Text>
+        </View>
+        <View style={styles.spendCell}>
+          <Text style={styles.spendVal}>{money(billed, ad.currency)}</Text>
+          <Text style={styles.spendKey}>Billed</Text>
+        </View>
+        <View style={styles.spendCell}>
+          <Text style={[styles.spendVal, outstanding > 0 && { color: C.green }]}>{money(outstanding, ad.currency)}</Text>
+          <Text style={styles.spendKey}>Due</Text>
+        </View>
+      </View>
+
+      {outstanding > 0 ? (
+        <Button
+          label={`Bill ${money(outstanding, ad.currency)}`}
+          onPress={onBill}
+          size="sm"
+          loading={billing}
+          icon={<CreditCard size={14} color={C.white} />}
+          style={{ marginTop: 2 }}
+        />
+      ) : (
+        <Text style={styles.settledText}>Delivery fully billed</Text>
+      )}
     </View>
   );
 }
@@ -780,6 +953,24 @@ const styles = StyleSheet.create({
   linkClickPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: C.accentDim, borderRadius: 999, paddingLeft: 8, paddingRight: 9, paddingVertical: 4 },
   linkClickLabel: { fontSize: 11, fontWeight: '600' as const, color: C.textSecondary },
   linkClickCount: { fontSize: 11, fontWeight: '800' as const, color: C.accent },
+
+  pmSeg: { flex: 1, minWidth: 96, alignItems: 'center', gap: 2, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 10 },
+  pmSegLabel: { fontSize: 12, fontWeight: '700' as const, color: C.textSecondary, textAlign: 'center' },
+  pmSegSub: { fontSize: 9.5, fontWeight: '700' as const, color: C.textMuted, letterSpacing: 0.5 },
+  billingBlock: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 12, marginBottom: 12, gap: 4 },
+  billingHeading: { fontSize: 13, fontWeight: '800' as const, color: C.text, marginBottom: 8 },
+
+  billPanel: { backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 12, gap: 10 },
+  billTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  pricingTag: { backgroundColor: C.accentDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  pricingTagText: { fontSize: 10.5, fontWeight: '800' as const, color: C.accent },
+  rateText: { fontSize: 12, fontWeight: '700' as const, color: C.text },
+  budgetText: { fontSize: 11, fontWeight: '600' as const, color: C.textMuted },
+  spendGrid: { flexDirection: 'row', gap: 8 },
+  spendCell: { flex: 1, backgroundColor: C.card, borderRadius: 10, paddingVertical: 8, alignItems: 'center', gap: 2 },
+  spendVal: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  spendKey: { fontSize: 9.5, fontWeight: '700' as const, color: C.textMuted, letterSpacing: 0.4, textTransform: 'uppercase' as const },
+  settledText: { fontSize: 11.5, fontWeight: '600' as const, color: C.textMuted, textAlign: 'center', paddingVertical: 4 },
 
   activeRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14, marginTop: 2 },
   activeLabel: { fontSize: 14, fontWeight: '700' as const, color: C.text },
