@@ -46,8 +46,11 @@ import {
   Ship,
   DoorOpen,
   LifeBuoy,
+  Layers,
+  Handshake,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
+import { isBusinessRole } from "@/lib/relationships";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -76,11 +79,23 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     ],
   });
 
+  // Business accounts can grow into extra roles and connect with partners.
+  if (isBusinessRole(role)) {
+    sections.push({
+      label: "My business",
+      items: [
+        { href: "/partners", label: "Partners", icon: Handshake },
+        { href: "/company/add-role", label: "Add a role", icon: Layers },
+      ],
+    });
+  }
+
   if (isAdmin || role === "Admin" || role === "SuperAdmin") {
     sections.push({
       label: "Administration",
       items: [
         { href: "/admin/compliance", label: "Compliance queue", icon: ClipboardCheck },
+        { href: "/admin/role-requests", label: "Role requests", icon: Layers },
         { href: "/admin/companies", label: "Companies", icon: Building2 },
         { href: "/admin/bookings", label: "Booking routing", icon: ClipboardList },
         { href: "/admin/entities", label: "Entity manager", icon: Database },

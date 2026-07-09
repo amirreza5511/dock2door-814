@@ -5,7 +5,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock, CreditCard, ChevronRight, Edit3, X, Send, BadgeCheck, Briefcase } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle, Star, MapPin, Building2, Users, Lock, Globe, MessageSquare, AlertTriangle, ShieldCheck, Clock, CreditCard, ChevronRight, Edit3, X, Send, BadgeCheck, Briefcase, Layers, Handshake } from 'lucide-react-native';
+import { isBusinessRole } from '@/lib/relationships';
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
@@ -17,6 +18,7 @@ interface CompanyRow {
   id: string;
   name: string;
   city: string | null;
+  type: string | null;
   status: string;
   created_at: string;
   display_name: string | null;
@@ -71,7 +73,7 @@ async function fetchCompanyProfile(companyId: string) {
   const [companyRes, shiftsRes, reviewsRes, staffRes] = await Promise.all([
     supabase
       .from('companies')
-      .select('id,name,city,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
+      .select('id,name,city,type,status,created_at,display_name,industry,public_bio,logo_url,website,public_contact_email,public_contact_phone,show_public_contact_email,show_public_contact_phone,legal_business_name,business_number,business_address,admin_contact_name,admin_contact_email,admin_contact_phone,profile_completed_at,submitted_for_approval_at,approval_rejection_reason,verified_at,billing_setup_completed_at')
       .eq('id', companyId)
       .maybeSingle(),
     supabase
@@ -487,6 +489,22 @@ export default function CompanyProfileScreen(props: { overrideCompanyId?: string
                 <Text style={[styles.previewBannerText, { color: C.green }]}>Public-facing profile. Only the company name, city, rating summary and approval status are visible.</Text>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Expand your business — add role + partners (members of a business) */}
+        {effectiveMode === 'private' && isMember && isBusinessRole(company.type) && (
+          <View style={styles.expandRow}>
+            <TouchableOpacity style={styles.expandCard} activeOpacity={0.85} onPress={() => router.push('/company/add-role' as any)}>
+              <View style={[styles.expandIcon, { backgroundColor: C.accentDim }]}><Layers size={18} color={C.accent} /></View>
+              <Text style={styles.expandTitle}>Add a role</Text>
+              <Text style={styles.expandSub}>Do more as one business</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.expandCard} activeOpacity={0.85} onPress={() => router.push('/partners' as any)}>
+              <View style={[styles.expandIcon, { backgroundColor: C.greenDim }]}><Handshake size={18} color={C.green} /></View>
+              <Text style={styles.expandTitle}>Partners</Text>
+              <Text style={styles.expandSub}>Connect & work together</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -944,6 +962,12 @@ const styles = StyleSheet.create({
   shiftMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   shiftRight: { alignItems: 'flex-end', gap: 4 },
   shiftRate: { fontSize: 13, color: C.green, fontWeight: '700' as const },
+  // Expand your business (add role / partners)
+  expandRow: { flexDirection: 'row', gap: 10, marginBottom: 14 },
+  expandCard: { flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14, gap: 6 },
+  expandIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  expandTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  expandSub: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
   // View mode tabs
   viewTabsWrap: { marginBottom: 14 },
   viewTabsLabel: { fontSize: 11, color: C.textMuted, marginBottom: 6, fontWeight: '600' as const },

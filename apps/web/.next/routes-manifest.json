@@ -217,6 +217,12 @@
       "namedRegex": "^/admin/platform\\-settings(?:/)?$"
     },
     {
+      "page": "/admin/role-requests",
+      "regex": "^/admin/role\\-requests(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/role\\-requests(?:/)?$"
+    },
+    {
       "page": "/admin/sales-agents",
       "regex": "^/admin/sales\\-agents(?:/)?$",
       "routeKeys": {},
@@ -245,6 +251,12 @@
       "regex": "^/admin/work\\-photos(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/admin/work\\-photos(?:/)?$"
+    },
+    {
+      "page": "/company/add-role",
+      "regex": "^/company/add\\-role(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/company/add\\-role(?:/)?$"
     },
     {
       "page": "/customer",
@@ -575,6 +587,12 @@
       "regex": "^/onboarding/company\\-setup(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/onboarding/company\\-setup(?:/)?$"
+    },
+    {
+      "page": "/partners",
+      "regex": "^/partners(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/partners(?:/)?$"
     },
     {
       "page": "/reviews",
