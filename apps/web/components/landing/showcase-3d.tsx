@@ -1,60 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Package, Truck, Warehouse, Users, Ship, ClipboardCheck } from "lucide-react";
 
-type Face = {
-  icon: typeof Truck;
-  label: string;
-  transform: string;
-};
+const LogisticsScene = dynamic(() => import("@/components/three/LogisticsScene"), {
+  ssr: false,
+  loading: () => (
+    <div className="grid h-full w-full place-items-center text-sm text-white/40">
+      Loading 3D scene…
+    </div>
+  ),
+});
 
-const CUBE_FACES: Face[] = [
-  { icon: Truck, label: "Trucking", transform: "rotateY(0deg) translateZ(110px)" },
-  { icon: Warehouse, label: "Warehouse", transform: "rotateY(90deg) translateZ(110px)" },
-  { icon: Ship, label: "Drayage", transform: "rotateY(180deg) translateZ(110px)" },
-  { icon: Users, label: "Labour", transform: "rotateY(-90deg) translateZ(110px)" },
-  { icon: Package, label: "Fulfillment", transform: "rotateX(90deg) translateZ(110px)" },
-  { icon: ClipboardCheck, label: "Orders", transform: "rotateX(-90deg) translateZ(110px)" },
+type Module = { icon: typeof Truck; label: string };
+
+const MODULES: Module[] = [
+  { icon: Truck, label: "Trucking" },
+  { icon: Warehouse, label: "Warehouse" },
+  { icon: Ship, label: "Drayage" },
+  { icon: Users, label: "Labour" },
+  { icon: Package, label: "Fulfillment" },
+  { icon: ClipboardCheck, label: "Orders" },
 ];
 
-/** Interactive drag-to-rotate 3D cube representing the connected supply chain. */
+/** Real WebGL logistics world showcasing the connected supply chain. */
 export function Showcase3D() {
-  const [rot, setRot] = useState<{ x: number; y: number }>({ x: -18, y: 24 });
-  const dragging = useRef(false);
-  const last = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const autoRef = useRef<number>(0);
-
-  useEffect(() => {
-    const reduce =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) return;
-    const tick = () => {
-      if (!dragging.current) {
-        setRot((r) => ({ ...r, y: r.y + 0.25 }));
-      }
-      autoRef.current = window.requestAnimationFrame(tick);
-    };
-    autoRef.current = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(autoRef.current);
-  }, []);
-
-  const onDown = (clientX: number, clientY: number) => {
-    dragging.current = true;
-    last.current = { x: clientX, y: clientY };
-  };
-  const onMove = (clientX: number, clientY: number) => {
-    if (!dragging.current) return;
-    const dx = clientX - last.current.x;
-    const dy = clientY - last.current.y;
-    last.current = { x: clientX, y: clientY };
-    setRot((r) => ({ x: Math.max(-80, Math.min(80, r.x - dy * 0.4)), y: r.y + dx * 0.4 }));
-  };
-  const onUp = () => {
-    dragging.current = false;
-  };
-
   return (
     <section className="relative overflow-hidden py-24">
       <div
@@ -73,11 +43,11 @@ export function Showcase3D() {
           </h2>
           <p className="mt-5 max-w-lg text-base leading-relaxed text-white/60">
             Warehousing, drayage, trucking, fulfillment and on-demand labour all talk to
-            each other in real time. Drag the cube to explore the modules — the same ones you
-            get in the mobile app.
+            each other in real time — a live 3D view of the same modules you get in the
+            mobile app.
           </p>
           <ul className="mt-8 grid grid-cols-2 gap-3">
-            {CUBE_FACES.map((f) => {
+            {MODULES.map((f) => {
               const Icon = f.icon;
               return (
                 <li
@@ -94,36 +64,10 @@ export function Showcase3D() {
           </ul>
         </div>
 
-        <div
-          className="flex min-h-[360px] cursor-grab items-center justify-center active:cursor-grabbing [perspective:1100px]"
-          onMouseDown={(e) => onDown(e.clientX, e.clientY)}
-          onMouseMove={(e) => onMove(e.clientX, e.clientY)}
-          onMouseUp={onUp}
-          onMouseLeave={onUp}
-          onTouchStart={(e) => onDown(e.touches[0].clientX, e.touches[0].clientY)}
-          onTouchMove={(e) => onMove(e.touches[0].clientX, e.touches[0].clientY)}
-          onTouchEnd={onUp}
-        >
-          <div
-            className="relative h-[220px] w-[220px] [transform-style:preserve-3d]"
-            style={{ transform: `rotateX(${rot.x}deg) rotateY(${rot.y}deg)` }}
-          >
-            {CUBE_FACES.map((f) => {
-              const Icon = f.icon;
-              return (
-                <div
-                  key={f.label}
-                  className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-3xl border border-[#2de2c7]/30 bg-[#0a2230]/70 backdrop-blur-sm"
-                  style={{
-                    transform: f.transform,
-                    boxShadow: "inset 0 0 60px rgba(45,226,199,0.12), 0 0 40px -10px rgba(45,226,199,0.4)",
-                  }}
-                >
-                  <Icon size={46} strokeWidth={1.6} className="text-[#2de2c7]" />
-                  <span className="font-display text-base font-semibold text-white">{f.label}</span>
-                </div>
-              );
-            })}
+        <div className="relative h-[420px] overflow-hidden rounded-3xl border border-white/10 bg-[#071a2e]/60 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.9)]">
+          <LogisticsScene className="h-full w-full" />
+          <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-md">
+            Live logistics network · real-time
           </div>
         </div>
       </div>
