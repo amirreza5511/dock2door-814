@@ -16,20 +16,20 @@ interface CycleCount {
   id: string;
   variant_id: string | null;
   location_id: string | null;
-  expected: number | null;
-  counted: number | null;
+  system_qty: number | null;
+  counted_qty: number | null;
   variance: number | null;
-  status: string | null;
-  created_at: string;
+  counted_at: string;
 }
 
 interface Movement {
   id: string;
   kind: string;
   variant_id: string | null;
-  location_id: string | null;
+  from_location_id: string | null;
+  to_location_id: string | null;
   quantity: number;
-  reason: string | null;
+  notes: string | null;
   created_at: string;
 }
 
@@ -46,8 +46,8 @@ export default function InventoryStationPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cycle_counts")
-        .select("id,variant_id,location_id,expected,counted,variance,status,created_at")
-        .order("created_at", { ascending: false })
+        .select("id,variant_id,location_id,system_qty,counted_qty,variance,counted_at")
+        .order("counted_at", { ascending: false })
         .limit(100);
       if (error) throw error;
       return (data ?? []) as CycleCount[];
@@ -59,7 +59,7 @@ export default function InventoryStationPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_movements")
-        .select("id,kind,variant_id,location_id,quantity,reason,created_at")
+        .select("id,kind,variant_id,from_location_id,to_location_id,quantity,notes,created_at")
         .order("created_at", { ascending: false })
         .limit(100);
       if (error) throw error;
@@ -88,21 +88,21 @@ export default function InventoryStationPage() {
     { key: "id", header: "Count", render: (c) => <span className="font-mono text-xs">{c.id.slice(0, 8)}</span> },
     { key: "variant", header: "Variant", render: (c) => c.variant_id ?? "—" },
     { key: "location", header: "Location", render: (c) => c.location_id ?? "—" },
-    { key: "expected", header: "Expected", render: (c) => c.expected ?? "—" },
-    { key: "counted", header: "Counted", render: (c) => c.counted ?? "—" },
+    { key: "expected", header: "Expected", render: (c) => c.system_qty ?? "—" },
+    { key: "counted", header: "Counted", render: (c) => c.counted_qty ?? "—" },
     { key: "variance", header: "Variance", render: (c) => (
-      <Badge variant={!c.variance ? "secondary" : Number(c.variance) === 0 ? "success" : "destructive"}>{c.variance ?? "—"}</Badge>
+      <Badge variant={c.variance == null ? "secondary" : Number(c.variance) === 0 ? "success" : "destructive"}>{c.variance ?? "—"}</Badge>
     ), sortable: true, sortValue: (c) => Math.abs(Number(c.variance ?? 0)) },
-    { key: "status", header: "Status", render: (c) => <Badge>{c.status ?? "—"}</Badge> },
-    { key: "created_at", header: "Created", render: (c) => formatDate(c.created_at) },
+    { key: "status", header: "Status", render: (c) => <Badge variant={Number(c.variance ?? 0) === 0 ? "success" : "warning"}>{Number(c.variance ?? 0) === 0 ? "Match" : "Variance"}</Badge> },
+    { key: "created_at", header: "Created", render: (c) => formatDate(c.counted_at) },
   ];
 
   const moveCols: Column<Movement>[] = [
     { key: "kind", header: "Kind", render: (m) => <Badge variant={m.kind === "adjust" ? "warning" : "secondary"}>{m.kind}</Badge>, sortable: true, sortValue: (m) => m.kind },
     { key: "variant", header: "Variant", render: (m) => m.variant_id ?? "—" },
-    { key: "location", header: "Location", render: (m) => m.location_id ?? "—" },
+    { key: "location", header: "Location", render: (m) => m.to_location_id ?? m.from_location_id ?? "—" },
     { key: "qty", header: "Qty", render: (m) => m.quantity, sortable: true, sortValue: (m) => m.quantity },
-    { key: "reason", header: "Reason", render: (m) => m.reason ?? "—" },
+    { key: "reason", header: "Reason", render: (m) => m.notes ?? "—" },
     { key: "created_at", header: "When", render: (m) => formatDate(m.created_at) },
   ];
 

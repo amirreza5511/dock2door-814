@@ -22,7 +22,7 @@ interface LotRow {
 
 interface MovementRow {
   id: string;
-  movement_kind: string;
+  kind: string;
   quantity: number;
   reference_id: string | null;
   notes: string | null;
@@ -67,7 +67,7 @@ export default function CustomerInventoryPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_movements")
-        .select(`id, movement_kind, quantity, reference_id, notes, created_at,
+        .select(`id, kind, quantity, reference_id, notes, created_at,
           inventory_lots(product_name, sku)`)
         .order("created_at", { ascending: false })
         .limit(200);
@@ -149,8 +149,8 @@ export default function CustomerInventoryPage() {
       key: "kind",
       header: "Movement",
       render: (m) => (
-        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${MOVEMENT_VARIANT[m.movement_kind] ?? "bg-muted text-muted-foreground"}`}>
-          {m.movement_kind}
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${MOVEMENT_VARIANT[m.kind] ?? "bg-muted text-muted-foreground"}`}>
+          {m.kind}
         </span>
       ),
     },
@@ -158,8 +158,8 @@ export default function CustomerInventoryPage() {
       key: "qty",
       header: "Qty",
       render: (m) => (
-        <span className={`font-medium ${["ship","pick"].includes(m.movement_kind) ? "text-red-600" : "text-emerald-700"}`}>
-          {["ship","pick"].includes(m.movement_kind) ? "-" : "+"}{m.quantity}
+        <span className={`font-medium ${["ship","pick"].includes(m.kind) ? "text-red-600" : "text-emerald-700"}`}>
+          {["ship","pick"].includes(m.kind) ? "-" : "+"}{m.quantity}
         </span>
       ),
     },
@@ -238,8 +238,8 @@ export default function CustomerInventoryPage() {
             error={movementsQ.error as Error | null}
             searchPlaceholder="Search product…"
             filters={[
-              { value: "inbound", label: "Inbound", predicate: (m) => ["receive","return","adjust"].includes(m.movement_kind) },
-              { value: "outbound", label: "Outbound", predicate: (m) => ["ship","pick"].includes(m.movement_kind) },
+              { value: "inbound", label: "Inbound", predicate: (m) => ["receive","return","adjust"].includes(m.kind) },
+              { value: "outbound", label: "Outbound", predicate: (m) => ["ship","pick"].includes(m.kind) },
             ]}
             emptyMessage="No stock movements found."
           />

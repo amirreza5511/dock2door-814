@@ -77,11 +77,11 @@ export default function WarehouseWMSPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_movements")
-        .select("id,movement_kind,quantity,reference_kind,created_at")
+        .select("id,kind,quantity,reference_kind,created_at")
         .order("created_at", { ascending: false })
         .limit(8);
       if (error) throw error;
-      return (data ?? []) as { id: string; movement_kind: string; quantity: number; reference_kind: string; created_at: string }[];
+      return (data ?? []) as { id: string; kind: string; quantity: number; reference_kind: string; created_at: string }[];
     },
   });
 
@@ -193,7 +193,7 @@ export default function WarehouseWMSPage() {
               {(movementsQ.data ?? []).map((m) => (
                 <div key={m.id} className="flex items-center justify-between py-2">
                   <div>
-                    <Badge variant="secondary" className="capitalize mr-2">{m.movement_kind}</Badge>
+                    <Badge variant="secondary" className="capitalize mr-2">{m.kind}</Badge>
                     <span className="text-xs text-muted-foreground">{m.reference_kind}</span>
                   </div>
                   <div className="text-right">
