@@ -533,6 +533,24 @@
       "namedRegex": "^/super\\-admin/billing(?:/)?$"
     },
     {
+      "page": "/super-admin/certifications",
+      "regex": "^/super\\-admin/certifications(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/certifications(?:/)?$"
+    },
+    {
+      "page": "/super-admin/companies",
+      "regex": "^/super\\-admin/companies(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/companies(?:/)?$"
+    },
+    {
+      "page": "/super-admin/compliance",
+      "regex": "^/super\\-admin/compliance(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/compliance(?:/)?$"
+    },
+    {
       "page": "/super-admin/controls",
       "regex": "^/super\\-admin/controls(?:/)?$",
       "routeKeys": {},
@@ -545,10 +563,22 @@
       "namedRegex": "^/super\\-admin/data\\-manager(?:/)?$"
     },
     {
+      "page": "/super-admin/operations",
+      "regex": "^/super\\-admin/operations(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/operations(?:/)?$"
+    },
+    {
       "page": "/super-admin/roles",
       "regex": "^/super\\-admin/roles(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/super\\-admin/roles(?:/)?$"
+    },
+    {
+      "page": "/super-admin/users",
+      "regex": "^/super\\-admin/users(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/users(?:/)?$"
     },
     {
       "page": "/trucking",

@@ -102,6 +102,11 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/super-admin/analytics", label: "Analytics", icon: BarChart3 },
         { href: "/super-admin/controls", label: "Controls", icon: Shield },
         { href: "/super-admin/data-manager", label: "Data manager", icon: Database },
+        { href: "/super-admin/operations", label: "Operations log", icon: Activity },
+        { href: "/super-admin/companies", label: "Companies", icon: Building2 },
+        { href: "/super-admin/users", label: "Users", icon: Users },
+        { href: "/super-admin/certifications", label: "Certifications", icon: ShieldCheck },
+        { href: "/super-admin/compliance", label: "Compliance", icon: Shield },
         { href: "/super-admin/billing", label: "Billing oversight", icon: CreditCard },
       ],
     });

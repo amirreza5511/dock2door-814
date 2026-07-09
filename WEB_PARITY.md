@@ -36,13 +36,13 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 `warehouse-provider→warehouse`.
 
 ### super-admin  (biggest gap)
-- [ ] certifications
-- [ ] companies
-- [ ] compliance
-- [ ] finance
-- [ ] operations
-- [ ] support
-- [ ] users
+- [x] certifications  (re-exports web `admin/certifications`)
+- [x] companies       (re-exports web `admin/companies`)
+- [x] compliance      (re-exports web `admin/compliance`)
+- [ ] finance   (BLOCKED: mobile uses tRPC `finance.*` procedures; web has no tRPC client, needs Supabase-direct port or backend RPCs)
+- [x] operations      (direct Supabase: drayage_moves + shift_assignments log)
+- [ ] support    (BLOCKED: mobile uses tRPC `messaging.listSupportThreads`/`adminJoinThread`; web has no tRPC, needs port)
+- [x] users           (re-exports web `admin/users`)
 
 ### admin
 - [ ] billing
@@ -120,5 +120,8 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 ## Progress note (update each turn)
 
 - Last verified web build: GREEN.
-- Next up: **super-admin** pages (largest remaining gap), then **employer** (reuses
-  rates/invoicing/team shared components — fast wins).
+- super-admin: certifications/companies/compliance/users (re-export admin) + operations
+  (direct Supabase) DONE and wired into sidebar. finance & support BLOCKED — they depend
+  on tRPC procedures the web app doesn't have; revisit if we add a Supabase-direct path.
+- Next up: **employer** (reuses rates/invoicing/team shared components — fast wins),
+  then **customer** sub-pages (loads, post-load, drayage, team).
