@@ -46,11 +46,12 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ### admin
 - [ ] billing
+- [x] entities  (Supabase-direct port of admin.listEntity allowlist; read-only oversight console mirroring mobile's audit/state-machine guard)
+- [x] sales-agents  (Supabase-direct port of sales.admin*: sales_agents+profiles+commission_entries+agent_attributions, commission_plans; RPCs admin_update_agent, admin_set_commission_status, admin_award_commission, admin_upsert_commission_plan)
+- [x] shipping-carriers  (Supabase-direct port of carriers.list/upsert/delete on carrier_accounts scope=platform via upsert_carrier_account RPC)
 - [x] bookings   (warehouse_bookings/listings/companies + admin_force_booking_status RPC + broker routing update)
 - [ ] entities
 - [x] freight-pricing  (load_rate_cards + load_commission_overrides + admin_upsert/delete_rate_card, admin_upsert/delete_commission_override, admin_update_platform_settings 7-arg)
-- [ ] sales-agents
-- [ ] shipping-carriers
 - [x] system-health  (added `/admin/system-health` Diagnostics — Supabase-direct probes for RPC/RLS/storage/Stripe/EasyPost/push/realtime)
 
 ### employer
@@ -119,7 +120,12 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ## Progress note (update each turn)
 
-- Last verified web build: GREEN (after admin bookings/freight-pricing/system-health, employer account/company-profile, customer billing).
+- Last verified web build: GREEN (after admin sales-agents/entities/shipping-carriers).
+- This batch (3): admin sales-agents + entities + shipping-carriers. All Supabase-direct against the
+  same tables/RPCs the mobile sales.admin*/admin.listEntity/carriers.* tRPC procedures wrap; wired into
+  sidebar. Confirmed those "tRPC-only" admin pages were in fact thin Supabase wrappers and are now ported.
+  Remaining admin: billing (FinanceScreen port — heavier settle/payout engine). employer/shifts.
+  super-admin finance/support still pending (share the FinanceScreen/messaging engines).
 - This batch (6): admin bookings + freight-pricing + system-health, employer account + company-profile,
   customer billing. All Supabase-direct against the same tables/RPCs mobile uses; wired into sidebar.
   Remaining admin: billing (FinanceScreen port), entities (generic admin.* tRPC), sales-agents (sales.admin* tRPC),

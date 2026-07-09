@@ -141,6 +141,12 @@
       "namedRegex": "^/admin/disputes(?:/)?$"
     },
     {
+      "page": "/admin/entities",
+      "regex": "^/admin/entities(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/entities(?:/)?$"
+    },
+    {
       "page": "/admin/freight-pricing",
       "regex": "^/admin/freight\\-pricing(?:/)?$",
       "routeKeys": {},
@@ -163,6 +169,18 @@
       "regex": "^/admin/platform\\-settings(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/admin/platform\\-settings(?:/)?$"
+    },
+    {
+      "page": "/admin/sales-agents",
+      "regex": "^/admin/sales\\-agents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/sales\\-agents(?:/)?$"
+    },
+    {
+      "page": "/admin/shipping-carriers",
+      "regex": "^/admin/shipping\\-carriers(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/shipping\\-carriers(?:/)?$"
     },
     {
       "page": "/admin/system-health",
