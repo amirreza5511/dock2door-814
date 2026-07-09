@@ -85,6 +85,7 @@
   "/(app)/trucking/page": "app/(app)/trucking/page.js",
   "/(app)/trucking/pod/page": "app/(app)/trucking/pod/page.js",
   "/(app)/trucking/rates/page": "app/(app)/trucking/rates/page.js",
+  "/(app)/trucking/team/page": "app/(app)/trucking/team/page.js",
   "/(app)/warehouse/billing/page": "app/(app)/warehouse/billing/page.js",
   "/(app)/warehouse/bookings/page": "app/(app)/warehouse/bookings/page.js",
   "/(app)/warehouse/carriers/page": "app/(app)/warehouse/carriers/page.js",

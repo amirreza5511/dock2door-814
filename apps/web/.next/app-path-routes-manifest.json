@@ -85,6 +85,7 @@
   "/(app)/trucking/page": "/trucking",
   "/(app)/trucking/pod/page": "/trucking/pod",
   "/(app)/trucking/rates/page": "/trucking/rates",
+  "/(app)/trucking/team/page": "/trucking/team",
   "/(app)/warehouse/billing/page": "/warehouse/billing",
   "/(app)/warehouse/bookings/page": "/warehouse/bookings",
   "/(app)/warehouse/carriers/page": "/warehouse/carriers",

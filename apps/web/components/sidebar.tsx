@@ -157,6 +157,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/trucking/rates", label: "Rates & lanes", icon: DollarSign },
         { href: "/trucking/invoicing", label: "Invoicing", icon: FileText },
         { href: "/trucking/finance", label: "Finance", icon: DollarSign },
+        { href: "/trucking/team", label: "Team", icon: Users },
       ],
     });
   }
