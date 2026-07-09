@@ -127,6 +127,7 @@
   "/(app)/worker/availability/page": "/worker/availability",
   "/(app)/worker/browse-shifts/page": "/worker/browse-shifts",
   "/(app)/worker/certifications/page": "/worker/certifications",
+  "/(app)/worker/earnings/page": "/worker/earnings",
   "/(app)/worker/page": "/worker",
   "/(app)/worker/shifts/page": "/worker/shifts",
   "/_global-error/page": "/_global-error",

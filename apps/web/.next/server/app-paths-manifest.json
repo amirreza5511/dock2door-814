@@ -127,6 +127,7 @@
   "/(app)/worker/availability/page": "app/(app)/worker/availability/page.js",
   "/(app)/worker/browse-shifts/page": "app/(app)/worker/browse-shifts/page.js",
   "/(app)/worker/certifications/page": "app/(app)/worker/certifications/page.js",
+  "/(app)/worker/earnings/page": "app/(app)/worker/earnings/page.js",
   "/(app)/worker/page": "app/(app)/worker/page.js",
   "/(app)/worker/shifts/page": "app/(app)/worker/shifts/page.js",
   "/_global-error/page": "app/_global-error/page.js",

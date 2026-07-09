@@ -276,6 +276,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/worker/shifts", label: "My shifts", icon: ClipboardList },
         { href: "/worker/availability", label: "Availability", icon: Calendar },
         { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
+        { href: "/worker/earnings", label: "Earnings", icon: Wallet },
       ],
     });
   }

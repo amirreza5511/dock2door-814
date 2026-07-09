@@ -85,7 +85,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] jobs     (re-exports existing `/service-provider` index which is the jobs console)
 
 ### worker
-- [ ] earnings
+- [x] earnings  (reuse `worker_earnings_overview` view; paid/pending totals + DataTable)
 - [ ] profile
 - [ ] [id]  (public profile)
 - [ ] arrive
@@ -133,6 +133,8 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   messages covered by global /messages.
 - service-provider: billing (Stripe Connect + invoices) + jobs (re-export index) DONE and
   wired into sidebar.
-- Next up (more custom): **customer** drayage/[orderId] detail + billing, **employer**
-  account/company-profile/shifts, **worker** pages, **admin** pages. super-admin
+- worker: earnings DONE (direct Supabase `worker_earnings_overview`) and wired into
+  sidebar. Remaining worker: profile, [id] public profile, arrive, shift-confirm.
+- Next up (more custom): **worker** profile, **customer** drayage/[orderId] detail +
+  billing, **employer** account/company-profile/shifts, **admin** pages. super-admin
   finance/support still BLOCKED (need Supabase-direct port of tRPC procedures).
