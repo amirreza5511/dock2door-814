@@ -47,6 +47,14 @@
       "namedRegex": "^/sales\\-agent/clients/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/shipper/track/[id]",
+      "regex": "^/shipper/track/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/shipper/track/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/warehouse/listings/[id]/edit",
       "regex": "^/warehouse/listings/([^/]+?)/edit(?:/)?$",
       "routeKeys": {
@@ -195,6 +203,30 @@
       "namedRegex": "^/dashboard(?:/)?$"
     },
     {
+      "page": "/drayage-company",
+      "regex": "^/drayage\\-company(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company(?:/)?$"
+    },
+    {
+      "page": "/driver",
+      "regex": "^/driver(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver(?:/)?$"
+    },
+    {
+      "page": "/driver/loads",
+      "regex": "^/driver/loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/loads(?:/)?$"
+    },
+    {
+      "page": "/driver/my-loads",
+      "regex": "^/driver/my\\-loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/my\\-loads(?:/)?$"
+    },
+    {
       "page": "/employer",
       "regex": "^/employer(?:/)?$",
       "routeKeys": {},
@@ -231,6 +263,12 @@
       "namedRegex": "^/employer/hours(?:/)?$"
     },
     {
+      "page": "/freight-forwarder",
+      "regex": "^/freight\\-forwarder(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/freight\\-forwarder(?:/)?$"
+    },
+    {
       "page": "/fulfillment/integrations",
       "regex": "^/fulfillment/integrations(?:/)?$",
       "routeKeys": {},
@@ -265,6 +303,12 @@
       "regex": "^/fulfillment/shipments(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/fulfillment/shipments(?:/)?$"
+    },
+    {
+      "page": "/gate-staff",
+      "regex": "^/gate\\-staff(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/gate\\-staff(?:/)?$"
     },
     {
       "page": "/login",
@@ -349,6 +393,24 @@
       "regex": "^/service\\-provider/listings(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/service\\-provider/listings(?:/)?$"
+    },
+    {
+      "page": "/shipper",
+      "regex": "^/shipper(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/shipper(?:/)?$"
+    },
+    {
+      "page": "/shipper/loads",
+      "regex": "^/shipper/loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/shipper/loads(?:/)?$"
+    },
+    {
+      "page": "/shipper/post-load",
+      "regex": "^/shipper/post\\-load(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/shipper/post\\-load(?:/)?$"
     },
     {
       "page": "/super-admin",

@@ -40,6 +40,10 @@ import {
   Sparkles,
   UserPlus,
   Wallet,
+  Send,
+  Container,
+  Ship,
+  DoorOpen,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -141,7 +145,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     });
   }
 
-  if (role === "TruckingCompany" || role === "Driver") {
+  if (role === "TruckingCompany") {
     sections.push({
       label: "Trucking",
       items: [
@@ -151,6 +155,46 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/trucking/appointments", label: "Dock appointments", icon: Calendar },
         { href: "/trucking/pod", label: "POD review", icon: ScrollText },
         { href: "/trucking/finance", label: "Finance", icon: DollarSign },
+      ],
+    });
+  }
+
+  if (role === "Driver") {
+    sections.push({
+      label: "Driving",
+      items: [
+        { href: "/driver", label: "My trips", icon: Truck },
+        { href: "/driver/loads", label: "Load marketplace", icon: Package },
+        { href: "/driver/my-loads", label: "All trips", icon: ClipboardList },
+      ],
+    });
+  }
+
+  if (role === "Shipper") {
+    sections.push({
+      label: "Freight & Delivery",
+      items: [
+        { href: "/shipper", label: "Dashboard", icon: Send },
+        { href: "/shipper/post-load", label: "Post a delivery", icon: Plus },
+        { href: "/shipper/loads", label: "My deliveries", icon: ClipboardList },
+      ],
+    });
+  }
+
+  if (role === "DrayageCompany") {
+    sections.push({
+      label: "Drayage",
+      items: [
+        { href: "/drayage-company", label: "Container work", icon: Container },
+      ],
+    });
+  }
+
+  if (role === "FreightForwarder") {
+    sections.push({
+      label: "Forwarding",
+      items: [
+        { href: "/freight-forwarder", label: "Container orders", icon: Ship },
       ],
     });
   }
@@ -179,6 +223,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "Gate",
       items: [
+        { href: "/gate-staff", label: "Yard & gate", icon: DoorOpen },
         { href: "/warehouse/stations/dock", label: "Dock station", icon: Warehouse },
       ],
     });

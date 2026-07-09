@@ -7,6 +7,9 @@ export type UserRole =
   | "TruckingCompany"
   | "Driver"
   | "GateStaff"
+  | "Shipper"
+  | "DrayageCompany"
+  | "FreightForwarder"
   | "SalesAgent"
   | "Admin"
   | "SuperAdmin";
