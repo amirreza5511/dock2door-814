@@ -111,6 +111,12 @@
       "namedRegex": "^/admin/audit(?:/)?$"
     },
     {
+      "page": "/admin/bookings",
+      "regex": "^/admin/bookings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/bookings(?:/)?$"
+    },
+    {
       "page": "/admin/certifications",
       "regex": "^/admin/certifications(?:/)?$",
       "routeKeys": {},
@@ -135,6 +141,12 @@
       "namedRegex": "^/admin/disputes(?:/)?$"
     },
     {
+      "page": "/admin/freight-pricing",
+      "regex": "^/admin/freight\\-pricing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/freight\\-pricing(?:/)?$"
+    },
+    {
       "page": "/admin/health",
       "regex": "^/admin/health(?:/)?$",
       "routeKeys": {},
@@ -153,6 +165,12 @@
       "namedRegex": "^/admin/platform\\-settings(?:/)?$"
     },
     {
+      "page": "/admin/system-health",
+      "regex": "^/admin/system\\-health(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/system\\-health(?:/)?$"
+    },
+    {
       "page": "/admin/users",
       "regex": "^/admin/users(?:/)?$",
       "routeKeys": {},
@@ -169,6 +187,12 @@
       "regex": "^/customer(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/customer(?:/)?$"
+    },
+    {
+      "page": "/customer/billing",
+      "regex": "^/customer/billing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/billing(?:/)?$"
     },
     {
       "page": "/customer/bookings",
@@ -333,6 +357,12 @@
       "namedRegex": "^/employer(?:/)?$"
     },
     {
+      "page": "/employer/account",
+      "regex": "^/employer/account(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/account(?:/)?$"
+    },
+    {
       "page": "/employer/billing",
       "regex": "^/employer/billing(?:/)?$",
       "routeKeys": {},
@@ -349,6 +379,12 @@
       "regex": "^/employer/calendar(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/employer/calendar(?:/)?$"
+    },
+    {
+      "page": "/employer/company-profile",
+      "regex": "^/employer/company\\-profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/company\\-profile(?:/)?$"
     },
     {
       "page": "/employer/create-shift",

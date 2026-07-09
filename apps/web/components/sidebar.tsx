@@ -81,6 +81,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/admin/compliance", label: "Compliance queue", icon: ClipboardCheck },
         { href: "/admin/companies", label: "Companies", icon: Building2 },
+        { href: "/admin/bookings", label: "Booking routing", icon: ClipboardList },
+        { href: "/admin/freight-pricing", label: "Freight pricing", icon: DollarSign },
         { href: "/admin/users", label: "Users", icon: Users },
         { href: "/admin/certifications", label: "Certifications", icon: ShieldCheck },
         { href: "/admin/work-photos", label: "Work photos", icon: Image },
@@ -89,6 +91,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/admin/platform-settings", label: "Platform settings", icon: Settings },
         { href: "/admin/audit", label: "Audit logs", icon: ScrollText },
         { href: "/admin/health", label: "System health", icon: Activity },
+        { href: "/admin/system-health", label: "Diagnostics", icon: Activity },
       ],
     });
   }
@@ -252,6 +255,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/customer/services", label: "Services", icon: Briefcase },
         { href: "/customer/orders", label: "Orders", icon: ClipboardList },
         { href: "/customer/invoices", label: "Invoices", icon: DollarSign },
+        { href: "/customer/billing", label: "Billing", icon: CreditCard },
         { href: "/customer/tracking", label: "Tracking", icon: Truck },
         { href: "/customer/team", label: "Team", icon: Users },
       ],
@@ -310,6 +314,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/employer/browse-workers", label: "Browse workers", icon: UserSearch },
         { href: "/employer/calendar", label: "Labour calendar", icon: Calendar },
         { href: "/employer/team", label: "Team", icon: Users },
+        { href: "/employer/company-profile", label: "Company profile", icon: Building2 },
+        { href: "/employer/account", label: "My account", icon: User },
       ],
     });
   }

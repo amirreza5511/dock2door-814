@@ -46,23 +46,23 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ### admin
 - [ ] billing
-- [ ] bookings
+- [x] bookings   (warehouse_bookings/listings/companies + admin_force_booking_status RPC + broker routing update)
 - [ ] entities
-- [ ] freight-pricing
+- [x] freight-pricing  (load_rate_cards + load_commission_overrides + admin_upsert/delete_rate_card, admin_upsert/delete_commission_override, admin_update_platform_settings 7-arg)
 - [ ] sales-agents
 - [ ] shipping-carriers
-- [ ] system-health (web has `health` — confirm it covers system + notifications health; if not, add)
+- [x] system-health  (added `/admin/system-health` Diagnostics — Supabase-direct probes for RPC/RLS/storage/Stripe/EasyPost/push/realtime)
 
 ### employer
-- [ ] account
-- [ ] company-profile
+- [x] account  (profiles read/update + avatar upload to worker-photos bucket)
+- [x] company-profile  (companies + shift_posts + reviews + company_update_profile/company_submit_for_approval RPCs)
 - [x] invoicing  (reuse `invoicing-view.tsx`)
 - [x] rates      (added `labor` vertical to web `use-pricing.ts` + reuse `rates-view.tsx`)
 - [ ] shifts     (mobile uses tRPC shifts.* + messaging — web has employer page w/ Supabase RPCs; port remaining accept/reject/hours already partly on `/employer` + `/employer/hours`)
 - [x] team       (reuse `team-view.tsx`)
 
 ### customer
-- [ ] billing (web has `invoices` — confirm parity, add billing if distinct)
+- [x] billing  (invoices + payments history + create-checkout-session; distinct from invoices list)
 - [x] drayage  (list — customer's own drayage_orders)
 - [x] drayage/[orderId]  (detail — Supabase-direct port of tRPC drayage.getOrderDetails/listOrderQuotes/acceptQuote; live tracking, quotes accept, moves+proof photos via get-signed-url)
 - [x] loads       (reuse `use-loads.ts` useMyPostedLoads)
@@ -119,7 +119,12 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ## Progress note (update each turn)
 
-- Last verified web build: GREEN.
+- Last verified web build: GREEN (after admin bookings/freight-pricing/system-health, employer account/company-profile, customer billing).
+- This batch (6): admin bookings + freight-pricing + system-health, employer account + company-profile,
+  customer billing. All Supabase-direct against the same tables/RPCs mobile uses; wired into sidebar.
+  Remaining admin: billing (FinanceScreen port), entities (generic admin.* tRPC), sales-agents (sales.admin* tRPC),
+  shipping-carriers (carriers.* tRPC). employer/shifts (shifts.* + messaging tRPC). These need Supabase-direct
+  ports of backend procedures, not just table reads.
 - super-admin: certifications/companies/compliance/users (re-export admin) + operations
   (direct Supabase) DONE and wired into sidebar. finance & support BLOCKED — they depend
   on tRPC procedures the web app doesn't have; revisit if we add a Supabase-direct path.

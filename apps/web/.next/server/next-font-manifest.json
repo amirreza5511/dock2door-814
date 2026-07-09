@@ -4,6 +4,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/admin/bookings/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/admin/certifications/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -17,6 +21,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/admin/disputes/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/admin/freight-pricing/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -36,6 +44,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/admin/system-health/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/admin/users/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -45,6 +57,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/company/[id]/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/customer/billing/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -164,6 +180,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/employer/account/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/employer/billing/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -173,6 +193,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/employer/calendar/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/employer/company-profile/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
