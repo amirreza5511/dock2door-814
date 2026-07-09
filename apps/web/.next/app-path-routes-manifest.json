@@ -12,6 +12,7 @@
   "/(app)/admin/work-photos/page": "/admin/work-photos",
   "/(app)/company/[id]/page": "/company/[id]",
   "/(app)/customer/bookings/page": "/customer/bookings",
+  "/(app)/customer/drayage/[orderId]/page": "/customer/drayage/[orderId]",
   "/(app)/customer/drayage/page": "/customer/drayage",
   "/(app)/customer/inventory/page": "/customer/inventory",
   "/(app)/customer/invoices/page": "/customer/invoices",

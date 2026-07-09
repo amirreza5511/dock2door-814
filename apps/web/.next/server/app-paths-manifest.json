@@ -12,6 +12,7 @@
   "/(app)/admin/work-photos/page": "app/(app)/admin/work-photos/page.js",
   "/(app)/company/[id]/page": "app/(app)/company/[id]/page.js",
   "/(app)/customer/bookings/page": "app/(app)/customer/bookings/page.js",
+  "/(app)/customer/drayage/[orderId]/page": "app/(app)/customer/drayage/[orderId]/page.js",
   "/(app)/customer/drayage/page": "app/(app)/customer/drayage/page.js",
   "/(app)/customer/inventory/page": "app/(app)/customer/inventory/page.js",
   "/(app)/customer/invoices/page": "app/(app)/customer/invoices/page.js",

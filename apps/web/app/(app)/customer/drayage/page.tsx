@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { Ship, Container } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,7 +80,11 @@ export default function CustomerDrayagePage() {
             </div>
           ) : (
             orders.map((o) => (
-              <div key={o.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-card/60 px-4 py-3">
+              <Link
+                key={o.id}
+                href={`/customer/drayage/${o.id}`}
+                className="flex items-center justify-between rounded-lg border border-white/5 bg-card/60 px-4 py-3 transition-colors hover:bg-card"
+              >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{o.container_number || o.reference_code || "Container"}</span>
@@ -91,7 +96,7 @@ export default function CustomerDrayagePage() {
                   </p>
                 </div>
                 <Badge>{o.status}</Badge>
-              </div>
+              </Link>
             ))
           )}
         </CardContent>

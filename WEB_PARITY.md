@@ -64,7 +64,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 ### customer
 - [ ] billing (web has `invoices` — confirm parity, add billing if distinct)
 - [x] drayage  (list — customer's own drayage_orders)
-- [ ] drayage/[orderId]  (detail)
+- [x] drayage/[orderId]  (detail — Supabase-direct port of tRPC drayage.getOrderDetails/listOrderQuotes/acceptQuote; live tracking, quotes accept, moves+proof photos via get-signed-url)
 - [x] loads       (reuse `use-loads.ts` useMyPostedLoads)
 - [x] post-load   (reuse `use-loads.ts` quote/post)
 - [x] team  (reuse `team-view.tsx`, companyType Customer)
@@ -125,8 +125,9 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   on tRPC procedures the web app doesn't have; revisit if we add a Supabase-direct path.
 - employer: rates (new `labor` pricing vertical) + invoicing + team DONE and wired into
   sidebar. account/company-profile/shifts remain (shifts leans on tRPC shifts.* + messaging).
-- customer: loads + post-load (reuse use-loads) + drayage list + team (team-view) DONE and
-  wired into sidebar. Remaining: drayage/[orderId] detail, billing (confirm vs invoices).
+- customer: loads + post-load (reuse use-loads) + drayage list + team (team-view) + drayage/
+  [orderId] detail DONE and wired into sidebar. drayage list rows now link to detail.
+  Remaining: billing (confirm vs existing invoices page).
 - warehouse: rates (new `warehouse` pricing vertical) + invoicing DONE and wired into
   sidebar. stripe-connect covered by existing warehouse/billing card.
 - trucking: loads (dispatch board) + my-loads + post-load DONE and wired into sidebar.
@@ -136,7 +137,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - worker: earnings + profile + [id] public profile + arrive + shift-confirm DONE. worker
   role is now fully at parity with mobile. arrive uses browser geolocation + Nominatim
   geocoding; shift-confirm uses worker_confirm_attendance RPC (?assignmentId=).
-- Next up (more custom): **customer** drayage/[orderId] detail + billing, **employer**
+- Next up (more custom): **customer** billing (confirm vs invoices), **employer**
   account/company-profile/shifts, **admin** pages (billing/bookings/entities/freight-pricing/
   sales-agents/shipping-carriers). super-admin finance/support still BLOCKED (need
   Supabase-direct port of tRPC procedures).
