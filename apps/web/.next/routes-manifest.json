@@ -209,10 +209,28 @@
       "namedRegex": "^/drayage\\-company(?:/)?$"
     },
     {
+      "page": "/drayage-company/board",
+      "regex": "^/drayage\\-company/board(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/board(?:/)?$"
+    },
+    {
       "page": "/drayage-company/dispatch",
       "regex": "^/drayage\\-company/dispatch(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/drayage\\-company/dispatch(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/fleet",
+      "regex": "^/drayage\\-company/fleet(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/fleet(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/invoicing",
+      "regex": "^/drayage\\-company/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/invoicing(?:/)?$"
     },
     {
       "page": "/drayage-company/terminals",
@@ -225,6 +243,12 @@
       "regex": "^/driver(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/driver(?:/)?$"
+    },
+    {
+      "page": "/driver/documents",
+      "regex": "^/driver/documents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/documents(?:/)?$"
     },
     {
       "page": "/driver/loads",
@@ -279,6 +303,12 @@
       "regex": "^/freight\\-forwarder(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/freight\\-forwarder(?:/)?$"
+    },
+    {
+      "page": "/freight-forwarder/invoicing",
+      "regex": "^/freight\\-forwarder/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/freight\\-forwarder/invoicing(?:/)?$"
     },
     {
       "page": "/fulfillment/integrations",

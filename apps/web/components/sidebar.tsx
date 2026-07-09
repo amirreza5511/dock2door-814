@@ -166,6 +166,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/driver", label: "My trips", icon: Truck },
         { href: "/driver/loads", label: "Load marketplace", icon: Package },
         { href: "/driver/my-loads", label: "All trips", icon: ClipboardList },
+        { href: "/driver/documents", label: "Documents", icon: FileText },
       ],
     });
   }
@@ -186,6 +187,11 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Drayage",
       items: [
         { href: "/drayage-company", label: "Container work", icon: Container },
+        { href: "/drayage-company/board", label: "Orders board", icon: ClipboardList },
+        { href: "/drayage-company/dispatch", label: "Dispatch", icon: Truck },
+        { href: "/drayage-company/fleet", label: "Fleet", icon: Truck },
+        { href: "/drayage-company/terminals", label: "Terminals", icon: Container },
+        { href: "/drayage-company/invoicing", label: "Invoicing", icon: DollarSign },
       ],
     });
   }
@@ -195,6 +201,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Forwarding",
       items: [
         { href: "/freight-forwarder", label: "Container orders", icon: Ship },
+        { href: "/freight-forwarder/invoicing", label: "Invoicing", icon: DollarSign },
       ],
     });
   }
