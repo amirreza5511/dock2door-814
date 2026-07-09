@@ -22,7 +22,7 @@ interface Assignment {
   shift_id: string;
   status: string;
   worker_user_id: string;
-  assigned_at: string | null;
+  created_at: string | null;
   worker_confirmed: boolean | null;
   shift_posts: ShiftPostRef | ShiftPostRef[] | null;
 }
@@ -36,7 +36,7 @@ interface FlatAssignment {
   start_time: string | null;
   end_time: string | null;
   hourly_rate: number | null;
-  assigned_at: string | null;
+  created_at: string | null;
   worker_confirmed: boolean | null;
 }
 
@@ -51,9 +51,9 @@ export default function WorkerShiftsPage() {
       if (!u.user) return [];
       const { data, error } = await supabase
         .from("shift_assignments")
-        .select("id,shift_id,status,worker_user_id,assigned_at,worker_confirmed,shift_posts!inner(id,title,date,start_time,end_time,hourly_rate)")
+        .select("id,shift_id,status,worker_user_id,created_at,worker_confirmed,shift_posts!inner(id,title,date,start_time,end_time,hourly_rate)")
         .eq("worker_user_id", u.user.id)
-        .order("assigned_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
       return (data ?? []) as Assignment[];
@@ -71,7 +71,7 @@ export default function WorkerShiftsPage() {
       start_time: s?.start_time ?? null,
       end_time: s?.end_time ?? null,
       hourly_rate: s?.hourly_rate ?? null,
-      assigned_at: a.assigned_at,
+      created_at: a.created_at,
       worker_confirmed: a.worker_confirmed,
     };
   });
