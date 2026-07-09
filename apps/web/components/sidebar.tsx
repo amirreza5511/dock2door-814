@@ -25,6 +25,7 @@ import {
   Package,
   DollarSign,
   UserSearch,
+  User,
   Plus,
   Image,
   BarChart3,
@@ -277,6 +278,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/worker/availability", label: "Availability", icon: Calendar },
         { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
         { href: "/worker/earnings", label: "Earnings", icon: Wallet },
+        { href: "/worker/profile", label: "Profile", icon: User },
       ],
     });
   }

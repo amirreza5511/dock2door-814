@@ -129,6 +129,7 @@
   "/(app)/worker/certifications/page": "app/(app)/worker/certifications/page.js",
   "/(app)/worker/earnings/page": "app/(app)/worker/earnings/page.js",
   "/(app)/worker/page": "app/(app)/worker/page.js",
+  "/(app)/worker/profile/page": "app/(app)/worker/profile/page.js",
   "/(app)/worker/shifts/page": "app/(app)/worker/shifts/page.js",
   "/_global-error/page": "app/_global-error/page.js",
   "/_not-found/page": "app/_not-found/page.js",

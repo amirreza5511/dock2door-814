@@ -839,6 +839,12 @@
       "namedRegex": "^/worker/earnings(?:/)?$"
     },
     {
+      "page": "/worker/profile",
+      "regex": "^/worker/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/worker/profile(?:/)?$"
+    },
+    {
       "page": "/worker/shifts",
       "regex": "^/worker/shifts(?:/)?$",
       "routeKeys": {},

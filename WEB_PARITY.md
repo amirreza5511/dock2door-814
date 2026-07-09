@@ -86,7 +86,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ### worker
 - [x] earnings  (reuse `worker_earnings_overview` view; paid/pending totals + DataTable)
-- [ ] profile
+- [x] profile  (worker_profiles + update_my_worker_profile RPC, worker_private_info + encrypt_pii, review_summaries; uploads deferred to /worker/certifications)
 - [ ] [id]  (public profile)
 - [ ] arrive
 - [ ] shift-confirm
@@ -133,8 +133,9 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   messages covered by global /messages.
 - service-provider: billing (Stripe Connect + invoices) + jobs (re-export index) DONE and
   wired into sidebar.
-- worker: earnings DONE (direct Supabase `worker_earnings_overview`) and wired into
-  sidebar. Remaining worker: profile, [id] public profile, arrive, shift-confirm.
+- worker: earnings + profile DONE (profile = worker_profiles / update_my_worker_profile
+  RPC + worker_private_info with encrypt_pii + review_summaries) and wired into sidebar.
+  Remaining worker: [id] public profile, arrive, shift-confirm.
 - Next up (more custom): **worker** profile, **customer** drayage/[orderId] detail +
   billing, **employer** account/company-profile/shifts, **admin** pages. super-admin
   finance/support still BLOCKED (need Supabase-direct port of tRPC procedures).

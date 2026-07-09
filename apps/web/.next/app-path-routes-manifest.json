@@ -129,6 +129,7 @@
   "/(app)/worker/certifications/page": "/worker/certifications",
   "/(app)/worker/earnings/page": "/worker/earnings",
   "/(app)/worker/page": "/worker",
+  "/(app)/worker/profile/page": "/worker/profile",
   "/(app)/worker/shifts/page": "/worker/shifts",
   "/_global-error/page": "/_global-error",
   "/_not-found/page": "/_not-found",
