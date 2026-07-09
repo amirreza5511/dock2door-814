@@ -37,6 +37,9 @@ import {
   Boxes,
   ClipboardCheck,
   Megaphone,
+  Sparkles,
+  UserPlus,
+  Wallet,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -190,6 +193,20 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/worker/shifts", label: "My shifts", icon: ClipboardList },
         { href: "/worker/availability", label: "Availability", icon: Calendar },
         { href: "/worker/certifications", label: "Certifications", icon: ShieldCheck },
+      ],
+    });
+  }
+
+  if (role === "SalesAgent") {
+    sections.push({
+      label: "Sales",
+      items: [
+        { href: "/sales-agent", label: "Dashboard", icon: Sparkles },
+        { href: "/sales-agent/onboard", label: "Onboard a client", icon: UserPlus },
+        { href: "/sales-agent/clients", label: "My clients", icon: Building2 },
+        { href: "/sales-agent/leads", label: "Leads pipeline", icon: ClipboardList },
+        { href: "/sales-agent/earnings", label: "Commission ledger", icon: Wallet },
+        { href: "/sales-agent/profile", label: "Agent profile", icon: UserSearch },
       ],
     });
   }

@@ -39,6 +39,14 @@
       "namedRegex": "^/customer/warehouses/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/sales-agent/clients/[id]",
+      "regex": "^/sales\\-agent/clients/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/sales\\-agent/clients/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/warehouse/listings/[id]/edit",
       "regex": "^/warehouse/listings/([^/]+?)/edit(?:/)?$",
       "routeKeys": {
@@ -287,6 +295,42 @@
       "regex": "^/reviews(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/reviews(?:/)?$"
+    },
+    {
+      "page": "/sales-agent",
+      "regex": "^/sales\\-agent(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/clients",
+      "regex": "^/sales\\-agent/clients(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/clients(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/earnings",
+      "regex": "^/sales\\-agent/earnings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/earnings(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/leads",
+      "regex": "^/sales\\-agent/leads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/leads(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/onboard",
+      "regex": "^/sales\\-agent/onboard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/onboard(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/profile",
+      "regex": "^/sales\\-agent/profile(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/profile(?:/)?$"
     },
     {
       "page": "/service-provider",
