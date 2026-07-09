@@ -58,6 +58,24 @@ export interface VerticalConfig {
 
 /** Web mirror of expo/constants/pricing.ts verticals used by the two roles ported here. */
 export const PRICING_VERTICALS: Record<string, VerticalConfig> = {
+  warehouse: {
+    vertical: "warehouse",
+    title: "Rates & Zones",
+    subtitle: "Publish storage pricing so customers see the charge",
+    zoneLabel: "Space zone",
+    zoneLabelPlural: "Space zones",
+    zonePlaceholder: "e.g. Ambient — front dock",
+    zoneHint: "Add zones like 'Ambient', 'Cold storage' or 'Front dock' to price space by area.",
+    baseUnit: "per pallet / day",
+    defaultAccessorials: [
+      { key: "offload_20", label: "Offload 20' container", amount: 0, type: "flat" },
+      { key: "offload_40", label: "Offload 40' container", amount: 0, type: "flat" },
+      { key: "gate_fee", label: "Gate fee", amount: 0, type: "flat" },
+      { key: "labour", label: "Labour (per hour)", amount: 0, type: "perHour" },
+      { key: "receiving", label: "Receiving fee", amount: 0, type: "flat" },
+      { key: "special_handling", label: "Special handling", amount: 0, type: "flat" },
+    ],
+  },
   labor: {
     vertical: "labor",
     title: "Labor Rates",

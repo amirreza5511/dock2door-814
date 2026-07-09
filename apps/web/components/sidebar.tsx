@@ -123,6 +123,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/warehouse/staff", label: "Staff", icon: Users },
         { href: "/warehouse/stations", label: "Stations", icon: Wrench },
         { href: "/warehouse/carriers", label: "Carriers", icon: Truck },
+        { href: "/warehouse/rates", label: "Rates & zones", icon: DollarSign },
+        { href: "/warehouse/invoicing", label: "Invoicing", icon: FileText },
         { href: "/warehouse/billing", label: "Billing & payouts", icon: CreditCard },
       ],
     });
@@ -148,6 +150,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/service-provider/create-listing", label: "New listing", icon: Plus },
         { href: "/service-provider/rates", label: "Rates", icon: DollarSign },
         { href: "/service-provider/invoicing", label: "Invoicing", icon: FileText },
+        { href: "/service-provider/billing", label: "Billing & payouts", icon: CreditCard },
         { href: "/service-provider/team", label: "Team", icon: Users },
       ],
     });
@@ -158,6 +161,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Trucking",
       items: [
         { href: "/trucking", label: "Job board", icon: Truck },
+        { href: "/trucking/loads", label: "Dispatch board", icon: Package },
+        { href: "/trucking/my-loads", label: "My loads", icon: ClipboardList },
+        { href: "/trucking/post-load", label: "Post a load", icon: Plus },
         { href: "/trucking/fleet", label: "Fleet", icon: Truck },
         { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
         { href: "/trucking/appointments", label: "Dock appointments", icon: Calendar },

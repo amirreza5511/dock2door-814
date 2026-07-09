@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,80143,e=>{"use strict";var o=e.i(43476),t=e.i(22605),i=e.i(83526),l=e.i(13246);e.s(["default",0,function(){let e=(0,l.useActiveCompanyId)("Employer")??null;return(0,o.jsx)(t.RatesView,{companyId:e,config:i.PRICING_VERTICALS.labor,roleLabel:"Employer"})}])}]);

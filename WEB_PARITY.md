@@ -70,19 +70,19 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] team  (reuse `team-view.tsx`, companyType Customer)
 
 ### warehouse (warehouse-provider)
-- [ ] invoicing  (reuse `invoicing-view.tsx`)
-- [ ] rates      (reuse `rates-view.tsx`)
-- [ ] stripe-connect
+- [x] invoicing  (reuse `invoicing-view.tsx`)
+- [x] rates      (added `warehouse` vertical to web `use-pricing.ts` + reuse `rates-view.tsx`)
+- [ ] stripe-connect  (covered by existing `warehouse/billing` Stripe Connect card — confirm if a separate page is still wanted)
 
 ### trucking (trucking-company)
-- [ ] loads
-- [ ] my-loads
-- [ ] post-load
-- [ ] messages
+- [x] loads      (dispatch board — reuse `use-loads.ts` useOpenLoads/accept)
+- [x] my-loads   (reuse `use-loads.ts` useMyTrips + advance flow)
+- [x] post-load  (reuse `use-loads.ts` quote/post, redirects to my-loads)
+- [ ] messages   (covered by global `/messages`; add trucking-scoped thread list only if needed)
 
 ### service-provider
-- [ ] billing
-- [ ] jobs
+- [x] billing  (mirror of `warehouse/billing`: Stripe Connect + invoices)
+- [x] jobs     (re-exports existing `/service-provider` index which is the jobs console)
 
 ### worker
 - [ ] earnings
@@ -127,5 +127,12 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   sidebar. account/company-profile/shifts remain (shifts leans on tRPC shifts.* + messaging).
 - customer: loads + post-load (reuse use-loads) + drayage list + team (team-view) DONE and
   wired into sidebar. Remaining: drayage/[orderId] detail, billing (confirm vs invoices).
-- Next up: **warehouse** invoicing/rates (reuse shared views), then **trucking** loads/
-  my-loads/post-load/messages, then **service-provider** jobs/billing.
+- warehouse: rates (new `warehouse` pricing vertical) + invoicing DONE and wired into
+  sidebar. stripe-connect covered by existing warehouse/billing card.
+- trucking: loads (dispatch board) + my-loads + post-load DONE and wired into sidebar.
+  messages covered by global /messages.
+- service-provider: billing (Stripe Connect + invoices) + jobs (re-export index) DONE and
+  wired into sidebar.
+- Next up (more custom): **customer** drayage/[orderId] detail + billing, **employer**
+  account/company-profile/shifts, **worker** pages, **admin** pages. super-admin
+  finance/support still BLOCKED (need Supabase-direct port of tRPC procedures).

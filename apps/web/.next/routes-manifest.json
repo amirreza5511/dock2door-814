@@ -503,6 +503,12 @@
       "namedRegex": "^/service\\-provider(?:/)?$"
     },
     {
+      "page": "/service-provider/billing",
+      "regex": "^/service\\-provider/billing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/service\\-provider/billing(?:/)?$"
+    },
+    {
       "page": "/service-provider/create-listing",
       "regex": "^/service\\-provider/create\\-listing(?:/)?$",
       "routeKeys": {},
@@ -513,6 +519,12 @@
       "regex": "^/service\\-provider/invoicing(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/service\\-provider/invoicing(?:/)?$"
+    },
+    {
+      "page": "/service-provider/jobs",
+      "regex": "^/service\\-provider/jobs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/service\\-provider/jobs(?:/)?$"
     },
     {
       "page": "/service-provider/listings",
@@ -659,10 +671,28 @@
       "namedRegex": "^/trucking/invoicing(?:/)?$"
     },
     {
+      "page": "/trucking/loads",
+      "regex": "^/trucking/loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/loads(?:/)?$"
+    },
+    {
+      "page": "/trucking/my-loads",
+      "regex": "^/trucking/my\\-loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/my\\-loads(?:/)?$"
+    },
+    {
       "page": "/trucking/pod",
       "regex": "^/trucking/pod(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/trucking/pod(?:/)?$"
+    },
+    {
+      "page": "/trucking/post-load",
+      "regex": "^/trucking/post\\-load(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/post\\-load(?:/)?$"
     },
     {
       "page": "/trucking/rates",
@@ -701,6 +731,12 @@
       "namedRegex": "^/warehouse/carriers(?:/)?$"
     },
     {
+      "page": "/warehouse/invoicing",
+      "regex": "^/warehouse/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/warehouse/invoicing(?:/)?$"
+    },
+    {
       "page": "/warehouse/listings",
       "regex": "^/warehouse/listings(?:/)?$",
       "routeKeys": {},
@@ -711,6 +747,12 @@
       "regex": "^/warehouse/listings/new(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/warehouse/listings/new(?:/)?$"
+    },
+    {
+      "page": "/warehouse/rates",
+      "regex": "^/warehouse/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/warehouse/rates(?:/)?$"
     },
     {
       "page": "/warehouse/staff",
