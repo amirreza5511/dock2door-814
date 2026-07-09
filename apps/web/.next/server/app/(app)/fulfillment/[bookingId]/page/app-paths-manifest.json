@@ -1,0 +1,3 @@
+{
+  "/(app)/fulfillment/[bookingId]/page": "app/(app)/fulfillment/[bookingId]/page.js"
+}

@@ -97,8 +97,10 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ### Detail/sub-pages (lower priority)
 - [x] drayage-company/[orderId]  (Supabase-direct port of tRPC drayage.getOrderDetails + updatePortReservation (update_port_reservation RPC) + dispatchMove (dispatch_drayage_move RPC); ops console with driver-fleet dispatch, port reservation edit, moves + proof photos via get-signed-url, live tracking. Board/dispatch rows already linked here.)
-- [ ] freight-forwarder/[orderId]
-- [ ] fulfillment/[bookingId], fulfillment/bol/[bookingId], fulfillment/grn/[bookingId]
+- [x] freight-forwarder/[orderId]  (re-exports the customer/drayage/[orderId] Supabase-direct detail, matching mobile which re-exports the same screen)
+- [x] fulfillment/[bookingId]  (Supabase-direct port of fulfillment.getBooking: inventory add + outbound order create + pick/pack/ship/complete via advance_fulfillment_order RPC; customer/provider role split; BOL/GRN quick links)
+- [x] fulfillment/bol/[bookingId]  (Bill of Lading doc: warehouse_booking_set_transport RPC, transport-mode picker, QR, printable HTML via window.print)
+- [x] fulfillment/grn/[bookingId]  (Goods Received Note: goods_received_notes read + warehouse_issue_grn RPC, inspection form, QR, printable HTML, on-hand → fulfillment CTA)
 
 ---
 
@@ -120,7 +122,13 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ## Progress note (update each turn)
 
-- Last verified web build: GREEN (after drayage-company/[orderId] detail).
+- Last verified web build: GREEN (after freight-forwarder/[orderId] + fulfillment ×3 detail pages).
+- This batch (4): freight-forwarder/[orderId] (re-export drayage detail) + fulfillment/[bookingId]
+  (inventory & orders console) + fulfillment/bol/[bookingId] (Bill of Lading) + fulfillment/grn/[bookingId]
+  (Goods Received Note). All Supabase-direct against the same tables/RPCs the mobile tRPC procedures wrap
+  (warehouse_booking_set_transport, warehouse_issue_grn, advance_fulfillment_order). Reached via existing
+  row links, so no sidebar wiring needed. ALL remaining detail/sub-pages are now DONE — web parity complete.
+- Last verified web build (previous): GREEN (after drayage-company/[orderId] detail).
 - This batch (1): drayage-company/[orderId] ops detail — Supabase-direct port of the mobile
   tRPC drayage detail (update_port_reservation + dispatch_drayage_move RPCs, drivers from
   fleet, proof photos via get-signed-url). Existing board/dispatch rows already deep-link here.

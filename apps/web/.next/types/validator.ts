@@ -594,6 +594,15 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
   type __Unused = __Check
 }
 
+// Validate ../../app/(app)/freight-forwarder/[orderId]/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/freight-forwarder/[orderId]">> = Specific
+  const handler = {} as typeof import("../../app/(app)/freight-forwarder/[orderId]/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../app/(app)/freight-forwarder/invoicing/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/freight-forwarder/invoicing">> = Specific
@@ -616,6 +625,33 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
 {
   type __IsExpected<Specific extends AppPageConfig<"/freight-forwarder/rates">> = Specific
   const handler = {} as typeof import("../../app/(app)/freight-forwarder/rates/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/(app)/fulfillment/[bookingId]/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/fulfillment/[bookingId]">> = Specific
+  const handler = {} as typeof import("../../app/(app)/fulfillment/[bookingId]/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/(app)/fulfillment/bol/[bookingId]/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/fulfillment/bol/[bookingId]">> = Specific
+  const handler = {} as typeof import("../../app/(app)/fulfillment/bol/[bookingId]/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../app/(app)/fulfillment/grn/[bookingId]/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/fulfillment/grn/[bookingId]">> = Specific
+  const handler = {} as typeof import("../../app/(app)/fulfillment/grn/[bookingId]/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

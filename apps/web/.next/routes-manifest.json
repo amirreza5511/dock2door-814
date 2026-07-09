@@ -55,6 +55,38 @@
       "namedRegex": "^/drayage\\-company/(?<nxtPorderId>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/freight-forwarder/[orderId]",
+      "regex": "^/freight\\-forwarder/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPorderId": "nxtPorderId"
+      },
+      "namedRegex": "^/freight\\-forwarder/(?<nxtPorderId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/fulfillment/bol/[bookingId]",
+      "regex": "^/fulfillment/bol/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPbookingId": "nxtPbookingId"
+      },
+      "namedRegex": "^/fulfillment/bol/(?<nxtPbookingId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/fulfillment/grn/[bookingId]",
+      "regex": "^/fulfillment/grn/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPbookingId": "nxtPbookingId"
+      },
+      "namedRegex": "^/fulfillment/grn/(?<nxtPbookingId>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/fulfillment/[bookingId]",
+      "regex": "^/fulfillment/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPbookingId": "nxtPbookingId"
+      },
+      "namedRegex": "^/fulfillment/(?<nxtPbookingId>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/sales-agent/clients/[id]",
       "regex": "^/sales\\-agent/clients/([^/]+?)(?:/)?$",
       "routeKeys": {
