@@ -4,15 +4,13 @@ import { useState, Suspense, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { REAL_IMAGES } from "@/components/landing/images";
+import { TRUCK_MODEL } from "@/components/three/truck-config";
 import { ArrowRight, Boxes, Truck, Warehouse, Ship, Sparkles } from "lucide-react";
 
-const LogisticsScene = dynamic(() => import("@/components/three/LogisticsScene"), {
+const TruckScene = dynamic(() => import("@/components/three/TruckScene"), {
   ssr: false,
-  loading: () => (
-    <div className="grid h-full w-full place-items-center text-sm text-white/50">
-      Loading 3D scene…
-    </div>
-  ),
+  loading: () => null,
 });
 
 type Role = "Customer" | "WarehouseProvider" | "ServiceProvider" | "Employer" | "TruckingCompany";
@@ -35,13 +33,19 @@ type FloatCard = {
 };
 
 const FLOAT_CARDS: FloatCard[] = [
-  { icon: Truck, label: "In transit", value: "1,284 loads", className: "left-[5%] top-[16%]", floatClass: "float-slow", depth: 26 },
-  { icon: Warehouse, label: "Warehouse space", value: "2.4M sq ft", className: "right-[6%] top-[12%]", floatClass: "float-mid", depth: 40 },
-  { icon: Ship, label: "Drayage moves", value: "97% on time", className: "right-[8%] bottom-[24%]", floatClass: "float-fast", depth: 32 },
-  { icon: Boxes, label: "Orders fulfilled", value: "312k / mo", className: "left-[7%] bottom-[28%]", floatClass: "float-mid", depth: 20 },
+  { icon: Truck, label: "In transit", value: "1,284 loads", className: "left-[5%] top-[15%]", floatClass: "float-slow", depth: 26 },
+  { icon: Warehouse, label: "Warehouse space", value: "2.4M sq ft", className: "right-[6%] top-[11%]", floatClass: "float-mid", depth: 40 },
+  { icon: Ship, label: "Drayage moves", value: "97% on time", className: "right-[7%] bottom-[30%]", floatClass: "float-fast", depth: 32 },
+  { icon: Boxes, label: "Orders fulfilled", value: "312k / mo", className: "left-[6%] bottom-[34%]", floatClass: "float-mid", depth: 20 },
 ];
 
-/** Left-hand branded visual panel: real 3D logistics world + floating glass stats. */
+const FILMSTRIP: { src: string; label: string }[] = [
+  { src: REAL_IMAGES.fleet, label: "Trucking" },
+  { src: REAL_IMAGES.warehouse, label: "Warehousing" },
+  { src: REAL_IMAGES.port, label: "Drayage" },
+];
+
+/** Left-hand branded visual panel: real logistics photography + real 3D truck + floating glass stats. */
 function VisualPanel() {
   const [tilt, setTilt] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -56,28 +60,33 @@ function VisualPanel() {
       className="relative hidden overflow-hidden lg:block"
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
-      style={{
-        background:
-          "radial-gradient(1100px 700px at 30% 0%, #1b4b6b 0%, #0d2b45 45%, #071a2e 100%)",
-      }}
     >
-      {/* bright sky wash */}
-      <div className="pointer-events-none absolute inset-0" aria-hidden style={{ background: "linear-gradient(180deg, rgba(56,189,248,0.18), transparent 40%)" }} />
+      {/* real photographic hero background */}
+      <img
+        src={REAL_IMAGES.dock}
+        alt="Semi truck at a warehouse loading dock"
+        className="absolute inset-0 h-full w-full object-cover"
+      />
+      {/* legibility scrims */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden style={{ background: "linear-gradient(180deg, rgba(4,18,30,0.55) 0%, rgba(4,18,30,0.35) 40%, rgba(4,18,30,0.9) 100%)" }} />
+      <div className="pointer-events-none absolute inset-0" aria-hidden style={{ background: "radial-gradient(1100px 700px at 25% 15%, rgba(45,226,199,0.16), transparent 55%)" }} />
 
-      {/* real 3D scene */}
-      <div className="absolute inset-0">
-        <LogisticsScene className="h-full w-full" />
-      </div>
+      {/* real 3D truck model floating over the scene */}
+      {TRUCK_MODEL && (
+        <div className="pointer-events-none absolute inset-x-0 top-[14%] h-[58%]">
+          <TruckScene url={TRUCK_MODEL.url} orientation={TRUCK_MODEL.orientation} className="h-full w-full" />
+        </div>
+      )}
 
       {/* glow orbs for depth */}
       <div
         className="pointer-events-none absolute -left-24 top-10 h-[24rem] w-[24rem] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(45,226,199,0.32), transparent 70%)", animation: "glow-breathe 9s ease-in-out infinite" }}
+        style={{ background: "radial-gradient(circle, rgba(45,226,199,0.28), transparent 70%)", animation: "glow-breathe 9s ease-in-out infinite" }}
         aria-hidden
       />
       <div
-        className="pointer-events-none absolute -right-16 bottom-6 h-[28rem] w-[28rem] rounded-full blur-3xl"
-        style={{ background: "radial-gradient(circle, rgba(129,140,248,0.3), transparent 70%)", animation: "glow-breathe 11s ease-in-out infinite" }}
+        className="pointer-events-none absolute -right-16 bottom-24 h-[26rem] w-[26rem] rounded-full blur-3xl"
+        style={{ background: "radial-gradient(circle, rgba(129,140,248,0.26), transparent 70%)", animation: "glow-breathe 11s ease-in-out infinite" }}
         aria-hidden
       />
 
@@ -90,12 +99,12 @@ function VisualPanel() {
             className={`pointer-events-none absolute z-10 ${card.className} ${card.floatClass}`}
             style={{ transform: `translate3d(${tilt.x * card.depth}px, ${tilt.y * card.depth}px, 0)`, transition: "transform 0.25s ease-out" }}
           >
-            <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.1] px-4 py-3 backdrop-blur-md shadow-[0_8px_40px_-12px_rgba(45,226,199,0.5)]">
+            <div className="flex items-center gap-3 rounded-2xl border border-white/15 bg-white/[0.08] px-4 py-3 backdrop-blur-md shadow-[0_8px_40px_-12px_rgba(45,226,199,0.55)]">
               <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-[#2de2c7] to-[#818cf8] text-[#04121a]">
                 <Icon size={20} strokeWidth={2.2} />
               </span>
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-white/60">{card.label}</p>
+                <p className="text-[11px] uppercase tracking-wider text-white/70">{card.label}</p>
                 <p className="font-display text-sm font-semibold text-white">{card.value}</p>
               </div>
             </div>
@@ -103,7 +112,7 @@ function VisualPanel() {
         );
       })}
 
-      {/* headline block */}
+      {/* content overlay */}
       <div className="pointer-events-none relative z-10 flex h-full flex-col justify-between p-12">
         <a href="/" className="pointer-events-auto flex w-fit items-center gap-2.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-[#2de2c7] to-[#818cf8] font-display text-sm font-bold text-[#04121a]">D2</span>
@@ -115,27 +124,40 @@ function VisualPanel() {
             <Sparkles size={13} className="text-[#2de2c7]" />
             The Dock2Door Operations Console
           </span>
-          <h2 className="reveal font-display mt-6 text-4xl font-extrabold leading-[1.02] tracking-tight text-white xl:text-5xl" style={{ animationDelay: "0.15s", textShadow: "0 4px 30px rgba(0,0,0,0.5)" }}>
+          <h2 className="reveal font-display mt-6 text-4xl font-extrabold leading-[1.02] tracking-tight text-white xl:text-5xl" style={{ animationDelay: "0.15s", textShadow: "0 4px 30px rgba(0,0,0,0.6)" }}>
             Move anything.
             <br />
             <span className="gradient-text">Anywhere. On time.</span>
           </h2>
-          <p className="reveal mt-5 max-w-sm text-sm leading-relaxed text-white/75" style={{ animationDelay: "0.28s" }}>
+          <p className="reveal mt-5 max-w-sm text-sm leading-relaxed text-white/80" style={{ animationDelay: "0.28s" }}>
             Shippers, warehouses, drayage, trucking and labour — one live network. Sign in to run it all from a single console.
           </p>
         </div>
 
-        <div className="reveal grid max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6" style={{ animationDelay: "0.4s" }}>
-          {[
-            { k: "$4.8B+", v: "Freight moved" },
-            { k: "12k+", v: "Active carriers" },
-            { k: "99.2%", v: "On-time" },
-          ].map((s) => (
-            <div key={s.v}>
-              <p className="font-display text-xl font-bold text-white">{s.k}</p>
-              <p className="mt-1 text-[11px] text-white/60">{s.v}</p>
-            </div>
-          ))}
+        <div className="space-y-6">
+          {/* real photo filmstrip */}
+          <div className="reveal pointer-events-auto flex gap-3" style={{ animationDelay: "0.36s" }}>
+            {FILMSTRIP.map((f) => (
+              <div key={f.label} className="group relative h-20 flex-1 overflow-hidden rounded-2xl border border-white/12 shadow-[0_10px_40px_-18px_rgba(0,0,0,0.9)]">
+                <img src={f.src} alt={f.label} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                <span className="absolute bottom-2 left-3 text-xs font-semibold text-white">{f.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="reveal grid max-w-md grid-cols-3 gap-4 border-t border-white/15 pt-6" style={{ animationDelay: "0.42s" }}>
+            {[
+              { k: "$4.8B+", v: "Freight moved" },
+              { k: "12k+", v: "Active carriers" },
+              { k: "99.2%", v: "On-time" },
+            ].map((s) => (
+              <div key={s.v}>
+                <p className="font-display text-xl font-bold text-white">{s.k}</p>
+                <p className="mt-1 text-[11px] text-white/65">{s.v}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
