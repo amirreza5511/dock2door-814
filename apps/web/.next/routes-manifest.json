@@ -467,10 +467,28 @@
       "namedRegex": "^/service\\-provider/create\\-listing(?:/)?$"
     },
     {
+      "page": "/service-provider/invoicing",
+      "regex": "^/service\\-provider/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/service\\-provider/invoicing(?:/)?$"
+    },
+    {
       "page": "/service-provider/listings",
       "regex": "^/service\\-provider/listings(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/service\\-provider/listings(?:/)?$"
+    },
+    {
+      "page": "/service-provider/rates",
+      "regex": "^/service\\-provider/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/service\\-provider/rates(?:/)?$"
+    },
+    {
+      "page": "/service-provider/team",
+      "regex": "^/service\\-provider/team(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/service\\-provider/team(?:/)?$"
     },
     {
       "page": "/shipper",

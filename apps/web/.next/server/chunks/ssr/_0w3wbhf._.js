@@ -1,0 +1,3 @@
+module.exports=[17171,a=>{"use strict";var b=a.i(87924),c=a.i(72131),d=a.i(97895);let e=c.forwardRef(({className:a,...c},e)=>(0,b.jsx)("label",{ref:e,className:(0,d.cn)("text-sm font-medium leading-none",a),...c}));e.displayName="Label",a.s(["Label",0,e])},90595,a=>{"use strict";var b=a.i(87924),c=a.i(50416),d=a.i(76086);a.s(["default",0,function(){let a=(0,d.useActiveCompanyId)("ServiceProvider")??null;return(0,b.jsx)(c.InvoicingView,{companyId:a,roleLabel:"Service Provider",subtitle:"Bill customers for completed jobs and track your accounting."})}])}];
+
+//# sourceMappingURL=_0w3wbhf._.js.map

@@ -1,0 +1,3 @@
+module.exports=[17171,a=>{"use strict";var b=a.i(87924),c=a.i(72131),d=a.i(97895);let e=c.forwardRef(({className:a,...c},e)=>(0,b.jsx)("label",{ref:e,className:(0,d.cn)("text-sm font-medium leading-none",a),...c}));e.displayName="Label",a.s(["Label",0,e])},41690,a=>{"use strict";var b=a.i(87924),c=a.i(23708),d=a.i(28006),e=a.i(76086);a.s(["default",0,function(){let a=(0,e.useActiveCompanyId)("FreightForwarder")??null;return(0,b.jsx)(c.RatesView,{companyId:a,config:d.PRICING_VERTICALS.forwarding,roleLabel:"Freight Forwarder"})}])}];
+
+//# sourceMappingURL=_0_vt.9o._.js.map

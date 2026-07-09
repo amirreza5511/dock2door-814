@@ -91,6 +91,22 @@ export const PRICING_VERTICALS: Record<string, VerticalConfig> = {
       { key: "layover", label: "Layover", amount: 0, type: "flat" },
     ],
   },
+  service: {
+    vertical: "service",
+    title: "Service Rates",
+    subtitle: "Publish service pricing so customers see the charge",
+    zoneLabel: "Service / area",
+    zoneLabelPlural: "Services & areas",
+    zonePlaceholder: "e.g. Container repair — Metro",
+    zoneHint: "Add a row per service type or coverage area to set its base rate.",
+    baseUnit: "per service",
+    defaultAccessorials: [
+      { key: "hourly", label: "Hourly rate", amount: 0, type: "perHour" },
+      { key: "rush", label: "Rush fee", amount: 0, type: "flat" },
+      { key: "after_hours", label: "After-hours", amount: 0, type: "flat" },
+      { key: "materials", label: "Materials", amount: 0, type: "flat" },
+    ],
+  },
 };
 
 export function useZones(companyId: string | null, vertical: string) {

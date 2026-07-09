@@ -141,6 +141,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/service-provider", label: "Jobs", icon: Briefcase },
         { href: "/service-provider/listings", label: "My listings", icon: ClipboardList },
         { href: "/service-provider/create-listing", label: "New listing", icon: Plus },
+        { href: "/service-provider/rates", label: "Rates", icon: DollarSign },
+        { href: "/service-provider/invoicing", label: "Invoicing", icon: FileText },
+        { href: "/service-provider/team", label: "Team", icon: Users },
       ],
     });
   }
