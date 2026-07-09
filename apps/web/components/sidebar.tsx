@@ -213,10 +213,10 @@ export function Sidebar({ role, isAdmin }: { role: UserRole | null; isAdmin: boo
   const pathname = usePathname();
   const sections = buildNav(role, isAdmin);
   return (
-    <aside className="hidden w-64 shrink-0 border-r bg-card md:flex md:flex-col">
-      <div className="flex h-14 items-center border-b px-5">
+    <aside className="glass-panel hidden w-64 shrink-0 border-r border-white/5 md:flex md:flex-col">
+      <div className="flex h-14 items-center border-b border-white/5 px-5">
         <Link href="/dashboard" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold">D2</span>
+          <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-primary-foreground text-xs font-bold shadow-[0_6px_20px_-6px_hsl(168_78%_45%/0.7)]">D2</span>
           Dock2Door
         </Link>
       </div>

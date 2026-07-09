@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!ctx.user) redirect("/login");
   const role = (ctx.role as UserRole | null) ?? null;
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="dark app-shell flex h-screen w-full text-foreground">
       <Sidebar role={role} isAdmin={ctx.isAdmin} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar email={ctx.user.email ?? null} role={role} />

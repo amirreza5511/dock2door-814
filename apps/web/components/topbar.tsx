@@ -4,7 +4,7 @@ import type { UserRole } from "@/lib/types";
 
 export function Topbar({ email, role }: { email: string | null; role: UserRole | null }) {
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-card px-6">
+    <header className="glass-panel flex h-14 items-center justify-between border-b border-white/5 px-6">
       <div className="text-sm text-muted-foreground">
         Operations Console
       </div>
