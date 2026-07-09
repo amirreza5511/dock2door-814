@@ -97,25 +97,39 @@ export function CtaFooter() {
                 <span className="font-display text-lg font-semibold tracking-tight text-white">Dock2Door</span>
               </div>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/50">
-                One operating system for the whole supply chain — warehousing, drayage,
+                Dock2Door is the logistics platform by{" "}
+                <span className="text-white/70">ParsFreight</span> — warehousing, drayage,
                 trucking, fulfillment and labour on a single live network.
               </p>
               <ul className="mt-6 space-y-2.5 text-sm text-white/55">
-                <li className="flex items-center gap-2.5">
-                  <Mail size={15} className="text-[#2de2c7]" />
-                  <a href="mailto:hello@dock2door.com" className="transition hover:text-white">
-                    hello@dock2door.com
-                  </a>
+                <li className="flex items-start gap-2.5">
+                  <Phone size={15} className="mt-0.5 shrink-0 text-[#2de2c7]" />
+                  <span className="flex flex-col gap-0.5">
+                    <a href="tel:+16047274706" className="transition hover:text-white">
+                      +1 (604) 727-4706 · Vancouver
+                    </a>
+                    <a href="tel:+16725144847" className="transition hover:text-white">
+                      +1 (672) 514-4847 · Toronto
+                    </a>
+                  </span>
                 </li>
-                <li className="flex items-center gap-2.5">
-                  <Phone size={15} className="text-[#2de2c7]" />
-                  <a href="tel:+18005550100" className="transition hover:text-white">
-                    +1 (800) 555-0100
-                  </a>
+                <li className="flex items-start gap-2.5">
+                  <Mail size={15} className="mt-0.5 shrink-0 text-[#2de2c7]" />
+                  <span className="flex flex-col gap-0.5">
+                    <a href="mailto:sales@parsfreight.ca" className="transition hover:text-white">
+                      sales@parsfreight.ca
+                    </a>
+                    <a href="mailto:rose@parsfreight.com" className="transition hover:text-white">
+                      rose@parsfreight.com
+                    </a>
+                    <a href="mailto:amir@parsfreight.com" className="transition hover:text-white">
+                      amir@parsfreight.com
+                    </a>
+                  </span>
                 </li>
-                <li className="flex items-center gap-2.5">
-                  <MapPin size={15} className="text-[#2de2c7]" />
-                  <span>Long Beach, CA · Rotterdam · Singapore</span>
+                <li className="flex items-start gap-2.5">
+                  <MapPin size={15} className="mt-0.5 shrink-0 text-[#2de2c7]" />
+                  <span>2651 No 5 Rd, Richmond BC V6X 2S8, Canada</span>
                 </li>
               </ul>
             </div>
