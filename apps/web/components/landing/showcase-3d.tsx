@@ -1,18 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { Package, Truck, Warehouse, Users, Ship, ClipboardCheck } from "lucide-react";
 import { REAL_IMAGES } from "@/components/landing/images";
-import { SHOWCASE_TRUCK, SHOWCASE_CONTAINER } from "@/components/three/showcase-config";
-
-const ShowcaseScene = dynamic(() => import("@/components/three/ShowcaseScene"), {
-  ssr: false,
-  loading: () => (
-    <div className="grid h-full w-full place-items-center text-sm text-white/40">
-      Loading 3D scene…
-    </div>
-  ),
-});
 
 type Module = { icon: typeof Truck; label: string };
 
@@ -67,29 +56,35 @@ export function Showcase3D() {
         </div>
 
         <div className="relative">
-          {/* real generated 3D diorama */}
-          <div className="relative h-[420px] overflow-hidden rounded-3xl border border-white/10 bg-[#071a2e]/60 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.9)]">
-            {SHOWCASE_TRUCK ? (
-              <ShowcaseScene truck={SHOWCASE_TRUCK} container={SHOWCASE_CONTAINER} className="h-full w-full" />
-            ) : (
-              <img src={REAL_IMAGES.fleet} alt="Fleet of delivery trucks" className="h-full w-full object-cover" />
-            )}
-            <div className="pointer-events-none absolute bottom-4 left-4 rounded-xl border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-md">
-              Live logistics network · real-time
+          {/* premium real-photography mosaic */}
+          <div className="grid grid-cols-2 grid-rows-[220px_150px] gap-4">
+            <div className="group relative col-span-2 overflow-hidden rounded-3xl border border-white/10 shadow-[0_40px_120px_-40px_rgba(0,0,0,0.9)]">
+              <img
+                src={REAL_IMAGES.fleet}
+                alt="Fleet of delivery trucks"
+                className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
+              <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#2de2c7]" />
+                <span className="text-[13px] font-semibold text-white">Live logistics network · real-time</span>
+              </div>
             </div>
-          </div>
-
-          {/* real photography strip under the 3D scene */}
-          <div className="mt-4 grid grid-cols-3 gap-4">
             {[
               { src: REAL_IMAGES.warehouse, label: "Warehousing" },
               { src: REAL_IMAGES.port, label: "Drayage & port" },
-              { src: REAL_IMAGES.dock, label: "Loading dock" },
             ].map((p) => (
-              <div key={p.label} className="group relative h-24 overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_-24px_rgba(0,0,0,0.9)]">
-                <img src={p.src} alt={p.label} className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              <div
+                key={p.label}
+                className="group relative overflow-hidden rounded-2xl border border-white/10 shadow-[0_18px_50px_-24px_rgba(0,0,0,0.9)]"
+              >
+                <img
+                  src={p.src}
+                  alt={p.label}
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 to-transparent" />
-                <span className="absolute bottom-2 left-2.5 text-[11px] font-semibold text-white">{p.label}</span>
+                <span className="absolute bottom-2.5 left-3 text-[12px] font-semibold text-white">{p.label}</span>
               </div>
             ))}
           </div>
