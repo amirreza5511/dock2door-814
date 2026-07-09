@@ -166,6 +166,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/driver", label: "My trips", icon: Truck },
         { href: "/driver/loads", label: "Load marketplace", icon: Package },
         { href: "/driver/my-loads", label: "All trips", icon: ClipboardList },
+        { href: "/driver/drayage", label: "Drayage work orders", icon: Container },
+        { href: "/driver/pod", label: "Proof of delivery", icon: FileText },
+        { href: "/driver/dropoff", label: "Warehouse drop-off", icon: Package },
         { href: "/driver/documents", label: "Documents", icon: FileText },
       ],
     });
@@ -191,6 +194,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/drayage-company/dispatch", label: "Dispatch", icon: Truck },
         { href: "/drayage-company/fleet", label: "Fleet", icon: Truck },
         { href: "/drayage-company/terminals", label: "Terminals", icon: Container },
+        { href: "/drayage-company/rates", label: "Rates & lanes", icon: DollarSign },
         { href: "/drayage-company/invoicing", label: "Invoicing", icon: DollarSign },
       ],
     });
@@ -201,6 +205,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Forwarding",
       items: [
         { href: "/freight-forwarder", label: "Container orders", icon: Ship },
+        { href: "/freight-forwarder/rates", label: "Forwarding rates", icon: DollarSign },
         { href: "/freight-forwarder/invoicing", label: "Invoicing", icon: DollarSign },
       ],
     });

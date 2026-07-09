@@ -233,6 +233,12 @@
       "namedRegex": "^/drayage\\-company/invoicing(?:/)?$"
     },
     {
+      "page": "/drayage-company/rates",
+      "regex": "^/drayage\\-company/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/rates(?:/)?$"
+    },
+    {
       "page": "/drayage-company/terminals",
       "regex": "^/drayage\\-company/terminals(?:/)?$",
       "routeKeys": {},
@@ -251,6 +257,18 @@
       "namedRegex": "^/driver/documents(?:/)?$"
     },
     {
+      "page": "/driver/drayage",
+      "regex": "^/driver/drayage(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/drayage(?:/)?$"
+    },
+    {
+      "page": "/driver/dropoff",
+      "regex": "^/driver/dropoff(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/dropoff(?:/)?$"
+    },
+    {
       "page": "/driver/loads",
       "regex": "^/driver/loads(?:/)?$",
       "routeKeys": {},
@@ -261,6 +279,12 @@
       "regex": "^/driver/my\\-loads(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/driver/my\\-loads(?:/)?$"
+    },
+    {
+      "page": "/driver/pod",
+      "regex": "^/driver/pod(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/driver/pod(?:/)?$"
     },
     {
       "page": "/employer",
@@ -309,6 +333,12 @@
       "regex": "^/freight\\-forwarder/invoicing(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/freight\\-forwarder/invoicing(?:/)?$"
+    },
+    {
+      "page": "/freight-forwarder/rates",
+      "regex": "^/freight\\-forwarder/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/freight\\-forwarder/rates(?:/)?$"
     },
     {
       "page": "/fulfillment/integrations",
