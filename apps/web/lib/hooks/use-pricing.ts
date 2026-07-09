@@ -58,6 +58,22 @@ export interface VerticalConfig {
 
 /** Web mirror of expo/constants/pricing.ts verticals used by the two roles ported here. */
 export const PRICING_VERTICALS: Record<string, VerticalConfig> = {
+  labor: {
+    vertical: "labor",
+    title: "Labor Rates",
+    subtitle: "Publish labor pricing so clients see the charge",
+    zoneLabel: "Worker category",
+    zoneLabelPlural: "Worker categories",
+    zonePlaceholder: "e.g. General labourer",
+    zoneHint: "Add categories like 'General labourer', 'Forklift operator' or 'Lead' to price by skill.",
+    baseUnit: "per hour",
+    defaultAccessorials: [
+      { key: "overtime", label: "Overtime (per hour)", amount: 0, type: "perHour" },
+      { key: "doubletime", label: "Double-time (per hour)", amount: 0, type: "perHour" },
+      { key: "callout", label: "Call-out fee", amount: 0, type: "flat" },
+      { key: "min_hours", label: "Minimum hours top-up", amount: 0, type: "flat" },
+    ],
+  },
   forwarding: {
     vertical: "forwarding",
     title: "Forwarding Rates",

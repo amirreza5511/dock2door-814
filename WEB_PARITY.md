@@ -56,10 +56,10 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 ### employer
 - [ ] account
 - [ ] company-profile
-- [ ] invoicing  (reuse `invoicing-view.tsx`)
-- [ ] rates      (reuse `rates-view.tsx` — needs employer/labour pricing vertical)
-- [ ] shifts
-- [ ] team       (reuse `team-view.tsx`)
+- [x] invoicing  (reuse `invoicing-view.tsx`)
+- [x] rates      (added `labor` vertical to web `use-pricing.ts` + reuse `rates-view.tsx`)
+- [ ] shifts     (mobile uses tRPC shifts.* + messaging — web has employer page w/ Supabase RPCs; port remaining accept/reject/hours already partly on `/employer` + `/employer/hours`)
+- [x] team       (reuse `team-view.tsx`)
 
 ### customer
 - [ ] billing (web has `invoices` — confirm parity, add billing if distinct)
@@ -123,5 +123,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - super-admin: certifications/companies/compliance/users (re-export admin) + operations
   (direct Supabase) DONE and wired into sidebar. finance & support BLOCKED — they depend
   on tRPC procedures the web app doesn't have; revisit if we add a Supabase-direct path.
-- Next up: **employer** (reuses rates/invoicing/team shared components — fast wins),
-  then **customer** sub-pages (loads, post-load, drayage, team).
+- employer: rates (new `labor` pricing vertical) + invoicing + team DONE and wired into
+  sidebar. account/company-profile/shifts remain (shifts leans on tRPC shifts.* + messaging).
+- Next up: **customer** sub-pages (loads, post-load, drayage, drayage/[orderId], team),
+  then **warehouse** invoicing/rates (reuse shared views).

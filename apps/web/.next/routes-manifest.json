@@ -323,6 +323,24 @@
       "namedRegex": "^/employer/hours(?:/)?$"
     },
     {
+      "page": "/employer/invoicing",
+      "regex": "^/employer/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/invoicing(?:/)?$"
+    },
+    {
+      "page": "/employer/rates",
+      "regex": "^/employer/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/rates(?:/)?$"
+    },
+    {
+      "page": "/employer/team",
+      "regex": "^/employer/team(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/team(?:/)?$"
+    },
+    {
       "page": "/freight-forwarder",
       "regex": "^/freight\\-forwarder(?:/)?$",
       "routeKeys": {},

@@ -286,9 +286,12 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/employer", label: "Shifts & applications", icon: ClipboardList },
         { href: "/employer/create-shift", label: "Post shift", icon: Plus },
         { href: "/employer/hours", label: "Hours & attendance", icon: ClipboardCheck },
+        { href: "/employer/rates", label: "Rates", icon: DollarSign },
+        { href: "/employer/invoicing", label: "Invoicing", icon: FileText },
         { href: "/employer/billing", label: "Billing & invoices", icon: CreditCard },
         { href: "/employer/browse-workers", label: "Browse workers", icon: UserSearch },
         { href: "/employer/calendar", label: "Labour calendar", icon: Calendar },
+        { href: "/employer/team", label: "Team", icon: Users },
       ],
     });
   }
