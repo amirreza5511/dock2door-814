@@ -1,17 +1,10 @@
 "use client";
 
 import { useState, Suspense, useCallback } from "react";
-import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { REAL_IMAGES } from "@/components/landing/images";
-import { TRUCK_MODEL } from "@/components/three/truck-config";
 import { ArrowRight, Boxes, Truck, Warehouse, Ship, Sparkles } from "lucide-react";
-
-const TruckScene = dynamic(() => import("@/components/three/TruckScene"), {
-  ssr: false,
-  loading: () => null,
-});
 
 type Role = "Customer" | "WarehouseProvider" | "ServiceProvider" | "Employer" | "TruckingCompany";
 
@@ -70,13 +63,6 @@ function VisualPanel() {
       {/* legibility scrims */}
       <div className="pointer-events-none absolute inset-0" aria-hidden style={{ background: "linear-gradient(180deg, rgba(4,18,30,0.55) 0%, rgba(4,18,30,0.35) 40%, rgba(4,18,30,0.9) 100%)" }} />
       <div className="pointer-events-none absolute inset-0" aria-hidden style={{ background: "radial-gradient(1100px 700px at 25% 15%, rgba(45,226,199,0.16), transparent 55%)" }} />
-
-      {/* real 3D truck model floating over the scene */}
-      {TRUCK_MODEL && (
-        <div className="pointer-events-none absolute inset-x-0 top-[14%] h-[58%]">
-          <TruckScene url={TRUCK_MODEL.url} orientation={TRUCK_MODEL.orientation} className="h-full w-full" />
-        </div>
-      )}
 
       {/* glow orbs for depth */}
       <div
