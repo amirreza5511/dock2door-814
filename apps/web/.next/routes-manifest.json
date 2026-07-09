@@ -161,6 +161,12 @@
       "namedRegex": "^/customer/bookings(?:/)?$"
     },
     {
+      "page": "/customer/drayage",
+      "regex": "^/customer/drayage(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/drayage(?:/)?$"
+    },
+    {
       "page": "/customer/inventory",
       "regex": "^/customer/inventory(?:/)?$",
       "routeKeys": {},
@@ -173,16 +179,34 @@
       "namedRegex": "^/customer/invoices(?:/)?$"
     },
     {
+      "page": "/customer/loads",
+      "regex": "^/customer/loads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/loads(?:/)?$"
+    },
+    {
       "page": "/customer/orders",
       "regex": "^/customer/orders(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/customer/orders(?:/)?$"
     },
     {
+      "page": "/customer/post-load",
+      "regex": "^/customer/post\\-load(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/post\\-load(?:/)?$"
+    },
+    {
       "page": "/customer/services",
       "regex": "^/customer/services(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/customer/services(?:/)?$"
+    },
+    {
+      "page": "/customer/team",
+      "regex": "^/customer/team(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/customer/team(?:/)?$"
     },
     {
       "page": "/customer/tracking",

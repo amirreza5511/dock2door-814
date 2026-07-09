@@ -63,11 +63,11 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ### customer
 - [ ] billing (web has `invoices` — confirm parity, add billing if distinct)
-- [ ] drayage  (list)
+- [x] drayage  (list — customer's own drayage_orders)
 - [ ] drayage/[orderId]  (detail)
-- [ ] loads
-- [ ] post-load
-- [ ] team  (reuse `team-view.tsx`)
+- [x] loads       (reuse `use-loads.ts` useMyPostedLoads)
+- [x] post-load   (reuse `use-loads.ts` quote/post)
+- [x] team  (reuse `team-view.tsx`, companyType Customer)
 
 ### warehouse (warehouse-provider)
 - [ ] invoicing  (reuse `invoicing-view.tsx`)
@@ -125,5 +125,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   on tRPC procedures the web app doesn't have; revisit if we add a Supabase-direct path.
 - employer: rates (new `labor` pricing vertical) + invoicing + team DONE and wired into
   sidebar. account/company-profile/shifts remain (shifts leans on tRPC shifts.* + messaging).
-- Next up: **customer** sub-pages (loads, post-load, drayage, drayage/[orderId], team),
-  then **warehouse** invoicing/rates (reuse shared views).
+- customer: loads + post-load (reuse use-loads) + drayage list + team (team-view) DONE and
+  wired into sidebar. Remaining: drayage/[orderId] detail, billing (confirm vs invoices).
+- Next up: **warehouse** invoicing/rates (reuse shared views), then **trucking** loads/
+  my-loads/post-load/messages, then **service-provider** jobs/billing.

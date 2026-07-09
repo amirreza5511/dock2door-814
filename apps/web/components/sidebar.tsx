@@ -232,12 +232,21 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       ],
     });
     sections.push({
+      label: "Freight & containers",
+      items: [
+        { href: "/customer/post-load", label: "Post a load", icon: Plus },
+        { href: "/customer/loads", label: "My loads", icon: ClipboardList },
+        { href: "/customer/drayage", label: "Container orders", icon: Container },
+      ],
+    });
+    sections.push({
       label: "Services & orders",
       items: [
         { href: "/customer/services", label: "Services", icon: Briefcase },
         { href: "/customer/orders", label: "Orders", icon: ClipboardList },
         { href: "/customer/invoices", label: "Invoices", icon: DollarSign },
         { href: "/customer/tracking", label: "Tracking", icon: Truck },
+        { href: "/customer/team", label: "Team", icon: Users },
       ],
     });
   }
