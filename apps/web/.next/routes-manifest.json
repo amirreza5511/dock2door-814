@@ -313,6 +313,12 @@
       "namedRegex": "^/super\\-admin(?:/)?$"
     },
     {
+      "page": "/super-admin/ads",
+      "regex": "^/super\\-admin/ads(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/ads(?:/)?$"
+    },
+    {
       "page": "/super-admin/analytics",
       "regex": "^/super\\-admin/analytics(?:/)?$",
       "routeKeys": {},

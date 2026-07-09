@@ -1,5 +1,6 @@
 import { Hero } from "@/components/landing/hero";
 import { TrustBand } from "@/components/landing/trust-band";
+import { About } from "@/components/landing/about";
 import { HowItWorks } from "@/components/landing/how-it-works";
 import { NetworkGlobe } from "@/components/landing/network-globe";
 import { Showcase3D } from "@/components/landing/showcase-3d";
@@ -31,6 +32,7 @@ export default function LandingPage() {
       <div className="relative z-10">
         <Hero />
         <TrustBand />
+        <About />
         <HowItWorks />
         <NetworkGlobe />
         <Showcase3D />

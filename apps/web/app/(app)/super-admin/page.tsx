@@ -88,6 +88,11 @@ export default async function SuperAdminPage() {
       href: "/super-admin/data-manager",
     },
     {
+      title: "Ad Manager",
+      description: "Create sponsored placements, track impressions & clicks, and review self-serve advertising requests.",
+      href: "/super-admin/ads",
+    },
+    {
       title: "Analytics",
       description: "GMV, active companies, pending applications, fill-rate.",
       href: "/super-admin/analytics",

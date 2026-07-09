@@ -6,11 +6,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  LifeBuoy, Sparkles, BookOpen, MessageCircle, Phone, X, ChevronRight, Megaphone,
+  LifeBuoy, Sparkles, BookOpen, MessageCircle, Phone, X, ChevronRight, Megaphone, Mail, MapPin,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
-import { SUPPORT_PHONE } from '@/constants/support';
+import { SUPPORT_PHONE, COMPANY_NAME, COMPANY_ADDRESS, COMPANY_PHONES, COMPANY_EMAILS } from '@/constants/support';
 
 /**
  * Shared support entry point. Renders a compact header icon button that opens a
@@ -115,6 +115,37 @@ export default function SupportMenu({ tint }: { tint?: string }) {
               onPress={() => go('/advertise')}
               last
             />
+
+            <View style={styles.contactCard}>
+              <Text style={styles.contactBrand}>{COMPANY_NAME}</Text>
+              <Text style={styles.contactCaption}>The freight company behind Dock2Door</Text>
+              <View style={styles.contactList}>
+                {COMPANY_PHONES.map((p) => (
+                  <TouchableOpacity
+                    key={p.number}
+                    style={styles.contactItem}
+                    onPress={() => void Linking.openURL(`tel:${p.number.replace(/[^+0-9]/g, '')}`)}
+                  >
+                    <Phone size={14} color={accent} />
+                    <Text style={styles.contactText}>{p.number} · {p.label}</Text>
+                  </TouchableOpacity>
+                ))}
+                {COMPANY_EMAILS.map((e) => (
+                  <TouchableOpacity
+                    key={e}
+                    style={styles.contactItem}
+                    onPress={() => void Linking.openURL(`mailto:${e}`)}
+                  >
+                    <Mail size={14} color={accent} />
+                    <Text style={styles.contactText}>{e}</Text>
+                  </TouchableOpacity>
+                ))}
+                <View style={styles.contactItem}>
+                  <MapPin size={14} color={accent} />
+                  <Text style={styles.contactText}>{COMPANY_ADDRESS}</Text>
+                </View>
+              </View>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -164,4 +195,10 @@ const styles = StyleSheet.create({
   rowIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   rowSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  contactCard: { marginTop: 14, padding: 14, borderRadius: 14, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  contactBrand: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  contactCaption: { fontSize: 11, color: C.textSecondary, marginTop: 1 },
+  contactList: { marginTop: 10, gap: 8 },
+  contactItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  contactText: { fontSize: 12, color: C.textSecondary, flex: 1 },
 });

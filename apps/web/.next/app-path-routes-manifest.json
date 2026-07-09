@@ -40,6 +40,7 @@
   "/(app)/service-provider/create-listing/page": "/service-provider/create-listing",
   "/(app)/service-provider/listings/page": "/service-provider/listings",
   "/(app)/service-provider/page": "/service-provider",
+  "/(app)/super-admin/ads/page": "/super-admin/ads",
   "/(app)/super-admin/analytics/page": "/super-admin/analytics",
   "/(app)/super-admin/billing/page": "/super-admin/billing",
   "/(app)/super-admin/controls/page": "/super-admin/controls",

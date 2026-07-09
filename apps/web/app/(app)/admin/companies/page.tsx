@@ -17,7 +17,6 @@ interface CompanyRow {
   type: string;
   status: string;
   created_at: string;
-  owner_user_id: string;
 }
 
 type PendingAction = {
@@ -54,7 +53,7 @@ export default function AdminCompaniesPage() {
     queryFn: async ({ pageParam }: { pageParam: string | null }) => {
       let q = supabase
         .from("companies")
-        .select("id,name,type,status,created_at,owner_user_id")
+        .select("id,name,type,status,created_at")
         .order("created_at", { ascending: false })
         .limit(PAGE_SIZE);
       if (search) q = q.ilike("name", `%${search}%`);

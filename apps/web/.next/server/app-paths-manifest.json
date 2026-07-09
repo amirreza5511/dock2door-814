@@ -40,6 +40,7 @@
   "/(app)/service-provider/create-listing/page": "app/(app)/service-provider/create-listing/page.js",
   "/(app)/service-provider/listings/page": "app/(app)/service-provider/listings/page.js",
   "/(app)/service-provider/page": "app/(app)/service-provider/page.js",
+  "/(app)/super-admin/ads/page": "app/(app)/super-admin/ads/page.js",
   "/(app)/super-admin/analytics/page": "app/(app)/super-admin/analytics/page.js",
   "/(app)/super-admin/billing/page": "app/(app)/super-admin/billing/page.js",
   "/(app)/super-admin/controls/page": "app/(app)/super-admin/controls/page.js",

@@ -36,6 +36,7 @@ import {
   Tag,
   Boxes,
   ClipboardCheck,
+  Megaphone,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/super-admin", label: "Overview", icon: Settings },
         { href: "/super-admin/roles", label: "Platform roles", icon: ShieldCheck },
+        { href: "/super-admin/ads", label: "Ad Manager", icon: Megaphone },
         { href: "/super-admin/analytics", label: "Analytics", icon: BarChart3 },
         { href: "/super-admin/controls", label: "Controls", icon: Shield },
         { href: "/super-admin/data-manager", label: "Data manager", icon: Database },
