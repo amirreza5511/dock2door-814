@@ -84,6 +84,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/admin/bookings", label: "Booking routing", icon: ClipboardList },
         { href: "/admin/entities", label: "Entity manager", icon: Database },
         { href: "/admin/freight-pricing", label: "Freight pricing", icon: DollarSign },
+        { href: "/admin/billing", label: "Platform finance", icon: CreditCard },
         { href: "/admin/sales-agents", label: "Sales & commissions", icon: DollarSign },
         { href: "/admin/shipping-carriers", label: "Platform carriers", icon: Truck },
         { href: "/admin/users", label: "Users", icon: Users },
@@ -309,6 +310,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Labour",
       items: [
         { href: "/employer", label: "Shifts & applications", icon: ClipboardList },
+        { href: "/employer/shifts", label: "Shift console", icon: ClipboardCheck },
         { href: "/employer/create-shift", label: "Post shift", icon: Plus },
         { href: "/employer/hours", label: "Hours & attendance", icon: ClipboardCheck },
         { href: "/employer/rates", label: "Rates", icon: DollarSign },

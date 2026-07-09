@@ -1,5 +1,6 @@
 {
   "/(app)/admin/audit/page": "app/(app)/admin/audit/page.js",
+  "/(app)/admin/billing/page": "app/(app)/admin/billing/page.js",
   "/(app)/admin/bookings/page": "app/(app)/admin/bookings/page.js",
   "/(app)/admin/certifications/page": "app/(app)/admin/certifications/page.js",
   "/(app)/admin/companies/page": "app/(app)/admin/companies/page.js",
@@ -57,6 +58,7 @@
   "/(app)/employer/invoicing/page": "app/(app)/employer/invoicing/page.js",
   "/(app)/employer/page": "app/(app)/employer/page.js",
   "/(app)/employer/rates/page": "app/(app)/employer/rates/page.js",
+  "/(app)/employer/shifts/page": "app/(app)/employer/shifts/page.js",
   "/(app)/employer/team/page": "app/(app)/employer/team/page.js",
   "/(app)/freight-forwarder/invoicing/page": "app/(app)/freight-forwarder/invoicing/page.js",
   "/(app)/freight-forwarder/page": "app/(app)/freight-forwarder/page.js",
@@ -80,6 +82,7 @@
   "/(app)/sales-agent/onboard/page": "app/(app)/sales-agent/onboard/page.js",
   "/(app)/sales-agent/page": "app/(app)/sales-agent/page.js",
   "/(app)/sales-agent/profile/page": "app/(app)/sales-agent/profile/page.js",
+  "/(app)/sales-agent/welcome/page": "app/(app)/sales-agent/welcome/page.js",
   "/(app)/service-provider/billing/page": "app/(app)/service-provider/billing/page.js",
   "/(app)/service-provider/create-listing/page": "app/(app)/service-provider/create-listing/page.js",
   "/(app)/service-provider/invoicing/page": "app/(app)/service-provider/invoicing/page.js",

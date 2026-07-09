@@ -1,5 +1,6 @@
 {
   "/(app)/admin/audit/page": "/admin/audit",
+  "/(app)/admin/billing/page": "/admin/billing",
   "/(app)/admin/bookings/page": "/admin/bookings",
   "/(app)/admin/certifications/page": "/admin/certifications",
   "/(app)/admin/companies/page": "/admin/companies",
@@ -57,6 +58,7 @@
   "/(app)/employer/invoicing/page": "/employer/invoicing",
   "/(app)/employer/page": "/employer",
   "/(app)/employer/rates/page": "/employer/rates",
+  "/(app)/employer/shifts/page": "/employer/shifts",
   "/(app)/employer/team/page": "/employer/team",
   "/(app)/freight-forwarder/invoicing/page": "/freight-forwarder/invoicing",
   "/(app)/freight-forwarder/page": "/freight-forwarder",
@@ -80,6 +82,7 @@
   "/(app)/sales-agent/onboard/page": "/sales-agent/onboard",
   "/(app)/sales-agent/page": "/sales-agent",
   "/(app)/sales-agent/profile/page": "/sales-agent/profile",
+  "/(app)/sales-agent/welcome/page": "/sales-agent/welcome",
   "/(app)/service-provider/billing/page": "/service-provider/billing",
   "/(app)/service-provider/create-listing/page": "/service-provider/create-listing",
   "/(app)/service-provider/invoicing/page": "/service-provider/invoicing",

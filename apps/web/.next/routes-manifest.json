@@ -111,6 +111,12 @@
       "namedRegex": "^/admin/audit(?:/)?$"
     },
     {
+      "page": "/admin/billing",
+      "regex": "^/admin/billing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/admin/billing(?:/)?$"
+    },
+    {
       "page": "/admin/bookings",
       "regex": "^/admin/bookings(?:/)?$",
       "routeKeys": {},
@@ -429,6 +435,12 @@
       "namedRegex": "^/employer/rates(?:/)?$"
     },
     {
+      "page": "/employer/shifts",
+      "regex": "^/employer/shifts(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/employer/shifts(?:/)?$"
+    },
+    {
       "page": "/employer/team",
       "regex": "^/employer/team(?:/)?$",
       "routeKeys": {},
@@ -565,6 +577,12 @@
       "regex": "^/sales\\-agent/profile(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/sales\\-agent/profile(?:/)?$"
+    },
+    {
+      "page": "/sales-agent/welcome",
+      "regex": "^/sales\\-agent/welcome(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/sales\\-agent/welcome(?:/)?$"
     },
     {
       "page": "/service-provider",

@@ -45,7 +45,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] users           (re-exports web `admin/users`)
 
 ### admin
-- [ ] billing
+- [x] billing  (Supabase-direct port of FinanceScreen: payments/invoices/payouts tabs, totals + reconciliation + commission, CSV export, refund via create-refund fn, pay via create-checkout-session, mark-paid via admin_mark_invoice_paid_manual, retry payout via process-payouts, Stripe Express dashboard)
 - [x] entities  (Supabase-direct port of admin.listEntity allowlist; read-only oversight console mirroring mobile's audit/state-machine guard)
 - [x] sales-agents  (Supabase-direct port of sales.admin*: sales_agents+profiles+commission_entries+agent_attributions, commission_plans; RPCs admin_update_agent, admin_set_commission_status, admin_award_commission, admin_upsert_commission_plan)
 - [x] shipping-carriers  (Supabase-direct port of carriers.list/upsert/delete on carrier_accounts scope=platform via upsert_carrier_account RPC)
@@ -59,7 +59,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] company-profile  (companies + shift_posts + reviews + company_update_profile/company_submit_for_approval RPCs)
 - [x] invoicing  (reuse `invoicing-view.tsx`)
 - [x] rates      (added `labor` vertical to web `use-pricing.ts` + reuse `rates-view.tsx`)
-- [ ] shifts     (mobile uses tRPC shifts.* + messaging — web has employer page w/ Supabase RPCs; port remaining accept/reject/hours already partly on `/employer` + `/employer/hours`)
+- [x] shifts     (per-shift console: applicants accept/reject, assignments clock in/out + confirm hours + no-show, message thread via open_shift_thread, complete via employer_close_shift_post, cancel via cancel_shift_with_reason, duplicate)
 - [x] team       (reuse `team-view.tsx`)
 
 ### customer
@@ -93,7 +93,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] shift-confirm  (worker_confirm_attendance RPC via ?assignmentId= query param)
 
 ### sales-agent
-- [ ] welcome  (first-run walkthrough — see approved sales-agent plan)
+- [x] welcome  (first-run walkthrough — 4-step slides mirroring mobile, localStorage WELCOME_SEEN_KEY, redirects to onboard/home)
 
 ### Detail/sub-pages (lower priority)
 - [ ] drayage-company/[orderId]

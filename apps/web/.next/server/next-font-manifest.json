@@ -4,6 +4,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/admin/billing/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/admin/bookings/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -232,6 +236,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/employer/shifts/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/employer/team/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -321,6 +329,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/sales-agent/profile/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/sales-agent/welcome/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
