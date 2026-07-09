@@ -328,11 +328,19 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/trucking/invoicing/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/trucking/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/trucking/pod/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/trucking/rates/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],

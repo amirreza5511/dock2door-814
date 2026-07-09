@@ -563,10 +563,22 @@
       "namedRegex": "^/trucking/fleet(?:/)?$"
     },
     {
+      "page": "/trucking/invoicing",
+      "regex": "^/trucking/invoicing(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/invoicing(?:/)?$"
+    },
+    {
       "page": "/trucking/pod",
       "regex": "^/trucking/pod(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/trucking/pod(?:/)?$"
+    },
+    {
+      "page": "/trucking/rates",
+      "regex": "^/trucking/rates(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/rates(?:/)?$"
     },
     {
       "page": "/warehouse",

@@ -154,6 +154,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
         { href: "/trucking/appointments", label: "Dock appointments", icon: Calendar },
         { href: "/trucking/pod", label: "POD review", icon: ScrollText },
+        { href: "/trucking/rates", label: "Rates & lanes", icon: DollarSign },
+        { href: "/trucking/invoicing", label: "Invoicing", icon: FileText },
         { href: "/trucking/finance", label: "Finance", icon: DollarSign },
       ],
     });
