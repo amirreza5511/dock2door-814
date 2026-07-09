@@ -260,6 +260,8 @@ export function Hero() {
         <nav className="hidden items-center gap-8 md:flex">
           <a href="#how" className="text-sm font-medium text-white/70 transition hover:text-white">How it works</a>
           <a href="#platform" className="text-sm font-medium text-white/70 transition hover:text-white">Platform</a>
+          <a href="#news" className="text-sm font-medium text-white/70 transition hover:text-white">News</a>
+          <a href="#contact" className="text-sm font-medium text-white/70 transition hover:text-white">Contact</a>
         </nav>
         <a
           href="/login"

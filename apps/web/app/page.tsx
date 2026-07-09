@@ -1,7 +1,12 @@
 import { Hero } from "@/components/landing/hero";
+import { TrustBand } from "@/components/landing/trust-band";
 import { HowItWorks } from "@/components/landing/how-it-works";
+import { NetworkGlobe } from "@/components/landing/network-globe";
 import { Showcase3D } from "@/components/landing/showcase-3d";
 import { Modules } from "@/components/landing/modules";
+import { Gallery } from "@/components/landing/gallery";
+import { News } from "@/components/landing/news";
+import { Spotlight } from "@/components/landing/spotlight";
 import { CtaFooter } from "@/components/landing/cta-footer";
 
 export default function LandingPage() {
@@ -25,9 +30,14 @@ export default function LandingPage() {
 
       <div className="relative z-10">
         <Hero />
+        <TrustBand />
         <HowItWorks />
+        <NetworkGlobe />
         <Showcase3D />
         <Modules />
+        <Gallery />
+        <News />
+        <Spotlight />
         <CtaFooter />
       </div>
     </main>
