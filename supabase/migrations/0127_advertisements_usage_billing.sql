@@ -15,6 +15,12 @@
 -- =========================================================================
 
 alter table public.advertisements
+  -- Self-heal: `price` normally comes from 0123, but ensure it exists so this
+  -- migration can run standalone (the ad_accrued_spend function references it).
+  add column if not exists price numeric not null default 0,                -- admin-set flat price
+  add column if not exists currency text not null default 'CAD',
+  add column if not exists impressions bigint not null default 0,
+  add column if not exists clicks bigint not null default 0,
   add column if not exists pricing_model text not null default 'flat',      -- flat | cpm | cpc
   add column if not exists cpm_rate numeric not null default 0,             -- price per 1,000 impressions
   add column if not exists cpc_rate numeric not null default 0,             -- price per click
