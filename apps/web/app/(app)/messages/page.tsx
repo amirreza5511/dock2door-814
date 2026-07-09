@@ -109,6 +109,16 @@ export default function MessagesPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messagesQ.data]);
 
+  // Deep-link support: /messages?thread=<id> preselects the thread once loaded.
+  useEffect(() => {
+    if (selectedThread) return;
+    const params = new URLSearchParams(window.location.search);
+    const wanted = params.get("thread");
+    if (!wanted) return;
+    const match = (threadsQ.data ?? []).find((t: Thread) => t.id === wanted);
+    if (match) setSelectedThread(match);
+  }, [threadsQ.data, selectedThread]);
+
   return (
     <div className="mx-auto max-w-7xl space-y-0">
       <div className="mb-6">

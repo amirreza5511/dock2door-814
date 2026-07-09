@@ -713,6 +713,12 @@
       "namedRegex": "^/super\\-admin/data\\-manager(?:/)?$"
     },
     {
+      "page": "/super-admin/finance",
+      "regex": "^/super\\-admin/finance(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/finance(?:/)?$"
+    },
+    {
       "page": "/super-admin/operations",
       "regex": "^/super\\-admin/operations(?:/)?$",
       "routeKeys": {},
@@ -723,6 +729,12 @@
       "regex": "^/super\\-admin/roles(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/super\\-admin/roles(?:/)?$"
+    },
+    {
+      "page": "/super-admin/support",
+      "regex": "^/super\\-admin/support(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/super\\-admin/support(?:/)?$"
     },
     {
       "page": "/super-admin/users",

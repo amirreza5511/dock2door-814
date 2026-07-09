@@ -45,6 +45,7 @@ import {
   Container,
   Ship,
   DoorOpen,
+  LifeBuoy,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -116,6 +117,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/super-admin/certifications", label: "Certifications", icon: ShieldCheck },
         { href: "/super-admin/compliance", label: "Compliance", icon: Shield },
         { href: "/super-admin/billing", label: "Billing oversight", icon: CreditCard },
+        { href: "/super-admin/finance", label: "Payments & finance", icon: Wallet },
+        { href: "/super-admin/support", label: "Support inbox", icon: LifeBuoy },
       ],
     });
   }

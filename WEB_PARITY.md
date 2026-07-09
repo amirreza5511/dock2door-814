@@ -39,9 +39,9 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] certifications  (re-exports web `admin/certifications`)
 - [x] companies       (re-exports web `admin/companies`)
 - [x] compliance      (re-exports web `admin/compliance`)
-- [ ] finance   (BLOCKED: mobile uses tRPC `finance.*` procedures; web has no tRPC client, needs Supabase-direct port or backend RPCs)
+- [x] finance   (Supabase-direct port of SuperAdminFinance: payment-engine mode via admin_set_payments_mode, overview totals, settle queue via settle_drayage_order/settle_booking_invoice/settle_service_job_invoice, provider payouts via sandbox_pay_payout, worker pay via sandbox_pay_worker)
 - [x] operations      (direct Supabase: drayage_moves + shift_assignments log)
-- [ ] support    (BLOCKED: mobile uses tRPC `messaging.listSupportThreads`/`adminJoinThread`; web has no tRPC, needs port)
+- [x] support    (Supabase-direct port: list_support_threads RPC inbox, admin_join_thread on open, deep-links into /messages?thread=<id>)
 - [x] users           (re-exports web `admin/users`)
 
 ### admin
