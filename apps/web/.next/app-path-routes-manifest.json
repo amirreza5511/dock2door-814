@@ -34,6 +34,7 @@
   "/(app)/customer/warehouses/[id]/page": "/customer/warehouses/[id]",
   "/(app)/customer/warehouses/page": "/customer/warehouses",
   "/(app)/dashboard/page": "/dashboard",
+  "/(app)/drayage-company/[orderId]/page": "/drayage-company/[orderId]",
   "/(app)/drayage-company/board/page": "/drayage-company/board",
   "/(app)/drayage-company/dispatch/page": "/drayage-company/dispatch",
   "/(app)/drayage-company/fleet/page": "/drayage-company/fleet",

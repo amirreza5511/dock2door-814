@@ -34,6 +34,7 @@
   "/(app)/customer/warehouses/[id]/page": "app/(app)/customer/warehouses/[id]/page.js",
   "/(app)/customer/warehouses/page": "app/(app)/customer/warehouses/page.js",
   "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
+  "/(app)/drayage-company/[orderId]/page": "app/(app)/drayage-company/[orderId]/page.js",
   "/(app)/drayage-company/board/page": "app/(app)/drayage-company/board/page.js",
   "/(app)/drayage-company/dispatch/page": "app/(app)/drayage-company/dispatch/page.js",
   "/(app)/drayage-company/fleet/page": "app/(app)/drayage-company/fleet/page.js",

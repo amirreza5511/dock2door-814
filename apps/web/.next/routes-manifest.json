@@ -47,6 +47,14 @@
       "namedRegex": "^/customer/warehouses/(?<nxtPid>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/drayage-company/[orderId]",
+      "regex": "^/drayage\\-company/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPorderId": "nxtPorderId"
+      },
+      "namedRegex": "^/drayage\\-company/(?<nxtPorderId>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/sales-agent/clients/[id]",
       "regex": "^/sales\\-agent/clients/([^/]+?)(?:/)?$",
       "routeKeys": {

@@ -96,7 +96,7 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] welcome  (first-run walkthrough — 4-step slides mirroring mobile, localStorage WELCOME_SEEN_KEY, redirects to onboard/home)
 
 ### Detail/sub-pages (lower priority)
-- [ ] drayage-company/[orderId]
+- [x] drayage-company/[orderId]  (Supabase-direct port of tRPC drayage.getOrderDetails + updatePortReservation (update_port_reservation RPC) + dispatchMove (dispatch_drayage_move RPC); ops console with driver-fleet dispatch, port reservation edit, moves + proof photos via get-signed-url, live tracking. Board/dispatch rows already linked here.)
 - [ ] freight-forwarder/[orderId]
 - [ ] fulfillment/[bookingId], fulfillment/bol/[bookingId], fulfillment/grn/[bookingId]
 
@@ -120,7 +120,11 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 
 ## Progress note (update each turn)
 
-- Last verified web build: GREEN (after admin sales-agents/entities/shipping-carriers).
+- Last verified web build: GREEN (after drayage-company/[orderId] detail).
+- This batch (1): drayage-company/[orderId] ops detail — Supabase-direct port of the mobile
+  tRPC drayage detail (update_port_reservation + dispatch_drayage_move RPCs, drivers from
+  fleet, proof photos via get-signed-url). Existing board/dispatch rows already deep-link here.
+  Remaining detail pages: freight-forwarder/[orderId], fulfillment ×3.
 - This batch (3): admin sales-agents + entities + shipping-carriers. All Supabase-direct against the
   same tables/RPCs the mobile sales.admin*/admin.listEntity/carriers.* tRPC procedures wrap; wired into
   sidebar. Confirmed those "tRPC-only" admin pages were in fact thin Supabase wrappers and are now ported.
