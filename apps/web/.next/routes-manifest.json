@@ -209,6 +209,18 @@
       "namedRegex": "^/drayage\\-company(?:/)?$"
     },
     {
+      "page": "/drayage-company/dispatch",
+      "regex": "^/drayage\\-company/dispatch(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/dispatch(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/terminals",
+      "regex": "^/drayage\\-company/terminals(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/terminals(?:/)?$"
+    },
+    {
       "page": "/driver",
       "regex": "^/driver(?:/)?$",
       "routeKeys": {},
@@ -309,6 +321,12 @@
       "regex": "^/gate\\-staff(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/gate\\-staff(?:/)?$"
+    },
+    {
+      "page": "/gate-staff/yard",
+      "regex": "^/gate\\-staff/yard(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/gate\\-staff/yard(?:/)?$"
     },
     {
       "page": "/login",
