@@ -123,14 +123,16 @@ $$;
 -- Roles a company is still allowed to add (addable minus already held).
 create or replace function public.company_addable_roles(p_company_id uuid)
 returns text[] language sql stable security definer set search_path = public as $$
-  with held as (select public.company_held_roles(p_company_id) as roles),
+  with held as (
+    select unnest(public.company_held_roles(p_company_id)) as role
+  ),
   candidates as (
-    select distinct unnest(public.role_addable(r)) as role
-      from unnest((select roles from held)) r
+    select distinct unnest(public.role_addable(h.role)) as role
+      from held h
   )
   select coalesce(array_agg(c.role), array[]::text[])
     from candidates c
-   where not (c.role = any((select roles from held)));
+   where c.role not in (select role from held);
 $$;
 
 grant execute on function public.role_works_with(text) to authenticated;
