@@ -50,7 +50,6 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 - [x] sales-agents  (Supabase-direct port of sales.admin*: sales_agents+profiles+commission_entries+agent_attributions, commission_plans; RPCs admin_update_agent, admin_set_commission_status, admin_award_commission, admin_upsert_commission_plan)
 - [x] shipping-carriers  (Supabase-direct port of carriers.list/upsert/delete on carrier_accounts scope=platform via upsert_carrier_account RPC)
 - [x] bookings   (warehouse_bookings/listings/companies + admin_force_booking_status RPC + broker routing update)
-- [ ] entities
 - [x] freight-pricing  (load_rate_cards + load_commission_overrides + admin_upsert/delete_rate_card, admin_upsert/delete_commission_override, admin_update_platform_settings 7-arg)
 - [x] system-health  (added `/admin/system-health` Diagnostics — Supabase-direct probes for RPC/RLS/storage/Stripe/EasyPost/push/realtime)
 
