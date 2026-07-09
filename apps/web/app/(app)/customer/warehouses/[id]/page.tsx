@@ -24,6 +24,21 @@ export default function WarehouseDetailPage() {
   const [handling, setHandling] = useState(false);
   const [notes, setNotes] = useState("");
 
+  const companyQ = useQuery({
+    queryKey: ["customer", "my-company"],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("company_id")
+        .eq("id", user.id)
+        .single();
+      return (profile?.company_id ?? null) as string | null;
+    },
+  });
+  const hasCompany = Boolean(companyQ.data);
+
   const listingQ = useQuery({
     queryKey: ["customer", "warehouse", id],
     queryFn: async () => {
@@ -170,6 +185,17 @@ export default function WarehouseDetailPage() {
               <CardDescription>Submit a storage request to the warehouse provider.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {!companyQ.isLoading && !hasCompany && (
+                <div className="rounded-lg border border-teal-200 bg-teal-50 px-4 py-4 text-center space-y-2">
+                  <div className="text-sm font-medium text-teal-900">Set up your company first</div>
+                  <p className="text-xs text-teal-700">
+                    Bookings are made on behalf of a company. Create or join one to request storage.
+                  </p>
+                  <Link href="/onboarding/company-setup">
+                    <Button className="w-full mt-1" size="sm">Create or join a company</Button>
+                  </Link>
+                </div>
+              )}
               {book.error && (
                 <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
                   {(book.error as Error).message}
@@ -242,7 +268,7 @@ export default function WarehouseDetailPage() {
 
               <Button
                 className="w-full"
-                disabled={!startDate || !endDate || book.isPending}
+                disabled={!startDate || !endDate || book.isPending || !hasCompany}
                 onClick={() => book.mutate()}
               >
                 {book.isPending ? "Submitting…" : "Submit booking request"}
