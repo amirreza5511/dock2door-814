@@ -500,6 +500,14 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/worker/[id]/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/worker/arrive/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/worker/availability/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -521,6 +529,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/worker/profile/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/worker/shift-confirm/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],

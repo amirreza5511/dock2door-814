@@ -61,6 +61,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/warehouse/listings/(?<nxtPid>[^/]+?)/edit(?:/)?$"
+    },
+    {
+      "page": "/worker/[id]",
+      "regex": "^/worker/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/worker/(?<nxtPid>[^/]+?)(?:/)?$"
     }
   ],
   "staticRoutes": [
@@ -815,6 +823,12 @@
       "namedRegex": "^/worker(?:/)?$"
     },
     {
+      "page": "/worker/arrive",
+      "regex": "^/worker/arrive(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/worker/arrive(?:/)?$"
+    },
+    {
       "page": "/worker/availability",
       "regex": "^/worker/availability(?:/)?$",
       "routeKeys": {},
@@ -843,6 +857,12 @@
       "regex": "^/worker/profile(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/worker/profile(?:/)?$"
+    },
+    {
+      "page": "/worker/shift-confirm",
+      "regex": "^/worker/shift\\-confirm(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/worker/shift\\-confirm(?:/)?$"
     },
     {
       "page": "/worker/shifts",

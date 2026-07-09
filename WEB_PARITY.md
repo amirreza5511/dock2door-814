@@ -87,9 +87,9 @@ Web folder names differ from mobile: `trucking-company→trucking`,
 ### worker
 - [x] earnings  (reuse `worker_earnings_overview` view; paid/pending totals + DataTable)
 - [x] profile  (worker_profiles + update_my_worker_profile RPC, worker_private_info + encrypt_pii, review_summaries; uploads deferred to /worker/certifications)
-- [ ] [id]  (public profile)
-- [ ] arrive
-- [ ] shift-confirm
+- [x] [id]  (public profile — worker_profiles + certs + work_photos via get-signed-url + reviews + availability)
+- [x] arrive  (browser geolocation + Nominatim geocode + haversine check-in banner)
+- [x] shift-confirm  (worker_confirm_attendance RPC via ?assignmentId= query param)
 
 ### sales-agent
 - [ ] welcome  (first-run walkthrough — see approved sales-agent plan)
@@ -133,9 +133,10 @@ Web folder names differ from mobile: `trucking-company→trucking`,
   messages covered by global /messages.
 - service-provider: billing (Stripe Connect + invoices) + jobs (re-export index) DONE and
   wired into sidebar.
-- worker: earnings + profile DONE (profile = worker_profiles / update_my_worker_profile
-  RPC + worker_private_info with encrypt_pii + review_summaries) and wired into sidebar.
-  Remaining worker: [id] public profile, arrive, shift-confirm.
-- Next up (more custom): **worker** profile, **customer** drayage/[orderId] detail +
-  billing, **employer** account/company-profile/shifts, **admin** pages. super-admin
-  finance/support still BLOCKED (need Supabase-direct port of tRPC procedures).
+- worker: earnings + profile + [id] public profile + arrive + shift-confirm DONE. worker
+  role is now fully at parity with mobile. arrive uses browser geolocation + Nominatim
+  geocoding; shift-confirm uses worker_confirm_attendance RPC (?assignmentId=).
+- Next up (more custom): **customer** drayage/[orderId] detail + billing, **employer**
+  account/company-profile/shifts, **admin** pages (billing/bookings/entities/freight-pricing/
+  sales-agents/shipping-carriers). super-admin finance/support still BLOCKED (need
+  Supabase-direct port of tRPC procedures).
