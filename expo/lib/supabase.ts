@@ -189,6 +189,28 @@ const isBenignRefreshTokenError = (reason: unknown): boolean => {
   );
 };
 
+// A transient network failure reaching Supabase ("TypeError: Failed to fetch",
+// "Network request failed", "Load failed"). These are EXPECTED in the preview
+// sandbox and on flaky connections, and every call site that matters already
+// catches the error and shows the user a friendly message + retry. Left
+// unhandled they escape supabase-js internals (auth auto-refresh tick, the
+// signInWithPassword fetch, background queries) as an unhandled rejection and
+// trip the fatal red-screen overlay. Swallow them at the global level so a
+// network hiccup never crashes the app.
+const isBenignNetworkError = (reason: unknown): boolean => {
+  if (reason instanceof Error && reason.name === 'AbortError') return true;
+  const msg = (
+    reason instanceof Error ? reason.message : String(reason ?? '')
+  ).toLowerCase();
+  return (
+    msg.includes('failed to fetch') ||
+    msg.includes('network request failed') ||
+    msg.includes('load failed') ||
+    msg.includes('networkerror') ||
+    msg.includes('fetch failed')
+  );
+};
+
 const clearStaleLocalSession = async (): Promise<void> => {
   try {
     await supabase.auth.signOut({ scope: 'local' });
@@ -217,6 +239,10 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.addE
         e.preventDefault();
         e.stopImmediatePropagation();
         void clearStaleLocalSession();
+      } else if (isBenignNetworkError(e?.reason)) {
+        console.log('[supabase] swallowing transient network rejection (handled by UI)');
+        e.preventDefault();
+        e.stopImmediatePropagation();
       }
     },
     true,
@@ -231,6 +257,10 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.addE
         e.preventDefault();
         e.stopImmediatePropagation();
         void clearStaleLocalSession();
+      } else if (isBenignNetworkError(e?.error ?? e?.message)) {
+        console.log('[supabase] swallowing transient network error event (handled by UI)');
+        e.preventDefault();
+        e.stopImmediatePropagation();
       }
     },
     true,
