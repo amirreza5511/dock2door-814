@@ -8,7 +8,9 @@ import { useRouter } from 'expo-router';
 import {
   MapPin, Clock, Search, ChevronRight, AlertCircle, Bell, MessageCircle,
   Navigation, CheckCircle, Shield, Award, Star, XCircle, DollarSign, Sparkles, BookOpen,
+  TrendingUp, Briefcase, Wallet, Zap,
 } from 'lucide-react-native';
+import { skillLabel } from '@/constants/skills';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
@@ -471,6 +473,47 @@ export default function WorkerDashboard() {
     return { confirmedHours, estimatedEarnings, awaitingConfirmation };
   }, [myTimeEntries, myAssignments, shiftPosts]);
 
+  // ── All-time career stats ────────────────────────────────────────────────
+  const careerStats = useMemo(() => {
+    let totalHours = 0;
+    let totalEarnings = 0;
+    const completedShiftIds = new Set<string>();
+    for (const te of myTimeEntries) {
+      const ass = myAssignments.find((a) => a.id === te.assignment_id);
+      if (!ass) continue;
+      if (te.employer_confirmed_hours) {
+        totalHours += te.employer_confirmed_hours;
+        totalEarnings += te.employer_confirmed_hours * ass.confirmed_rate;
+        completedShiftIds.add(ass.id);
+      }
+    }
+    return { totalHours, totalEarnings, completedShifts: completedShiftIds.size };
+  }, [myTimeEntries, myAssignments]);
+
+  // ── Recommended open shifts (matched to skills + city) ─────────────────────
+  const recommendedShifts = useMemo(() => {
+    const todayStr = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString().slice(0, 10); })();
+    const appliedIds = new Set(myApps.map((a) => a.shift_id));
+    const assignedIds = new Set(myAssignments.map((a) => a.shift_id));
+    const skills = new Set(profile?.skills ?? []);
+    const cities = new Set((profile?.coverageCities ?? []).map((c) => c.toLowerCase()));
+
+    const open = shiftPosts.filter(
+      (s) => s.status === 'Posted' && s.date >= todayStr && !appliedIds.has(s.id) && !assignedIds.has(s.id),
+    );
+    const scored = open
+      .map((s) => {
+        const skillMatch = skills.size > 0 && skills.has(s.category) ? 2 : 0;
+        const cityMatch = cities.size > 0 && cities.has(s.locationCity.toLowerCase()) ? 1 : 0;
+        return { shift: s, score: skillMatch + cityMatch };
+      })
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        return a.shift.date.localeCompare(b.shift.date);
+      });
+    return scored.slice(0, 4);
+  }, [shiftPosts, myApps, myAssignments, profile]);
+
   const employerName = (companyId: string) => companies.find((c) => c.id === companyId)?.name ?? 'Employer';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -752,6 +795,50 @@ export default function WorkerDashboard() {
           )}
         </View>
 
+        {/* ── Recommended Shifts (matched to skills + city) ── */}
+        {recommendedShifts.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>RECOMMENDED FOR YOU</Text>
+              <TouchableOpacity onPress={() => router.push('/worker/browse' as any)}>
+                <Text style={styles.seeAll}>Browse all →</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.recList}>
+              {recommendedShifts.map(({ shift, score }) => (
+                <TouchableOpacity
+                  key={shift.id}
+                  onPress={() => router.push('/worker/browse' as any)}
+                  activeOpacity={0.85}
+                  style={styles.recCard}
+                >
+                  <View style={styles.recTop}>
+                    <View style={styles.recCatChip}>
+                      <Text style={styles.recCatText}>{skillLabel(shift.category)}</Text>
+                    </View>
+                    {score >= 2 && (
+                      <View style={styles.recMatchChip}>
+                        <Zap size={10} color={C.accent} />
+                        <Text style={styles.recMatchText}>Skill match</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }} />
+                    <Text style={styles.recRate}>${shift.hourlyRate ?? shift.flatRate}/hr</Text>
+                  </View>
+                  <Text style={styles.recTitle} numberOfLines={1}>{shift.title}</Text>
+                  <Text style={styles.recEmployer} numberOfLines={1}>{employerName(shift.employerCompanyId)}</Text>
+                  <View style={styles.recMetaRow}>
+                    <MapPin size={11} color={C.textMuted} />
+                    <Text style={styles.recMeta} numberOfLines={1}>{shift.locationCity}</Text>
+                    <Clock size={11} color={C.textMuted} />
+                    <Text style={styles.recMeta}>{formatShiftDateTime(shift.date, shift.startTime, shift.endTime).split(' · ')[0]}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* ── Applications ── */}
         {(appStats.pending > 0 || appStats.accepted > 0) && (
           <View style={styles.section}>
@@ -817,6 +904,53 @@ export default function WorkerDashboard() {
             </Text>
           </Card>
         </View>
+
+        {/* ── All-time career stats ── */}
+        {(careerStats.completedShifts > 0 || (profile?.skills.length ?? 0) > 0) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>YOUR CAREER</Text>
+            <View style={styles.careerRow}>
+              <View style={styles.careerCard}>
+                <View style={[styles.careerIcon, { backgroundColor: C.blueDim }]}>
+                  <Briefcase size={15} color={C.blue} />
+                </View>
+                <Text style={styles.careerVal}>{careerStats.completedShifts}</Text>
+                <Text style={styles.careerLbl}>Shifts done</Text>
+              </View>
+              <View style={styles.careerCard}>
+                <View style={[styles.careerIcon, { backgroundColor: C.accentDim }]}>
+                  <TrendingUp size={15} color={C.accent} />
+                </View>
+                <Text style={styles.careerVal}>{careerStats.totalHours.toFixed(0)}</Text>
+                <Text style={styles.careerLbl}>Total hours</Text>
+              </View>
+              <View style={styles.careerCard}>
+                <View style={[styles.careerIcon, { backgroundColor: C.greenDim }]}>
+                  <Wallet size={15} color={C.green} />
+                </View>
+                <Text style={styles.careerVal}>${careerStats.totalEarnings.toFixed(0)}</Text>
+                <Text style={styles.careerLbl}>Earned</Text>
+              </View>
+            </View>
+            {(profile?.skills.length ?? 0) > 0 && (
+              <View style={styles.skillsCard}>
+                <View style={styles.skillsHeader}>
+                  <Text style={styles.skillsTitle}>Your skills</Text>
+                  <TouchableOpacity onPress={() => router.push('/worker/profile' as any)}>
+                    <Text style={styles.skillsEdit}>Edit</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.skillsWrap}>
+                  {(profile?.skills ?? []).map((s) => (
+                    <View key={s} style={styles.skillChip}>
+                      <Text style={styles.skillChipText}>{skillLabel(s)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* ── Ratings ── */}
         {ratingPending && (
@@ -1057,6 +1191,58 @@ const styles = StyleSheet.create({
   },
   ratingPromptTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   ratingPromptSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+
+  // Recommended shifts
+  recList: { gap: 10 },
+  recCard: {
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    gap: 4,
+  },
+  recTop: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  recCatChip: { backgroundColor: C.accent + '18', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3 },
+  recCatText: { fontSize: 11, fontWeight: '700' as const, color: C.accent },
+  recMatchChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.accentDim, borderRadius: 7, paddingHorizontal: 7, paddingVertical: 3 },
+  recMatchText: { fontSize: 10, fontWeight: '700' as const, color: C.accent },
+  recRate: { fontSize: 15, fontWeight: '800' as const, color: C.green },
+  recTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
+  recEmployer: { fontSize: 12, color: C.accent, fontWeight: '600' as const },
+  recMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4, flexWrap: 'wrap' },
+  recMeta: { fontSize: 12, color: C.textSecondary, marginRight: 6 },
+
+  // Career stats
+  careerRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  careerCard: {
+    flex: 1,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    alignItems: 'center',
+    gap: 5,
+  },
+  careerIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  careerVal: { fontSize: 20, fontWeight: '800' as const, color: C.text, letterSpacing: -0.5 },
+  careerLbl: { fontSize: 11, color: C.textMuted, fontWeight: '500' as const },
+
+  // Skills strip
+  skillsCard: {
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+  },
+  skillsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  skillsTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  skillsEdit: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+  skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  skillChip: { backgroundColor: C.bgSecondary, borderRadius: 8, borderWidth: 1, borderColor: C.border, paddingHorizontal: 10, paddingVertical: 5 },
+  skillChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
 
   // Nav list
   navList: { gap: 8 },
