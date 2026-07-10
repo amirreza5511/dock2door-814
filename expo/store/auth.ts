@@ -15,9 +15,10 @@ function friendlyError(err: unknown): string {
     lower.includes('fetch failed') ||
     lower.includes('networkerror') ||
     lower.includes('econnrefused') ||
-    lower.includes('connection refused')
+    lower.includes('connection refused') ||
+    lower.includes('load failed')
   ) {
-    return 'Unable to connect to the server. Please check your internet connection, or the service may be temporarily unavailable.';
+    return 'Unable to reach the server. This is usually caused by an ad-blocker, privacy extension, VPN, or firewall blocking the connection. Try disabling them, switching networks, or using a different browser.';
   }
   return msg || 'An unexpected error occurred';
 }
@@ -408,7 +409,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           }
         }
         console.log('[Auth] login error', error.message);
-        return { success: false, error: error.message };
+        return { success: false, error: friendlyError(error.message) };
       }
       if (!data.user) {
         return { success: false, error: 'No user returned' };
