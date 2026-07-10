@@ -2,36 +2,21 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-interface AvailabilityRow {
-  id: string;
-  worker_user_id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  kind: "available" | "unavailable" | "preferred";
-  preferred_area: string | null;
-  preferred_category: string | null;
-  notes: string | null;
-}
+import { getMyAvailability, saveAvailabilityDay, type AvailabilityRow, type DayMode } from "./actions";
 
 const DEFAULT_START = "08:00";
 const DEFAULT_END = "17:00";
-
-type DayMode = "default" | "custom" | "off";
 
 function hhmm(t: string): string {
   return (t ?? "").slice(0, 5);
 }
 
 export default function WorkerAvailabilityPage() {
-  const supabase = getBrowserSupabase();
   const qc = useQueryClient();
 
   const today = new Date().toISOString().slice(0, 10);
@@ -44,18 +29,7 @@ export default function WorkerAvailabilityPage() {
   const availQ = useQuery({
     queryKey: ["worker", "availability"],
     retry: 3,
-    queryFn: async (): Promise<AvailabilityRow[]> => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return [];
-      const { data, error } = await supabase
-        .from("worker_availability")
-        .select("id,worker_user_id,date,start_time,end_time,kind,preferred_area,preferred_category,notes")
-        .eq("worker_user_id", user.id)
-        .gte("date", today)
-        .order("date");
-      if (error) throw error;
-      return (data ?? []) as AvailabilityRow[];
-    },
+    queryFn: (): Promise<AvailabilityRow[]> => getMyAvailability(),
   });
 
   // One representative row per date (workday customisation or an off marker).
@@ -70,28 +44,7 @@ export default function WorkerAvailabilityPage() {
   };
 
   const saveMut = useMutation({
-    mutationFn: async (payload: { date: string; mode: DayMode; start: string; end: string }) => {
-      // Clear any existing rows for this date so we never leave stale slots behind.
-      const existing = (availQ.data ?? []).filter((r) => r.date === payload.date);
-      for (const r of existing) {
-        const { error } = await supabase.rpc("delete_my_availability", { p_id: r.id });
-        if (error) throw error;
-      }
-      if (payload.mode === "default") return; // no row = available on default hours
-      if (payload.mode === "off") {
-        const { error } = await supabase.rpc("set_my_availability", {
-          p_date: payload.date, p_start: "00:00", p_end: "23:59",
-          p_kind: "unavailable", p_preferred_area: null, p_preferred_category: null, p_notes: "",
-        });
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase.rpc("set_my_availability", {
-        p_date: payload.date, p_start: payload.start, p_end: payload.end,
-        p_kind: "available", p_preferred_area: null, p_preferred_category: null, p_notes: "",
-      });
-      if (error) throw error;
-    },
+    mutationFn: (payload: { date: string; mode: DayMode; start: string; end: string }) => saveAvailabilityDay(payload),
     retry: 3,
     onSuccess: () => { setSelected(null); qc.invalidateQueries({ queryKey: ["worker", "availability"] }); },
   });
