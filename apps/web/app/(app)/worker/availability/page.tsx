@@ -43,6 +43,7 @@ export default function WorkerAvailabilityPage() {
 
   const availQ = useQuery({
     queryKey: ["worker", "availability"],
+    retry: 3,
     queryFn: async (): Promise<AvailabilityRow[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -91,6 +92,7 @@ export default function WorkerAvailabilityPage() {
       });
       if (error) throw error;
     },
+    retry: 3,
     onSuccess: () => { setSelected(null); qc.invalidateQueries({ queryKey: ["worker", "availability"] }); },
   });
 
