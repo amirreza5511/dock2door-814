@@ -446,6 +446,37 @@ export default function WorkerDashboard() {
     return myTimeEntries.find((t) => t.assignment_id === nextShift.assignment.id) ?? null;
   }, [nextShift, myTimeEntries]);
 
+  // ── Next 2 weeks schedule ──────────────────────────────────────────────────
+  type ScheduledShift = {
+    assignment: AssignmentRow;
+    shift: NonNullable<ReturnType<typeof shiftPosts.find>>;
+  };
+  const twoWeek = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const days: { date: Date; key: string; shifts: ScheduledShift[] }[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      days.push({ date: d, key: d.toISOString().slice(0, 10), shifts: [] });
+    }
+    const scheduled = myAssignments
+      .filter((a) => a.status === 'Scheduled' || a.status === 'InProgress')
+      .map((a) => ({ assignment: a, shift: shiftPosts.find((s) => s.id === a.shift_id) }))
+      .filter((x): x is ScheduledShift => Boolean(x.shift));
+    for (const item of scheduled) {
+      const day = days.find((d) => d.key === item.shift.date);
+      if (day) day.shifts.push(item);
+    }
+    for (const day of days) {
+      day.shifts.sort((a, b) => (a.shift.startTime ?? '').localeCompare(b.shift.startTime ?? ''));
+    }
+    const upcoming = days
+      .filter((d) => d.shifts.length > 0)
+      .flatMap((d) => d.shifts);
+    return { days, upcoming };
+  }, [myAssignments, shiftPosts]);
+
   // ── Applications summary ─────────────────────────────────────────────────
   const appStats = useMemo(() => ({
     pending: myApps.filter((a) => a.status === 'Applied').length,
@@ -794,6 +825,76 @@ export default function WorkerDashboard() {
             </View>
           )}
         </View>
+
+        {/* ── Next 2 Weeks Calendar ── */}
+        {twoWeek.upcoming.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionLabel}>NEXT 2 WEEKS</Text>
+              <TouchableOpacity onPress={() => router.push('/worker/availability' as any)}>
+                <Text style={styles.seeAll}>Availability →</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.calStrip}
+            >
+              {twoWeek.days.map((day) => {
+                const has = day.shifts.length > 0;
+                const today = isToday(day.key);
+                const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][day.date.getDay()];
+                return (
+                  <View
+                    key={day.key}
+                    style={[
+                      styles.calDay,
+                      today && styles.calDayToday,
+                      has && styles.calDayHas,
+                    ]}
+                  >
+                    <Text style={[styles.calDow, today && { color: C.accent }]}>{dow}</Text>
+                    <Text style={[styles.calNum, (today || has) && { color: C.text }]}>{day.date.getDate()}</Text>
+                    <View style={[styles.calDot, has ? { backgroundColor: C.accent } : { backgroundColor: 'transparent' }]} />
+                  </View>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.calList}>
+              {twoWeek.upcoming.map(({ assignment, shift }) => {
+                const site = `${shift.locationAddress}, ${shift.locationCity}`;
+                return (
+                  <View key={assignment.id} style={styles.calCard}>
+                    <View style={styles.calCardDate}>
+                      <Text style={styles.calCardMonth}>
+                        {['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][new Date(shift.date + 'T00:00:00').getMonth()]}
+                      </Text>
+                      <Text style={styles.calCardDay}>{new Date(shift.date + 'T00:00:00').getDate()}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.calCardTitle} numberOfLines={1}>{shift.title}</Text>
+                      <Text style={styles.calCardEmployer} numberOfLines={1}>{employerName(shift.employerCompanyId)}</Text>
+                      <View style={styles.calCardMetaRow}>
+                        <Clock size={11} color={C.textMuted} />
+                        <Text style={styles.calCardMeta}>{fmtTime(shift.startTime)} – {fmtTime(shift.endTime)}</Text>
+                      </View>
+                      <View style={styles.calCardMetaRow}>
+                        <MapPin size={11} color={C.textMuted} />
+                        <Text style={styles.calCardMeta} numberOfLines={1}>{site}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => Linking.openURL(`https://maps.google.com/?q=${encodeURIComponent(site)}`)}
+                      style={styles.calCardNav}
+                    >
+                      <Navigation size={13} color={C.blue} />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* ── Recommended Shifts (matched to skills + city) ── */}
         {recommendedShifts.length > 0 && (
@@ -1243,6 +1344,56 @@ const styles = StyleSheet.create({
   skillsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   skillChip: { backgroundColor: C.bgSecondary, borderRadius: 8, borderWidth: 1, borderColor: C.border, paddingHorizontal: 10, paddingVertical: 5 },
   skillChipText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+
+  // Two-week calendar
+  calStrip: { gap: 7, paddingVertical: 2, marginBottom: 12 },
+  calDay: {
+    width: 42,
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 4,
+  },
+  calDayToday: { borderColor: C.accent },
+  calDayHas: { backgroundColor: C.accentDim, borderColor: C.accent + '40' },
+  calDow: { fontSize: 10, fontWeight: '700' as const, color: C.textMuted },
+  calNum: { fontSize: 15, fontWeight: '800' as const, color: C.textSecondary },
+  calDot: { width: 5, height: 5, borderRadius: 3 },
+  calList: { gap: 10 },
+  calCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+  },
+  calCardDate: {
+    width: 46,
+    alignItems: 'center',
+    backgroundColor: C.accentDim,
+    borderRadius: 10,
+    paddingVertical: 6,
+  },
+  calCardMonth: { fontSize: 10, fontWeight: '800' as const, color: C.accent, letterSpacing: 0.5 },
+  calCardDay: { fontSize: 18, fontWeight: '800' as const, color: C.accent },
+  calCardTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  calCardEmployer: { fontSize: 12, color: C.accent, fontWeight: '600' as const, marginBottom: 2 },
+  calCardMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  calCardMeta: { fontSize: 12, color: C.textSecondary, flex: 1 },
+  calCardNav: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: C.blueDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   // Nav list
   navList: { gap: 8 },
