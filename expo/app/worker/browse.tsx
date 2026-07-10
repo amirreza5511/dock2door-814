@@ -4,7 +4,7 @@ import {
   Alert, Modal, Linking, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle, Heart } from 'lucide-react-native';
+import { Search, MapPin, Clock, DollarSign, X, Users, Star, Navigation, CheckCircle, AlertTriangle, Heart, Repeat } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/auth';
 import { useDockData } from '@/hooks/useDockData';
@@ -79,6 +79,7 @@ export default function BrowseShifts() {
   const [query, setQuery] = useState('');
   const [filterCat, setFilterCat] = useState<ShiftCategory | 'All'>('All');
   const [favOnly, setFavOnly] = useState<boolean>(false);
+  const [ongoingOnly, setOngoingOnly] = useState<boolean>(false);
   const [selected, setSelected] = useState<ShiftPost | null>(null);
   const [applyModal, setApplyModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -181,8 +182,9 @@ export default function BrowseShifts() {
     const matchQ = s.title.toLowerCase().includes(query.toLowerCase()) || s.locationCity.toLowerCase().includes(query.toLowerCase());
     const matchCat = filterCat === 'All' || s.category === filterCat;
     const matchFav = !favOnly || favEmpSet.has(s.employerCompanyId);
-    return matchQ && matchCat && matchFav;
-  }), [available, query, filterCat, favOnly, favEmpSet]);
+    const matchOngoing = !ongoingOnly || s.isOngoing;
+    return matchQ && matchCat && matchFav && matchOngoing;
+  }), [available, query, filterCat, favOnly, ongoingOnly, favEmpSet]);
 
   const hasApplied = (shiftId: string) => myApps.some((a) => a.shift_id === shiftId && ['Applied', 'Accepted'].includes(a.status));
 
@@ -272,6 +274,13 @@ export default function BrowseShifts() {
           <Heart size={12} color={favOnly ? C.red : C.textSecondary} fill={favOnly ? C.red : 'transparent'} />
           <Text style={[styles.chipText, favOnly && { color: C.red, fontWeight: '700' as const }]}>Favorites</Text>
         </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setOngoingOnly((v) => !v)}
+          style={[styles.chip, styles.favChip, ongoingOnly && styles.ongoingChipActive]}
+        >
+          <Repeat size={12} color={ongoingOnly ? C.accent : C.textSecondary} />
+          <Text style={[styles.chipText, ongoingOnly && { color: C.accent, fontWeight: '700' as const }]}>Ongoing</Text>
+        </TouchableOpacity>
         {CATEGORIES.map((c) => (
           <TouchableOpacity
             key={c}
@@ -316,6 +325,12 @@ export default function BrowseShifts() {
                   {urgent && (
                     <View style={styles.urgentBadge}>
                       <Text style={styles.urgentText}>URGENT</Text>
+                    </View>
+                  )}
+                  {s.isOngoing && (
+                    <View style={styles.ongoingBadge}>
+                      <Repeat size={10} color={C.accent} />
+                      <Text style={styles.ongoingText}>ONGOING</Text>
                     </View>
                   )}
                   {rating.count > 0 && (
@@ -413,6 +428,12 @@ export default function BrowseShifts() {
                     {isUrgent(selected) && (
                       <View style={styles.urgentBadge}>
                         <Text style={styles.urgentText}>URGENT</Text>
+                      </View>
+                    )}
+                    {selected.isOngoing && (
+                      <View style={styles.ongoingBadge}>
+                        <Repeat size={10} color={C.accent} />
+                        <Text style={styles.ongoingText}>ONGOING</Text>
                       </View>
                     )}
                   </View>
@@ -573,6 +594,9 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
   favChip: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   favChipActive: { backgroundColor: C.redDim, borderColor: C.red },
+  ongoingChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  ongoingBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.accentDim, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3 },
+  ongoingText: { fontSize: 10, color: C.accent, fontWeight: '800' as const, letterSpacing: 0.5 },
   chipText: { fontSize: 12, color: C.textSecondary, fontWeight: '500' as const },
   chipTextActive: { color: C.accent, fontWeight: '700' as const },
   list: { padding: 16, gap: 12 },

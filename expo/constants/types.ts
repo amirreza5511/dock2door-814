@@ -290,6 +290,7 @@ export interface ShiftPost {
   requirements: string;
   notes: string;
   status: ShiftStatus;
+  isOngoing: boolean;
   createdAt: string;
 }
 

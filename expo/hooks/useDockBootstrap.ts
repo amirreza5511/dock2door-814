@@ -224,6 +224,7 @@ function mapShiftPost(r: Row): ShiftPost {
     requirements: r.requirements ?? '',
     notes: r.notes ?? '',
     status: r.status ?? 'Draft',
+    isOngoing: Boolean(r.is_ongoing),
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }

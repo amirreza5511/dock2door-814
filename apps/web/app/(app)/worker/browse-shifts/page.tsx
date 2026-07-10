@@ -23,6 +23,7 @@ interface ShiftRow {
   requirements: string | null;
   notes: string | null;
   employer_company_id: string;
+  is_ongoing: boolean | null;
   company_name?: string | null;
 }
 
@@ -46,6 +47,7 @@ export default function BrowseShiftsPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState<typeof CATEGORIES[number]>("All");
+  const [ongoingOnly, setOngoingOnly] = useState(false);
   const [selected, setSelected] = useState<ShiftRow | null>(null);
 
   const shiftsQ = useQuery({
@@ -54,7 +56,7 @@ export default function BrowseShiftsPage() {
       const { data, error } = await supabase
         .from("shift_posts")
         .select(`id,title,category,status,date,start_time,end_time,hourly_rate,workers_needed,
-          location_city,location_address,requirements,notes,employer_company_id,
+          location_city,location_address,requirements,notes,employer_company_id,is_ongoing,
           companies!inner(name)`)
         .eq("status", "Posted")
         .gte("date", new Date().toISOString().split("T")[0])
@@ -115,7 +117,8 @@ export default function BrowseShiftsPage() {
       s.location_city?.toLowerCase().includes(q) ||
       s.company_name?.toLowerCase().includes(q);
     const matchCat = catFilter === "All" || s.category === catFilter;
-    return matchSearch && matchCat;
+    const matchOngoing = !ongoingOnly || Boolean(s.is_ongoing);
+    return matchSearch && matchCat && matchOngoing;
   });
 
   return (
@@ -146,6 +149,16 @@ export default function BrowseShiftsPage() {
               {c}
             </button>
           ))}
+          <button
+            onClick={() => setOngoingOnly((v) => !v)}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+              ongoingOnly
+                ? "bg-primary text-primary-foreground"
+                : "border border-border bg-background text-muted-foreground hover:bg-accent"
+            }`}
+          >
+            ↻ Ongoing
+          </button>
         </div>
         <span className="ml-auto text-xs text-muted-foreground">{filtered.length} open shift{filtered.length !== 1 ? "s" : ""}</span>
       </div>
@@ -173,9 +186,16 @@ export default function BrowseShiftsPage() {
                       <CardTitle className="text-base truncate">{s.title}</CardTitle>
                       <CardDescription className="mt-0.5">{s.company_name ?? "—"}</CardDescription>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${CAT_COLOR[s.category] ?? "bg-muted text-muted-foreground"}`}>
-                      {s.category}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${CAT_COLOR[s.category] ?? "bg-muted text-muted-foreground"}`}>
+                        {s.category}
+                      </span>
+                      {s.is_ongoing && (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-800">
+                          ↻ Ongoing
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col gap-3">
@@ -259,7 +279,10 @@ export default function BrowseShiftsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Category</div>
-                  <Badge variant="secondary">{selected.category}</Badge>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant="secondary">{selected.category}</Badge>
+                    {selected.is_ongoing && <Badge variant="success">↻ Ongoing</Badge>}
+                  </div>
                 </div>
                 <div>
                   <div className="text-xs font-medium uppercase text-muted-foreground mb-1">Pay rate</div>
