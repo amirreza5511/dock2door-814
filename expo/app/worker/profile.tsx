@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
 import SkillPicker from '@/components/SkillPicker';
 import { skillLabel } from '@/constants/skills';
+import SupportMenu from '@/components/SupportMenu';
 
 type CertType = 'Forklift' | 'HighReach' | 'DriversLicence' | 'CriminalRecordCheck';
 const CERT_TYPES: { value: CertType; label: string; icon: string }[] = [
@@ -922,10 +923,13 @@ export default function WorkerProfile() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <Text style={styles.title}>My Profile</Text>
-        <TouchableOpacity onPress={openEdit} style={styles.editBtn}>
-          <Edit size={16} color={C.textSecondary} />
-          <Text style={styles.editBtnText}>Edit</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={openEdit} style={styles.editBtn}>
+            <Edit size={16} color={C.textSecondary} />
+            <Text style={styles.editBtnText}>Edit</Text>
+          </TouchableOpacity>
+          <SupportMenu />
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -1685,6 +1689,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 16, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, backgroundColor: C.card, borderRadius: 8, borderWidth: 1, borderColor: C.border },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   editBtnText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   flex1: { flex: 1 },
   scroll: { padding: 20, gap: 0 },

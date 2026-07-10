@@ -16,6 +16,7 @@ import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { skillLabel } from '@/constants/skills';
+import SupportMenu from '@/components/SupportMenu';
 
 const BASE_CATEGORY_COLORS: Partial<Record<ShiftCategory, string>> = {
   General: C.yellow,
@@ -234,8 +235,13 @@ export default function BrowseShifts() {
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.title}>Find Shifts</Text>
-        <Text style={styles.sub}>{filtered.length} open shifts</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.flex1}>
+            <Text style={styles.title}>Find Shifts</Text>
+            <Text style={styles.sub}>{filtered.length} open shifts</Text>
+          </View>
+          <SupportMenu />
+        </View>
         <View style={styles.searchBar}>
           <Search size={16} color={C.textMuted} />
           <TextInput
@@ -546,6 +552,8 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 4 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  flex1: { flex: 1 },
   sub: { fontSize: 13, color: C.textSecondary, marginBottom: 12 },
   searchBar: {
     flexDirection: 'row',

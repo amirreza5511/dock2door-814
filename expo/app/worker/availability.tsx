@@ -10,6 +10,7 @@ import CalendarView, { CalendarEvent } from '@/components/CalendarView';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import SupportMenu from '@/components/SupportMenu';
 
 interface AvailabilityRow {
   id: string;
@@ -84,7 +85,10 @@ export default function WorkerAvailability() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
-      <Text style={styles.title}>My Availability</Text>
+      <View style={styles.headerTopRow}>
+        <Text style={styles.title}>My Availability</Text>
+        <SupportMenu />
+      </View>
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -144,7 +148,8 @@ export default function WorkerAvailability() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
-  title: { fontSize: 22, fontWeight: '800' as const, color: C.text, paddingHorizontal: 20, paddingBottom: 12 },
+  title: { fontSize: 22, fontWeight: '800' as const, color: C.text, paddingBottom: 12 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 20 },
   scroll: { padding: 20, gap: 16 },
   formCard: { gap: 12 },
   formTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },

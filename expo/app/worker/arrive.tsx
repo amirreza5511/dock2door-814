@@ -8,6 +8,7 @@ import * as Location from 'expo-location';
 import { MapPin, Navigation, CheckCircle, LocateFixed } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { geocodeAddress, haversineMeters, SITE_RADIUS_METERS, type Coords } from '@/lib/geo';
+import SupportMenu from '@/components/SupportMenu';
 
 // react-native-maps does not render on web (needs a Google Maps loader/key), so we
 // only pull it in on native and show a graceful fallback on web.
@@ -113,9 +114,12 @@ export default function WorkerArriveScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
-          <Text style={styles.backBtnText}>← Back</Text>
-        </TouchableOpacity>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+            <Text style={styles.backBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <SupportMenu />
+        </View>
         <Text style={styles.headerTitle} numberOfLines={1}>{title || 'Arrive at site'}</Text>
         <Text style={styles.headerSub} numberOfLines={1}>{siteLabel || 'Job location'}</Text>
       </View>
@@ -225,6 +229,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   backBtn: { marginBottom: 6 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtnText: { fontSize: 14, color: C.accent, fontWeight: '600' as const },
   headerTitle: { fontSize: 20, fontWeight: '800' as const, color: C.text },
   headerSub: { fontSize: 13, color: C.textMuted, marginTop: 2 },

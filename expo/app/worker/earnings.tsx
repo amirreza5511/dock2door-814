@@ -7,6 +7,7 @@ import { DollarSign, Clock, CheckCircle2, AlertCircle } from 'lucide-react-nativ
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth';
+import SupportMenu from '@/components/SupportMenu';
 
 interface EarningRow {
   payable_id: string;
@@ -55,8 +56,13 @@ export default function WorkerEarningsScreen() {
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Text style={styles.title}>Earnings</Text>
-        <Text style={styles.sub}>Honest record of your confirmed hours and pay</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.flex1}>
+            <Text style={styles.title}>Earnings</Text>
+            <Text style={styles.sub}>Honest record of your confirmed hours and pay</Text>
+          </View>
+          <SupportMenu />
+        </View>
       </View>
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 80 }}
@@ -128,6 +134,8 @@ function StatusPill({ status }: { status: EarningRow['status'] }) {
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.bg },
+  headerTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  flex1: { flex: 1 },
   title: { color: C.text, fontSize: 24, fontWeight: '700' as const },
   sub: { color: C.textMuted, fontSize: 13, marginTop: 2 },
   totalsRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },

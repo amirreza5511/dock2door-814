@@ -19,6 +19,7 @@ import { trpc } from '@/lib/trpc';
 import ReviewModal from '@/components/ReviewModal';
 import { checkAtSite, getCurrentCoords, SITE_RADIUS_METERS } from '@/lib/geo';
 import { syncShiftReminders } from '@/lib/shift-reminders';
+import SupportMenu from '@/components/SupportMenu';
 
 type ViewTab = 'Active' | 'Invitations' | 'Applications' | 'History' | 'Earnings';
 
@@ -498,7 +499,10 @@ export default function WorkerMyShifts() {
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <Text style={styles.title}>My Shifts</Text>
+        <View style={styles.headerTopRow}>
+          <Text style={styles.title}>My Shifts</Text>
+          <SupportMenu />
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
           {TABS.map((t) => {
             const showBadge = t === 'Invitations' && invitations.length > 0;
@@ -1030,6 +1034,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   title: { fontSize: 22, fontWeight: '800' as const, color: C.text, marginBottom: 12 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   tabs: { flexDirection: 'row', alignItems: 'center' },
   tab: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   tabActive: { borderBottomColor: C.accent },

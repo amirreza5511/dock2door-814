@@ -9,6 +9,7 @@ import { CheckCircle, XCircle, MapPin, Clock, DollarSign, Building2 } from 'luci
 import C from '@/constants/colors';
 import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
+import SupportMenu from '@/components/SupportMenu';
 
 interface AssignmentDetail {
   id: string;
@@ -161,9 +162,12 @@ export default function ShiftConfirmScreen() {
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>← Back</Text>
-        </TouchableOpacity>
+        <View style={styles.headerTopRow}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Text style={styles.backBtnText}>← Back</Text>
+          </TouchableOpacity>
+          <SupportMenu />
+        </View>
         <Text style={styles.headerTitle}>Confirm Attendance</Text>
       </View>
 
@@ -286,6 +290,7 @@ const styles = StyleSheet.create({
     borderBottomColor: C.border,
   },
   backBtn: { marginBottom: 8 },
+  headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backBtnText: { fontSize: 14, color: C.accent, fontWeight: '600' as const },
   headerTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },
   scroll: { padding: 20, gap: 16 },
