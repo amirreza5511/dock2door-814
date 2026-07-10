@@ -11,8 +11,8 @@ import { formatDate } from "@/lib/utils";
 interface ReceiptRow {
   id: string;
   status: string;
-  expected_date: string | null;
-  received_date: string | null;
+  expected_at: string | null;
+  arrived_at: string | null;
   created_at: string;
 }
 
@@ -46,7 +46,7 @@ export default function WarehouseWMSPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_receipts")
-        .select("id,status,expected_date,received_date,created_at")
+        .select("id,status,expected_at,arrived_at,created_at")
         .order("created_at", { ascending: false })
         .limit(10);
       if (error) throw error;
@@ -131,7 +131,7 @@ export default function WarehouseWMSPage() {
                     <div>
                       <p className="text-sm font-mono">{r.id.slice(0, 8)}…</p>
                       <p className="text-xs text-muted-foreground">
-                        Expected: {r.expected_date ?? "—"} · Received: {r.received_date ?? "—"}
+                        Expected: {r.expected_at ? formatDate(r.expected_at) : "—"} · Arrived: {r.arrived_at ? formatDate(r.arrived_at) : "—"}
                       </p>
                     </div>
                     <Badge variant={statusVariant(r.status)}>{r.status}</Badge>

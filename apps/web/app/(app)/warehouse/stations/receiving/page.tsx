@@ -20,6 +20,14 @@ interface Receipt {
   created_at: string;
 }
 
+interface ReceiptRow {
+  id: string;
+  reference_code: string | null;
+  carrier: string | null;
+  status: string;
+  created_at: string;
+}
+
 export default function ReceivingStationPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
@@ -29,11 +37,17 @@ export default function ReceivingStationPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_receipts")
-        .select("id,reference,status,supplier,created_at")
+        .select("id,reference_code,carrier,status,created_at")
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return (data ?? []) as Receipt[];
+      return ((data ?? []) as ReceiptRow[]).map((r) => ({
+        id: r.id,
+        reference: r.reference_code || null,
+        supplier: r.carrier || null,
+        status: r.status,
+        created_at: r.created_at,
+      })) as Receipt[];
     },
   });
 
