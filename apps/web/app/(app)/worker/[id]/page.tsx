@@ -35,7 +35,7 @@ interface CertRow { id: string; type: string; expiry_date: string | null; status
 interface PhotoRow { id: string; file_path: string; caption: string | null }
 interface ReviewRow { id: string; rating: number; comment: string | null; created_at: string; reviewer_company: { name: string } | { name: string }[] | null }
 interface AssignmentCountRow { id: string; status: string }
-interface AvailabilityRow { date: string; available: boolean }
+interface AvailabilityRow { date: string; kind: string }
 
 const WEEK_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
@@ -95,7 +95,7 @@ export default function WorkerPublicProfilePage() {
           .eq("worker_user_id", userId),
         supabase
           .from("worker_availability")
-          .select("date,available")
+          .select("date,kind")
           .eq("worker_user_id", userId)
           .gte("date", today)
           .lte("date", nextWeek),
@@ -153,10 +153,12 @@ export default function WorkerPublicProfilePage() {
   }, [assignments]);
 
   const weekDays = getWeekDays();
-  const availMap = useMemo(() => {
-    const m: Record<string, boolean> = {};
-    for (const a of availability) m[a.date] = a.available;
-    return m;
+  // Available EVERY day by default; a day is only "off" when there is an
+  // explicit `unavailable` row for that date.
+  const offDates = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of availability) if (a.kind === "unavailable") s.add(a.date);
+    return s;
   }, [availability]);
 
   if (profileQ.isLoading) {
@@ -238,17 +240,12 @@ export default function WorkerPublicProfilePage() {
           <p className="mb-3 text-sm font-semibold">Availability this week</p>
           <div className="flex justify-between">
             {weekDays.map(({ label, isoDate }) => {
-              const isSet = isoDate in availMap;
-              const isAvail = availMap[isoDate];
+              const isAvail = !offDates.has(isoDate);
               const isToday = isoDate === todayIso;
               return (
                 <div key={isoDate} className={`flex flex-1 flex-col items-center gap-2 rounded-md py-1 ${isToday ? "bg-primary/10" : ""}`}>
                   <span className={`text-xs font-medium ${isToday ? "text-primary" : "text-muted-foreground"}`}>{label}</span>
-                  {isSet ? (
-                    <span className={`h-2.5 w-2.5 rounded-full ${isAvail ? "bg-emerald-500" : "bg-border"}`} />
-                  ) : (
-                    <span className="h-2.5 w-2.5 rounded-full border border-border" />
-                  )}
+                  <span className={`h-2.5 w-2.5 rounded-full ${isAvail ? "bg-emerald-500" : "bg-border"}`} />
                 </div>
               );
             })}

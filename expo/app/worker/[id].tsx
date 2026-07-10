@@ -38,7 +38,7 @@ interface CertRow { id: string; type: string; expiry_date: string | null; status
 interface PhotoRow { id: string; file_path: string; caption: string | null; visibility: string; moderation_status: string; }
 interface ReviewRow { id: string; rating: number; comment: string | null; created_at: string; reviewer_user_id: string; reviewer_company_id: string | null; reviewer_company: { name: string } | null; }
 interface AssignmentCountRow { id: string; status: string; }
-interface AvailabilityRow { date: string; available: boolean; }
+interface AvailabilityRow { date: string; kind: string; }
 
 async function fetchWorkerById(userId: string) {
   const today = new Date().toISOString().split('T')[0];
@@ -80,7 +80,7 @@ async function fetchWorkerById(userId: string) {
   try {
     const availRes = await supabase
       .from('worker_availability')
-      .select('date,available')
+      .select('date,kind')
       .eq('worker_user_id', userId)
       .gte('date', today)
       .lte('date', nextWeek);
@@ -179,10 +179,12 @@ export default function WorkerPublicProfileById() {
 
   // Availability dots
   const weekDays = getWeekDays();
-  const availMap = useMemo(() => {
-    const m: Record<string, boolean> = {};
-    for (const a of availability) m[a.date] = a.available;
-    return m;
+  // Available EVERY day by default; a day is only "off" when there is an
+  // explicit `unavailable` row for that date.
+  const offDates = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of availability) if (a.kind === 'unavailable') s.add(a.date);
+    return s;
   }, [availability]);
 
   const initial = profile?.display_name?.charAt(0) ?? '?';
@@ -286,17 +288,12 @@ export default function WorkerPublicProfileById() {
             <Card>
               <View style={styles.weekRow}>
                 {weekDays.map(({ label, isoDate }) => {
-                  const isSet = isoDate in availMap;
-                  const isAvail = availMap[isoDate];
+                  const isAvail = !offDates.has(isoDate);
                   const isToday = isoDate === new Date().toISOString().split('T')[0];
                   return (
                     <View key={isoDate} style={[styles.dayCol, isToday && styles.dayColToday]}>
                       <Text style={[styles.dayLabel, isToday && { color: C.accent }]}>{label}</Text>
-                      {isSet ? (
-                        <View style={[styles.availDot, { backgroundColor: isAvail ? C.green : C.border }]} />
-                      ) : (
-                        <View style={styles.availDotEmpty} />
-                      )}
+                      <View style={[styles.availDot, { backgroundColor: isAvail ? C.green : C.border }]} />
                     </View>
                   );
                 })}
