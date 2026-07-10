@@ -544,7 +544,7 @@ export default function CreateShift() {
               </View>
               <View style={{ flex: 1 }}>
                 <Input
-                  label="Workers Needed"
+                  label={isOngoing ? 'Positions Open' : 'Workers Needed'}
                   value={workersNeeded}
                   onChangeText={setWorkersNeeded}
                   keyboardType="numeric"

@@ -205,7 +205,7 @@ export default function CreateShiftPage() {
               <Input type="date" value={form.date} onChange={set("date")} />
             </div>
             <div className="space-y-1.5">
-              <Label>Workers needed</Label>
+              <Label>{isOngoing ? "Positions open" : "Workers needed"}</Label>
               <Input type="number" min={1} value={form.workers_needed} onChange={set("workers_needed")} />
             </div>
             <div className="space-y-1.5">
