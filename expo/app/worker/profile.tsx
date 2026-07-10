@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import * as FileSystem from 'expo-file-system';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Image, KeyboardAvoidingView, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Award, MapPin, DollarSign, CheckCircle, Edit, Upload, FileText, Camera, Eye, Lock, ChevronDown, ChevronUp, LogOut, Shield, Home, CreditCard, Phone, User, Star, Globe, Building2, ExternalLink, MessageSquare, Plus, X } from 'lucide-react-native';
 import { router } from 'expo-router';
@@ -1624,43 +1624,8 @@ export default function WorkerProfile() {
         </View>
         )}
 
-        {/* ════════════════════════════════════════
-            SECTION: Edit Resume (collapsed form, My view only)
-        ════════════════════════════════════════ */}
-        {editing && (
-          <View style={styles.section}>
-            <Card elevated>
-              <Text style={styles.sectionTitle}>Edit Profile</Text>
-              <View style={styles.formGap}>
-                <Input label="Headline / Tagline" value={editTagline} onChangeText={setEditTagline} placeholder="Forklift operator · 5 yrs exp." />
-                <Input label="About Me" value={editBio} onChangeText={setEditBio} multiline numberOfLines={3} />
-                <Input label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="+1 555 000 0000" />
-                <Input label="Hourly Rate Expectation ($)" value={editRate} onChangeText={setEditRate} keyboardType="numeric" />
-                <Input label="Years of Experience" value={editExperience} onChangeText={setEditExperience} keyboardType="numeric" placeholder="3" />
-                <Input label="Coverage Cities (comma separated)" value={editCities} onChangeText={setEditCities} placeholder="e.g. Chicago, Naperville, Aurora" />
-                <Input label="Languages (comma separated)" value={editLanguages} onChangeText={setEditLanguages} placeholder="English, Punjabi" />
-                <Input label="Transportation" value={editTransport} onChangeText={setEditTransport} placeholder="Own vehicle / Transit" />
-                <Input label="Preferred Shift" value={editPreferredShift} onChangeText={setEditPreferredShift} placeholder="Day / Night / Swing" />
-                <Input label="Work History" value={editWorkHistory} onChangeText={setEditWorkHistory} multiline numberOfLines={4} placeholder="Most recent jobs, dates, employers" />
-                <Input label="Education / Training" value={editEducation} onChangeText={setEditEducation} multiline numberOfLines={2} />
-                <Input label="References" value={editReferences} onChangeText={setEditReferences} multiline numberOfLines={2} placeholder="Name, role, company, phone" />
-                <Input label="Emergency Contact Name" value={editEmergencyName} onChangeText={setEditEmergencyName} />
-                <Input label="Emergency Contact Phone" value={editEmergencyPhone} onChangeText={setEditEmergencyPhone} keyboardType="phone-pad" />
-                <Input label="LinkedIn URL" value={editLinkedin} onChangeText={setEditLinkedin} autoCapitalize="none" />
-                <Input label="Website / Portfolio" value={editWebsite} onChangeText={setEditWebsite} autoCapitalize="none" />
-                <View>
-                  <Text style={styles.fieldLabel}>Skills</Text>
-                  <SkillPicker selected={editSkills} onToggle={toggleSkill} />
-                </View>
-                <Button label="Save Profile" onPress={saveProfile} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
-                <Button label="Cancel" onPress={() => setEditing(false)} variant="ghost" fullWidth />
-              </View>
-            </Card>
-          </View>
-        )}
-
         {/* ── Log out (My view only) ── */}
-        {!editing && viewMode === 'mine' && (
+        {viewMode === 'mine' && (
           <View style={[styles.section, { marginTop: 8 }]}>
             <TouchableOpacity
               onPress={() => {
@@ -1680,6 +1645,67 @@ export default function WorkerProfile() {
 
       </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ════════════════════════════════════════
+          Edit Resume — full-screen modal editor
+      ════════════════════════════════════════ */}
+      <Modal visible={editing} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditing(false)}>
+        <View style={[styles.root, { backgroundColor: C.bg }]}>
+          <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? 16 : insets.top + 16 }]}>
+            <TouchableOpacity onPress={() => setEditing(false)} style={styles.modalHeaderBtn}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Edit Profile</Text>
+            <TouchableOpacity onPress={saveProfile} style={styles.modalHeaderBtn}>
+              <Text style={styles.modalSaveText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <KeyboardAvoidingView style={styles.flex1} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+            <ScrollView
+              contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 120 }]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="interactive"
+            >
+              <Text style={styles.modalSectionLabel}>Basics</Text>
+              <View style={styles.formGap}>
+                <Input label="Headline / Tagline" value={editTagline} onChangeText={setEditTagline} placeholder="Forklift operator · 5 yrs exp." />
+                <Input label="About Me" value={editBio} onChangeText={setEditBio} multiline numberOfLines={3} />
+                <Input label="Phone" value={editPhone} onChangeText={setEditPhone} keyboardType="phone-pad" placeholder="+1 555 000 0000" />
+                <Input label="Hourly Rate Expectation ($)" value={editRate} onChangeText={setEditRate} keyboardType="numeric" />
+                <Input label="Years of Experience" value={editExperience} onChangeText={setEditExperience} keyboardType="numeric" placeholder="3" />
+                <Input label="Coverage Cities (comma separated)" value={editCities} onChangeText={setEditCities} placeholder="e.g. Chicago, Naperville, Aurora" />
+                <Input label="Languages (comma separated)" value={editLanguages} onChangeText={setEditLanguages} placeholder="English, Punjabi" />
+                <Input label="Transportation" value={editTransport} onChangeText={setEditTransport} placeholder="Own vehicle / Transit" />
+                <Input label="Preferred Shift" value={editPreferredShift} onChangeText={setEditPreferredShift} placeholder="Day / Night / Swing" />
+              </View>
+
+              <Text style={[styles.modalSectionLabel, { marginTop: 20 }]}>Resume</Text>
+              <View style={styles.formGap}>
+                <Input label="Work History" value={editWorkHistory} onChangeText={setEditWorkHistory} multiline numberOfLines={4} placeholder="Most recent jobs, dates, employers" />
+                <Input label="Education / Training" value={editEducation} onChangeText={setEditEducation} multiline numberOfLines={2} />
+                <Input label="References" value={editReferences} onChangeText={setEditReferences} multiline numberOfLines={2} placeholder="Name, role, company, phone" />
+              </View>
+
+              <Text style={[styles.modalSectionLabel, { marginTop: 20 }]}>Skills</Text>
+              <SkillPicker selected={editSkills} onToggle={toggleSkill} />
+
+              <Text style={[styles.modalSectionLabel, { marginTop: 20 }]}>Contact & Links</Text>
+              <View style={styles.formGap}>
+                <Input label="Emergency Contact Name" value={editEmergencyName} onChangeText={setEditEmergencyName} />
+                <Input label="Emergency Contact Phone" value={editEmergencyPhone} onChangeText={setEditEmergencyPhone} keyboardType="phone-pad" />
+                <Input label="LinkedIn URL" value={editLinkedin} onChangeText={setEditLinkedin} autoCapitalize="none" />
+                <Input label="Website / Portfolio" value={editWebsite} onChangeText={setEditWebsite} autoCapitalize="none" />
+              </View>
+
+              <View style={{ marginTop: 24, gap: 10 }}>
+                <Button label="Save Profile" onPress={saveProfile} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
+                <Button label="Cancel" onPress={() => setEditing(false)} variant="ghost" fullWidth />
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1873,6 +1899,14 @@ const styles = StyleSheet.create({
   // Logout
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 14, borderRadius: 12, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40' },
   logoutText: { fontSize: 15, fontWeight: '700' as const, color: C.red },
+
+  // Edit modal
+  modalHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const, paddingHorizontal: 16, paddingBottom: 14, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
+  modalHeaderBtn: { minWidth: 60, paddingVertical: 4 },
+  modalTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text },
+  modalCancelText: { fontSize: 15, color: C.textSecondary, fontWeight: '600' as const },
+  modalSaveText: { fontSize: 15, color: C.accent, fontWeight: '800' as const, textAlign: 'right' as const },
+  modalSectionLabel: { fontSize: 12, fontWeight: '800' as const, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.6, marginBottom: 10 },
 
   // Empty state
   emptyProfileCard: { width: '88%', gap: 14 },
