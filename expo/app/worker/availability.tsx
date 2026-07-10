@@ -146,6 +146,15 @@ export default function WorkerAvailability() {
           You&apos;re available every day from 8:00 to 17:00 by default. Tap any day to mark it off or change its hours.
         </Text>
 
+        {availQ.isError && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>Couldn&apos;t reach the server. Check your connection.</Text>
+            <TouchableOpacity onPress={() => availQ.refetch()} disabled={availQ.isFetching}>
+              <Text style={styles.retryText}>{availQ.isFetching ? 'Retrying…' : 'Retry'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <Card style={styles.calCard}>
           <View style={styles.calHeader}>
             <Text style={styles.monthLabel}>{monthLabel}</Text>
@@ -304,6 +313,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.border },
   rowText: { fontSize: 14, color: C.text, fontWeight: '600' as const },
   makeAvail: { fontSize: 13, color: C.accent, fontWeight: '600' as const },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: C.red + '66', backgroundColor: C.red + '18' },
+  errorText: { flex: 1, fontSize: 13, color: C.red },
+  retryText: { fontSize: 13, color: C.accent, fontWeight: '700' as const },
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalCard: { backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, gap: 14 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

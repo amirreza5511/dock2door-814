@@ -139,6 +139,15 @@ export default function WorkerAvailabilityPage() {
         </p>
       </div>
 
+      {availQ.isError && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm">
+          <span className="text-destructive">Couldn&apos;t reach the server. Check your connection and try again.</span>
+          <Button size="sm" variant="outline" onClick={() => availQ.refetch()} disabled={availQ.isFetching}>
+            {availQ.isFetching ? "Retrying…" : "Retry"}
+          </Button>
+        </div>
+      )}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">{monthLabel}</CardTitle>
