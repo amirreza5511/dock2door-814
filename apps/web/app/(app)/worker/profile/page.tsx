@@ -10,9 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, MapPin, Star, ShieldCheck } from "lucide-react";
+import { SKILL_GROUPS, ALL_SKILL_IDS, type SkillId } from "@/lib/skills";
 
-const ALL_SKILLS = ["General", "Driver", "Forklift", "HighReach"] as const;
-type Skill = (typeof ALL_SKILLS)[number];
+type Skill = SkillId;
 
 interface WorkerProfileRow {
   id: string;
@@ -124,13 +124,17 @@ export default function WorkerProfilePage() {
   const [emergencyPhone, setEmergencyPhone] = useState("");
   const [linkedin, setLinkedin] = useState("");
   const [website, setWebsite] = useState("");
+  const [workHistory, setWorkHistory] = useState("");
+  const [education, setEducation] = useState("");
+  const [references, setReferences] = useState("");
+  const [preferredShift, setPreferredShift] = useState("");
 
   useEffect(() => {
     if (!p) return;
     setBio(p.bio ?? "");
     setRate(String(p.hourly_expectation ?? ""));
     setCities((p.coverage_cities ?? []).join(", "));
-    setSkills((p.skills ?? []).filter((s): s is Skill => (ALL_SKILLS as readonly string[]).includes(s)));
+    setSkills((p.skills ?? []).filter((s): s is Skill => (ALL_SKILL_IDS as readonly string[]).includes(s)));
     setTagline(p.tagline ?? "");
     setPhone(p.phone ?? "");
     setLanguages((p.languages ?? []).join(", "));
@@ -140,6 +144,10 @@ export default function WorkerProfilePage() {
     setEmergencyPhone(p.emergency_contact_phone ?? "");
     setLinkedin(p.linkedin_url ?? "");
     setWebsite(p.website_url ?? "");
+    setWorkHistory(p.work_history ?? "");
+    setEducation(p.education ?? "");
+    setReferences(p.references_text ?? "");
+    setPreferredShift(p.preferred_shift ?? "");
   }, [p]);
 
   // ── Private info edit state ───────────────────────────────────────
@@ -196,10 +204,10 @@ export default function WorkerProfilePage() {
         p_transportation: transport,
         p_emergency_contact_name: emergencyName,
         p_emergency_contact_phone: emergencyPhone,
-        p_references_text: p?.references_text ?? "",
-        p_work_history: p?.work_history ?? "",
-        p_education: p?.education ?? "",
-        p_preferred_shift: p?.preferred_shift ?? "",
+        p_references_text: references,
+        p_work_history: workHistory,
+        p_education: education,
+        p_preferred_shift: preferredShift,
         p_linkedin_url: linkedin,
         p_website_url: website,
       });
@@ -345,24 +353,29 @@ export default function WorkerProfilePage() {
             <Label>Bio</Label>
             <Textarea rows={3} value={bio} onChange={(e) => setBio(e.target.value)} placeholder="A short summary about your experience and what you're great at." />
           </div>
-          <div>
+          <div className="space-y-3">
             <Label>Skills</Label>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {ALL_SKILLS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => toggleSkill(s)}
-                  className={`rounded-full border px-3 py-1 text-sm transition ${
-                    skills.includes(s)
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border text-muted-foreground hover:bg-muted"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+            {SKILL_GROUPS.map((group) => (
+              <div key={group.key} className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</p>
+                <div className="flex flex-wrap gap-2">
+                  {group.skills.map((skill) => (
+                    <button
+                      key={skill.id}
+                      type="button"
+                      onClick={() => toggleSkill(skill.id)}
+                      className={`rounded-full border px-3 py-1 text-sm transition ${
+                        skills.includes(skill.id)
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {skill.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
@@ -403,6 +416,22 @@ export default function WorkerProfilePage() {
               <Label>Emergency contact phone</Label>
               <Input value={emergencyPhone} onChange={(e) => setEmergencyPhone(e.target.value)} />
             </div>
+          </div>
+          <div>
+            <Label>Preferred shift</Label>
+            <Input value={preferredShift} onChange={(e) => setPreferredShift(e.target.value)} placeholder="Day / Night / Swing" />
+          </div>
+          <div>
+            <Label>Work history</Label>
+            <Textarea rows={4} value={workHistory} onChange={(e) => setWorkHistory(e.target.value)} placeholder="Most recent jobs, dates, employers…" />
+          </div>
+          <div>
+            <Label>Education & training</Label>
+            <Textarea rows={2} value={education} onChange={(e) => setEducation(e.target.value)} placeholder="Diplomas, courses, certifications…" />
+          </div>
+          <div>
+            <Label>References</Label>
+            <Textarea rows={2} value={references} onChange={(e) => setReferences(e.target.value)} placeholder="Name, role, company, phone" />
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={() => saveProfile.mutate()} disabled={saveProfile.isPending}>

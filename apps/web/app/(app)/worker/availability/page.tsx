@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface AvailabilityRow {
   id: string;
@@ -33,6 +34,7 @@ export default function WorkerAvailabilityPage() {
   const [end, setEnd] = useState("17:00");
   const [kind, setKind] = useState<typeof KINDS[number]>("available");
   const [area, setArea] = useState("");
+  const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
 
   const availQ = useQuery({
     queryKey: ["worker", "availability"],
@@ -74,6 +76,27 @@ export default function WorkerAvailabilityPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["worker", "availability"] }),
   });
 
+  const kindByDate = new Map<string, AvailabilityRow["kind"]>();
+  for (const r of availQ.data ?? []) if (!kindByDate.has(r.date)) kindByDate.set(r.date, r.kind);
+  const dotColor = (k: AvailabilityRow["kind"] | undefined): string =>
+    k === "available" ? "bg-emerald-500" : k === "preferred" ? "bg-primary" : k === "unavailable" ? "bg-muted-foreground" : "";
+
+  const monthStart = new Date(cursor);
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(1 - monthStart.getDay());
+  const cells: Date[] = Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    return d;
+  });
+  const fmt = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  const monthLabel = cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
@@ -82,6 +105,52 @@ export default function WorkerAvailabilityPage() {
           Tell employers when you&apos;re available, preferred, or off. Employers use this when matching workers to shifts.
         </p>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">{monthLabel}</CardTitle>
+          <div className="flex items-center gap-1">
+            <Button variant="outline" size="sm" onClick={() => setCursor((c) => { const d = new Date(c); d.setMonth(d.getMonth() - 1); return d; })}>
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setCursor((c) => { const d = new Date(c); d.setMonth(d.getMonth() + 1); return d; })}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold uppercase text-muted-foreground">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => <div key={d} className="pb-1">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {cells.map((d) => {
+              const iso = fmt(d);
+              const inMonth = d.getMonth() === cursor.getMonth();
+              const isToday = iso === today;
+              const isSelected = iso === date;
+              const k = kindByDate.get(iso);
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => setDate(iso)}
+                  className={`flex aspect-square flex-col items-center justify-center rounded-md border text-sm transition ${
+                    isSelected ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted"
+                  } ${inMonth ? "" : "opacity-30"} ${isToday ? "font-bold text-primary" : ""}`}
+                >
+                  <span>{d.getDate()}</span>
+                  {k ? <span className={`mt-1 h-1.5 w-1.5 rounded-full ${dotColor(k)}`} /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Available</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-primary" /> Preferred</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-muted-foreground" /> Off</span>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

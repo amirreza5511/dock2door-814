@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Award, Camera, CheckCircle2, MapPin, Star, Zap } from "lucide-react";
+import { skillLabel } from "@/lib/skills";
 
 interface WorkerPublic {
   id: string;
@@ -22,6 +23,12 @@ interface WorkerPublic {
   status: string;
   profile_photo_path: string | null;
   avatar_path: string | null;
+  languages: string[] | null;
+  experience_years: number | null;
+  transportation: string | null;
+  work_history: string | null;
+  education: string | null;
+  references_text: string | null;
 }
 
 interface CertRow { id: string; type: string; expiry_date: string | null; status: string }
@@ -60,7 +67,7 @@ export default function WorkerPublicProfilePage() {
       const [profileRes, certsRes, photosRes, reviewsRes, assignmentsRes, availRes] = await Promise.all([
         supabase
           .from("worker_profiles")
-          .select("id,user_id,display_name,bio,tagline,skills,coverage_cities,hourly_expectation,verified,status,profile_photo_path,avatar_path")
+          .select("id,user_id,display_name,bio,tagline,skills,coverage_cities,hourly_expectation,verified,status,profile_photo_path,avatar_path,languages,experience_years,transportation,work_history,education,references_text")
           .eq("user_id", userId)
           .maybeSingle(),
         supabase
@@ -270,7 +277,7 @@ export default function WorkerPublicProfilePage() {
           <h2 className="mb-2 text-sm font-semibold">Skills</h2>
           <div className="flex flex-wrap gap-2">
             {(profile.skills ?? []).map((s) => (
-              <span key={s} className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">{s}</span>
+              <span key={s} className="rounded-md bg-primary/10 px-3 py-1.5 text-sm font-semibold text-primary">{skillLabel(s)}</span>
             ))}
           </div>
         </div>
@@ -295,6 +302,48 @@ export default function WorkerPublicProfilePage() {
         <div>
           <h2 className="mb-2 text-sm font-semibold">About</h2>
           <Card><CardContent className="py-4 text-sm leading-relaxed text-muted-foreground">{profile.bio}</CardContent></Card>
+        </div>
+      ) : null}
+
+      {/* Experience & languages */}
+      {(Number(profile.experience_years) > 0 || (profile.languages ?? []).length > 0 || profile.transportation) ? (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">Experience</h2>
+          <Card><CardContent className="space-y-1.5 py-4 text-sm text-muted-foreground">
+            {Number(profile.experience_years) > 0 ? (
+              <p><span className="font-medium text-foreground">Years of experience: </span>{profile.experience_years}</p>
+            ) : null}
+            {(profile.languages ?? []).length > 0 ? (
+              <p><span className="font-medium text-foreground">Languages: </span>{(profile.languages ?? []).join(", ")}</p>
+            ) : null}
+            {profile.transportation ? (
+              <p><span className="font-medium text-foreground">Transportation: </span>{profile.transportation}</p>
+            ) : null}
+          </CardContent></Card>
+        </div>
+      ) : null}
+
+      {/* Work history */}
+      {profile.work_history ? (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">Work history</h2>
+          <Card><CardContent className="whitespace-pre-line py-4 text-sm leading-relaxed text-muted-foreground">{profile.work_history}</CardContent></Card>
+        </div>
+      ) : null}
+
+      {/* Education */}
+      {profile.education ? (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">Education & training</h2>
+          <Card><CardContent className="whitespace-pre-line py-4 text-sm leading-relaxed text-muted-foreground">{profile.education}</CardContent></Card>
+        </div>
+      ) : null}
+
+      {/* References */}
+      {profile.references_text ? (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold">References</h2>
+          <Card><CardContent className="whitespace-pre-line py-4 text-sm leading-relaxed text-muted-foreground">{profile.references_text}</CardContent></Card>
         </div>
       ) : null}
 

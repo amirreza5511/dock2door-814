@@ -15,13 +15,16 @@ import type { ShiftCategory, ShiftPost } from '@/constants/types';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
+import { skillLabel } from '@/constants/skills';
 
-const CATEGORY_COLORS: Record<ShiftCategory, string> = {
+const BASE_CATEGORY_COLORS: Partial<Record<ShiftCategory, string>> = {
   General: C.yellow,
   Driver: C.blue,
   Forklift: C.accent,
   HighReach: C.purple,
 };
+/** Safe color lookup — new catalog skills fall back to the accent color. */
+const catColor = (c: ShiftCategory | undefined): string => (c ? BASE_CATEGORY_COLORS[c] ?? C.accent : C.accent);
 
 interface AppRow { id: string; shift_id: string; worker_user_id: string; status: string; }
 
@@ -219,7 +222,12 @@ export default function BrowseShifts() {
     );
   };
 
-  const CATEGORIES: (ShiftCategory | 'All')[] = ['All', 'General', 'Driver', 'Forklift', 'HighReach'];
+  // Build the filter list from the skills that actually appear in open shifts
+  // so workers only see relevant chips (avoids a wall of 38 categories).
+  const CATEGORIES: (ShiftCategory | 'All')[] = useMemo(() => {
+    const present = Array.from(new Set(available.map((s) => s.category))).sort();
+    return ['All', ...present];
+  }, [available]);
 
   const isUrgent = (s: ShiftPost) => s.notes?.startsWith('[URGENT]');
 
@@ -264,7 +272,7 @@ export default function BrowseShifts() {
             onPress={() => setFilterCat(c)}
             style={[styles.chip, filterCat === c && styles.chipActive]}
           >
-            <Text style={[styles.chipText, filterCat === c && styles.chipTextActive]}>{c}</Text>
+            <Text style={[styles.chipText, filterCat === c && styles.chipTextActive]}>{c === 'All' ? 'All' : skillLabel(c)}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -284,7 +292,7 @@ export default function BrowseShifts() {
         )}
         {filtered.map((s) => {
           const applied = hasApplied(s.id);
-          const color = CATEGORY_COLORS[s.category];
+          const color = catColor(s.category);
           const rating = getCompanyRating(s.employerCompanyId);
           const urgent = isUrgent(s);
           return (
@@ -297,7 +305,7 @@ export default function BrowseShifts() {
                 {/* Top row: category + rating + applied count + urgent */}
                 <View style={styles.cardTop}>
                   <View style={[styles.catChip, { backgroundColor: color + '20' }]}>
-                    <Text style={[styles.catText, { color }]}>{s.category}</Text>
+                    <Text style={[styles.catText, { color }]}>{skillLabel(s.category)}</Text>
                   </View>
                   {urgent && (
                     <View style={styles.urgentBadge}>
@@ -391,9 +399,9 @@ export default function BrowseShifts() {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <View style={styles.modalBody}>
                   <View style={styles.modalCatRow}>
-                    <View style={[styles.catChip, { backgroundColor: CATEGORY_COLORS[selected.category] + '20' }]}>
-                      <Text style={[styles.catText, { color: CATEGORY_COLORS[selected.category] }]}>
-                        {selected.category}
+                    <View style={[styles.catChip, { backgroundColor: catColor(selected.category) + '20' }]}>
+                      <Text style={[styles.catText, { color: catColor(selected.category) }]}>
+                        {skillLabel(selected.category)}
                       </Text>
                     </View>
                     {isUrgent(selected) && (

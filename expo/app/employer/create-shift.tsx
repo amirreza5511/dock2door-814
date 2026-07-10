@@ -15,10 +15,10 @@ import { supabase } from '@/lib/supabase';
 import { buildShiftAttachmentPath, uploadFileWithMetadata } from '@/lib/storage-files';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import SkillPicker from '@/components/SkillPicker';
 import C from '@/constants/colors';
 import type { ShiftCategory } from '@/constants/types';
-
-const CATEGORIES: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
+import { ALL_SKILL_IDS } from '@/constants/skills';
 
 const PPE_OPTIONS = [
   'Steel-toe boots',
@@ -206,9 +206,10 @@ export default function CreateShift() {
   const initRequirements = asStr(params.requirements);
   const initCategory = asStr(params.category) as ShiftCategory;
   const [title, setTitle] = useState(asStr(params.title));
-  const [category, setCategory] = useState<ShiftCategory>(
-    CATEGORIES.includes(initCategory) ? initCategory : 'General',
+  const [skills, setSkills] = useState<ShiftCategory[]>(
+    ALL_SKILL_IDS.includes(initCategory) ? [initCategory] : [],
   );
+  const [isOngoing, setIsOngoing] = useState(false);
   const [address, setAddress] = useState(asStr(params.address));
   const [city, setCity] = useState(asStr(params.city));
   const [date, setDate] = useState('');
@@ -240,6 +241,10 @@ export default function CreateShift() {
   const [creatingCount, setCreatingCount] = useState(0);
   const [totalToCreate, setTotalToCreate] = useState(0);
 
+  const toggleSkill = (s: ShiftCategory) => {
+    setSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
+  };
+
   const togglePPE = (opt: string) => {
     setSelectedPPE((prev) =>
       prev.includes(opt) ? prev.filter((x) => x !== opt) : [...prev, opt],
@@ -265,6 +270,10 @@ export default function CreateShift() {
   const handleSubmit = async () => {
     if (!title || !address || !city || !date || !startTime || !endTime || !hourlyRate) {
       Alert.alert('Missing Fields', 'Please fill all required fields');
+      return;
+    }
+    if (skills.length === 0) {
+      Alert.alert('Select a skill', 'Pick at least one skill this job requires.');
       return;
     }
     if (postingBlocked) {
@@ -322,7 +331,9 @@ export default function CreateShift() {
         await createShift.mutateAsync(
           {
             title,
-            category,
+            category: skills[0],
+            skills,
+            isOngoing,
             locationAddress: address,
             locationCity: city,
             date: shiftDate,
@@ -432,19 +443,29 @@ export default function CreateShift() {
           </View>
         </View>
 
-        {/* Category */}
+        {/* Required skills */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Category</Text>
-          <View style={styles.optionRow}>
-            {CATEGORIES.map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => setCategory(c)}
-                style={[styles.optionChip, category === c && styles.optionActive]}
-              >
-                <Text style={[styles.optionText, category === c && styles.optionTextActive]}>{c}</Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={styles.sectionTitle}>Required Skills</Text>
+          <Text style={styles.sectionSub}>Pick every skill this job needs — workers are matched on these</Text>
+          <SkillPicker selected={skills} onToggle={toggleSkill} />
+        </View>
+
+        {/* Ongoing job toggle */}
+        <View style={styles.section}>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLeft}>
+              <Repeat size={16} color={isOngoing ? C.accent : C.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.toggleTitle, isOngoing && { color: C.text }]}>Ongoing job opening</Text>
+                <Text style={styles.toggleSub}>A recurring/continuous role, not a single dated shift. The date below is the start date.</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={() => setIsOngoing((v) => !v)}
+              style={[styles.toggle, isOngoing && styles.toggleOn]}
+            >
+              <View style={[styles.toggleThumb, isOngoing && styles.toggleThumbOn]} />
+            </TouchableOpacity>
           </View>
         </View>
 

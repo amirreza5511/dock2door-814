@@ -3293,6 +3293,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       employer_company_id: ctx.user.companyId,
       title: input.title,
       category: input.category,
+      skills: Array.isArray(input.skills) && input.skills.length > 0 ? input.skills : [input.category],
+      is_ongoing: Boolean(input.isOngoing),
       location_address: input.locationAddress ?? '',
       location_city: input.locationCity ?? '',
       date: input.date,

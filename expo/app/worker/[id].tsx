@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { getSignedUrl } from '@/lib/storage-files';
 import Card from '@/components/ui/Card';
 import StatusBadge from '@/components/ui/StatusBadge';
+import { skillLabel } from '@/constants/skills';
 
 interface WorkerPublic {
   id: string;
@@ -25,6 +26,12 @@ interface WorkerPublic {
   status: string;
   profile_photo_path: string | null;
   avatar_path: string | null;
+  languages: string[] | null;
+  experience_years: number | null;
+  transportation: string | null;
+  work_history: string | null;
+  education: string | null;
+  references_text: string | null;
 }
 
 interface CertRow { id: string; type: string; expiry_date: string | null; status: string; }
@@ -40,7 +47,7 @@ async function fetchWorkerById(userId: string) {
   const [profileRes, certsRes, photosRes, reviewsRes, assignmentsRes] = await Promise.all([
     supabase
       .from('worker_profiles')
-      .select('id,user_id,display_name,bio,tagline,skills,coverage_cities,hourly_expectation,verified,status,profile_photo_path,avatar_path')
+      .select('id,user_id,display_name,bio,tagline,skills,coverage_cities,hourly_expectation,verified,status,profile_photo_path,avatar_path,languages,experience_years,transportation,work_history,education,references_text')
       .eq('user_id', userId)
       .maybeSingle(),
     supabase
@@ -337,7 +344,7 @@ export default function WorkerPublicProfileById() {
             <View style={styles.chipRow}>
               {(profile.skills ?? []).map((s) => (
                 <View key={s} style={styles.skillChip}>
-                  <Text style={styles.skillText}>{s}</Text>
+                  <Text style={styles.skillText}>{skillLabel(s)}</Text>
                 </View>
               ))}
             </View>
@@ -366,6 +373,48 @@ export default function WorkerPublicProfileById() {
             <Card>
               <Text style={styles.bioText}>{profile.bio}</Text>
             </Card>
+          </View>
+        ) : null}
+
+        {/* ─── Experience & languages ─── */}
+        {(Number(profile.experience_years) > 0 || (profile.languages ?? []).length > 0 || profile.transportation) ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Experience</Text>
+            <Card style={{ gap: 8 }}>
+              {Number(profile.experience_years) > 0 ? (
+                <Text style={styles.resumeLine}><Text style={styles.resumeLabel}>Years of experience: </Text>{profile.experience_years}</Text>
+              ) : null}
+              {(profile.languages ?? []).length > 0 ? (
+                <Text style={styles.resumeLine}><Text style={styles.resumeLabel}>Languages: </Text>{(profile.languages ?? []).join(', ')}</Text>
+              ) : null}
+              {profile.transportation ? (
+                <Text style={styles.resumeLine}><Text style={styles.resumeLabel}>Transportation: </Text>{profile.transportation}</Text>
+              ) : null}
+            </Card>
+          </View>
+        ) : null}
+
+        {/* ─── Work history ─── */}
+        {profile.work_history ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Work History</Text>
+            <Card><Text style={styles.bioText}>{profile.work_history}</Text></Card>
+          </View>
+        ) : null}
+
+        {/* ─── Education ─── */}
+        {profile.education ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Education & Training</Text>
+            <Card><Text style={styles.bioText}>{profile.education}</Text></Card>
+          </View>
+        ) : null}
+
+        {/* ─── References ─── */}
+        {profile.references_text ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>References</Text>
+            <Card><Text style={styles.bioText}>{profile.references_text}</Text></Card>
           </View>
         ) : null}
 
@@ -528,6 +577,8 @@ const styles = StyleSheet.create({
   certChipText: { fontSize: 12, color: C.green, fontWeight: '700' as const },
   certExpiry: { fontSize: 10, color: C.textMuted },
   bioText: { fontSize: 14, color: C.textSecondary, lineHeight: 22 },
+  resumeLine: { fontSize: 13, color: C.textSecondary, lineHeight: 20 },
+  resumeLabel: { fontWeight: '700' as const, color: C.text },
   photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   photoCell: {
     width: '31.8%', aspectRatio: 1, backgroundColor: C.card,

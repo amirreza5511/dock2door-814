@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-
-const CATEGORIES = ["General", "Driver", "Forklift", "HighReach"] as const;
+import { SKILL_GROUPS, type SkillId } from "@/lib/skills";
 
 export default function CreateShiftPage() {
   const router = useRouter();
@@ -19,7 +18,6 @@ export default function CreateShiftPage() {
 
   const [form, setForm] = useState({
     title: "",
-    category: "General" as typeof CATEGORIES[number],
     location_address: "",
     location_city: "",
     date: "",
@@ -30,6 +28,10 @@ export default function CreateShiftPage() {
     requirements: "",
     notes: "",
   });
+  const [skills, setSkills] = useState<SkillId[]>([]);
+  const [isOngoing, setIsOngoing] = useState(false);
+  const toggleSkill = (s: SkillId) =>
+    setSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
   const set = (k: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -111,6 +113,7 @@ export default function CreateShiftPage() {
         .single();
 
       if (memErr || !membership?.company_id) throw new Error("No company associated with your account.");
+      if (skills.length === 0) throw new Error("Pick at least one skill this job requires.");
 
       if (paid) {
         // Re-check server-side at submit so we never trust stale client state.
@@ -126,7 +129,9 @@ export default function CreateShiftPage() {
       const { error } = await supabase.from("shift_posts").insert({
         employer_company_id: membership.company_id,
         title: form.title.trim(),
-        category: form.category,
+        category: skills[0],
+        skills,
+        is_ongoing: isOngoing,
         location_address: form.location_address.trim(),
         location_city: form.location_city.trim(),
         date: form.date,
@@ -191,16 +196,9 @@ export default function CreateShiftPage() {
         <CardHeader><CardTitle>Shift details</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Shift title *</Label>
+            <div className="col-span-2 space-y-1.5">
+              <Label>Shift / role title *</Label>
               <Input value={form.title} onChange={set("title")} placeholder="e.g. Forklift Operator — Delta warehouse" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Category *</Label>
-              <select value={form.category} onChange={set("category")}
-                className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
-                {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
             </div>
             <div className="space-y-1.5">
               <Label>Date *</Label>
@@ -231,6 +229,41 @@ export default function CreateShiftPage() {
               <Input value={form.location_address} onChange={set("location_address")} placeholder="1234 Industrial Way" />
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>Required skills</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">Pick every skill this job needs — workers are matched on these.</p>
+          {SKILL_GROUPS.map((group) => (
+            <div key={group.key} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</p>
+              <div className="flex flex-wrap gap-2">
+                {group.skills.map((skill) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    onClick={() => toggleSkill(skill.id)}
+                    className={`rounded-full border px-3 py-1 text-sm transition ${
+                      skills.includes(skill.id)
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    }`}
+                  >
+                    {skill.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <label className="flex items-center gap-3 rounded-md border border-border p-3">
+            <input type="checkbox" checked={isOngoing} onChange={(e) => setIsOngoing(e.target.checked)} className="h-4 w-4" />
+            <span className="text-sm">
+              <span className="font-medium">Ongoing job opening</span>{" "}
+              <span className="text-muted-foreground">— a recurring/continuous role, not a single dated shift. The date is the start date.</span>
+            </span>
+          </label>
         </CardContent>
       </Card>
 

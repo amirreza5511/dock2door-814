@@ -18,8 +18,8 @@ import C from '@/constants/colors';
 import type { ShiftCategory } from '@/constants/types';
 import { supabase } from '@/lib/supabase';
 import { buildCertPath, buildWorkerPhotoPath, getSignedUrl, uploadFileWithMetadata } from '@/lib/storage-files';
-
-const ALL_SKILLS: ShiftCategory[] = ['General', 'Driver', 'Forklift', 'HighReach'];
+import SkillPicker from '@/components/SkillPicker';
+import { skillLabel } from '@/constants/skills';
 
 type CertType = 'Forklift' | 'HighReach' | 'DriversLicence' | 'CriminalRecordCheck';
 const CERT_TYPES: { value: CertType; label: string; icon: string }[] = [
@@ -1331,29 +1331,18 @@ export default function WorkerProfile() {
           {viewMode === 'mine' ? (
             <>
               <Text style={styles.inlineHint}>Tap to add or remove your skills</Text>
-              <View style={styles.skillsRow}>
-                {ALL_SKILLS.map((s) => {
-                  const active = profile.skills.includes(s);
-                  return (
-                    <TouchableOpacity
-                      key={s}
-                      disabled={savingQuick}
-                      onPress={() => void persistQuick({ skills: active ? profile.skills.filter((x) => x !== s) : [...profile.skills, s] })}
-                      style={[styles.skillToggle, active && styles.skillToggleActive]}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.skillToggleText, active && styles.skillToggleTextActive]}>{active ? '✓ ' : '+ '}{s}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+              <SkillPicker
+                selected={profile.skills}
+                disabled={savingQuick}
+                onToggle={(s) => void persistQuick({ skills: profile.skills.includes(s) ? profile.skills.filter((x) => x !== s) : [...profile.skills, s] })}
+              />
             </>
           ) : (
             <View style={styles.skillsRow}>
               {profile.skills.length === 0 ? (
                 <Text style={styles.addSkillPromptText}>No skills listed.</Text>
               ) : profile.skills.map((s) => (
-                <View key={s} style={styles.skillChip}><Text style={styles.skillText}>{s}</Text></View>
+                <View key={s} style={styles.skillChip}><Text style={styles.skillText}>{skillLabel(s)}</Text></View>
               ))}
             </View>
           )}
@@ -1657,13 +1646,7 @@ export default function WorkerProfile() {
                 <Input label="Website / Portfolio" value={editWebsite} onChangeText={setEditWebsite} autoCapitalize="none" />
                 <View>
                   <Text style={styles.fieldLabel}>Skills</Text>
-                  <View style={styles.skillsRow}>
-                    {ALL_SKILLS.map((s) => (
-                      <TouchableOpacity key={s} onPress={() => toggleSkill(s)} style={[styles.skillToggle, editSkills.includes(s) && styles.skillToggleActive]}>
-                        <Text style={[styles.skillToggleText, editSkills.includes(s) && styles.skillToggleTextActive]}>{s}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
+                  <SkillPicker selected={editSkills} onToggle={toggleSkill} />
                 </View>
                 <Button label="Save Profile" onPress={saveProfile} fullWidth icon={<CheckCircle size={15} color={C.white} />} />
                 <Button label="Cancel" onPress={() => setEditing(false)} variant="ghost" fullWidth />

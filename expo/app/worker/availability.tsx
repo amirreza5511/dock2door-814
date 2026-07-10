@@ -94,7 +94,7 @@ export default function WorkerAvailability() {
       >
         <CalendarView
           events={events}
-          initialMode="week"
+          initialMode="month"
           onSelectDate={setSelectedDate}
           onSelectEvent={(e) => {
             Alert.alert('Remove?', `${e.date} ${e.startTime}-${e.endTime}`, [
@@ -106,7 +106,7 @@ export default function WorkerAvailability() {
 
         <Card style={styles.formCard}>
           <Text style={styles.formTitle}>Add Availability</Text>
-          <Text style={styles.formMeta}>Date: {selectedDate}</Text>
+          <Text style={styles.formMeta}>Tap a day on the calendar to set the date · {selectedDate}</Text>
           <View style={styles.kindRow}>
             {(['available', 'preferred', 'unavailable'] as const).map((k) => (
               <TouchableOpacity key={k} onPress={() => setKind(k)} style={[styles.kindChip, kind === k && styles.kindChipActive]}>

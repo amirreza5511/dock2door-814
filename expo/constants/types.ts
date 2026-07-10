@@ -79,7 +79,15 @@ export type PaymentStatus = 'Pending' | 'Paid' | 'Refunded';
 export type ServiceCategory = 'Labour' | 'Forklift' | 'PalletRework' | 'Devanning' | 'LocalTruck' | 'IndustrialCleaning';
 export type JobStatus = 'Requested' | 'Accepted' | 'Scheduled' | 'InProgress' | 'Completed' | 'Cancelled';
 
-export type ShiftCategory = 'General' | 'Driver' | 'Forklift' | 'HighReach';
+export type ShiftCategory =
+  | 'General' | 'Driver' | 'Forklift' | 'HighReach' | 'Loader' | 'Inventory'
+  | 'Electrical' | 'Plumbing' | 'Painting' | 'Carpentry' | 'Drywall' | 'Welding'
+  | 'HVAC' | 'Roofing' | 'Construction' | 'Landscaping'
+  | 'Janitorial' | 'IndustrialCleaning' | 'Groundskeeping'
+  | 'Server' | 'Barista' | 'Kitchen' | 'Cashier' | 'Stocker' | 'EventStaff'
+  | 'FilmCrew' | 'Grip' | 'CameraAssistant' | 'ProductionAssistant' | 'Lighting'
+  | 'PharmacyWorker' | 'CareAide' | 'MedicalAssistant' | 'CleaningTech'
+  | 'Reception' | 'DataEntry' | 'Security' | 'Flagger';
 export type ShiftStatus = 'Draft' | 'Posted' | 'Filled' | 'InProgress' | 'Completed' | 'Cancelled';
 export type ApplicationStatus = 'Applied' | 'Accepted' | 'Rejected' | 'Withdrawn';
 export type AssignmentStatus = 'Scheduled' | 'InProgress' | 'Completed' | 'NoShow' | 'Cancelled' | 'Disputed';
