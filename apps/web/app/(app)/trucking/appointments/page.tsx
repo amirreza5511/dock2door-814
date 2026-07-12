@@ -28,7 +28,7 @@ interface AppointmentRow {
 interface GateEvent {
   id: string;
   kind: string;
-  event_ts: string;
+  occurred_at: string;
   appointment_id: string | null;
   notes: string | null;
 }
@@ -77,8 +77,8 @@ export default function TruckingAppointmentsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("gate_events")
-        .select("id, kind, event_ts, appointment_id, notes")
-        .order("event_ts", { ascending: false })
+        .select("id, kind, occurred_at, appointment_id, notes")
+        .order("occurred_at", { ascending: false })
         .limit(100);
       if (error) return [];
       return (data ?? []) as GateEvent[];
@@ -227,7 +227,7 @@ export default function TruckingAppointmentsPage() {
               {(gateEventsQ.data ?? []).slice(0, 20).map((e) => (
                 <div key={e.id} className="flex items-center gap-3 rounded-md border px-3 py-2">
                   <Badge variant="secondary" className="capitalize shrink-0">{e.kind.replace(/_/g, " ")}</Badge>
-                  <span className="text-xs text-muted-foreground">{new Date(e.event_ts).toLocaleString("en-CA")}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(e.occurred_at).toLocaleString("en-CA")}</span>
                   {e.notes && <span className="text-xs text-muted-foreground ml-auto">{e.notes}</span>}
                 </div>
               ))}

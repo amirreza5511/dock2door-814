@@ -22,7 +22,7 @@ interface GateEvent {
   appointment_id: string | null;
   kind: string;
   notes: string | null;
-  created_at: string;
+  occurred_at: string;
 }
 
 interface YardMove {
@@ -47,8 +47,8 @@ export default function DockStationPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("gate_events")
-        .select("id,appointment_id,kind,notes,created_at")
-        .order("created_at", { ascending: false })
+        .select("id,appointment_id,kind,notes,occurred_at")
+        .order("occurred_at", { ascending: false })
         .limit(100);
       if (error) throw error;
       return (data ?? []) as GateEvent[];
@@ -88,7 +88,7 @@ export default function DockStationPage() {
     { key: "kind", header: "Event", render: (e) => <Badge>{e.kind}</Badge>, sortable: true, sortValue: (e) => e.kind },
     { key: "appointment", header: "Appointment", render: (e) => e.appointment_id ? <span className="font-mono text-xs">{e.appointment_id.slice(0, 8)}</span> : "—" },
     { key: "notes", header: "Notes", render: (e) => e.notes ?? "—" },
-    { key: "when", header: "When", render: (e) => formatDate(e.created_at), sortable: true, sortValue: (e) => e.created_at },
+    { key: "when", header: "When", render: (e) => formatDate(e.occurred_at), sortable: true, sortValue: (e) => e.occurred_at },
   ];
 
   const moveCols: Column<YardMove>[] = [
