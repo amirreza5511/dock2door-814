@@ -204,6 +204,8 @@ export interface WarehouseBooking {
 
 export type TransportMode = 'unspecified' | 'own_driver' | 'self_delivery' | 'third_party';
 
+export type ServiceListingType = 'service' | 'equipment_rental' | 'mobile_repair';
+
 export interface ServiceListing {
   id: string;
   companyId: string;
@@ -215,6 +217,16 @@ export interface ServiceListing {
   certifications: string;
   status: ListingStatus;
   createdAt: string;
+  /** Marketplace fields (migration 0132) — optional for backward compatibility. */
+  serviceType?: ServiceListingType;
+  title?: string;
+  description?: string;
+  subcategory?: string;
+  dailyRate?: number | null;
+  weeklyRate?: number | null;
+  negotiable?: boolean;
+  companyName?: string;
+  companyCity?: string;
 }
 
 export interface ServiceAvailability {

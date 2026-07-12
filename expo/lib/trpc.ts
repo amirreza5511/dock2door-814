@@ -190,6 +190,32 @@ function mapServiceJob(r: Row): Row {
   };
 }
 
+// Marketplace listing with embedded company (service_listings + companies join).
+function mapMarketplaceListing(r: Row): Row {
+  const co = (r.company ?? null) as Row | null;
+  return {
+    id: r.id,
+    companyId: r.company_id,
+    companyName: co?.name ?? 'Provider',
+    companyCity: co?.city ?? '',
+    serviceType: r.service_type ?? 'service',
+    category: r.category,
+    subcategory: r.subcategory ?? '',
+    title: r.title ?? '',
+    description: r.description ?? '',
+    coverageArea: Array.isArray(r.coverage_area) ? r.coverage_area : [],
+    hourlyRate: Number(r.hourly_rate ?? 0),
+    perJobRate: r.per_job_rate != null ? Number(r.per_job_rate) : null,
+    dailyRate: r.daily_rate != null ? Number(r.daily_rate) : null,
+    weeklyRate: r.weekly_rate != null ? Number(r.weekly_rate) : null,
+    minimumHours: Number(r.minimum_hours ?? 1),
+    negotiable: Boolean(r.negotiable),
+    certifications: r.certifications ?? '',
+    status: r.status ?? 'Draft',
+    createdAt: r.created_at ?? new Date().toISOString(),
+  };
+}
+
 // Reverse map (camelCase input -> snake_case db columns). Only whitelisted columns.
 function bookingInputToDb(payload: AnyRecord): AnyRecord {
   const m: AnyRecord = {};
@@ -677,18 +703,58 @@ const PROCEDURES: Record<string, ProcedureFn> = {
 
   'services.createListing': async (input: AnyRecord, ctx) => {
     if (!ctx.user.companyId) throw new Error('Company context required');
-    const { data, error } = await supabase.from('service_listings').insert({
+    const row: AnyRecord = {
       company_id: ctx.user.companyId,
-      category: input.category,
+      category: input.category ?? 'Labour',
       coverage_area: input.coverageArea ?? [],
-      hourly_rate: input.hourlyRate,
+      hourly_rate: input.hourlyRate ?? 0,
       per_job_rate: input.perJobRate ?? null,
       minimum_hours: input.minimumHours ?? 1,
       certifications: input.certifications ?? '',
       status: input.status ?? 'Draft',
-    }).select().single();
+    };
+    // Marketplace fields (migration 0132). Only send when provided so the insert
+    // still works against a pre-migration schema for the legacy provider flow.
+    if (input.serviceType !== undefined) row.service_type = input.serviceType;
+    if (input.title !== undefined) row.title = input.title;
+    if (input.description !== undefined) row.description = input.description;
+    if (input.subcategory !== undefined) row.subcategory = input.subcategory;
+    if (input.dailyRate !== undefined) row.daily_rate = input.dailyRate;
+    if (input.weeklyRate !== undefined) row.weekly_rate = input.weeklyRate;
+    if (input.negotiable !== undefined) row.negotiable = input.negotiable;
+    const { data, error } = await supabase.from('service_listings').insert(row).select().single();
     if (error) throwErr(error, 'Unable to create service');
     return { id: data!.id };
+  },
+
+  // =========================================================================
+  // MARKETPLACE — cross-company services / equipment rental / mobile repair.
+  // Any authenticated business user can browse Active listings (RLS sl_read_auth).
+  // =========================================================================
+  'marketplace.browse': async (input: { serviceType?: string } | undefined) => {
+    const q = supabase
+      .from('service_listings')
+      .select('*, company:companies(id,name,city)')
+      .eq('status', 'Active')
+      .order('created_at', { ascending: false });
+    if (input?.serviceType) q.eq('service_type', input.serviceType);
+    const { data, error } = await q;
+    if (error) {
+      // New feature: if migration 0132 hasn't been applied yet, degrade to empty.
+      if (isMissingColumn(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load the marketplace');
+    }
+    return (data ?? []).map(mapMarketplaceListing);
+  },
+
+  'marketplace.getListing': async (input: { id: string }) => {
+    const { data, error } = await supabase
+      .from('service_listings')
+      .select('*, company:companies(id,name,city)')
+      .eq('id', input.id)
+      .maybeSingle();
+    if (error) throwErr(error, 'Unable to load listing');
+    return data ? mapMarketplaceListing(data) : null;
   },
 
   'services.updateListing': async (input: AnyRecord) => {

@@ -145,6 +145,13 @@ function mapServiceListing(r: Row): ServiceListing {
     certifications: r.certifications ?? '',
     status: r.status ?? 'Draft',
     createdAt: r.created_at ?? new Date().toISOString(),
+    serviceType: r.service_type ?? 'service',
+    title: r.title ?? '',
+    description: r.description ?? '',
+    subcategory: r.subcategory ?? '',
+    dailyRate: r.daily_rate != null ? Number(r.daily_rate) : null,
+    weeklyRate: r.weekly_rate != null ? Number(r.weekly_rate) : null,
+    negotiable: Boolean(r.negotiable),
   };
 }
 

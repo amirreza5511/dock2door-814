@@ -48,6 +48,7 @@ import {
   LifeBuoy,
   Layers,
   Handshake,
+  Store,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole } from "@/lib/relationships";
@@ -84,6 +85,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "My business",
       items: [
+        { href: "/marketplace", label: "Marketplace", icon: Store },
         { href: "/partners", label: "Partners", icon: Handshake },
         { href: "/company/add-role", label: "Add a role", icon: Layers },
       ],

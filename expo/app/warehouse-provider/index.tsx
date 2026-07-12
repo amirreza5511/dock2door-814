@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, Tag, Receipt } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, Tag, Receipt, Store } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -162,7 +162,18 @@ export default function WarehouseProviderDashboard() {
         </View>
 
         <View style={styles.section}>
-          <Card onPress={() => router.push('/warehouse-provider/create-listing' as any)} elevated>
+          <Card onPress={() => router.push('/marketplace' as any)} elevated>
+            <View style={styles.createRow}>
+              <View style={[styles.createIcon, { backgroundColor: C.purpleDim }]}>
+                <Store size={22} color={C.purple} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.createTitle}>Marketplace</Text>
+                <Text style={styles.createDesc}>Rent equipment, mobile repair & post services</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/warehouse-provider/create-listing' as any)} elevated style={{ marginTop: 10 }}>
             <View style={styles.createRow}>
               <View style={[styles.createIcon, { backgroundColor: C.accentDim }]}>
                 <TrendingUp size={22} color={C.accent} />

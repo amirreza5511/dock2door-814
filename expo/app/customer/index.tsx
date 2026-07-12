@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Store } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -137,6 +137,13 @@ export default function CustomerDashboard() {
               </View>
               <Text style={styles.actionTitle}>Container Drayage</Text>
               <Text style={styles.actionDesc}>Import / export containers</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/marketplace' as any)} style={[styles.actionCard, { borderColor: C.purple + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.purpleDim }]}>
+                <Store size={24} color={C.purple} />
+              </View>
+              <Text style={styles.actionTitle}>Marketplace</Text>
+              <Text style={styles.actionDesc}>Rent gear, mobile repair & services</Text>
             </TouchableOpacity>
           </View>
         </View>

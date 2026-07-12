@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag, Receipt } from 'lucide-react-native';
+import { Wrench, DollarSign, Clock, CheckCircle, HelpCircle, LogOut, Tag, Receipt, Store } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
@@ -117,7 +117,18 @@ export default function ServiceProviderDashboard() {
         </View>
 
         <View style={styles.section}>
-          <Card onPress={() => router.push('/service-provider/rates' as any)} style={styles.ratesCard}>
+          <Card onPress={() => router.push('/marketplace' as any)} style={styles.ratesCard}>
+            <View style={styles.ratesRow}>
+              <View style={[styles.catBadge, { backgroundColor: C.accentDim }]}>
+                <Store size={16} color={C.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.listingCat}>Marketplace</Text>
+                <Text style={styles.listingDetail}>Rent equipment, find mobile repair & post services</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/service-provider/rates' as any)} style={[styles.ratesCard, { marginTop: 10 }]}>
             <View style={styles.ratesRow}>
               <View style={[styles.catBadge, { backgroundColor: C.greenDim }]}>
                 <Tag size={16} color={C.green} />

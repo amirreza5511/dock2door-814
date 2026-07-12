@@ -176,6 +176,7 @@ function RootLayoutNav() {
       <Stack.Screen name="admin" />
       <Stack.Screen name="super-admin" />
       <Stack.Screen name="fulfillment" />
+      <Stack.Screen name="marketplace" />
       <Stack.Screen name="partners" />
       <Stack.Screen name="company" />
       <Stack.Screen name="messages" />

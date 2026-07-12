@@ -1,0 +1,94 @@
+/**
+ * Services Marketplace catalog — web mirror of `expo/constants/serviceMarketplace.ts`.
+ * Any company can publish a listing in one of three types (general service,
+ * equipment rental, mobile repair) and any business user can browse and request.
+ *
+ * `service_type` values MUST match the DB check constraint in migration 0132.
+ */
+
+export type ServiceType = "service" | "equipment_rental" | "mobile_repair";
+
+export interface ServiceTypeDef {
+  id: ServiceType;
+  label: string;
+  blurb: string;
+}
+
+export const SERVICE_TYPES: ServiceTypeDef[] = [
+  { id: "service", label: "Services", blurb: "Labour, loading, cleaning & more" },
+  { id: "equipment_rental", label: "Equipment Rental", blurb: "Forklifts, jacks, lifts & gear" },
+  { id: "mobile_repair", label: "Mobile Repair", blurb: "On-site repair technicians" },
+];
+
+export interface SubcategoryDef {
+  id: string;
+  label: string;
+}
+
+export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
+  service: [
+    { id: "general_labour", label: "General Labour" },
+    { id: "loading_unloading", label: "Loading / Unloading" },
+    { id: "devanning", label: "Container Devanning" },
+    { id: "pallet_rework", label: "Pallet Rework" },
+    { id: "industrial_cleaning", label: "Industrial Cleaning" },
+    { id: "local_truck", label: "Local Truck" },
+    { id: "yard_jockey", label: "Yard Jockey" },
+    { id: "inventory_count", label: "Inventory / Cycle Count" },
+  ],
+  equipment_rental: [
+    { id: "forklift", label: "Forklift" },
+    { id: "reach_truck", label: "Reach Truck" },
+    { id: "pallet_jack", label: "Electric Pallet Jack" },
+    { id: "order_picker", label: "Order Picker" },
+    { id: "scissor_lift", label: "Scissor Lift" },
+    { id: "boom_lift", label: "Boom Lift" },
+    { id: "generator", label: "Generator" },
+    { id: "pressure_washer", label: "Pressure Washer" },
+    { id: "floor_scrubber", label: "Floor Scrubber" },
+    { id: "dock_plate", label: "Dock Plate / Ramp" },
+    { id: "shrink_wrapper", label: "Shrink Wrapper" },
+    { id: "trailer", label: "Trailer / Container" },
+  ],
+  mobile_repair: [
+    { id: "forklift_repair", label: "Forklift Repair" },
+    { id: "truck_trailer_repair", label: "Truck / Trailer Repair" },
+    { id: "dock_door_repair", label: "Dock Door / Leveler" },
+    { id: "reefer_repair", label: "Refrigeration / Reefer" },
+    { id: "hvac", label: "HVAC" },
+    { id: "electrical", label: "Electrical" },
+    { id: "hydraulics", label: "Hydraulics" },
+    { id: "tire_service", label: "Tire Service" },
+    { id: "welding", label: "Welding / Fabrication" },
+    { id: "racking_repair", label: "Pallet Racking Repair" },
+  ],
+};
+
+const TYPE_LABEL: Record<ServiceType, string> = {
+  service: "Services",
+  equipment_rental: "Equipment Rental",
+  mobile_repair: "Mobile Repair",
+};
+
+export function serviceTypeLabel(t: string | null | undefined): string {
+  if (!t) return "Services";
+  return TYPE_LABEL[t as ServiceType] ?? "Services";
+}
+
+const SUBCATEGORY_LABEL: Record<string, string> = Object.values(SUBCATEGORIES)
+  .flat()
+  .reduce((acc, s) => {
+    acc[s.id] = s.label;
+    return acc;
+  }, {} as Record<string, string>);
+
+export function subcategoryLabel(id: string | null | undefined): string {
+  if (!id) return "";
+  return SUBCATEGORY_LABEL[id] ?? id;
+}
+
+export const RATE_UNITS = {
+  hour: "/hr",
+  day: "/day",
+  week: "/wk",
+} as const;
