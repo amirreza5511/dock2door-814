@@ -13,8 +13,6 @@ interface LotRow {
   product_name: string | null;
   lot_number: string | null;
   expiry_date: string | null;
-  unit_weight_kg: number | null;
-  unit_volume_m3: number | null;
   created_at: string;
   warehouse_name?: string | null;
   total_on_hand?: number | null;
@@ -49,16 +47,25 @@ export default function CustomerInventoryPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_lots")
-        .select(`id, sku, product_name, lot_number, expiry_date, unit_weight_kg, unit_volume_m3, created_at,
+        .select(`id, lot_code, expiry_date, created_at,
+          product_variants(sku, name, products(name)),
           stock_levels(on_hand, warehouse_locations(warehouse_listings(name)))`)
         .order("created_at", { ascending: false })
         .limit(500);
       if (error) throw error;
-      return (data ?? []).map((l: any) => ({
-        ...l,
-        warehouse_name: l.stock_levels?.[0]?.warehouse_locations?.warehouse_listings?.name ?? null,
-        total_on_hand: l.stock_levels?.reduce((sum: number, s: any) => sum + (s.on_hand ?? 0), 0) ?? 0,
-      })) as LotRow[];
+      return (data ?? []).map((l: any) => {
+        const variant = l.product_variants;
+        return {
+          id: l.id,
+          sku: variant?.sku ?? null,
+          product_name: variant?.products?.name ?? variant?.name ?? null,
+          lot_number: l.lot_code ?? null,
+          expiry_date: l.expiry_date ?? null,
+          created_at: l.created_at,
+          warehouse_name: l.stock_levels?.[0]?.warehouse_locations?.warehouse_listings?.name ?? null,
+          total_on_hand: l.stock_levels?.reduce((sum: number, s: any) => sum + (s.on_hand ?? 0), 0) ?? 0,
+        };
+      }) as LotRow[];
     },
   });
 
@@ -68,15 +75,23 @@ export default function CustomerInventoryPage() {
       const { data, error } = await supabase
         .from("stock_movements")
         .select(`id, kind, quantity, reference_id, notes, created_at,
-          inventory_lots(product_name, sku)`)
+          product_variants(sku, name, products(name))`)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return (data ?? []).map((m: any) => ({
-        ...m,
-        product_name: m.inventory_lots?.product_name ?? null,
-        sku: m.inventory_lots?.sku ?? null,
-      })) as MovementRow[];
+      return (data ?? []).map((m: any) => {
+        const variant = m.product_variants;
+        return {
+          id: m.id,
+          kind: m.kind,
+          quantity: m.quantity,
+          reference_id: m.reference_id,
+          notes: m.notes,
+          created_at: m.created_at,
+          product_name: variant?.products?.name ?? variant?.name ?? null,
+          sku: variant?.sku ?? null,
+        };
+      }) as MovementRow[];
     },
   });
 
