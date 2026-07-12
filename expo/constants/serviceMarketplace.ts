@@ -35,6 +35,8 @@ export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
     { id: 'loading_unloading', label: 'Loading / Unloading' },
     { id: 'devanning', label: 'Container Devanning' },
     { id: 'pallet_rework', label: 'Pallet Rework' },
+    { id: 'pallet_removal', label: 'Pallet Removal' },
+    { id: 'garbage_removal', label: 'Garbage Removal' },
     { id: 'industrial_cleaning', label: 'Industrial Cleaning' },
     { id: 'local_truck', label: 'Local Truck' },
     { id: 'yard_jockey', label: 'Yard Jockey' },
