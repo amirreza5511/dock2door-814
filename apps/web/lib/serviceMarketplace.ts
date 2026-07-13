@@ -51,6 +51,8 @@ export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
     { id: "dock_plate", label: "Dock Plate / Ramp" },
     { id: "shrink_wrapper", label: "Shrink Wrapper" },
     { id: "trailer", label: "Trailer / Container" },
+    { id: "crane", label: "Crane" },
+    { id: "hoist_winch", label: "Hoist / Winch" },
   ],
   mobile_repair: [
     { id: "forklift_repair", label: "Forklift Repair" },
