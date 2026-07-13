@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import {
   ArrowLeft, Search, Plus, Store, Forklift, Hammer, Wrench, ShieldCheck,
-  ClipboardList, Inbox, ChevronRight, Tag,
+  ClipboardList, Inbox, ChevronRight, Tag, Construction,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -15,6 +15,7 @@ import { SERVICE_TYPES, type ServiceType } from '@/constants/serviceMarketplace'
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
+  crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
 };
@@ -22,6 +23,7 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
+  crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
 };

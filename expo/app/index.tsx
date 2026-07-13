@@ -89,9 +89,10 @@ const WORLDS: WorldDef[] = [
     bg: C.yellowDim,
     icon: Store,
     title: 'Rentals & Services',
-    desc: 'A shared marketplace for every business: rent equipment (forklifts, cranes, hoists), book mobile repair techs, hire services, and insure your cargo. Request a quote, get an official price, and place the order.',
+    desc: 'A shared marketplace for every business: rent equipment you operate, hire an operated crane service, book mobile repair techs, hire services, and insure your cargo. Request a quote, get an official price, and place the order.',
     bullets: [
-      { icon: Forklift, label: 'Equipment Rental', sub: 'Forklifts, cranes, hoists & lifts' },
+      { icon: Forklift, label: 'Equipment Rental', sub: 'Forklifts, lifts & gear you operate' },
+      { icon: Construction, label: 'Crane Service', sub: 'Crane + operator comes & does the lift' },
       { icon: Hammer, label: 'Mobile Repair & Services', sub: 'On-site techs & labour crews' },
       { icon: ShieldCheck, label: 'Cargo Insurance', sub: 'Insure freight & shipments' },
     ],

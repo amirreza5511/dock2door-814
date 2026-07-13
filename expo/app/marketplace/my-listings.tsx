@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench, ShieldCheck, Construction } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
@@ -13,6 +13,7 @@ import type { ServiceListing } from '@/constants/types';
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
+  crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
 };
@@ -20,6 +21,7 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
+  crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
 };

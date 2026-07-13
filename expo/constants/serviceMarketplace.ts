@@ -6,7 +6,7 @@
  * `service_type` values MUST match the DB check constraint in migration 0132.
  */
 
-export type ServiceType = 'service' | 'equipment_rental' | 'mobile_repair' | 'cargo_insurance';
+export type ServiceType = 'service' | 'equipment_rental' | 'crane_service' | 'mobile_repair' | 'cargo_insurance';
 
 export interface ServiceTypeDef {
   id: ServiceType;
@@ -14,12 +14,13 @@ export interface ServiceTypeDef {
   /** Short description shown on the type selector. */
   blurb: string;
   /** lucide icon name to render (kept as a string so both platforms map it). */
-  icon: 'Wrench' | 'Forklift' | 'Hammer' | 'ShieldCheck';
+  icon: 'Wrench' | 'Forklift' | 'Hammer' | 'ShieldCheck' | 'Construction';
 }
 
 export const SERVICE_TYPES: ServiceTypeDef[] = [
   { id: 'service', label: 'Services', blurb: 'Labour, loading, cleaning & more', icon: 'Wrench' },
-  { id: 'equipment_rental', label: 'Equipment Rental', blurb: 'Forklifts, cranes, lifts & gear', icon: 'Forklift' },
+  { id: 'equipment_rental', label: 'Equipment Rental', blurb: 'Forklifts, lifts & gear you operate', icon: 'Forklift' },
+  { id: 'crane_service', label: 'Crane Service', blurb: 'Crane + operator comes & does the lift', icon: 'Construction' },
   { id: 'mobile_repair', label: 'Mobile Repair', blurb: 'On-site repair technicians', icon: 'Hammer' },
   { id: 'cargo_insurance', label: 'Cargo Insurance', blurb: 'Insure freight & shipments', icon: 'ShieldCheck' },
 ];
@@ -56,8 +57,17 @@ export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
     { id: 'dock_plate', label: 'Dock Plate / Ramp' },
     { id: 'shrink_wrapper', label: 'Shrink Wrapper' },
     { id: 'trailer', label: 'Trailer / Container' },
-    { id: 'crane', label: 'Crane' },
+    { id: 'crane', label: 'Crane (unoperated)' },
     { id: 'hoist_winch', label: 'Hoist / Winch' },
+  ],
+  crane_service: [
+    { id: 'mobile_crane', label: 'Mobile Crane + Operator' },
+    { id: 'boom_truck', label: 'Boom Truck / Picker' },
+    { id: 'crawler_crane', label: 'Crawler Crane' },
+    { id: 'tower_crane', label: 'Tower Crane' },
+    { id: 'rigging', label: 'Rigging & Machinery Moving' },
+    { id: 'heavy_lift', label: 'Heavy Lift / Specialized' },
+    { id: 'man_basket', label: 'Man Basket / Aerial Work' },
   ],
   mobile_repair: [
     { id: 'forklift_repair', label: 'Forklift Repair' },
@@ -84,6 +94,7 @@ export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
 const TYPE_LABEL: Record<ServiceType, string> = {
   service: 'Services',
   equipment_rental: 'Equipment Rental',
+  crane_service: 'Crane Service',
   mobile_repair: 'Mobile Repair',
   cargo_insurance: 'Cargo Insurance',
 };

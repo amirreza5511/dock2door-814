@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
-  Search, MapPin, X, Wrench, Hammer, Forklift, ShieldCheck, DollarSign,
+  Search, MapPin, X, Wrench, Hammer, Forklift, ShieldCheck, Construction, DollarSign,
   ArrowLeft, Plus, Store, Building2, ChevronRight,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
@@ -44,6 +44,7 @@ type MarketListing = {
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
+  crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
 };
@@ -51,6 +52,7 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
+  crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
 };

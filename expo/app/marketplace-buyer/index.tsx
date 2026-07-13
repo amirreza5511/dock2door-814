@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import {
-  Search, LogOut, Forklift, Hammer, ShieldCheck, Wrench, ClipboardList, ChevronRight, ShoppingBag,
+  Search, LogOut, Forklift, Hammer, ShieldCheck, Wrench, ClipboardList, ChevronRight, ShoppingBag, Construction,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
@@ -19,12 +19,14 @@ import { SERVICE_TYPES, serviceTypeLabel, type ServiceType } from '@/constants/s
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
+  crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
 };
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
+  crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
 };

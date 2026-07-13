@@ -6,13 +6,14 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Search, ShoppingBag, ChevronRight, Wrench, Forklift, Hammer, ShieldCheck, type LucideIcon,
+  Search, ShoppingBag, ChevronRight, Wrench, Forklift, Hammer, ShieldCheck, Construction, type LucideIcon,
 } from "lucide-react";
 import { SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, type ServiceType } from "@/lib/serviceMarketplace";
 
 const TYPE_ICON: Record<ServiceType, LucideIcon> = {
   service: Wrench,
   equipment_rental: Forklift,
+  crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
 };
@@ -20,6 +21,7 @@ const TYPE_ICON: Record<ServiceType, LucideIcon> = {
 const TYPE_ACCENT: Record<ServiceType, string> = {
   service: "text-emerald-500",
   equipment_rental: "text-amber-500",
+  crane_service: "text-orange-500",
   mobile_repair: "text-purple-500",
   cargo_insurance: "text-yellow-500",
 };
