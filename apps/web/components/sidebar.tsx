@@ -51,7 +51,7 @@ import {
   Store,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
-import { isBusinessRole } from "@/lib/relationships";
+import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -85,9 +85,22 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "My business",
       items: [
-        { href: "/marketplace", label: "Marketplace", icon: Store },
         { href: "/partners", label: "Partners", icon: Handshake },
         { href: "/company/add-role", label: "Add a role", icon: Layers },
+      ],
+    });
+  }
+
+  // Marketplace is a shared fifth world (rentals & services) open to every business.
+  if (canAccessMarketplace(role) || isAdmin || role === "Admin" || role === "SuperAdmin") {
+    sections.push({
+      label: "Rentals & Services",
+      items: [
+        { href: "/marketplace", label: "Marketplace", icon: Store },
+        { href: "/marketplace/browse", label: "Browse listings", icon: Search },
+        { href: "/marketplace/create", label: "Post a listing", icon: Plus },
+        { href: "/marketplace/my-listings", label: "My listings", icon: Tag },
+        { href: "/marketplace/requests", label: "Requests", icon: ClipboardList },
       ],
     });
   }

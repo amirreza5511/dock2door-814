@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Anchor, Boxes, Check, ChevronDown, HardHat, Send } from 'lucide-react-native';
+import { Anchor, Boxes, Check, ChevronDown, HardHat, Send, Store } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { useCurrentWorld } from '@/providers/CurrentWorldProvider';
 import { useAuthStore } from '@/store/auth';
-import { type Domain, DOMAIN_LABELS, getRoleRoute, isAdminRole } from '@/lib/access';
+import { type Domain, DOMAIN_LABELS, getDomainRoute, isAdminRole } from '@/lib/access';
 
 const WORLD_META: Record<Domain, { icon: typeof HardHat; color: string; bg: string }> = {
   labour: { icon: HardHat, color: C.purple, bg: C.purpleDim },
   logistics: { icon: Boxes, color: C.accent, bg: C.accentDim },
   freight: { icon: Send, color: C.green, bg: C.greenDim },
   drayage: { icon: Anchor, color: C.blue, bg: C.blueDim },
+  marketplace: { icon: Store, color: C.yellow, bg: C.yellowDim },
 };
 
 /**
@@ -38,11 +39,16 @@ export default function WorldSwitcher() {
       return;
     }
     setCurrentWorld(world);
+    // The Marketplace is a shared hub anyone (including admins) can open.
+    if (world === 'marketplace') {
+      router.push('/marketplace' as never);
+      return;
+    }
     // Admins keep their shared admin home; non-admins go to their role's home.
     if (isAdminRole(user.role) || user.isPlatformAdmin) {
       return;
     }
-    const destination = getRoleRoute(user.role);
+    const destination = getDomainRoute(world, user.role);
     router.replace(destination as never);
   };
 

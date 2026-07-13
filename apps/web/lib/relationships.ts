@@ -6,7 +6,28 @@ import type { UserRole } from "@/lib/types";
  * (`supabase/migrations/0129_role_relationships.sql`). Keep all three in sync.
  */
 
-export type Domain = "labour" | "logistics" | "freight" | "drayage";
+export type Domain = "labour" | "logistics" | "freight" | "drayage" | "marketplace";
+
+/**
+ * Roles that can enter the shared Marketplace world (rent equipment, book mobile
+ * repair, post services). Every company-backed role gets it on top of their own
+ * world — mirror of `expo/lib/access.ts` MARKETPLACE_ROLES.
+ */
+export const MARKETPLACE_ROLES: UserRole[] = [
+  "Customer",
+  "WarehouseProvider",
+  "ServiceProvider",
+  "Employer",
+  "TruckingCompany",
+  "GateStaff",
+  "Shipper",
+  "DrayageCompany",
+  "FreightForwarder",
+];
+
+export function canAccessMarketplace(role: UserRole | string | null | undefined): boolean {
+  return !!role && MARKETPLACE_ROLES.includes(role as UserRole);
+}
 
 export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Worker: "labour",
@@ -107,6 +128,7 @@ export const DOMAIN_COLORS: Record<Domain, { text: string; bg: string; border: s
   logistics: { text: "text-teal-700", bg: "bg-teal-50", border: "border-teal-200" },
   freight: { text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" },
   drayage: { text: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200" },
+  marketplace: { text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" },
 };
 
 export function isBusinessRole(role: UserRole | string | null | undefined): boolean {

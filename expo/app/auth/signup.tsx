@@ -39,6 +39,9 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { id: 'DrayageCompany', role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
     { id: 'DrayageDriver', role: 'Driver', label: 'Drayage Driver', desc: 'Drive container moves — enter your drayage company’s fleet code' },
   ],
+  // Marketplace is a shared world every business can enter after signup — it has
+  // no dedicated signup role of its own.
+  marketplace: [],
 };
 
 const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage'];

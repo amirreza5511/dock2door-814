@@ -4,7 +4,7 @@ import type { CompanyType, User, UserRole } from '@/constants/types';
 export const ENABLE_DOMAINS = true;
 
 /** The product worlds plus the shared admin layer. */
-export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage';
+export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace';
 
 /** Roles belonging to the Labour world. */
 export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer'];
@@ -47,7 +47,35 @@ export const DOMAIN_LABELS: Record<Domain, string> = {
   logistics: 'Logistics & Warehousing',
   freight: 'Freight & Delivery',
   drayage: 'Container Drayage',
+  marketplace: 'Rentals & Services',
 };
+
+/**
+ * Roles that can enter the shared Marketplace world (rent equipment, book mobile
+ * repair, post services). Every company-backed role gets it, on top of their own
+ * world — the marketplace is a cross-cutting fifth world open to all businesses.
+ */
+export const MARKETPLACE_ROLES: UserRole[] = [
+  'Customer',
+  'WarehouseProvider',
+  'ServiceProvider',
+  'Employer',
+  'TruckingCompany',
+  'GateStaff',
+  'Shipper',
+  'DrayageCompany',
+  'FreightForwarder',
+];
+
+/** Home route for each world. Used by the world switcher to navigate on select. */
+export const DOMAIN_HOME_ROUTES: Partial<Record<Domain, string>> = {
+  marketplace: '/marketplace',
+};
+
+/** True when a role can access the shared Marketplace world. */
+export function canAccessMarketplace(role: UserRole): boolean {
+  return MARKETPLACE_ROLES.includes(role);
+}
 
 export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   SalesAgent: '/sales-agent',
@@ -155,10 +183,23 @@ export function visibleDomains(user: User | null): Domain[] {
     return [];
   }
   if (isAdminRole(user.role) || user.isPlatformAdmin) {
-    return ['labour', 'logistics', 'freight', 'drayage'];
+    return ['labour', 'logistics', 'freight', 'drayage', 'marketplace'];
   }
   const domain = DOMAIN_BY_ROLE[user.role];
-  return domain ? [domain] : [];
+  const worlds: Domain[] = domain ? [domain] : [];
+  // Marketplace is a shared fifth world layered on top of a business's own world.
+  if (canAccessMarketplace(user.role) && !worlds.includes('marketplace')) {
+    worlds.push('marketplace');
+  }
+  return worlds;
+}
+
+/**
+ * Resolves the home route for a world the user just switched into. The marketplace
+ * world has its own hub; every other world maps back to the user's role home.
+ */
+export function getDomainRoute(world: Domain, role: UserRole): string {
+  return DOMAIN_HOME_ROUTES[world] ?? getRoleRoute(role);
 }
 
 /**
@@ -169,6 +210,9 @@ export function visibleDomains(user: User | null): Domain[] {
 export function domainForSegment(segment: string | undefined): Domain | null {
   if (!segment) {
     return null;
+  }
+  if (segment === 'marketplace') {
+    return 'marketplace';
   }
   const roles = ROUTE_PREFIXES[segment];
   if (!roles) {
