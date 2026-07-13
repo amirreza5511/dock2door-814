@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Store, Search, Plus, Tag, Inbox, ChevronRight, Wrench, Forklift, Hammer,
+  Store, Search, Plus, Tag, Inbox, ChevronRight, Wrench, Forklift, Hammer, ShieldCheck,
 } from "lucide-react";
 import { SERVICE_TYPES, type ServiceType } from "@/lib/serviceMarketplace";
 
@@ -14,12 +14,14 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
   mobile_repair: Hammer,
+  cargo_insurance: ShieldCheck,
 };
 
 const TYPE_ACCENT: Record<ServiceType, string> = {
   service: "text-emerald-500",
   equipment_rental: "text-amber-500",
   mobile_repair: "text-purple-500",
+  cargo_insurance: "text-yellow-500",
 };
 
 export default function MarketplaceHomePage() {

@@ -172,6 +172,10 @@ function RootLayoutNav() {
       <Stack.Screen name="shipper" />
       <Stack.Screen name="drayage-company" />
       <Stack.Screen name="freight-forwarder" />
+      <Stack.Screen name="rental-company" />
+      <Stack.Screen name="repair-provider" />
+      <Stack.Screen name="cargo-insurer" />
+      <Stack.Screen name="marketplace-buyer" />
       <Stack.Screen name="sales-agent" />
       <Stack.Screen name="admin" />
       <Stack.Screen name="super-admin" />

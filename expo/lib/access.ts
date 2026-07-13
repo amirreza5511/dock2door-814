@@ -23,6 +23,21 @@ export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'
 /** Roles belonging to the Container Drayage world. */
 export const DRAYAGE_ROLES: UserRole[] = ['FreightForwarder', 'DrayageCompany'];
 
+/**
+ * Roles that live natively in the Rentals & Services world (Domain 5). These are
+ * the dedicated signup roles: equipment/crane rental companies, mobile repair
+ * providers, cargo insurers (all providers) plus a standalone marketplace buyer.
+ */
+export const MARKETPLACE_PROVIDER_ROLES: UserRole[] = [
+  'EquipmentRentalCompany',
+  'MobileRepairProvider',
+  'CargoInsurer',
+];
+export const MARKETPLACE_DOMAIN_ROLES: UserRole[] = [
+  ...MARKETPLACE_PROVIDER_ROLES,
+  'MarketplaceBuyer',
+];
+
 /** Roles in the shared admin layer that oversees both worlds. */
 export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
 
@@ -39,6 +54,10 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Shipper: 'freight',
   DrayageCompany: 'drayage',
   FreightForwarder: 'drayage',
+  EquipmentRentalCompany: 'marketplace',
+  MobileRepairProvider: 'marketplace',
+  CargoInsurer: 'marketplace',
+  MarketplaceBuyer: 'marketplace',
 };
 
 /** Human-friendly labels for each world. */
@@ -65,6 +84,7 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   'Shipper',
   'DrayageCompany',
   'FreightForwarder',
+  ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
 /** Home route for each world. Used by the world switcher to navigate on select. */
@@ -90,6 +110,10 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   Shipper: '/shipper',
   DrayageCompany: '/drayage-company',
   FreightForwarder: '/freight-forwarder',
+  EquipmentRentalCompany: '/rental-company',
+  MobileRepairProvider: '/repair-provider',
+  CargoInsurer: '/cargo-insurer',
+  MarketplaceBuyer: '/marketplace-buyer',
   Admin: '/admin',
   SuperAdmin: '/super-admin',
 };
@@ -104,6 +128,7 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'Shipper',
   'DrayageCompany',
   'FreightForwarder',
+  ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
 export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
@@ -116,6 +141,10 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   Shipper: 'Shipper',
   DrayageCompany: 'DrayageCompany',
   FreightForwarder: 'FreightForwarder',
+  EquipmentRentalCompany: 'EquipmentRentalCompany',
+  MobileRepairProvider: 'MobileRepairProvider',
+  CargoInsurer: 'CargoInsurer',
+  MarketplaceBuyer: 'MarketplaceBuyer',
 };
 
 const ROUTE_PREFIXES: Record<string, UserRole[]> = {
@@ -130,6 +159,10 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   shipper: ['Shipper'],
   'drayage-company': ['DrayageCompany'],
   'freight-forwarder': ['FreightForwarder'],
+  'rental-company': ['EquipmentRentalCompany'],
+  'repair-provider': ['MobileRepairProvider'],
+  'cargo-insurer': ['CargoInsurer'],
+  'marketplace-buyer': ['MarketplaceBuyer'],
   'sales-agent': ['SalesAgent'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],

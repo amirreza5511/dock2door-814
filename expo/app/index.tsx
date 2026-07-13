@@ -254,7 +254,9 @@ export default function Landing() {
               { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue },
               { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue },
               { role: 'Crane / Equipment Co.', desc: 'Rent out cranes & heavy gear', icon: Construction, color: C.yellow },
+              { role: 'Mobile Repair', desc: 'Dispatch techs & crews on-site', icon: Hammer, color: C.purple },
               { role: 'Cargo Insurer', desc: 'Insure freight & shipments', icon: ShieldCheck, color: C.yellow },
+              { role: 'Marketplace Buyer', desc: 'Rent, repair & insure cargo', icon: Store, color: C.blue },
               { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
             ].map((r) => (
               <View key={r.role} style={styles.roleCard}>

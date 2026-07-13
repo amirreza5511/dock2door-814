@@ -10,6 +10,10 @@ export type UserRole =
   | "Shipper"
   | "DrayageCompany"
   | "FreightForwarder"
+  | "EquipmentRentalCompany"
+  | "MobileRepairProvider"
+  | "CargoInsurer"
+  | "MarketplaceBuyer"
   | "SalesAgent"
   | "Admin"
   | "SuperAdmin";
@@ -19,7 +23,11 @@ export type CompanyType =
   | "WarehouseProvider"
   | "ServiceProvider"
   | "Employer"
-  | "TruckingCompany";
+  | "TruckingCompany"
+  | "EquipmentRentalCompany"
+  | "MobileRepairProvider"
+  | "CargoInsurer"
+  | "MarketplaceBuyer";
 
 export interface Profile {
   id: string;

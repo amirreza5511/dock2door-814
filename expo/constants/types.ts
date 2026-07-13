@@ -1,4 +1,4 @@
-export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'SalesAgent' | 'Admin' | 'SuperAdmin';
+export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'EquipmentRentalCompany' | 'MobileRepairProvider' | 'CargoInsurer' | 'MarketplaceBuyer' | 'SalesAgent' | 'Admin' | 'SuperAdmin';
 
 /** Sales-agent CRM verticals an agent can onboard accounts for. */
 export type SalesVertical =
@@ -65,7 +65,7 @@ export interface CommissionEntry {
   approvedAt: string | null;
   paidAt: string | null;
 }
-export type CompanyType = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'TruckingCompany' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder';
+export type CompanyType = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'TruckingCompany' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'EquipmentRentalCompany' | 'MobileRepairProvider' | 'CargoInsurer' | 'MarketplaceBuyer';
 export type AppRouteRole = Exclude<UserRole, 'SuperAdmin'> | 'SuperAdmin';
 export type CompanyStatus = 'PendingApproval' | 'Approved' | 'Suspended';
 export type CompanyRole = 'Owner' | 'Staff';

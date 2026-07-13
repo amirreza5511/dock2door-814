@@ -6,7 +6,16 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { REAL_IMAGES } from "@/components/landing/images";
 import { ArrowRight, Boxes, Truck, Warehouse, Ship, Sparkles } from "lucide-react";
 
-type Role = "Customer" | "WarehouseProvider" | "ServiceProvider" | "Employer" | "TruckingCompany";
+type Role =
+  | "Customer"
+  | "WarehouseProvider"
+  | "ServiceProvider"
+  | "Employer"
+  | "TruckingCompany"
+  | "EquipmentRentalCompany"
+  | "MobileRepairProvider"
+  | "CargoInsurer"
+  | "MarketplaceBuyer";
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "Customer", label: "Customer" },
@@ -14,6 +23,10 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "ServiceProvider", label: "Service Provider" },
   { value: "Employer", label: "Employer" },
   { value: "TruckingCompany", label: "Trucking Company" },
+  { value: "EquipmentRentalCompany", label: "Equipment / Crane Rental" },
+  { value: "MobileRepairProvider", label: "Mobile Repair & Services" },
+  { value: "CargoInsurer", label: "Cargo Insurer" },
+  { value: "MarketplaceBuyer", label: "Marketplace Buyer" },
 ];
 
 type FloatCard = {

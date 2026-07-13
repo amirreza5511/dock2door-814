@@ -39,12 +39,17 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { id: 'DrayageCompany', role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
     { id: 'DrayageDriver', role: 'Driver', label: 'Drayage Driver', desc: 'Drive container moves — enter your drayage company’s fleet code' },
   ],
-  // Marketplace is a shared world every business can enter after signup — it has
-  // no dedicated signup role of its own.
-  marketplace: [],
+  // Rentals & Services (Domain 5) — a first-class world with its own provider
+  // roles plus a standalone buyer for people who don't belong to another world.
+  marketplace: [
+    { id: 'EquipmentRentalCompany', role: 'EquipmentRentalCompany', label: 'Equipment / Crane Rental Co.', desc: 'Rent out forklifts, cranes, hoists & heavy machinery' },
+    { id: 'MobileRepairProvider', role: 'MobileRepairProvider', label: 'Mobile Repair & Services', desc: 'Dispatch technicians & work crews on-site' },
+    { id: 'CargoInsurer', role: 'CargoInsurer', label: 'Cargo Insurer', desc: 'Insure freight & shipments by cargo value' },
+    { id: 'MarketplaceBuyer', role: 'MarketplaceBuyer', label: 'Marketplace Buyer', desc: 'Rent gear, book repairs & insure cargo — no other world needed' },
+  ],
 };
 
-const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage'];
+const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage', 'marketplace'];
 
 /** Standalone cross-vertical role: sales agents onboard accounts and earn commission. */
 const SALES_ROLE: RoleOption = {

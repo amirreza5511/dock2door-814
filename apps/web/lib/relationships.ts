@@ -23,6 +23,10 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   "Shipper",
   "DrayageCompany",
   "FreightForwarder",
+  "EquipmentRentalCompany",
+  "MobileRepairProvider",
+  "CargoInsurer",
+  "MarketplaceBuyer",
 ];
 
 export function canAccessMarketplace(role: UserRole | string | null | undefined): boolean {
@@ -41,6 +45,10 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Shipper: "freight",
   DrayageCompany: "drayage",
   FreightForwarder: "drayage",
+  EquipmentRentalCompany: "marketplace",
+  MobileRepairProvider: "marketplace",
+  CargoInsurer: "marketplace",
+  MarketplaceBuyer: "marketplace",
 };
 
 /** Roles that represent a company. They can add compatible roles and use Partners. */
@@ -53,6 +61,10 @@ export const BUSINESS_ROLES: UserRole[] = [
   "Shipper",
   "FreightForwarder",
   "DrayageCompany",
+  "EquipmentRentalCompany",
+  "MobileRepairProvider",
+  "CargoInsurer",
+  "MarketplaceBuyer",
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
@@ -95,6 +107,10 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   Shipper: "Shipper",
   DrayageCompany: "Drayage Company",
   FreightForwarder: "Freight Forwarder",
+  EquipmentRentalCompany: "Equipment / Crane Rental",
+  MobileRepairProvider: "Mobile Repair & Services",
+  CargoInsurer: "Cargo Insurer",
+  MarketplaceBuyer: "Marketplace Buyer",
   SalesAgent: "Sales Agent",
   Admin: "Admin",
   SuperAdmin: "Super Admin",
@@ -109,6 +125,10 @@ export const ROLE_BLURB: Partial<Record<UserRole, string>> = {
   Shipper: "Post deliveries and hire carriers to move freight.",
   FreightForwarder: "Post container drayage orders to move import/export freight.",
   DrayageCompany: "Run container drayage — pull, deliver and return containers.",
+  EquipmentRentalCompany: "Rent out forklifts, cranes, hoists and heavy machinery.",
+  MobileRepairProvider: "Dispatch technicians and work crews on-site.",
+  CargoInsurer: "Insure freight and shipments by cargo value.",
+  MarketplaceBuyer: "Rent gear, book repairs and insure cargo.",
 };
 
 export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
@@ -120,6 +140,10 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   Shipper: "Shipper",
   FreightForwarder: "FreightForwarder",
   DrayageCompany: "DrayageCompany",
+  EquipmentRentalCompany: "EquipmentRentalCompany",
+  MobileRepairProvider: "MobileRepairProvider",
+  CargoInsurer: "CargoInsurer",
+  MarketplaceBuyer: "MarketplaceBuyer",
 };
 
 /** Tailwind-ish colour tokens per world, for partner-card accents. */
