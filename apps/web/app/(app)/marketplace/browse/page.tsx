@@ -14,9 +14,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
-import { Store, MapPin, Building2, Plus, Search } from "lucide-react";
+import { Store, MapPin, Building2, Plus, Search, ChevronRight } from "lucide-react";
 import {
-  SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, type ServiceType,
+  SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, isInsuranceType, type ServiceType,
 } from "@/lib/serviceMarketplace";
 
 interface MarketListing {
@@ -32,6 +32,8 @@ interface MarketListing {
   daily_rate: number | null;
   weekly_rate: number | null;
   minimum_hours: number | null;
+  cargo_rate_percent: number | null;
+  min_premium: number | null;
   negotiable: boolean | null;
   certifications: string | null;
   company: { id: string; name: string; city: string | null } | null;
@@ -41,9 +43,15 @@ const TYPE_BADGE: Record<ServiceType, "success" | "warning" | "secondary"> = {
   service: "success",
   equipment_rental: "warning",
   mobile_repair: "secondary",
+  cargo_insurance: "warning",
 };
 
 function priceLabel(l: MarketListing): string {
+  if (l.service_type === "cargo_insurance") {
+    if (l.cargo_rate_percent) return `${l.cargo_rate_percent}% of value`;
+    if (l.min_premium) return `from $${l.min_premium}`;
+    return l.negotiable ? "Negotiable" : "—";
+  }
   if (l.service_type === "equipment_rental") {
     if (l.daily_rate) return `$${l.daily_rate}/day`;
     if (l.weekly_rate) return `$${l.weekly_rate}/wk`;
@@ -70,7 +78,9 @@ export default function MarketplaceBrowsePage() {
   const [city, setCity] = useState("");
   const [dateTime, setDateTime] = useState("");
   const [duration, setDuration] = useState("");
+  const [cargoValue, setCargoValue] = useState("");
   const [notes, setNotes] = useState("");
+  const insurance = selected ? isInsuranceType(selected.service_type) : false;
 
   const listingsQ = useQuery({
     queryKey: ["marketplace", "listings"],
@@ -101,11 +111,11 @@ export default function MarketplaceBrowsePage() {
   const request = useMutation({
     mutationFn: async () => {
       if (!selected) throw new Error("No listing selected.");
-      if (!address.trim() || !city.trim() || !dateTime.trim() || !duration.trim()) {
-        throw new Error("Please fill address, city, date/time and duration.");
+      if (!city.trim() || !dateTime.trim()) {
+        throw new Error("Please fill city and date/time.");
       }
-      const durationHours = Number(duration);
-      if (!Number.isFinite(durationHours) || durationHours <= 0) {
+      const durationHours = insurance ? 1 : Number(duration);
+      if (!insurance && (!Number.isFinite(durationHours) || durationHours <= 0)) {
         throw new Error("Enter a valid duration in hours.");
       }
       const { data: { user } } = await supabase.auth.getUser();
@@ -118,25 +128,27 @@ export default function MarketplaceBrowsePage() {
         .limit(1)
         .single();
       if (memErr || !membership?.company_id) throw new Error("No company associated with your account.");
-      const rate = selected.hourly_rate ?? 0;
-      const { error } = await supabase.from("service_jobs").insert({
+      const { data, error } = await supabase.from("service_jobs").insert({
         service_id: selected.id,
         customer_company_id: membership.company_id,
         location_address: address.trim(),
         location_city: city.trim(),
         date_time_start: dateTime,
-        duration_hours: durationHours,
+        duration_hours: durationHours || 1,
         notes: notes.trim(),
-        total_price: rate > 0 ? rate * durationHours : 0,
+        total_price: 0,
         status: "Requested",
         payment_status: "Pending",
-      });
+        quote_status: "requested",
+        cargo_value: insurance && cargoValue ? Number(cargoValue) : null,
+      }).select("id").single();
       if (error) throw error;
+      return data?.id as string;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketplace", "listings"] });
       setSelected(null);
-      setAddress(""); setCity(""); setDateTime(""); setDuration(""); setNotes("");
+      setAddress(""); setCity(""); setDateTime(""); setDuration(""); setCargoValue(""); setNotes("");
     },
   });
 
@@ -212,9 +224,14 @@ export default function MarketplaceBrowsePage() {
                   <h3 className="font-semibold leading-tight">
                     {l.title || subcategoryLabel(l.subcategory) || serviceTypeLabel(l.service_type)}
                   </h3>
-                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Link
+                    href={`/marketplace/provider/${l.company_id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1 flex items-center gap-1.5 text-xs text-primary hover:underline"
+                  >
                     <Building2 className="h-3.5 w-3.5" /> {l.company?.name ?? "Provider"}
-                  </div>
+                    <ChevronRight className="h-3 w-3" />
+                  </Link>
                   {(l.coverage_area ?? []).length > 0 && (
                     <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                       <MapPin className="h-3.5 w-3.5" /> {(l.coverage_area ?? []).join(" · ")}
@@ -251,14 +268,21 @@ export default function MarketplaceBrowsePage() {
                 </div>
                 {selected.description && <p className="text-sm">{selected.description}</p>}
                 <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-3 text-sm">
-                  {[
-                    ["Hourly", selected.hourly_rate ? `$${selected.hourly_rate}` : "—"],
-                    ["Daily", selected.daily_rate ? `$${selected.daily_rate}` : "—"],
-                    ["Weekly", selected.weekly_rate ? `$${selected.weekly_rate}` : "—"],
-                    ["Per Job", selected.per_job_rate ? `$${selected.per_job_rate}` : "—"],
-                    ["Min Hours", `${selected.minimum_hours ?? 1}h`],
-                    ["Pricing", selected.negotiable ? "Negotiable" : "Fixed"],
-                  ].map(([label, val]) => (
+                  {(insurance
+                    ? [
+                        ["Rate", selected.cargo_rate_percent ? `${selected.cargo_rate_percent}%` : "—"],
+                        ["Min Premium", selected.min_premium ? `$${selected.min_premium}` : "—"],
+                        ["Pricing", selected.negotiable ? "Negotiable" : "Quoted"],
+                      ]
+                    : [
+                        ["Hourly", selected.hourly_rate ? `$${selected.hourly_rate}` : "—"],
+                        ["Daily", selected.daily_rate ? `$${selected.daily_rate}` : "—"],
+                        ["Weekly", selected.weekly_rate ? `$${selected.weekly_rate}` : "—"],
+                        ["Per Job", selected.per_job_rate ? `$${selected.per_job_rate}` : "—"],
+                        ["Min Hours", `${selected.minimum_hours ?? 1}h`],
+                        ["Pricing", selected.negotiable ? "Negotiable" : "Fixed"],
+                      ]
+                  ).map(([label, val]) => (
                     <div key={label}>
                       <div className="text-xs text-muted-foreground">{label}</div>
                       <div className="font-semibold">{val}</div>
@@ -267,7 +291,7 @@ export default function MarketplaceBrowsePage() {
                 </div>
 
                 <div className="space-y-3 border-t border-border pt-4">
-                  <p className="text-sm font-medium">Request this {serviceTypeLabel(selected.service_type).toLowerCase()}</p>
+                  <p className="text-sm font-medium">Request a quote</p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div className="space-y-1.5 sm:col-span-2">
                       <Label>Location address</Label>
@@ -277,19 +301,27 @@ export default function MarketplaceBrowsePage() {
                       <Label>City</Label>
                       <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Richmond" />
                     </div>
-                    <div className="space-y-1.5">
-                      <Label>Duration (hours)</Label>
-                      <Input type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="8" />
-                    </div>
+                    {insurance ? (
+                      <div className="space-y-1.5">
+                        <Label>Declared cargo value ($)</Label>
+                        <Input type="number" min={0} value={cargoValue} onChange={(e) => setCargoValue(e.target.value)} placeholder="50000" />
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <Label>Duration (hours)</Label>
+                        <Input type="number" min={1} value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="8" />
+                      </div>
+                    )}
                     <div className="space-y-1.5 sm:col-span-2">
                       <Label>Start date/time</Label>
                       <Input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} />
                     </div>
                     <div className="space-y-1.5 sm:col-span-2">
                       <Label>Notes</Label>
-                      <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Details, access, equipment specs…" rows={3} />
+                      <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Details, access, equipment specs, cargo type…" rows={3} />
                     </div>
                   </div>
+                  <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">The provider reviews your request and sends an official price. You can accept or decline it.</p>
                 </div>
                 {request.error && (
                   <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -300,7 +332,7 @@ export default function MarketplaceBrowsePage() {
               <DialogFooter>
                 <Button variant="secondary" onClick={() => setSelected(null)}>Cancel</Button>
                 <Button disabled={request.isPending} onClick={() => request.mutate()}>
-                  {request.isPending ? "Sending…" : "Send request"}
+                  {request.isPending ? "Sending…" : "Request quote"}
                 </Button>
               </DialogFooter>
             </>

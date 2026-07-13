@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
 import {
-  ArrowLeft, Search, Plus, Store, Forklift, Hammer, Wrench,
+  ArrowLeft, Search, Plus, Store, Forklift, Hammer, Wrench, ShieldCheck,
   ClipboardList, Inbox, ChevronRight, Tag,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
@@ -16,12 +16,14 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
   mobile_repair: Hammer,
+  cargo_insurance: ShieldCheck,
 };
 
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
   mobile_repair: C.purple,
+  cargo_insurance: C.yellow,
 };
 
 export default function MarketplaceHome() {

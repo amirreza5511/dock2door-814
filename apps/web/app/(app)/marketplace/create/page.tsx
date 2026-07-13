@@ -30,10 +30,13 @@ export default function CreateMarketplaceListingPage() {
   const [weeklyRate, setWeeklyRate] = useState("");
   const [perJobRate, setPerJobRate] = useState("");
   const [minHours, setMinHours] = useState("2");
+  const [cargoRatePercent, setCargoRatePercent] = useState("");
+  const [minPremium, setMinPremium] = useState("");
   const [negotiable, setNegotiable] = useState(false);
   const [certifications, setCertifications] = useState("");
 
   const isRental = serviceType === "equipment_rental";
+  const isInsurance = serviceType === "cargo_insurance";
   const num = (s: string): number | null => {
     const n = Number(s);
     return s.trim() !== "" && Number.isFinite(n) ? n : null;
@@ -43,7 +46,7 @@ export default function CreateMarketplaceListingPage() {
     mutationFn: async () => {
       if (!title.trim() && !subcategory) throw new Error("Add a title or pick a category.");
       if (!city.trim()) throw new Error("Primary city is required.");
-      const hasPrice = num(hourlyRate) || num(dailyRate) || num(weeklyRate) || num(perJobRate);
+      const hasPrice = num(hourlyRate) || num(dailyRate) || num(weeklyRate) || num(perJobRate) || num(cargoRatePercent) || num(minPremium);
       if (!hasPrice && !negotiable) throw new Error("Set at least one rate, or mark it negotiable.");
 
       const { data: { user } } = await supabase.auth.getUser();
@@ -70,6 +73,8 @@ export default function CreateMarketplaceListingPage() {
         daily_rate: num(dailyRate),
         weekly_rate: num(weeklyRate),
         minimum_hours: num(minHours) ?? 1,
+        cargo_rate_percent: num(cargoRatePercent),
+        min_premium: num(minPremium),
         negotiable,
         certifications: certifications.trim() || null,
         status: "Active",
@@ -172,7 +177,18 @@ export default function CreateMarketplaceListingPage() {
         <CardHeader><CardTitle>Pricing</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
-            {isRental ? (
+            {isInsurance ? (
+              <>
+                <div className="space-y-1.5">
+                  <Label>Rate (% of cargo value)</Label>
+                  <Input type="number" min={0} step="0.01" value={cargoRatePercent} onChange={(e) => setCargoRatePercent(e.target.value)} placeholder="0.8" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Minimum premium ($)</Label>
+                  <Input type="number" min={0} value={minPremium} onChange={(e) => setMinPremium(e.target.value)} placeholder="150" />
+                </div>
+              </>
+            ) : isRental ? (
               <>
                 <div className="space-y-1.5">
                   <Label>Daily rate ($)</Label>

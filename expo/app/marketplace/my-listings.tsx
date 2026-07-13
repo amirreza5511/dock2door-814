@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench } from 'lucide-react-native';
+import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench, ShieldCheck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
@@ -14,15 +14,22 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
   mobile_repair: Hammer,
+  cargo_insurance: ShieldCheck,
 };
 
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
   mobile_repair: C.purple,
+  cargo_insurance: C.yellow,
 };
 
 function priceLabel(l: ServiceListing): string {
+  if (l.serviceType === 'cargo_insurance') {
+    if (l.cargoRatePercent) return `${l.cargoRatePercent}% of value`;
+    if (l.minPremium) return `from $${l.minPremium}`;
+    return l.negotiable ? 'Negotiable' : '—';
+  }
   if (l.serviceType === 'equipment_rental') {
     if (l.dailyRate) return `$${l.dailyRate}/day`;
     if (l.weeklyRate) return `$${l.weeklyRate}/wk`;

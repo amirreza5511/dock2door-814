@@ -151,6 +151,8 @@ function mapServiceListing(r: Row): ServiceListing {
     subcategory: r.subcategory ?? '',
     dailyRate: r.daily_rate != null ? Number(r.daily_rate) : null,
     weeklyRate: r.weekly_rate != null ? Number(r.weekly_rate) : null,
+    cargoRatePercent: r.cargo_rate_percent != null ? Number(r.cargo_rate_percent) : null,
+    minPremium: r.min_premium != null ? Number(r.min_premium) : null,
     negotiable: Boolean(r.negotiable),
   };
 }
@@ -171,6 +173,14 @@ function mapServiceJob(r: Row): ServiceJob {
     checkInTs: r.check_in_ts ?? null,
     checkOutTs: r.check_out_ts ?? null,
     customerConfirmed: Boolean(r.customer_confirmed),
+    providerCompanyId: r.provider_company_id ?? null,
+    quoteStatus: r.quote_status ?? 'none',
+    quotedAmount: r.quoted_amount != null ? Number(r.quoted_amount) : null,
+    quoteNotes: r.quote_notes ?? '',
+    quoteSentAt: r.quote_sent_at ?? null,
+    cargoValue: r.cargo_value != null ? Number(r.cargo_value) : null,
+    commissionAmount: Number(r.commission_amount ?? 0),
+    invoiceId: r.invoice_id ?? null,
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }

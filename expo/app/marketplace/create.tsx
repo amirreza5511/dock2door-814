@@ -39,10 +39,13 @@ export default function CreateMarketplaceListing() {
   const [weeklyRate, setWeeklyRate] = useState<string>('');
   const [perJobRate, setPerJobRate] = useState<string>('');
   const [minimumHours, setMinimumHours] = useState<string>('2');
+  const [cargoRatePercent, setCargoRatePercent] = useState<string>('');
+  const [minPremium, setMinPremium] = useState<string>('');
   const [negotiable, setNegotiable] = useState<boolean>(false);
   const [certifications, setCertifications] = useState<string>('');
 
   const isRental = serviceType === 'equipment_rental';
+  const isInsurance = serviceType === 'cargo_insurance';
 
   const num = (s: string): number | null => {
     const n = Number(s);
@@ -62,7 +65,7 @@ export default function CreateMarketplaceListing() {
       Alert.alert('Missing info', 'Primary city is required.');
       return;
     }
-    const hasPrice = num(hourlyRate) || num(dailyRate) || num(weeklyRate) || num(perJobRate);
+    const hasPrice = num(hourlyRate) || num(dailyRate) || num(weeklyRate) || num(perJobRate) || num(cargoRatePercent) || num(minPremium);
     if (!hasPrice && !negotiable) {
       Alert.alert('Missing price', 'Set at least one rate, or mark the listing as negotiable.');
       return;
@@ -83,6 +86,8 @@ export default function CreateMarketplaceListing() {
         dailyRate: num(dailyRate),
         weeklyRate: num(weeklyRate),
         minimumHours: num(minimumHours) ?? 1,
+        cargoRatePercent: num(cargoRatePercent),
+        minPremium: num(minPremium),
         negotiable,
         certifications: certifications.trim(),
         status: 'Active',
@@ -158,7 +163,13 @@ export default function CreateMarketplaceListing() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Pricing</Text>
           <View style={styles.formGap}>
-            {isRental ? (
+            {isInsurance ? (
+              <>
+                <Input label="Rate (% of cargo value)" value={cargoRatePercent} onChangeText={setCargoRatePercent} keyboardType="numeric" placeholder="0.8" />
+                <Input label="Minimum Premium ($)" value={minPremium} onChangeText={setMinPremium} keyboardType="numeric" placeholder="150" />
+                <Text style={styles.hint}>Customers declare a cargo value when requesting; you send an official premium quote.</Text>
+              </>
+            ) : isRental ? (
               <>
                 <Input label="Daily Rate ($)" value={dailyRate} onChangeText={setDailyRate} keyboardType="numeric" placeholder="180" />
                 <Input label="Weekly Rate ($)" value={weeklyRate} onChangeText={setWeeklyRate} keyboardType="numeric" placeholder="750" />

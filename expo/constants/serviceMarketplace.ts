@@ -6,7 +6,7 @@
  * `service_type` values MUST match the DB check constraint in migration 0132.
  */
 
-export type ServiceType = 'service' | 'equipment_rental' | 'mobile_repair';
+export type ServiceType = 'service' | 'equipment_rental' | 'mobile_repair' | 'cargo_insurance';
 
 export interface ServiceTypeDef {
   id: ServiceType;
@@ -14,13 +14,14 @@ export interface ServiceTypeDef {
   /** Short description shown on the type selector. */
   blurb: string;
   /** lucide icon name to render (kept as a string so both platforms map it). */
-  icon: 'Wrench' | 'Forklift' | 'Hammer';
+  icon: 'Wrench' | 'Forklift' | 'Hammer' | 'ShieldCheck';
 }
 
 export const SERVICE_TYPES: ServiceTypeDef[] = [
   { id: 'service', label: 'Services', blurb: 'Labour, loading, cleaning & more', icon: 'Wrench' },
-  { id: 'equipment_rental', label: 'Equipment Rental', blurb: 'Forklifts, jacks, lifts & gear', icon: 'Forklift' },
+  { id: 'equipment_rental', label: 'Equipment Rental', blurb: 'Forklifts, cranes, lifts & gear', icon: 'Forklift' },
   { id: 'mobile_repair', label: 'Mobile Repair', blurb: 'On-site repair technicians', icon: 'Hammer' },
+  { id: 'cargo_insurance', label: 'Cargo Insurance', blurb: 'Insure freight & shipments', icon: 'ShieldCheck' },
 ];
 
 export interface SubcategoryDef {
@@ -70,13 +71,27 @@ export const SUBCATEGORIES: Record<ServiceType, SubcategoryDef[]> = {
     { id: 'welding', label: 'Welding / Fabrication' },
     { id: 'racking_repair', label: 'Pallet Racking Repair' },
   ],
+  cargo_insurance: [
+    { id: 'import_export', label: 'Import / Export Cargo' },
+    { id: 'domestic_transit', label: 'Domestic Transit' },
+    { id: 'warehouse_storage', label: 'Warehouse / Storage' },
+    { id: 'liability', label: 'Liability Coverage' },
+    { id: 'all_risk', label: 'All-Risk Freight' },
+    { id: 'high_value', label: 'High-Value / Specialty' },
+  ],
 };
 
 const TYPE_LABEL: Record<ServiceType, string> = {
   service: 'Services',
   equipment_rental: 'Equipment Rental',
   mobile_repair: 'Mobile Repair',
+  cargo_insurance: 'Cargo Insurance',
 };
+
+/** True when a listing type is priced as a percentage of cargo value. */
+export function isInsuranceType(t: string | null | undefined): boolean {
+  return t === 'cargo_insurance';
+}
 
 /** Human label for a service type. */
 export function serviceTypeLabel(t: string | null | undefined): string {

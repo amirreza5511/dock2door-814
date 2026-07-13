@@ -204,7 +204,9 @@ export interface WarehouseBooking {
 
 export type TransportMode = 'unspecified' | 'own_driver' | 'self_delivery' | 'third_party';
 
-export type ServiceListingType = 'service' | 'equipment_rental' | 'mobile_repair';
+export type ServiceListingType = 'service' | 'equipment_rental' | 'mobile_repair' | 'cargo_insurance';
+
+export type QuoteStatus = 'none' | 'requested' | 'quoted' | 'accepted' | 'declined';
 
 export interface ServiceListing {
   id: string;
@@ -224,6 +226,8 @@ export interface ServiceListing {
   subcategory?: string;
   dailyRate?: number | null;
   weeklyRate?: number | null;
+  cargoRatePercent?: number | null;
+  minPremium?: number | null;
   negotiable?: boolean;
   companyName?: string;
   companyCity?: string;
@@ -252,6 +256,23 @@ export interface ServiceJob {
   checkInTs: string | null;
   checkOutTs: string | null;
   customerConfirmed: boolean;
+  providerCompanyId?: string | null;
+  quoteStatus?: QuoteStatus;
+  quotedAmount?: number | null;
+  quoteNotes?: string;
+  quoteSentAt?: string | null;
+  cargoValue?: number | null;
+  commissionAmount?: number;
+  invoiceId?: string | null;
+  createdAt: string;
+}
+
+export interface ServiceJobPhoto {
+  id: string;
+  jobId: string;
+  url: string;
+  caption: string;
+  kind: string;
   createdAt: string;
 }
 

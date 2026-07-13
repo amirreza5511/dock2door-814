@@ -186,6 +186,14 @@ function mapServiceJob(r: Row): Row {
     checkInTs: r.check_in_ts ?? null,
     checkOutTs: r.check_out_ts ?? null,
     customerConfirmed: Boolean(r.customer_confirmed),
+    providerCompanyId: r.provider_company_id ?? null,
+    quoteStatus: r.quote_status ?? 'none',
+    quotedAmount: r.quoted_amount != null ? Number(r.quoted_amount) : null,
+    quoteNotes: r.quote_notes ?? '',
+    quoteSentAt: r.quote_sent_at ?? null,
+    cargoValue: r.cargo_value != null ? Number(r.cargo_value) : null,
+    commissionAmount: Number(r.commission_amount ?? 0),
+    invoiceId: r.invoice_id ?? null,
     createdAt: r.created_at ?? new Date().toISOString(),
   };
 }
@@ -208,6 +216,8 @@ function mapMarketplaceListing(r: Row): Row {
     perJobRate: r.per_job_rate != null ? Number(r.per_job_rate) : null,
     dailyRate: r.daily_rate != null ? Number(r.daily_rate) : null,
     weeklyRate: r.weekly_rate != null ? Number(r.weekly_rate) : null,
+    cargoRatePercent: r.cargo_rate_percent != null ? Number(r.cargo_rate_percent) : null,
+    minPremium: r.min_premium != null ? Number(r.min_premium) : null,
     minimumHours: Number(r.minimum_hours ?? 1),
     negotiable: Boolean(r.negotiable),
     certifications: r.certifications ?? '',
@@ -721,6 +731,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (input.subcategory !== undefined) row.subcategory = input.subcategory;
     if (input.dailyRate !== undefined) row.daily_rate = input.dailyRate;
     if (input.weeklyRate !== undefined) row.weekly_rate = input.weeklyRate;
+    if (input.cargoRatePercent !== undefined) row.cargo_rate_percent = input.cargoRatePercent;
+    if (input.minPremium !== undefined) row.min_premium = input.minPremium;
     if (input.negotiable !== undefined) row.negotiable = input.negotiable;
     const { data, error } = await supabase.from('service_listings').insert(row).select().single();
     if (error) throwErr(error, 'Unable to create service');
@@ -755,6 +767,40 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       .maybeSingle();
     if (error) throwErr(error, 'Unable to load listing');
     return data ? mapMarketplaceListing(data) : null;
+  },
+
+  // Public provider profile: company info + all its Active listings + rating.
+  'marketplace.providerProfile': async (input: { companyId: string }) => {
+    const [{ data: company }, { data: listings }] = await Promise.all([
+      supabase.from('companies').select('id,name,city,type,status').eq('id', input.companyId).maybeSingle(),
+      supabase
+        .from('service_listings')
+        .select('*, company:companies(id,name,city)')
+        .eq('company_id', input.companyId)
+        .eq('status', 'Active')
+        .order('created_at', { ascending: false }),
+    ]);
+    let rating = 0;
+    let reviewCount = 0;
+    try {
+      const { data: reviews } = await supabase
+        .from('reviews')
+        .select('rating')
+        .eq('target_id', input.companyId);
+      const rows = reviews ?? [];
+      reviewCount = rows.length;
+      if (reviewCount > 0) rating = rows.reduce((s: number, r: Row) => s + Number(r.rating ?? 0), 0) / reviewCount;
+    } catch {
+      // reviews are optional; ignore if unavailable
+    }
+    return {
+      company: company
+        ? { id: company.id, name: (company as AnyRecord).name ?? 'Provider', city: (company as AnyRecord).city ?? '', type: (company as AnyRecord).type ?? '' }
+        : null,
+      listings: (listings ?? []).map(mapMarketplaceListing),
+      rating: Math.round(rating * 10) / 10,
+      reviewCount,
+    };
   },
 
   'services.updateListing': async (input: AnyRecord) => {
@@ -3287,10 +3333,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     locationAddress: string; locationCity: string;
     dateTimeStart: string; durationHours: number;
     notes?: string; totalPrice?: number;
+    requestQuote?: boolean; cargoValue?: number | null;
   }, ctx) => {
     const cid = input.customerCompanyId ?? ctx.user.companyId;
     if (!cid) throw new Error('Company context required');
-    const { data, error } = await supabase.from('service_jobs').insert({
+    const row: AnyRecord = {
       service_id: input.serviceId,
       customer_company_id: cid,
       location_address: input.locationAddress,
@@ -3301,9 +3348,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       total_price: input.totalPrice ?? 0,
       status: 'Requested',
       payment_status: 'Pending',
-    }).select().single();
-    if (error) throwErr(error, 'Unable to create service job');
-    return { id: data!.id };
+    };
+    // Marketplace requests go through the quote flow; degrade gracefully if the
+    // 0133 columns aren't live yet.
+    if (input.requestQuote) row.quote_status = 'requested';
+    if (input.cargoValue != null) row.cargo_value = input.cargoValue;
+    let res = await supabase.from('service_jobs').insert(row).select().single();
+    if (res.error && isMissingColumn(res.error)) {
+      delete row.quote_status; delete row.cargo_value;
+      res = await supabase.from('service_jobs').insert(row).select().single();
+    }
+    if (res.error) throwErr(res.error, 'Unable to create service job');
+    return { id: res.data!.id };
   },
 
   'serviceJobs.accept': async (input: { id: string; reason?: string }) => {
@@ -3337,6 +3393,69 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
     if (error) throwErr(error, 'Unable to complete job');
     return { success: true };
+  },
+
+  // --- Marketplace quote → order flow -------------------------------------
+  // Provider sends an official price for a quote request.
+  'serviceJobs.sendQuote': async (input: { id: string; amount: number; notes?: string; commissionRate?: number }) => {
+    const { error } = await supabase.rpc('send_service_quote', {
+      p_job_id: input.id,
+      p_amount: Number(input.amount) || 0,
+      p_notes: input.notes ?? '',
+      p_commission_rate: input.commissionRate ?? 0.08,
+    });
+    if (error) throwErr(error, 'Unable to send quote');
+    return { success: true };
+  },
+  // Customer accepts or declines a received quote.
+  'serviceJobs.respondQuote': async (input: { id: string; accept: boolean }) => {
+    const { error } = await supabase.rpc('respond_service_quote', {
+      p_job_id: input.id,
+      p_accept: input.accept,
+    });
+    if (error) throwErr(error, 'Unable to respond to quote');
+    return { success: true };
+  },
+  // Provider bills a job — creates an invoice with platform commission.
+  'serviceJobs.invoice': async (input: { id: string; taxRate?: number; commissionRate?: number }) => {
+    const { data, error } = await supabase.rpc('invoice_service_job', {
+      p_job_id: input.id,
+      p_tax_rate: Number(input.taxRate) || 0,
+      p_commission_rate: input.commissionRate ?? 0.08,
+    });
+    if (error) throwErr(error, 'Unable to invoice job');
+    return { invoiceId: data as string };
+  },
+  // Job photos — before/after/progress evidence.
+  'serviceJobs.listPhotos': async (input: { id: string }) => {
+    const { data, error } = await supabase
+      .from('service_job_photos')
+      .select('*')
+      .eq('job_id', input.id)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load photos');
+    }
+    return (data ?? []).map((p: Row) => ({
+      id: p.id,
+      jobId: p.job_id,
+      url: p.url,
+      caption: p.caption ?? '',
+      kind: p.kind ?? 'progress',
+      createdAt: p.created_at ?? new Date().toISOString(),
+    }));
+  },
+  'serviceJobs.addPhoto': async (input: { id: string; url: string; caption?: string; kind?: string }, ctx) => {
+    const { data, error } = await supabase.from('service_job_photos').insert({
+      job_id: input.id,
+      url: input.url,
+      caption: input.caption ?? '',
+      kind: input.kind ?? 'progress',
+      uploaded_by: ctx.user.id,
+    }).select().single();
+    if (error) throwErr(error, 'Unable to add photo');
+    return { id: data!.id };
   },
 
   // =========================================================================

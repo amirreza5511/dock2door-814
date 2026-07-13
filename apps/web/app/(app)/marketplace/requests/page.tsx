@@ -19,6 +19,8 @@ interface JobRow {
   duration_hours: number | null;
   total_price: number | null;
   status: string;
+  quote_status: string | null;
+  quoted_amount: number | null;
   service_listings: {
     company_id: string;
     title: string | null;
@@ -59,7 +61,7 @@ export default function MarketplaceRequestsPage() {
       if (!companyId) return { incoming: [] as JobRow[], sent: [] as JobRow[] };
 
       const select =
-        "id, service_id, customer_company_id, location_address, location_city, duration_hours, total_price, status, " +
+        "id, service_id, customer_company_id, location_address, location_city, duration_hours, total_price, status, quote_status, quoted_amount, " +
         "service_listings:service_listings!service_jobs_service_id_fkey(company_id, title, subcategory, company:companies(name)), " +
         "customer:companies!service_jobs_customer_company_id_fkey(name)";
 
@@ -98,6 +100,12 @@ export default function MarketplaceRequestsPage() {
     tab === "incoming"
       ? j.customer?.name ?? "Requesting company"
       : j.service_listings?.company?.name ?? "Provider";
+  const QUOTE_LABEL: Record<string, string> = {
+    requested: "Quote requested",
+    quoted: "Quote sent",
+    accepted: "Quote accepted",
+    declined: "Quote declined",
+  };
 
   return (
     <div className="space-y-6">
@@ -141,12 +149,16 @@ export default function MarketplaceRequestsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {rows.map((j) => (
-            <Card key={j.id}>
+            <Link key={j.id} href={`/marketplace/order/${j.id}`} className="block">
+            <Card className="cursor-pointer transition-colors hover:border-primary/40">
               <CardContent className="space-y-2 p-5">
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="font-semibold leading-tight">{titleFor(j)}</h3>
                   <Badge variant={STATUS_BADGE[j.status] ?? "secondary"}>{j.status}</Badge>
                 </div>
+                {j.quote_status && j.quote_status !== "none" && QUOTE_LABEL[j.quote_status] && (
+                  <Badge variant="warning">{QUOTE_LABEL[j.quote_status]}{j.quoted_amount ? ` · $${j.quoted_amount.toLocaleString()}` : ""}</Badge>
+                )}
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <Building2 className="h-3.5 w-3.5" /> {counterpartyFor(j)}
                 </div>
@@ -163,6 +175,7 @@ export default function MarketplaceRequestsPage() {
                 </div>
               </CardContent>
             </Card>
+            </Link>
           ))}
         </div>
       )}

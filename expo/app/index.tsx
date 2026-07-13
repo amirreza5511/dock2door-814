@@ -9,13 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen, Anchor,
+  Store, Forklift, Hammer, Construction,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 
 type WorldDef = {
-  key: 'labour' | 'logistics' | 'freight' | 'drayage';
+  key: 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace';
   badge: string;
   color: string;
   bg: string;
@@ -79,6 +80,20 @@ const WORLDS: WorldDef[] = [
       { icon: Anchor, label: 'Freight Forwarders', sub: 'Post import/export container orders' },
       { icon: Truck, label: 'Drayage Companies', sub: 'Claim orders, dispatch & track live' },
       { icon: Users, label: 'Drivers', sub: 'Receive work orders & advance moves' },
+    ],
+  },
+  {
+    key: 'marketplace',
+    badge: 'Domain 5',
+    color: C.yellow,
+    bg: C.yellowDim,
+    icon: Store,
+    title: 'Rentals & Services',
+    desc: 'A shared marketplace for every business: rent equipment (forklifts, cranes, hoists), book mobile repair techs, hire services, and insure your cargo. Request a quote, get an official price, and place the order.',
+    bullets: [
+      { icon: Forklift, label: 'Equipment Rental', sub: 'Forklifts, cranes, hoists & lifts' },
+      { icon: Hammer, label: 'Mobile Repair & Services', sub: 'On-site techs & labour crews' },
+      { icon: ShieldCheck, label: 'Cargo Insurance', sub: 'Insure freight & shipments' },
     ],
   },
 ];
@@ -238,6 +253,8 @@ export default function Landing() {
               { role: 'Freight Forwarder', desc: 'Post import/export containers', icon: Anchor, color: C.blue },
               { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue },
               { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue },
+              { role: 'Crane / Equipment Co.', desc: 'Rent out cranes & heavy gear', icon: Construction, color: C.yellow },
+              { role: 'Cargo Insurer', desc: 'Insure freight & shipments', icon: ShieldCheck, color: C.yellow },
               { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
             ].map((r) => (
               <View key={r.role} style={styles.roleCard}>

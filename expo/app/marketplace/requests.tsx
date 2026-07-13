@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { ArrowLeft, Inbox, Send, MapPin, Clock, DollarSign, Building2 } from 'lucide-react-native';
+import { ArrowLeft, Inbox, Send, MapPin, Clock, DollarSign, Building2, ChevronRight } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
@@ -19,6 +19,13 @@ const STATUS_COLOR: Record<string, string> = {
   InProgress: C.accent,
   Completed: C.green,
   Cancelled: C.textMuted,
+};
+
+const QUOTE_LABEL: Record<string, string> = {
+  requested: 'Quote requested',
+  quoted: 'Quote sent',
+  accepted: 'Quote accepted',
+  declined: 'Quote declined',
 };
 
 export default function MarketplaceRequests() {
@@ -99,13 +106,23 @@ export default function MarketplaceRequests() {
       ) : (
         <ScrollView contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 40 }]} showsVerticalScrollIndicator={false}>
           {rows.map((job) => (
-            <View key={job.id} style={styles.card}>
+            <TouchableOpacity
+              key={job.id}
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() => router.push({ pathname: '/marketplace/order/[id]', params: { id: job.id } } as never)}
+            >
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle} numberOfLines={1}>{titleFor(job)}</Text>
                 <View style={[styles.statusBadge, { backgroundColor: (STATUS_COLOR[job.status] ?? C.textMuted) + '22' }]}>
                   <Text style={[styles.statusText, { color: STATUS_COLOR[job.status] ?? C.textMuted }]}>{job.status}</Text>
                 </View>
               </View>
+              {job.quoteStatus && job.quoteStatus !== 'none' && QUOTE_LABEL[job.quoteStatus] ? (
+                <View style={styles.quotePill}>
+                  <Text style={styles.quotePillText}>{QUOTE_LABEL[job.quoteStatus]}{job.quotedAmount ? ` · $${job.quotedAmount.toLocaleString()}` : ''}</Text>
+                </View>
+              ) : null}
               <View style={styles.metaRow}>
                 <Building2 size={12} color={C.textMuted} />
                 <Text style={styles.metaText}>{counterpartyFor(job)}</Text>
@@ -127,8 +144,9 @@ export default function MarketplaceRequests() {
                     <Text style={styles.priceText}>${job.totalPrice}</Text>
                   </View>
                 )}
+                <ChevronRight size={16} color={C.textMuted} />
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
           {rows.length === 0 && (
             <View style={styles.emptyState}>
@@ -170,6 +188,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: '700' as const, color: C.text, flex: 1 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   statusText: { fontSize: 11, fontWeight: '700' as const },
+  quotePill: { alignSelf: 'flex-start', backgroundColor: C.yellowDim, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginBottom: 6 },
+  quotePillText: { fontSize: 11, color: C.yellow, fontWeight: '700' as const },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   metaText: { fontSize: 12, color: C.textSecondary, flex: 1 },
   footerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 8, borderTopWidth: 1, borderTopColor: C.border },

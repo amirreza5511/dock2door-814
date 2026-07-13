@@ -6,8 +6,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
-  Search, MapPin, X, Wrench, Hammer, Forklift, DollarSign,
-  ArrowLeft, Plus, Store, Building2,
+  Search, MapPin, X, Wrench, Hammer, Forklift, ShieldCheck, DollarSign,
+  ArrowLeft, Plus, Store, Building2, ChevronRight,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Button from '@/components/ui/Button';
@@ -16,7 +16,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import {
-  SERVICE_TYPES, serviceTypeLabel, subcategoryLabel,
+  SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, isInsuranceType,
   type ServiceType,
 } from '@/constants/serviceMarketplace';
 
@@ -34,6 +34,8 @@ type MarketListing = {
   perJobRate: number | null;
   dailyRate: number | null;
   weeklyRate: number | null;
+  cargoRatePercent: number | null;
+  minPremium: number | null;
   minimumHours: number;
   negotiable: boolean;
   certifications: string;
@@ -43,15 +45,22 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
   equipment_rental: Forklift,
   mobile_repair: Hammer,
+  cargo_insurance: ShieldCheck,
 };
 
 const TYPE_COLOR: Record<ServiceType, string> = {
   service: C.accent,
   equipment_rental: C.blue,
   mobile_repair: C.purple,
+  cargo_insurance: C.yellow,
 };
 
 function priceLabel(l: MarketListing): string {
+  if (l.serviceType === 'cargo_insurance') {
+    if (l.cargoRatePercent) return `${l.cargoRatePercent}% of value`;
+    if (l.minPremium) return `from $${l.minPremium}`;
+    return l.negotiable ? 'Negotiable' : '—';
+  }
   if (l.serviceType === 'equipment_rental') {
     if (l.dailyRate) return `$${l.dailyRate}/day`;
     if (l.weeklyRate) return `$${l.weeklyRate}/wk`;
@@ -91,6 +100,7 @@ export default function MarketplaceBrowse() {
   const [city, setCity] = useState('');
   const [dateTime, setDateTime] = useState('');
   const [duration, setDuration] = useState('');
+  const [cargoValue, setCargoValue] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -106,17 +116,10 @@ export default function MarketplaceBrowse() {
   }), [listings, typeFilter, query]);
 
   const isOwn = selected?.companyId === user?.companyId;
-
-  const estimatedTotal = useMemo(() => {
-    if (!selected || !duration) return null;
-    const h = Number(duration);
-    if (!Number.isFinite(h)) return null;
-    const rate = selected.hourlyRate || 0;
-    return rate > 0 ? h * rate : null;
-  }, [selected, duration]);
+  const insurance = selected ? isInsuranceType(selected.serviceType) : false;
 
   const resetForm = () => {
-    setAddress(''); setCity(''); setDateTime(''); setDuration(''); setNotes('');
+    setAddress(''); setCity(''); setDateTime(''); setDuration(''); setCargoValue(''); setNotes('');
   };
 
   const handleRequest = async () => {
@@ -124,30 +127,35 @@ export default function MarketplaceBrowse() {
       Alert.alert('Sign in required', 'You need a company account to request from the marketplace.');
       return;
     }
-    if (!address || !city || !dateTime || !duration) {
-      Alert.alert('Missing info', 'Please fill address, city, date/time and duration.');
+    if (!city || !dateTime) {
+      Alert.alert('Missing info', 'Please fill city and date/time.');
       return;
     }
-    const durationHours = Number(duration);
-    if (!Number.isFinite(durationHours) || durationHours <= 0) {
+    const durationHours = insurance ? 1 : Number(duration);
+    if (!insurance && (!Number.isFinite(durationHours) || durationHours <= 0)) {
       Alert.alert('Invalid duration', 'Enter a valid number of hours.');
       return;
     }
     setSubmitting(true);
     try {
-      await createJob.mutateAsync({
+      const res = await createJob.mutateAsync({
         serviceId: selected.id,
         customerCompanyId: user.companyId,
         locationAddress: address,
         locationCity: city,
         dateTimeStart: dateTime,
-        durationHours,
+        durationHours: durationHours || 1,
         notes,
-        totalPrice: estimatedTotal ?? 0,
+        totalPrice: 0,
+        requestQuote: true,
+        cargoValue: insurance && cargoValue ? Number(cargoValue) : null,
       });
       setSelected(null);
       resetForm();
-      Alert.alert('Request sent', 'The provider will review your request and respond.');
+      Alert.alert('Quote requested', 'The provider will review and send you an official price.', [
+        { text: 'View request', onPress: () => router.push({ pathname: '/marketplace/order/[id]', params: { id: res.id } } as never) },
+        { text: 'OK' },
+      ]);
     } catch (error) {
       Alert.alert('Request failed', error instanceof Error ? error.message : 'Unable to send request.');
     } finally {
@@ -174,7 +182,7 @@ export default function MarketplaceBrowse() {
         </View>
         <View style={styles.searchBar}>
           <Search size={16} color={C.textMuted} />
-          <TextInput value={query} onChangeText={setQuery} placeholder="Search equipment, repair, services…" placeholderTextColor={C.textMuted} style={styles.searchInput} />
+          <TextInput value={query} onChangeText={setQuery} placeholder="Search equipment, repair, insurance…" placeholderTextColor={C.textMuted} style={styles.searchInput} />
           {query ? <TouchableOpacity onPress={() => setQuery('')}><X size={16} color={C.textMuted} /></TouchableOpacity> : null}
         </View>
       </View>
@@ -208,10 +216,14 @@ export default function MarketplaceBrowse() {
                   {l.subcategory ? <Text style={styles.subcatText}>{subcategoryLabel(l.subcategory)}</Text> : null}
                 </View>
                 <Text style={styles.cardTitle}>{l.title || subcategoryLabel(l.subcategory) || serviceTypeLabel(l.serviceType)}</Text>
-                <View style={styles.coverageRow}>
+                <TouchableOpacity
+                  style={styles.coverageRow}
+                  onPress={() => router.push({ pathname: '/marketplace/provider/[id]', params: { id: l.companyId } } as never)}
+                >
                   <Building2 size={12} color={C.textMuted} />
-                  <Text style={styles.coverageText}>{l.companyName}</Text>
-                </View>
+                  <Text style={[styles.coverageText, styles.providerLink]}>{l.companyName}</Text>
+                  <ChevronRight size={12} color={C.textMuted} />
+                </TouchableOpacity>
                 {l.coverageArea.length > 0 && (
                   <View style={styles.coverageRow}>
                     <MapPin size={12} color={C.textMuted} />
@@ -233,7 +245,7 @@ export default function MarketplaceBrowse() {
             <View style={styles.emptyState}>
               <Store size={40} color={C.textMuted} />
               <Text style={styles.emptyText}>No listings yet</Text>
-              <Text style={styles.emptySub}>Be the first — tap “List” to publish equipment, repair or a service.</Text>
+              <Text style={styles.emptySub}>Be the first — tap “List” to publish equipment, repair, a service or cargo insurance.</Text>
             </View>
           )}
         </ScrollView>
@@ -249,10 +261,14 @@ export default function MarketplaceBrowse() {
                   <Text style={[styles.typeBadgeText, { color: TYPE_COLOR[selected.serviceType] }]}>{serviceTypeLabel(selected.serviceType)}</Text>
                 </View>
                 <Text style={styles.modalTitle}>{selected.title || subcategoryLabel(selected.subcategory)}</Text>
-                <View style={styles.coverageRow}>
+                <TouchableOpacity
+                  style={styles.coverageRow}
+                  onPress={() => { const cid = selected.companyId; setSelected(null); router.push({ pathname: '/marketplace/provider/[id]', params: { id: cid } } as never); }}
+                >
                   <Building2 size={13} color={C.textMuted} />
-                  <Text style={styles.locationText}>{selected.companyName}{selected.companyCity ? ` · ${selected.companyCity}` : ''}</Text>
-                </View>
+                  <Text style={[styles.locationText, styles.providerLink]}>{selected.companyName}{selected.companyCity ? ` · ${selected.companyCity}` : ''}</Text>
+                  <ChevronRight size={13} color={C.accent} />
+                </TouchableOpacity>
                 {selected.coverageArea.length > 0 && (
                   <View style={styles.coverageRow}>
                     <MapPin size={13} color={C.textMuted} />
@@ -262,14 +278,21 @@ export default function MarketplaceBrowse() {
                 {selected.description ? <Text style={styles.modalDesc}>{selected.description}</Text> : null}
 
                 <View style={styles.detailGrid}>
-                  {[
-                    ['Hourly', selected.hourlyRate ? `$${selected.hourlyRate}` : '—'],
-                    ['Per Job', selected.perJobRate ? `$${selected.perJobRate}` : '—'],
-                    ['Daily', selected.dailyRate ? `$${selected.dailyRate}` : '—'],
-                    ['Weekly', selected.weeklyRate ? `$${selected.weeklyRate}` : '—'],
-                    ['Min Hours', `${selected.minimumHours}h`],
-                    ['Pricing', selected.negotiable ? 'Negotiable' : 'Fixed'],
-                  ].map(([label, val]) => (
+                  {(insurance
+                    ? [
+                        ['Rate', selected.cargoRatePercent ? `${selected.cargoRatePercent}%` : '—'],
+                        ['Min Premium', selected.minPremium ? `$${selected.minPremium}` : '—'],
+                        ['Pricing', selected.negotiable ? 'Negotiable' : 'Quoted'],
+                      ]
+                    : [
+                        ['Hourly', selected.hourlyRate ? `$${selected.hourlyRate}` : '—'],
+                        ['Per Job', selected.perJobRate ? `$${selected.perJobRate}` : '—'],
+                        ['Daily', selected.dailyRate ? `$${selected.dailyRate}` : '—'],
+                        ['Weekly', selected.weeklyRate ? `$${selected.weeklyRate}` : '—'],
+                        ['Min Hours', `${selected.minimumHours}h`],
+                        ['Pricing', selected.negotiable ? 'Negotiable' : 'Fixed'],
+                      ]
+                  ).map(([label, val]) => (
                     <View key={label} style={styles.detailItem}>
                       <Text style={styles.detailLabel}>{label}</Text>
                       <Text style={styles.detailValue}>{val}</Text>
@@ -282,24 +305,25 @@ export default function MarketplaceBrowse() {
 
                 {isOwn ? (
                   <View style={styles.ownNote}>
-                    <Text style={styles.ownNoteText}>This is your own listing. Other companies can request it from here.</Text>
+                    <Text style={styles.ownNoteText}>This is your own listing. Other companies can request a quote from here.</Text>
                   </View>
                 ) : (
                   <>
-                    <Text style={styles.formTitle}>Request this {serviceTypeLabel(selected.serviceType).toLowerCase()}</Text>
+                    <Text style={styles.formTitle}>Request a quote</Text>
                     <View style={styles.formGap}>
                       <Input label="Location Address" value={address} onChangeText={setAddress} placeholder="8800 Bridgeport Rd" />
-                      <Input label="City" value={city} onChangeText={setCity} placeholder="Richmond" />
-                      <Input label="Start Date/Time" value={dateTime} onChangeText={setDateTime} placeholder="2026-08-01T08:00:00" />
-                      <Input label={selected.serviceType === 'equipment_rental' ? 'Duration (hours needed)' : 'Duration (hours)'} value={duration} onChangeText={setDuration} keyboardType="numeric" placeholder="8" />
-                      <Input label="Notes" value={notes} onChangeText={setNotes} multiline numberOfLines={3} placeholder="Details, access, equipment specs…" />
-                      {estimatedTotal != null && (
-                        <View style={styles.priceEstimate}>
-                          <Text style={styles.priceEstimateLabel}>Estimated Total</Text>
-                          <Text style={styles.priceEstimateValue}>${estimatedTotal}</Text>
-                        </View>
+                      <Input label="City *" value={city} onChangeText={setCity} placeholder="Richmond" />
+                      <Input label="Start Date/Time *" value={dateTime} onChangeText={setDateTime} placeholder="2026-08-01T08:00:00" />
+                      {insurance ? (
+                        <Input label="Declared Cargo Value ($)" value={cargoValue} onChangeText={setCargoValue} keyboardType="numeric" placeholder="50000" />
+                      ) : (
+                        <Input label={selected.serviceType === 'equipment_rental' ? 'Duration (hours needed)' : 'Duration (hours)'} value={duration} onChangeText={setDuration} keyboardType="numeric" placeholder="8" />
                       )}
-                      <Button label="Send Request" onPress={handleRequest} loading={submitting} fullWidth size="lg" />
+                      <Input label="Notes" value={notes} onChangeText={setNotes} multiline numberOfLines={3} placeholder="Details, access, equipment specs, cargo type…" />
+                      <View style={styles.quoteNote}>
+                        <Text style={styles.quoteNoteText}>The provider reviews your request and sends an official price. You can accept or decline it.</Text>
+                      </View>
+                      <Button label="Request Quote" onPress={handleRequest} loading={submitting} fullWidth size="lg" />
                     </View>
                   </>
                 )}
@@ -340,6 +364,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 17, fontWeight: '700' as const, color: C.text, marginBottom: 6 },
   coverageRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 },
   coverageText: { fontSize: 12, color: C.textSecondary, flex: 1 },
+  providerLink: { color: C.accent, fontWeight: '600' as const, flex: 0 },
   cardDesc: { fontSize: 13, color: C.textSecondary, marginTop: 4, lineHeight: 18 },
   cardFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, marginTop: 8, borderTopWidth: 1, borderTopColor: C.border },
   priceRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -363,7 +388,6 @@ const styles = StyleSheet.create({
   ownNoteText: { fontSize: 13, color: C.blue },
   formTitle: { fontSize: 18, fontWeight: '700' as const, color: C.text, marginTop: 20, marginBottom: 12 },
   formGap: { gap: 12 },
-  priceEstimate: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.greenDim, borderRadius: 10, padding: 14 },
-  priceEstimateLabel: { fontSize: 13, color: C.green },
-  priceEstimateValue: { fontSize: 20, fontWeight: '800' as const, color: C.green },
+  quoteNote: { backgroundColor: C.yellowDim, borderRadius: 10, padding: 12 },
+  quoteNoteText: { fontSize: 12, color: C.yellow, lineHeight: 17 },
 });
