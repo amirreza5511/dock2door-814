@@ -246,4 +246,35 @@ drop policy if exists "job_photos_delete" on storage.objects;
 create policy "job_photos_delete" on storage.objects for delete to authenticated
   using (bucket_id = 'job-photos');
 
+-- =============================================================
+-- 8) Route marketplace commission into the admin revenue report
+--    provider_set_invoice_status (0117) inserts a payment without a
+--    category, so Domain 5 commission would land in "other". Tag any
+--    payment whose invoice was issued by invoice_service_job
+--    (source='marketplace') with category='service' so it shows under
+--    Services in the platform revenue breakdown (both app and site).
+-- =============================================================
+create or replace function public.tag_marketplace_payment_category()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if coalesce(NEW.category, '') = '' or NEW.category = 'general' then
+    if exists (
+      select 1 from public.invoices i
+       where i.id = NEW.invoice_id and i.source = 'marketplace'
+    ) then
+      NEW.category := 'service';
+    end if;
+  end if;
+  return NEW;
+end; $$;
+
+drop trigger if exists trg_tag_marketplace_payment on public.payments;
+create trigger trg_tag_marketplace_payment
+  before insert on public.payments
+  for each row execute function public.tag_marketplace_payment_category();
+
 notify pgrst, 'reload schema';
