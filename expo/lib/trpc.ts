@@ -1365,7 +1365,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.quote': async (input: {
     pickupLat: number; pickupLng: number; dropoffLat: number; dropoffLng: number;
     vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay';
-    cargoType?: string; weightKg?: number;
+    cargoType?: string; weightKg?: number; distanceKm?: number;
   }) => {
     const { data, error } = await supabase.rpc('quote_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1373,6 +1373,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_vehicle_type: input.vehicleType, p_pallets: input.pallets,
       p_delivery_speed: input.deliverySpeed,
       p_cargo_type: input.cargoType ?? 'Pallet', p_weight_kg: input.weightKg ?? 0,
+      p_distance_km: input.distanceKm ?? null,
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
@@ -1388,6 +1389,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     cargoType?: string; itemCount?: number; weightKg?: number;
     lengthCm?: number; widthCm?: number; heightCm?: number;
     itemDescription?: string; recipientName?: string; recipientPhone?: string;
+    distanceKm?: number;
   }) => {
     const { data, error } = await supabase.rpc('post_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1401,6 +1403,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_length_cm: input.lengthCm ?? 0, p_width_cm: input.widthCm ?? 0, p_height_cm: input.heightCm ?? 0,
       p_item_description: input.itemDescription ?? '',
       p_recipient_name: input.recipientName ?? '', p_recipient_phone: input.recipientPhone ?? '',
+      p_distance_km: input.distanceKm ?? null,
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);

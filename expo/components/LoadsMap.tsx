@@ -14,7 +14,13 @@ export type MapPoint = {
   selected?: boolean;
 };
 
-export type MapRoute = { from: { lat: number; lng: number }; to: { lat: number; lng: number }; muted?: boolean };
+export type MapRoute = {
+  from: { lat: number; lng: number };
+  to: { lat: number; lng: number };
+  muted?: boolean;
+  /** Optional road-following polyline. When present it is drawn instead of a straight line. */
+  path?: { lat: number; lng: number }[];
+};
 
 interface LoadsMapProps {
   points: MapPoint[];
@@ -229,16 +235,28 @@ export default function LoadsMap({ points, routes = [], height = 280, onMapPress
 
           <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
             {routes.map((r, i) => {
-              const a = project(r.from.lat, r.from.lng);
-              const b = project(r.to.lat, r.to.lng);
+              let d: string;
+              if (r.path && r.path.length >= 2) {
+                d = r.path
+                  .map((pt, idx) => {
+                    const pr = project(pt.lat, pt.lng);
+                    return `${idx === 0 ? 'M' : 'L'} ${pr.x} ${pr.y}`;
+                  })
+                  .join(' ');
+              } else {
+                const a = project(r.from.lat, r.from.lng);
+                const b = project(r.to.lat, r.to.lng);
+                d = `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+              }
               return (
                 <Path
                   key={`r${i}`}
-                  d={`M ${a.x} ${a.y} L ${b.x} ${b.y}`}
+                  d={d}
                   stroke={r.muted ? C.textMuted : C.accent}
                   strokeWidth={r.muted ? 2 : 4}
                   strokeDasharray={r.muted ? '4 6' : undefined}
                   strokeLinecap="round"
+                  strokeLinejoin="round"
                   opacity={r.muted ? 0.6 : 0.95}
                   fill="none"
                 />

@@ -1,19 +1,32 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, Crosshair, MapPin, Search, Truck, Zap } from 'lucide-react-native';
+import { ArrowLeft, Clock, Crosshair, MapPin, Route as RouteIcon, Search, Truck, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LoadsMap, { type MapPoint } from '@/components/LoadsMap';
 import C from '@/constants/colors';
 import { CARGO_OPTIONS, CargoType, DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
-import { geocodeAddress, reverseGeocode } from '@/lib/geocode';
+import { autocompleteAddress, fetchRoute, geocodeAddress, reverseGeocode, type AddressSuggestion, type RouteResult } from '@/lib/geocode';
 import { trpc } from '@/lib/trpc';
 
 type LatLng = { lat: number; lng: number };
+
+const num = (s: string): number => {
+  const n = parseFloat(s);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/** Format a duration in minutes into a compact "1 h 20 min" / "45 min" string. */
+const formatDuration = (min: number): string => {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m} min`;
+};
 type Quote = {
   distanceKm: number; freightPrice: number; commissionPct: number; commissionAmount: number;
   bookingFee: number; platformEarnings: number; providerNet: number; totalPrice: number;
@@ -50,9 +63,15 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState<boolean>(false);
   const [geocoding, setGeocoding] = useState<'pickup' | 'dropoff' | null>(null);
+  const [route, setRoute] = useState<RouteResult | null>(null);
+  const [pickupSug, setPickupSug] = useState<AddressSuggestion[]>([]);
+  const [dropoffSug, setDropoffSug] = useState<AddressSuggestion[]>([]);
 
   const quoteMutation = trpc.loads.quote.useMutation();
   const postMutation = trpc.loads.post.useMutation();
+
+  const acTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quoteReqId = useRef<number>(0);
 
   const points = useMemo<MapPoint[]>(() => {
     const out: MapPoint[] = [];
@@ -62,14 +81,39 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   }, [pickup, dropoff]);
 
   const routes = useMemo(
-    () => (pickup && dropoff ? [{ from: pickup, to: dropoff }] : []),
-    [pickup, dropoff],
+    () => (pickup && dropoff ? [{ from: pickup, to: dropoff, path: route?.coordinates }] : []),
+    [pickup, dropoff, route],
   );
 
-  const num = (s: string): number => {
-    const n = parseFloat(s);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  };
+  // Fetch a real road-following route whenever both endpoints are set.
+  useEffect(() => {
+    if (!pickup || !dropoff) { setRoute(null); return; }
+    let cancelled = false;
+    void fetchRoute(pickup, dropoff).then((r) => { if (!cancelled) setRoute(r); });
+    return () => { cancelled = true; };
+  }, [pickup, dropoff]);
+
+  // Auto-price: recompute the quote whenever pricing inputs change (debounced).
+  useEffect(() => {
+    if (!pickup || !dropoff) { setQuote(null); setQuoting(false); return; }
+    const id = ++quoteReqId.current;
+    setQuoting(true);
+    const t = setTimeout(() => {
+      void quoteMutation
+        .mutateAsync({
+          pickupLat: pickup.lat, pickupLng: pickup.lng,
+          dropoffLat: dropoff.lat, dropoffLng: dropoff.lng,
+          vehicleType: vehicle, pallets, deliverySpeed: speed,
+          cargoType: cargo, weightKg: num(weightKg),
+          distanceKm: route?.distanceKm,
+        })
+        .then((q) => { if (id === quoteReqId.current) setQuote(q as unknown as Quote); })
+        .catch(() => { if (id === quoteReqId.current) setQuote(null); })
+        .finally(() => { if (id === quoteReqId.current) setQuoting(false); });
+    }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickup, dropoff, vehicle, cargo, pallets, weightKg, speed, route]);
 
   const selectCargo = (next: CargoType) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
@@ -79,15 +123,46 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
     setQuote(null);
   };
 
+  const runAutocomplete = (which: 'pickup' | 'dropoff', text: string) => {
+    if (acTimer.current) clearTimeout(acTimer.current);
+    if (text.trim().length < 3) {
+      if (which === 'pickup') setPickupSug([]); else setDropoffSug([]);
+      return;
+    }
+    acTimer.current = setTimeout(() => {
+      void autocompleteAddress(text).then((res) => {
+        if (which === 'pickup') setPickupSug(res); else setDropoffSug(res);
+      });
+    }, 350);
+  };
+
+  const onChangePickup = (text: string) => { setPickupAddr(text); runAutocomplete('pickup', text); };
+  const onChangeDropoff = (text: string) => { setDropoffAddr(text); runAutocomplete('dropoff', text); };
+
+  const selectSuggestion = (which: 'pickup' | 'dropoff', s: AddressSuggestion) => {
+    if (Platform.OS !== 'web') void Haptics.selectionAsync();
+    if (which === 'pickup') {
+      setPickup({ lat: s.lat, lng: s.lng });
+      setPickupAddr(s.label);
+      setPickupSug([]);
+      setPlacing('dropoff');
+    } else {
+      setDropoff({ lat: s.lat, lng: s.lng });
+      setDropoffAddr(s.label);
+      setDropoffSug([]);
+    }
+  };
+
   const handleMapPress = (lat: number, lng: number) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
-    setQuote(null);
     const which = placing;
     if (which === 'pickup') {
       setPickup({ lat, lng });
+      setPickupSug([]);
       setPlacing('dropoff');
     } else {
       setDropoff({ lat, lng });
+      setDropoffSug([]);
     }
     // Fill the matching address field from the dropped pin (best-effort).
     void reverseGeocode(lat, lng).then((label) => {
@@ -105,14 +180,15 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
       const res = await geocodeAddress(addr);
       if (!res) { Alert.alert('Address not found', 'Try adding a city or postal/ZIP code to narrow it down.'); return; }
       if (Platform.OS !== 'web') void Haptics.selectionAsync();
-      setQuote(null);
       if (which === 'pickup') {
         setPickup({ lat: res.lat, lng: res.lng });
         setPickupAddr(res.label);
+        setPickupSug([]);
         setPlacing('dropoff');
       } else {
         setDropoff({ lat: res.lat, lng: res.lng });
         setDropoffAddr(res.label);
+        setDropoffSug([]);
       }
     } catch (err) {
       Alert.alert('Search failed', err instanceof Error ? err.message : 'Unknown error');
@@ -131,28 +207,10 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
       if (status !== 'granted') { Alert.alert('Permission needed', 'Enable Location to use your position.'); return; }
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       setPickup({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      setPickupSug([]);
       setPlacing('dropoff');
-      setQuote(null);
     } catch (err) {
       Alert.alert('Location error', err instanceof Error ? err.message : 'Unknown');
-    }
-  };
-
-  const getQuote = async () => {
-    if (!pickup || !dropoff) { Alert.alert('Set both points', 'Drop a pickup and a drop-off pin first.'); return; }
-    try {
-      setQuoting(true);
-      const q = await quoteMutation.mutateAsync({
-        pickupLat: pickup.lat, pickupLng: pickup.lng,
-        dropoffLat: dropoff.lat, dropoffLng: dropoff.lng,
-        vehicleType: vehicle, pallets, deliverySpeed: speed,
-        cargoType: cargo, weightKg: num(weightKg),
-      });
-      setQuote(q as unknown as Quote);
-    } catch (err) {
-      Alert.alert('Unable to price', err instanceof Error ? err.message : 'Unknown');
-    } finally {
-      setQuoting(false);
     }
   };
 
@@ -166,6 +224,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         cargoType: cargo, itemCount, weightKg: num(weightKg),
         lengthCm: num(lengthCm), widthCm: num(widthCm), heightCm: num(heightCm),
         itemDescription, recipientName, recipientPhone,
+        distanceKm: route?.distanceKm,
       });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
@@ -195,22 +254,56 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
 
         <LoadsMap points={points} routes={routes} placing height={300} onMapPress={handleMapPress} />
 
+        {route ? (
+          <View style={styles.routeBanner}>
+            <View style={styles.routeStat}>
+              <RouteIcon size={14} color={C.accent} />
+              <Text style={styles.routeStatText}>{route.distanceKm} km by road</Text>
+            </View>
+            <View style={styles.routeDot} />
+            <View style={styles.routeStat}>
+              <Clock size={14} color={C.accent} />
+              <Text style={styles.routeStatText}>{formatDuration(route.durationMin)} drive</Text>
+            </View>
+          </View>
+        ) : null}
+
         <Card style={styles.addrCard}>
-          <Text style={styles.addrHint}>Type an address and tap search to drop the pin — or tap the map directly.</Text>
+          <Text style={styles.addrHint}>Start typing an address and pick a suggestion — or tap the map directly.</Text>
           <View style={styles.addrRow}>
             <MapPin size={14} color={C.green} />
-            <TextInput style={styles.addrInput} placeholder="Pickup address" placeholderTextColor={C.textMuted} value={pickupAddr} onChangeText={setPickupAddr} returnKeyType="search" onSubmitEditing={() => void searchAddress('pickup')} />
+            <TextInput style={styles.addrInput} placeholder="Pickup address" placeholderTextColor={C.textMuted} value={pickupAddr} onChangeText={onChangePickup} returnKeyType="search" onSubmitEditing={() => void searchAddress('pickup')} />
             <TouchableOpacity style={[styles.addrSearchBtn, { borderColor: C.green }]} onPress={() => void searchAddress('pickup')} disabled={geocoding === 'pickup'} accessibilityLabel="Find pickup">
               <Search size={15} color={geocoding === 'pickup' ? C.textMuted : C.green} />
             </TouchableOpacity>
           </View>
+          {pickupSug.length > 0 ? (
+            <View style={styles.sugList}>
+              {pickupSug.map((s) => (
+                <TouchableOpacity key={s.id} style={styles.sugItem} onPress={() => selectSuggestion('pickup', s)}>
+                  <MapPin size={13} color={C.green} />
+                  <Text style={styles.sugText} numberOfLines={2}>{s.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.addrRow}>
             <MapPin size={14} color={C.red} />
-            <TextInput style={styles.addrInput} placeholder="Drop-off address" placeholderTextColor={C.textMuted} value={dropoffAddr} onChangeText={setDropoffAddr} returnKeyType="search" onSubmitEditing={() => void searchAddress('dropoff')} />
+            <TextInput style={styles.addrInput} placeholder="Drop-off address" placeholderTextColor={C.textMuted} value={dropoffAddr} onChangeText={onChangeDropoff} returnKeyType="search" onSubmitEditing={() => void searchAddress('dropoff')} />
             <TouchableOpacity style={[styles.addrSearchBtn, { borderColor: C.red }]} onPress={() => void searchAddress('dropoff')} disabled={geocoding === 'dropoff'} accessibilityLabel="Find drop-off">
               <Search size={15} color={geocoding === 'dropoff' ? C.textMuted : C.red} />
             </TouchableOpacity>
           </View>
+          {dropoffSug.length > 0 ? (
+            <View style={styles.sugList}>
+              {dropoffSug.map((s) => (
+                <TouchableOpacity key={s.id} style={styles.sugItem} onPress={() => selectSuggestion('dropoff', s)}>
+                  <MapPin size={13} color={C.red} />
+                  <Text style={styles.sugText} numberOfLines={2}>{s.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null}
         </Card>
 
         <Text style={styles.sectionTitle}>What are you shipping?</Text>
@@ -289,12 +382,26 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           <TextInput style={styles.notesInput} placeholder="Notes for the driver (optional)" placeholderTextColor={C.textMuted} value={notes} onChangeText={setNotes} multiline />
         </Card>
 
+        {!quote && quoting ? (
+          <Card style={styles.calcCard}>
+            <ActivityIndicator size="small" color={C.accent} />
+            <Text style={styles.calcText}>Calculating price…</Text>
+          </Card>
+        ) : null}
+
+        {!quote && !quoting && (!pickup || !dropoff) ? (
+          <Card style={styles.calcCard}>
+            <Zap size={15} color={C.textMuted} />
+            <Text style={styles.calcText}>Set pickup & drop-off to see the price.</Text>
+          </Card>
+        ) : null}
+
         {quote ? (
           <Card elevated style={styles.quoteCard}>
             <View style={styles.quoteHead}>
               <Zap size={16} color={C.accent} />
               <Text style={styles.quoteTitle}>Price estimate</Text>
-              <Text style={styles.quoteDist}>{quote.distanceKm} km</Text>
+              {quoting ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={styles.quoteDist}>{quote.distanceKm} km</Text>}
             </View>
             <QuoteLine label="Freight price" value={quote.freightPrice} />
             <QuoteLine label="Booking fee" value={quote.bookingFee} />
@@ -309,7 +416,6 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         ) : null}
 
         <View style={styles.actions}>
-          <Button label="Get price" variant="secondary" onPress={() => void getQuote()} loading={quoting} fullWidth icon={<Zap size={15} color={C.accent} />} />
           <Button label="Post load" onPress={() => void submit()} loading={postMutation.isPending} fullWidth icon={<Truck size={15} color={C.white} />} />
         </View>
       </ScrollView>
@@ -361,6 +467,15 @@ const styles = StyleSheet.create({
   addrRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   addrInput: { flex: 1, color: C.text, fontSize: 13, paddingVertical: 6 },
   addrSearchBtn: { width: 34, height: 34, borderRadius: 9, borderWidth: 1, backgroundColor: C.bgSecondary, alignItems: 'center', justifyContent: 'center' },
+  sugList: { backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, overflow: 'hidden' },
+  sugItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  sugText: { flex: 1, fontSize: 12, color: C.text, lineHeight: 16 },
+  routeBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 },
+  routeStat: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  routeStatText: { fontSize: 12, fontWeight: '800' as const, color: C.text },
+  routeDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.accent },
+  calcCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 },
+  calcText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
   sectionTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text, marginTop: 4 },
   vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleCard: { width: '31%', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 10, gap: 2 },
