@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Image } from 'expo-image';
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, FileText, MapPin, MessageCircle, Navigation, Package, Phone, Radio, ScanLine, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, Flag, FileText, MapPin, MessageCircle, Navigation, Navigation2, Package, Phone, Radio, ScanLine, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -15,6 +15,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import BarcodeScannerModal from '@/components/BarcodeScannerModal';
 import SignaturePad from '@/components/SignaturePad';
+import LoadsMap, { MapPoint, MapRoute } from '@/components/LoadsMap';
 import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
@@ -31,7 +32,14 @@ type LoadRow = {
   driver_hold?: boolean | null; driver_hold_fee?: number | null;
   handling_fee?: number | null; storage_per_day?: number | null;
   bol_number?: string | null;
+  pickup_lat?: number | null; pickup_lng?: number | null;
+  dropoff_lat?: number | null; dropoff_lng?: number | null;
+  driver_lat?: number | null; driver_lng?: number | null;
 };
+
+function isFiniteCoord(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v !== 0;
+}
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
 
@@ -153,6 +161,30 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
   const active = loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status));
   const done = loads.filter((l) => ['Delivered', 'Cancelled'].includes(l.status));
+
+  // --- Uber-style navigation for the trip the driver is currently running ---
+  // Prefer a load in motion (EnRoute/Arrived), else the next accepted pickup.
+  const navLoad = useMemo<LoadRow | null>(() => {
+    if (!canRun) return null;
+    const mine = active.filter((l) => l.accepted_driver_user_id === user?.id);
+    const pool = mine.length ? mine : active;
+    return (
+      pool.find((l) => l.status === 'Arrived') ??
+      pool.find((l) => l.status === 'EnRoute') ??
+      pool.find((l) => l.status === 'Accepted') ??
+      null
+    );
+  }, [canRun, active, user?.id]);
+
+  // Open the device's Google Maps (falls back to Apple/other) for turn-by-turn.
+  const openMaps = async (lat: number, lng: number) => {
+    const dest = `${lat},${lng}`;
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+    const ok = await Linking.canOpenURL(url).catch(() => false);
+    if (!ok) { Alert.alert('Maps unavailable', 'No maps app is available on this device.'); return; }
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await Linking.openURL(url);
+  };
 
   // --- Live location sharing for the driver while a load is in motion ---
   const [sharing, setSharing] = useState<boolean>(false);
@@ -304,6 +336,74 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     }
   };
 
+  // Full navigation card for the active trip: live map, external navigation, and
+  // the single stage-aware action (arrive at pickup → drive → arrive → deliver).
+  const renderNav = () => {
+    if (!navLoad) return null;
+    const toPickup = navLoad.status === 'Accepted';
+    const puOk = isFiniteCoord(navLoad.pickup_lat) && isFiniteCoord(navLoad.pickup_lng);
+    const dfOk = isFiniteCoord(navLoad.dropoff_lat) && isFiniteCoord(navLoad.dropoff_lng);
+    const pu = puOk ? { lat: Number(navLoad.pickup_lat), lng: Number(navLoad.pickup_lng) } : null;
+    const df = dfOk ? { lat: Number(navLoad.dropoff_lat), lng: Number(navLoad.dropoff_lng) } : null;
+    const dpos = isFiniteCoord(navLoad.driver_lat) && isFiniteCoord(navLoad.driver_lng)
+      ? { lat: Number(navLoad.driver_lat), lng: Number(navLoad.driver_lng) } : null;
+    const target = toPickup ? pu : df;
+
+    const points: MapPoint[] = [];
+    if (pu) points.push({ id: 'pickup', ...pu, kind: 'pickup', label: 'Pickup', selected: toPickup });
+    if (df) points.push({ id: 'dropoff', ...df, kind: 'dropoff', label: 'Drop-off', selected: !toPickup });
+    if (dpos) points.push({ id: 'driver', ...dpos, kind: 'driver', label: 'You', selected: false });
+
+    const routes: MapRoute[] = [];
+    const origin = dpos ?? pu;
+    if (origin && target) routes.push({ from: origin, to: target });
+    if (toPickup && pu && df) routes.push({ from: pu, to: df, muted: true });
+
+    const stage = toPickup
+      ? { title: 'Head to pickup', sub: navLoad.pickup_address || 'Pickup point', color: C.green, icon: <Package size={16} color={C.green} />, cta: 'Arrived at pickup' }
+      : navLoad.status === 'EnRoute'
+        ? { title: 'Deliver to drop-off', sub: navLoad.dropoff_address || 'Drop-off point', color: C.accent, icon: <Navigation2 size={16} color={C.accent} />, cta: 'Mark arrived at drop-off' }
+        : { title: 'You have arrived', sub: navLoad.dropoff_address || 'Drop-off point', color: C.red, icon: <Flag size={16} color={C.red} />, cta: 'Complete delivery' };
+
+    return (
+      <Card style={styles.navCard}>
+        <View style={styles.navStageRow}>
+          <View style={[styles.navStageIcon, { backgroundColor: stage.color + '1E' }]}>{stage.icon}</View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.navStageTitle}>{stage.title}</Text>
+            <Text style={styles.navStageSub} numberOfLines={1}>{stage.sub}</Text>
+          </View>
+          <StatusBadge status={navLoad.status} />
+        </View>
+
+        {points.length > 0 ? (
+          <View style={styles.navMapWrap}>
+            <LoadsMap points={points} routes={routes} height={220} />
+          </View>
+        ) : (
+          <View style={styles.navNoMap}><MapPin size={18} color={C.textMuted} /><Text style={styles.navNoMapText}>Map location unavailable for this load.</Text></View>
+        )}
+
+        {target ? (
+          <TouchableOpacity style={styles.navMapsBtn} onPress={() => void openMaps(target.lat, target.lng)}>
+            <Navigation size={16} color={C.white} />
+            <Text style={styles.navMapsBtnText}>Open in Google Maps</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity
+          style={[styles.navActionBtn, { backgroundColor: stage.color }, advance.isPending && { opacity: 0.6 }]}
+          disabled={advance.isPending}
+          onPress={() => void move(navLoad)}
+        >
+          <CheckCircle2 size={16} color={C.white} />
+          <Text style={styles.navActionText}>{stage.cta}</Text>
+          <ChevronRight size={16} color={C.white} />
+        </TouchableOpacity>
+      </Card>
+    );
+  };
+
   if (query.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading your trips" /></View>;
   if (query.isError) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load trips" onRetry={() => void query.refetch()} /></View>;
 
@@ -426,6 +526,8 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         {loads.length === 0 ? (
           <EmptyState icon={Truck} title={source === 'posted' ? 'No posted loads yet' : 'No accepted loads yet'} description={source === 'posted' ? 'Post a load and track its progress here as a driver picks it up.' : 'Accept a load from the marketplace and it will show up here to run.'} />
         ) : null}
+
+        {renderNav()}
 
         {active.length > 0 ? (
           <>
@@ -568,6 +670,18 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
   card: { gap: 10 },
   cardActive: { borderColor: C.accent, borderWidth: 2 },
+  navCard: { gap: 12, borderColor: C.accent, borderWidth: 2 },
+  navStageRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  navStageIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  navStageTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  navStageSub: { fontSize: 12.5, color: C.textSecondary, marginTop: 1 },
+  navMapWrap: { borderRadius: 16, overflow: 'hidden' },
+  navNoMap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14 },
+  navNoMapText: { fontSize: 12.5, color: C.textSecondary, flex: 1 },
+  navMapsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.blue, borderRadius: 12, paddingVertical: 12 },
+  navMapsBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
+  navActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 14 },
+  navActionText: { flex: 1, textAlign: 'center' as const, color: C.white, fontSize: 15, fontWeight: '800' as const },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   vehBadge: { backgroundColor: C.blueDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
   vehBadgeText: { fontSize: 11, fontWeight: '800' as const, color: C.blue },
