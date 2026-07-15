@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Image } from 'expo-image';
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, MessageCircle, Navigation, Package, Phone, Radio, Truck, UserCheck, UserRound, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, MessageCircle, Navigation, Package, Phone, Radio, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -25,6 +25,9 @@ type LoadRow = {
   distance_km: number; total_price: number; provider_net: number;
   accepted_driver_user_id?: string | null;
   recipient_name?: string | null; recipient_phone?: string | null;
+  uses_hub?: boolean | null; hub_name?: string | null; hub_leg_status?: string | null;
+  driver_hold?: boolean | null; driver_hold_fee?: number | null;
+  handling_fee?: number | null; storage_per_day?: number | null;
 };
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
@@ -79,6 +82,37 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const dispatch = trpc.loads.dispatch.useMutation({
     onSuccess: async () => { setDispatchFor(null); await query.refetch(); },
   });
+  const assignLeg = trpc.loads.assignLeg.useMutation({
+    onSuccess: async () => { setDispatchFor(null); await query.refetch(); },
+  });
+  const driverHold = trpc.loads.driverHold.useMutation({
+    onSuccess: async () => { await query.refetch(); },
+  });
+
+  // Driver chooses to keep a hub-routed load in their own truck overnight (earns
+  // the hub fee themselves) instead of dropping it at the warehouse.
+  const toggleTruckHold = (l: LoadRow) => {
+    const holding = Boolean(l.driver_hold);
+    const bonus = Number(l.handling_fee ?? 0) + Number(l.storage_per_day ?? 0);
+    Alert.alert(
+      holding ? 'Route through the hub instead?' : 'Hold in your truck overnight?',
+      holding
+        ? 'This sends the load back through the warehouse hub and removes the hold bonus from your payout.'
+        : `Skip the warehouse — keep the goods in your truck and deliver directly next day. You earn the hub fee: +$${bonus.toFixed(2)}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: holding ? 'Use hub' : 'Hold it',
+          onPress: () => {
+            if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            driverHold.mutate({ id: l.id, hold: !holding }, {
+              onError: (e) => Alert.alert('Unable to update', e instanceof Error ? e.message : 'Error'),
+            });
+          },
+        },
+      ],
+    );
+  };
 
   // --- Proof capture (pickup / delivery) ---
   const [proof, setProof] = useState<ProofRequest | null>(null);
@@ -141,7 +175,15 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     }
     try {
       if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await dispatch.mutateAsync({ id: loadId, driverUserId: driver.userId });
+      const target = loads.find((l) => l.id === loadId);
+      if (target?.uses_hub && !target.driver_hold) {
+        // Hub loads dispatch by leg: pickup while heading to the hub, delivery
+        // once released. Falls through to a normal dispatch otherwise.
+        const leg: 'pickup' | 'delivery' = target.hub_leg_status === 'Released' ? 'delivery' : 'pickup';
+        await assignLeg.mutateAsync({ id: loadId, leg, driverUserId: driver.userId });
+      } else {
+        await dispatch.mutateAsync({ id: loadId, driverUserId: driver.userId });
+      }
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       Alert.alert('Unable to dispatch', err instanceof Error ? err.message : 'Unknown');
@@ -266,14 +308,39 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </View>
         ) : null}
 
+        {canRun && l.uses_hub && (l.hub_leg_status === 'Pending' || l.driver_hold) && ['Accepted', 'EnRoute'].includes(l.status) ? (
+          <TouchableOpacity
+            style={[styles.holdBtn, l.driver_hold && styles.holdBtnActive]}
+            disabled={driverHold.isPending}
+            onPress={() => toggleTruckHold(l)}
+          >
+            <Moon size={14} color={l.driver_hold ? C.white : C.purple} />
+            <Text style={[styles.holdBtnText, l.driver_hold && { color: C.white }]}>
+              {l.driver_hold
+                ? `Holding overnight · +$${(Number(l.handling_fee ?? 0) + Number(l.storage_per_day ?? 0)).toFixed(2)}`
+                : 'Hold in my truck overnight'}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {l.uses_hub && !l.driver_hold ? (
+          <View style={styles.hubTag}>
+            <Warehouse size={12} color={C.blue} />
+            <Text style={styles.hubTagText} numberOfLines={1}>
+              Via hub{l.hub_name ? ` · ${l.hub_name}` : ''}{l.hub_leg_status && l.hub_leg_status !== 'None' ? ` · ${l.hub_leg_status}` : ''}
+            </Text>
+          </View>
+        ) : null}
+
         {canDispatch && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
           <TouchableOpacity style={styles.dispatchBtn} onPress={() => setDispatchFor(l.id)}>
             <UserCheck size={14} color={C.accent} />
             <Text style={styles.dispatchBtnText}>
-              {l.accepted_driver_user_id ? 'Reassign driver' : 'Dispatch to driver'}
+              {l.uses_hub ? 'Assign leg to driver' : (l.accepted_driver_user_id ? 'Reassign driver' : 'Dispatch to driver')}
             </Text>
           </TouchableOpacity>
         ) : null}
+
       </Card>
     );
   };
@@ -376,7 +443,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
                 <TouchableOpacity
                   key={d.id}
                   style={[styles.driverRow, !d.userId && styles.driverRowDisabled]}
-                  disabled={dispatch.isPending}
+                  disabled={dispatch.isPending || assignLeg.isPending}
                   onPress={() => { if (dispatchFor) void assignDriver(dispatchFor, d); }}
                 >
                   <View style={styles.driverIcon}><UserRound size={16} color={d.userId ? C.green : C.textMuted} /></View>
@@ -432,6 +499,11 @@ const styles = StyleSheet.create({
   contactBtnText: { fontSize: 12.5, fontWeight: '800' as const, color: C.accent },
   dispatchBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
   dispatchBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
+  holdBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 11, backgroundColor: C.purpleDim, borderWidth: 1, borderColor: C.purple + '55' },
+  holdBtnActive: { backgroundColor: C.purple, borderColor: C.purple },
+  holdBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.purple },
+  hubTag: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: C.blueDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  hubTagText: { fontSize: 11, fontWeight: '700' as const, color: C.blue },
   modal: { flex: 1, backgroundColor: C.bg },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border },
   modalTitle: { fontSize: 18, fontWeight: '800' as const, color: C.text },

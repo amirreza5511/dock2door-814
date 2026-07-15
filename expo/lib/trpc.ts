@@ -1566,6 +1566,68 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     });
   },
 
+  // Driver keeps a hub-routed load in their own truck overnight instead of
+  // dropping it at the warehouse hub; the hub fee is redirected to the driver.
+  'loads.driverHold': async (input: { id: string; hold?: boolean }) => {
+    const { error } = await supabase.rpc('driver_hold_load', { p_load_id: input.id, p_hold: input.hold ?? true });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to update truck-hold');
+    }
+    return { success: true };
+  },
+
+  // Open jobs board: hub-routed legs a driver can claim. Pickup legs are loads
+  // still heading to the hub; delivery legs are loads released from the hub
+  // awaiting their final leg. Optionally filtered to a zone (city substring).
+  'loads.openLegs': async (input: { zone?: string } | undefined, ctx) => {
+    void ctx;
+    const { data, error } = await supabase.from('loads').select('*')
+      .eq('uses_hub', true).is('archived_at', null)
+      .or('and(hub_leg_status.eq.Pending,pickup_leg_driver_user_id.is.null),and(hub_leg_status.eq.Released,delivery_leg_driver_user_id.is.null)')
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load open jobs');
+    }
+    const zone = (input?.zone ?? '').trim().toLowerCase();
+    const rows = (data ?? []) as AnyRecord[];
+    if (!zone) return rows;
+    return rows.filter((r) => {
+      const leg = r.hub_leg_status === 'Released' ? 'delivery' : 'pickup';
+      const city = leg === 'delivery' ? String(r.dropoff_city ?? '') : String(r.pickup_city ?? '');
+      return city.toLowerCase().includes(zone);
+    });
+  },
+
+  // Driver self-claims a leg ('pickup' or 'delivery') from the open board.
+  'loads.claimLeg': async (input: { id: string; leg: 'pickup' | 'delivery' }) => {
+    const { error } = await supabase.rpc('claim_load_leg', { p_load_id: input.id, p_leg: input.leg });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to claim this leg');
+    }
+    return { success: true };
+  },
+
+  // Dispatcher assigns a specific fleet driver to a leg.
+  'loads.assignLeg': async (input: { id: string; leg: 'pickup' | 'delivery'; driverUserId: string }) => {
+    const { error } = await supabase.rpc('assign_load_leg', { p_load_id: input.id, p_leg: input.leg, p_driver_user_id: input.driverUserId });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to assign this leg');
+    }
+    return { success: true };
+  },
+
+  // Fleet toggles whether one of their warehouse listings is a discoverable
+  // network hub or kept internal-only.
+  'warehouse.setHub': async (input: { listingId: string; enabled: boolean }) => {
+    const { error } = await supabase.rpc('set_warehouse_hub', { p_listing_id: input.listingId, p_enabled: input.enabled });
+    if (error) throwErr(error, 'Unable to update hub setting');
+    return { success: true };
+  },
+
   // =========================================================================
   // PAYMENTS
   // =========================================================================

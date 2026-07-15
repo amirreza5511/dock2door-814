@@ -21,6 +21,7 @@ type LoadRow = {
   uses_hub?: boolean; hub_name?: string | null; hub_leg_status?: string | null;
   handling_fee?: number; storage_per_day?: number; storage_charged?: number;
   freight_price?: number; booking_fee?: number;
+  driver_hold?: boolean;
 };
 
 type StatFilter = 'all' | 'open' | 'transit' | 'delivered';
@@ -45,7 +46,7 @@ export default function ShipperDashboard() {
   }), [loads]);
 
   const activeJourneys = useMemo(
-    () => loads.filter((l) => l.uses_hub && ACTIVE_STATUSES.includes(l.status)).slice(0, 4),
+    () => loads.filter((l) => (l.uses_hub || l.driver_hold) && ACTIVE_STATUSES.includes(l.status)).slice(0, 4),
     [loads],
   );
 
@@ -141,7 +142,7 @@ export default function ShipperDashboard() {
                     </Text>
                     <StatusBadge status={l.status} />
                   </View>
-                  <JourneyTrack status={l.status} hubLeg={l.hub_leg_status ?? 'Pending'} hubName={l.hub_name ?? 'Hub'} />
+                  <JourneyTrack status={l.status} hubLeg={l.hub_leg_status ?? 'Pending'} hubName={l.hub_name ?? 'Hub'} driverHold={Boolean(l.driver_hold)} />
                 </Card>
               </TouchableOpacity>
             ))}
@@ -166,7 +167,9 @@ export default function ShipperDashboard() {
                     <View style={styles.cargoBadge}>
                       <Text style={styles.cargoBadgeText}>{CARGO_LABEL[l.cargo_type as CargoType] ?? l.cargo_type}</Text>
                     </View>
-                    {l.uses_hub ? (
+                    {l.driver_hold ? (
+                      <View style={styles.hubTag}><Truck size={10} color={C.accent} /><Text style={styles.hubTagText} numberOfLines={1}>In driver&apos;s truck</Text></View>
+                    ) : l.uses_hub ? (
                       <View style={styles.hubTag}><Warehouse size={10} color={C.accent} /><Text style={styles.hubTagText} numberOfLines={1}>{l.hub_name || 'Hub'}</Text></View>
                     ) : null}
                     <View style={{ flex: 1 }} />
@@ -199,16 +202,16 @@ export default function ShipperDashboard() {
 }
 
 /** Compact multi-leg progress track: Picked up → At hub → Out for delivery → Delivered. */
-function JourneyTrack({ status, hubLeg, hubName }: { status: string; hubLeg: string; hubName: string }) {
+function JourneyTrack({ status, hubLeg, hubName, driverHold }: { status: string; hubLeg: string; hubName: string; driverHold?: boolean }) {
   const steps = [
     { label: 'Picked up', icon: Truck },
-    { label: hubName || 'At hub', icon: Warehouse },
+    { label: driverHold ? "Driver's truck" : (hubName || 'At hub'), icon: driverHold ? Truck : Warehouse },
     { label: 'Final leg', icon: Navigation },
     { label: 'Delivered', icon: CheckCircle2 },
   ];
   // Derive current step index from load + hub leg status.
   let current = 0;
-  if (status === 'Accepted' || status === 'EnRoute') current = 0;
+  if (status === 'Accepted' || status === 'EnRoute') current = driverHold ? 1 : 0;
   if (hubLeg === 'AtHub') current = 1;
   if (hubLeg === 'Released') current = 2;
   if (status === 'Delivered') current = 3;

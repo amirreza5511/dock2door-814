@@ -21,6 +21,10 @@ export default function DriverLayout() {
       <Tabs.Screen name="dropoff" options={{ title: 'Drop-off', tabBarIcon: ({ color }) => <Warehouse size={22} color={color} /> }} />
       <Tabs.Screen name="documents" options={{ title: 'Compliance', tabBarIcon: ({ color }) => <ShieldCheck size={22} color={color} /> }} />
       <Tabs.Screen name="pod" options={{ title: 'POD', tabBarIcon: ({ color }) => <ClipboardCheck size={22} color={color} /> }} />
+      <Tabs.Screen name="open-jobs" options={{ href: null }} />
+      <Tabs.Screen name="loads" options={{ href: null }} />
+      <Tabs.Screen name="my-loads" options={{ href: null }} />
+      <Tabs.Screen name="drayage" options={{ href: null }} />
     </Tabs>
   );
 }

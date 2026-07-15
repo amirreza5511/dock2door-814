@@ -165,6 +165,8 @@ export interface WarehouseListing {
   status: ListingStatus;
   photos: string[];
   createdAt: string;
+  /** When true this warehouse is discoverable as a network freight hub. */
+  isNetworkHub?: boolean;
 }
 
 export interface WarehouseAvailability {

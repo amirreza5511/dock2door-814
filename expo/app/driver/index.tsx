@@ -315,6 +315,19 @@ export default function DriverHomeScreen() {
         </View>
 
         <TouchableOpacity
+          style={styles.openJobsBtn}
+          onPress={() => router.push('/driver/open-jobs' as never)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.openJobsIcon}><Package size={18} color={C.accent} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.openJobsTitle}>Open jobs board</Text>
+            <Text style={styles.openJobsDesc}>Claim pickup or delivery legs near your zone — including next-day & next-week runs</Text>
+          </View>
+          <ChevronRight size={18} color={C.textMuted} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.drayageBtn}
           onPress={() => router.push('/driver/drayage' as never)}
           activeOpacity={0.85}
@@ -404,6 +417,10 @@ const styles = StyleSheet.create({
   marketBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14 },
   marketBtnAlt: { backgroundColor: C.card, borderWidth: 1, borderColor: C.accent },
   marketBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
+  openJobsBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.accent + '40', padding: 14 },
+  openJobsIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  openJobsTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  openJobsDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   drayageBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.blue + '40', padding: 14 },
   drayageBtnTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   drayageBtnDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },

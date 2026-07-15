@@ -101,6 +101,7 @@ function mapWarehouseListing(r: Row): WarehouseListing {
     status: r.status ?? 'Draft',
     photos: Array.isArray(r.photos) ? r.photos : [],
     createdAt: r.created_at ?? new Date().toISOString(),
+    isNetworkHub: r.is_network_hub === undefined || r.is_network_hub === null ? true : Boolean(r.is_network_hub),
   };
 }
 

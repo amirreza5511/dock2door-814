@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Modal, Alert, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Warehouse, Edit, EyeOff, Eye, CheckCircle } from 'lucide-react-native';
+import { Warehouse, Edit, EyeOff, Eye, CheckCircle, Network, Lock } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import { trpc } from '@/lib/trpc';
@@ -30,6 +30,15 @@ export default function WPListings() {
   };
   const updateMutation = trpc.warehouses.updateListing.useMutation({ onSuccess: invalidate });
   const setStatusMutation = trpc.warehouses.setListingStatus.useMutation({ onSuccess: invalidate });
+  const setHubMutation = trpc.warehouse.setHub.useMutation({ onSuccess: invalidate });
+
+  const toggleHub = async (l: WarehouseListing) => {
+    try {
+      await setHubMutation.mutateAsync({ listingId: l.id, enabled: !(l.isNetworkHub ?? true) });
+    } catch (error) {
+      Alert.alert('Unable to update hub setting', error instanceof Error ? error.message : 'Unknown error');
+    }
+  };
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editModal, setEditModal] = useState(false);
@@ -158,6 +167,22 @@ export default function WPListings() {
                 <Text style={styles.statLabel}>bookings</Text>
               </View>
             </View>
+            <TouchableOpacity onPress={() => void toggleHub(l)} activeOpacity={0.8} style={[styles.hubRow, (l.isNetworkHub ?? true) ? styles.hubRowOn : styles.hubRowOff]}>
+              <View style={[styles.hubIcon, { backgroundColor: (l.isNetworkHub ?? true) ? C.accentDim : C.bgSecondary }]}>
+                {(l.isNetworkHub ?? true) ? <Network size={16} color={C.accent} /> : <Lock size={16} color={C.textMuted} />}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hubTitle}>{(l.isNetworkHub ?? true) ? 'Network hub — on' : 'Internal only'}</Text>
+                <Text style={styles.hubDesc}>
+                  {(l.isNetworkHub ?? true)
+                    ? 'Discoverable for next-day freight routed through the delivery network.'
+                    : 'Used only for your own loads — not offered to the network. Tap to enable.'}
+                </Text>
+              </View>
+              <View style={[styles.hubSwitch, (l.isNetworkHub ?? true) && styles.hubSwitchOn]}>
+                <View style={[styles.hubKnob, (l.isNetworkHub ?? true) && styles.hubKnobOn]} />
+              </View>
+            </TouchableOpacity>
             <View style={styles.cardActions}>
               <Button label="Edit" onPress={() => openEdit(l)} variant="secondary" size="sm" icon={<Edit size={13} color={C.textSecondary} />} />
               {['Available', 'Hidden', 'Draft'].includes(l.status) && (
@@ -243,6 +268,16 @@ const styles = StyleSheet.create({
   stat: { gap: 2 },
   statValue: { fontSize: 16, fontWeight: '700' as const, color: C.text },
   statLabel: { fontSize: 11, color: C.textMuted },
+  hubRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, borderWidth: 1, padding: 10 },
+  hubRowOn: { backgroundColor: C.accentDim, borderColor: C.accent + '55' },
+  hubRowOff: { backgroundColor: C.card, borderColor: C.border },
+  hubIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  hubTitle: { fontSize: 13, fontWeight: '800' as const, color: C.text },
+  hubDesc: { fontSize: 11, color: C.textSecondary, marginTop: 2, lineHeight: 15 },
+  hubSwitch: { width: 42, height: 24, borderRadius: 12, backgroundColor: C.border, padding: 3, justifyContent: 'center' },
+  hubSwitchOn: { backgroundColor: C.accent },
+  hubKnob: { width: 18, height: 18, borderRadius: 9, backgroundColor: C.white },
+  hubKnobOn: { alignSelf: 'flex-end' },
   cardActions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   draftNote: { flex: 1 },
   draftNoteText: { fontSize: 11, color: C.textMuted },
