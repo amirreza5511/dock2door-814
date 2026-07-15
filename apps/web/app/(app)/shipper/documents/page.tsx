@@ -1,13 +1,15 @@
 "use client";
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, FileText, Printer, QrCode, ScanLine, Tags } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, PenLine, Printer, QrCode, ScanLine, Tags } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { QRCode } from "@/components/qr-code";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 import {
   useLoad,
   useLoadPieces,
@@ -16,7 +18,33 @@ import {
   money,
   type LoadPieceRow,
 } from "@/lib/hooks/use-loads";
-import { buildLabelsHtml, buildBolHtml, printHtml, type PieceInfo, type ShipmentInfo } from "@/lib/bol-print";
+import { buildLabelsHtml, buildBolHtml, buildDeliveredBolHtml, printHtml, type DeliveryInfo, type PieceInfo, type ShipmentInfo } from "@/lib/bol-print";
+
+async function signedUrl(path: string | null | undefined): Promise<string> {
+  if (!path) return "";
+  try {
+    const { data } = await getBrowserSupabase().storage.from("attachments").createSignedUrl(path, 300);
+    return data?.signedUrl ?? "";
+  } catch {
+    return "";
+  }
+}
+
+async function toDataUrl(path: string | null | undefined): Promise<string> {
+  const url = await signedUrl(path);
+  if (!url) return "";
+  try {
+    const blob = await (await fetch(url)).blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : "");
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return "";
+  }
+}
 
 function DocumentsInner() {
   const params = useSearchParams();
@@ -63,6 +91,34 @@ function DocumentsInner() {
       })),
     [pieces],
   );
+
+  const isDelivered = load?.status === "Delivered" || Boolean(load?.delivered_at);
+  const signaturePath = (load?.signature_path as string | null | undefined) ?? null;
+  const photoPath = (load?.delivery_photo_path as string | null | undefined) ?? null;
+
+  const [sigUrl, setSigUrl] = useState("");
+  const [photoUrl, setPhotoUrl] = useState("");
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      if (!isDelivered) return;
+      const [s, p] = await Promise.all([signedUrl(signaturePath), signedUrl(photoPath)]);
+      if (alive) { setSigUrl(s); setPhotoUrl(p); }
+    })();
+    return () => { alive = false; };
+  }, [isDelivered, signaturePath, photoPath]);
+
+  const printDeliveredBol = async () => {
+    if (!shipment || !load) return;
+    const [sig, photo] = await Promise.all([toDataUrl(signaturePath), toDataUrl(photoPath)]);
+    const delivery: DeliveryInfo = {
+      receiverName: String(load.receiver_name ?? ""),
+      deliveredAt: String(load.delivered_at ?? ""),
+      signatureDataUrl: sig,
+      photoDataUrl: photo,
+    };
+    printHtml(buildDeliveredBolHtml(shipment, pieceInfos, delivery));
+  };
 
   if (loadQ.isLoading) {
     return <p className="text-sm text-muted-foreground">Loading documents…</p>;
@@ -129,6 +185,44 @@ function DocumentsInner() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Finalized BOL / proof of delivery */}
+      {isDelivered && (
+        <Card className="border-emerald-500/40 bg-emerald-500/[0.04]">
+          <CardContent className="space-y-4 pt-6">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+              <h2 className="flex-1 text-lg font-semibold text-emerald-300">Delivered</h2>
+              {load?.delivered_at && <span className="text-xs text-muted-foreground">{new Date(String(load.delivered_at)).toLocaleString()}</span>}
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Received by</p>
+                <p className="text-lg font-bold">{String(load?.receiver_name ?? "—")}</p>
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><PenLine className="h-3.5 w-3.5" /> Signature</p>
+                <div className="flex min-h-[90px] items-center justify-center rounded-lg border bg-white p-2">
+                  {sigUrl ? (
+                    <Image src={sigUrl} alt="Signature" width={240} height={90} unoptimized className="max-h-[90px] w-auto object-contain" />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">No signature</span>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Delivery photo</p>
+                {photoUrl ? (
+                  <Image src={photoUrl} alt="Delivery" width={320} height={200} unoptimized className="h-40 w-full rounded-lg border object-cover" />
+                ) : (
+                  <div className="flex h-40 items-center justify-center rounded-lg border bg-muted/30 text-xs text-muted-foreground">No photo</div>
+                )}
+              </div>
+            </div>
+            <Button className="bg-emerald-600 hover:bg-emerald-500" onClick={() => void printDeliveredBol()}>
+              <FileText className="mr-2 h-4 w-4" /> Print finalized BOL
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Per-piece labels */}
       <section className="space-y-3">
