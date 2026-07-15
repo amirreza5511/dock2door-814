@@ -25,6 +25,7 @@ export default function TruckingCompanyLayout() {
       <Tabs.Screen name="team" options={{ title: 'Team', tabBarIcon: ({ color }) => <UsersRound size={22} color={color} /> }} />
       <Tabs.Screen name="rates" options={{ href: null }} />
       <Tabs.Screen name="invoicing" options={{ href: null }} />
+      <Tabs.Screen name="dispatch" options={{ href: null }} />
       <Tabs.Screen name="loads" options={{ href: null }} />
       <Tabs.Screen name="my-loads" options={{ href: null }} />
       <Tabs.Screen name="post-load" options={{ href: null }} />

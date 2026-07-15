@@ -20,6 +20,7 @@ import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
 import { pickAndUploadFromUri, uploadFileWithMetadata } from '@/lib/storage-files';
+import { useRoadRoute } from '@/lib/route';
 import { useAuthStore } from '@/store/auth';
 
 type LoadRow = {
@@ -175,6 +176,22 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
       null
     );
   }, [canRun, active, user?.id]);
+
+  // Road-following geometry for the current navigation leg (driver → target).
+  const navToPickup = navLoad?.status === 'Accepted';
+  const navOrigin = navLoad
+    ? isFiniteCoord(navLoad.driver_lat) && isFiniteCoord(navLoad.driver_lng)
+      ? { lat: Number(navLoad.driver_lat), lng: Number(navLoad.driver_lng) }
+      : navToPickup && isFiniteCoord(navLoad.pickup_lat) && isFiniteCoord(navLoad.pickup_lng)
+        ? { lat: Number(navLoad.pickup_lat), lng: Number(navLoad.pickup_lng) }
+        : null
+    : null;
+  const navTarget = navLoad
+    ? navToPickup
+      ? isFiniteCoord(navLoad.pickup_lat) && isFiniteCoord(navLoad.pickup_lng) ? { lat: Number(navLoad.pickup_lat), lng: Number(navLoad.pickup_lng) } : null
+      : isFiniteCoord(navLoad.dropoff_lat) && isFiniteCoord(navLoad.dropoff_lng) ? { lat: Number(navLoad.dropoff_lat), lng: Number(navLoad.dropoff_lng) } : null
+    : null;
+  const navRoadRoute = useRoadRoute([navOrigin, navTarget], Boolean(navLoad));
 
   // Open the device's Google Maps (falls back to Apple/other) for turn-by-turn.
   const openMaps = async (lat: number, lng: number) => {
@@ -356,7 +373,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
 
     const routes: MapRoute[] = [];
     const origin = dpos ?? pu;
-    if (origin && target) routes.push({ from: origin, to: target });
+    if (origin && target) routes.push({ from: origin, to: target, path: navRoadRoute.data?.path });
     if (toPickup && pu && df) routes.push({ from: pu, to: df, muted: true });
 
     const stage = toPickup

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { CalendarClock, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Receipt, Truck, Users, Store } from 'lucide-react-native';
+import { CalendarClock, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Truck, Users, Store } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
 import Card from '@/components/ui/Card';
@@ -83,6 +83,16 @@ export default function TruckingCompanyDashboard() {
             <View style={{ flex: 1 }}>
               <Text style={styles.heroCardTitle}>Loads marketplace</Text>
               <Text style={styles.heroCardText}>Find open loads on the map and accept with one tap.</Text>
+            </View>
+          </View>
+        </Card>
+
+        <Card onPress={() => router.push('/trucking-company/dispatch' as never)} style={styles.dispatchCard}>
+          <View style={styles.heroCardRow}>
+            <View style={[styles.heroIcon, { backgroundColor: C.accent + '22' }]}><Radar size={22} color={C.accent} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.actionTitle}>Dispatch board</Text>
+              <Text style={styles.actionText}>See every truck live on the map and track each driver.</Text>
             </View>
           </View>
         </Card>
@@ -204,6 +214,7 @@ const styles = StyleSheet.create({
   heroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   heroCardTitle: { fontSize: 16, fontWeight: '800' as const, color: C.white },
   heroCardText: { fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2, lineHeight: 17 },
+  dispatchCard: { borderColor: C.accent + '55' },
   actionsRow: { flexDirection: 'row', gap: 10 },
   actionCard: { flex: 1, gap: 8 },
   actionTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },

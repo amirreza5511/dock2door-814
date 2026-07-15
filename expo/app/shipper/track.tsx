@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { ArrowLeft, CheckCircle2, Clock, MapPin, Navigation, Package, Truck } from 'lucide-react-native';
 import LoadsMap, { MapPoint, MapRoute } from '@/components/LoadsMap';
+import { useRoadRoute } from '@/lib/route';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
@@ -78,10 +79,25 @@ export default function ShipperTrackScreen() {
     return pts;
   }, [load]);
 
+  // Road-following geometry: driver → pickup → drop-off (or pickup → drop-off
+  // before the truck reports a position) so the drawn line hugs real streets.
+  const hasDriver = load?.driver_lat != null && load?.driver_lng != null;
+  const waypoints = useMemo(() => {
+    if (!load) return [] as { lat: number; lng: number }[];
+    const pts: { lat: number; lng: number }[] = [];
+    if (hasDriver) pts.push({ lat: Number(load.driver_lat), lng: Number(load.driver_lng) });
+    pts.push({ lat: Number(load.pickup_lat), lng: Number(load.pickup_lng) });
+    pts.push({ lat: Number(load.dropoff_lat), lng: Number(load.dropoff_lng) });
+    return pts;
+  }, [load, hasDriver]);
+  const roadRoute = useRoadRoute(waypoints, Boolean(load));
+
   const routes = useMemo<MapRoute[]>(() => {
     if (!load) return [];
-    return [{ from: { lat: Number(load.pickup_lat), lng: Number(load.pickup_lng) }, to: { lat: Number(load.dropoff_lat), lng: Number(load.dropoff_lng) } }];
-  }, [load]);
+    const from = waypoints[0];
+    const to = waypoints[waypoints.length - 1];
+    return [{ from, to, path: roadRoute.data?.path }];
+  }, [load, waypoints, roadRoute.data]);
 
   if (query.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading shipment" /></View>;
   if (query.isError || !load) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load shipment" onRetry={() => void query.refetch()} /></View>;
