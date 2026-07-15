@@ -80,9 +80,9 @@ export default function ShipperDashboard() {
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={styles.brandRow}>
           <View style={styles.brandIcon}><Send size={18} color={C.blue} /></View>
-          <View>
-            <Text style={styles.greeting}>Freight & Delivery</Text>
-            <Text style={styles.name}>{user?.name}</Text>
+          <View style={styles.brandTextWrap}>
+            <Text style={styles.greeting} numberOfLines={1}>Freight & Delivery</Text>
+            <Text style={styles.name} numberOfLines={1}>{user?.name}</Text>
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -246,11 +246,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 16,
     borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.bgSecondary,
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  brandRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minWidth: 0 },
   brandIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.blueDim, alignItems: 'center', justifyContent: 'center' },
   greeting: { fontSize: 12, color: C.blue, fontWeight: '700' as const, letterSpacing: 0.4 },
   name: { fontSize: 20, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  brandTextWrap: { flex: 1, minWidth: 0 },
+  headerActions: { flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40', alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingTop: 20, paddingHorizontal: 20, gap: 20 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
