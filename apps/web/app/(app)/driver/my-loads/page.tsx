@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
 import { useRoadRoute } from "@/lib/route";
-import { VoiceCallButton } from "@/components/voice-call";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -354,18 +353,13 @@ function DriverNavCard({
           )}
         </div>
 
-        {load.status === "Arrived" && (
-          <div className="flex flex-col gap-2 sm:flex-row">
-            {load.recipient_phone && (
-              <a
-                href={`tel:${load.recipient_phone}`}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
-              >
-                <Phone className="h-4 w-4" /> Call receiver{load.recipient_name ? ` · ${load.recipient_name}` : ""}
-              </a>
-            )}
-            <VoiceCallButton room={`load-${load.id}`} role="driver" className="flex-1" />
-          </div>
+        {load.status === "Arrived" && load.recipient_phone && (
+          <a
+            href={`tel:${load.recipient_phone}`}
+            className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+          >
+            <Phone className="h-4 w-4" /> Call receiver{load.recipient_name ? ` · ${load.recipient_name}` : ""}
+          </a>
         )}
       </CardContent>
     </Card>

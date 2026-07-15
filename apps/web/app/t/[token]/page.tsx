@@ -6,7 +6,6 @@ import { Navigation, MapPin, Truck, CheckCircle2, Clock, Phone, PackageCheck } f
 import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
 import { useRoadRoute } from "@/lib/route";
 import { usePublicTrack, VEHICLE_LABEL, loadStageLabel, type PublicTrack } from "@/lib/hooks/use-loads";
-import { VoiceCallButton } from "@/components/voice-call";
 
 function isCoord(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v !== 0;
@@ -108,19 +107,14 @@ function TrackBody({ load }: { load: PublicTrack }) {
         </div>
       )}
 
-      {/* Call the driver — tap-to-call + in-app voice */}
-      {(arrived || load.status === "EnRoute") && (
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {load.driver_phone && (
-            <a
-              href={`tel:${load.driver_phone}`}
-              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
-            >
-              <Phone className="h-4 w-4" /> Call driver{load.driver_name ? ` · ${load.driver_name}` : ""}
-            </a>
-          )}
-          <VoiceCallButton room={`load-${load.id}`} role="receiver" className="flex-1" />
-        </div>
+      {/* Call the driver — tap-to-call */}
+      {(arrived || load.status === "EnRoute") && load.driver_phone && (
+        <a
+          href={`tel:${load.driver_phone}`}
+          className="flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+        >
+          <Phone className="h-4 w-4" /> Call driver{load.driver_name ? ` · ${load.driver_name}` : ""}
+        </a>
       )}
 
       {/* Route */}
