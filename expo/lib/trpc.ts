@@ -1365,7 +1365,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'loads.quote': async (input: {
     pickupLat: number; pickupLng: number; dropoffLat: number; dropoffLng: number;
     vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay';
-    cargoType?: string; weightKg?: number; distanceKm?: number;
+    cargoType?: string; weightKg?: number; distanceKm?: number; storagePayer?: 'shipper' | 'receiver';
   }) => {
     const { data, error } = await supabase.rpc('quote_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1374,6 +1374,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_delivery_speed: input.deliverySpeed,
       p_cargo_type: input.cargoType ?? 'Pallet', p_weight_kg: input.weightKg ?? 0,
       p_distance_km: input.distanceKm ?? null,
+      p_storage_payer: input.storagePayer ?? 'shipper',
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
@@ -1389,7 +1390,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     cargoType?: string; itemCount?: number; weightKg?: number;
     lengthCm?: number; widthCm?: number; heightCm?: number;
     itemDescription?: string; recipientName?: string; recipientPhone?: string;
-    distanceKm?: number;
+    distanceKm?: number; storagePayer?: 'shipper' | 'receiver';
   }) => {
     const { data, error } = await supabase.rpc('post_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1404,6 +1405,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_item_description: input.itemDescription ?? '',
       p_recipient_name: input.recipientName ?? '', p_recipient_phone: input.recipientPhone ?? '',
       p_distance_km: input.distanceKm ?? null,
+      p_storage_payer: input.storagePayer ?? 'shipper',
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
@@ -1501,6 +1503,42 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       throwErr(error, 'Unable to dispatch load');
     }
     return { success: true };
+  },
+
+  // Freight arriving at / stored in the current company's warehouse hub(s).
+  // Pending = expected inbound, AtHub = received & in storage.
+  'loads.hubInbound': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [] as AnyRecord[];
+    const { data, error } = await supabase.from('loads').select('*')
+      .eq('hub_company_id', ctx.user.companyId)
+      .in('hub_leg_status', ['Pending', 'AtHub'])
+      .is('archived_at', null)
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load hub freight');
+    }
+    return data ?? [];
+  },
+
+  // Warehouse confirms the freight physically arrived at the hub.
+  'loads.hubConfirmInbound': async (input: { id: string }) => {
+    const { error } = await supabase.rpc('hub_confirm_inbound', { p_load_id: input.id });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to confirm inbound');
+    }
+    return { success: true };
+  },
+
+  // Warehouse releases the freight for final delivery; returns the storage charge.
+  'loads.hubRelease': async (input: { id: string }) => {
+    const { data, error } = await supabase.rpc('hub_release_load', { p_load_id: input.id });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to release load');
+    }
+    return { charge: Number(data ?? 0) };
   },
 
   // Drivers in the current user's fleet that can be dispatched. Only fleet driver
@@ -2801,6 +2839,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   'admin.upsertRateCard': async (input: {
     companyId?: string | null; vehicleType: string;
     basePrice: number; perKm: number; perPallet: number; sameDayMultiplier: number;
+    handlingFeePerPallet?: number; storageFeePerPalletDay?: number;
   }) => {
     const { data, error } = await supabase.rpc('admin_upsert_rate_card', {
       p_company_id: input.companyId ?? null,
@@ -2809,6 +2848,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_per_km: input.perKm,
       p_per_pallet: input.perPallet,
       p_same_day_multiplier: input.sameDayMultiplier,
+      p_handling_fee_per_pallet: input.handlingFeePerPallet ?? 5,
+      p_storage_fee_per_pallet_day: input.storageFeePerPalletDay ?? 2,
     });
     if (error) throwErr(error, 'Unable to save rate card — admin only');
     return { id: data as string };

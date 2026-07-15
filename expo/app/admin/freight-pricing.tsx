@@ -19,6 +19,8 @@ interface RateCardRow {
   per_km: number;
   per_pallet: number;
   same_day_multiplier: number;
+  handling_fee_per_pallet?: number;
+  storage_fee_per_pallet_day?: number;
 }
 
 interface CommissionOverrideRow {
@@ -29,17 +31,17 @@ interface CommissionOverrideRow {
 
 interface CompanyRow { id: string; name: string; type: string }
 
-type RateDraft = { base: string; perKm: string; perPallet: string; sameDay: string };
+type RateDraft = { base: string; perKm: string; perPallet: string; sameDay: string; handling: string; storage: string };
 
 const DEFAULTS: Record<VehicleType, RateDraft> = {
-  Bicycle: { base: '6', perKm: '1.2', perPallet: '8', sameDay: '1.4' },
-  Motorcycle: { base: '8', perKm: '1.5', perPallet: '8', sameDay: '1.4' },
-  Car: { base: '12', perKm: '1.8', perPallet: '8', sameDay: '1.4' },
-  Pickup: { base: '25', perKm: '2.2', perPallet: '8', sameDay: '1.4' },
-  MovingTruck: { base: '60', perKm: '3.0', perPallet: '8', sameDay: '1.4' },
-  FiveTon: { base: '90', perKm: '3.5', perPallet: '8', sameDay: '1.4' },
-  FlatDeck: { base: '120', perKm: '4.0', perPallet: '8', sameDay: '1.4' },
-  Semi: { base: '200', perKm: '4.5', perPallet: '8', sameDay: '1.4' },
+  Bicycle: { base: '6', perKm: '1.2', perPallet: '8', sameDay: '1.4', handling: '3', storage: '1' },
+  Motorcycle: { base: '8', perKm: '1.5', perPallet: '8', sameDay: '1.4', handling: '3', storage: '1' },
+  Car: { base: '12', perKm: '1.8', perPallet: '8', sameDay: '1.4', handling: '4', storage: '1.5' },
+  Pickup: { base: '25', perKm: '2.2', perPallet: '8', sameDay: '1.4', handling: '5', storage: '2' },
+  MovingTruck: { base: '60', perKm: '3.0', perPallet: '8', sameDay: '1.4', handling: '6', storage: '2' },
+  FiveTon: { base: '90', perKm: '3.5', perPallet: '8', sameDay: '1.4', handling: '7', storage: '2.5' },
+  FlatDeck: { base: '120', perKm: '4.0', perPallet: '8', sameDay: '1.4', handling: '8', storage: '3' },
+  Semi: { base: '200', perKm: '4.5', perPallet: '8', sameDay: '1.4', handling: '10', storage: '3.5' },
 };
 
 export default function AdminFreightPricing() {
@@ -87,10 +89,10 @@ export default function AdminFreightPricing() {
       const row = rateCards.find((r) => r.vehicle_type === v.type && (scope === 'global' ? r.company_id === null : r.company_id === scope));
       const globalRow = rateCards.find((r) => r.vehicle_type === v.type && r.company_id === null);
       const fallback = globalRow
-        ? { base: String(globalRow.base_price), perKm: String(globalRow.per_km), perPallet: String(globalRow.per_pallet), sameDay: String(globalRow.same_day_multiplier) }
+        ? { base: String(globalRow.base_price), perKm: String(globalRow.per_km), perPallet: String(globalRow.per_pallet), sameDay: String(globalRow.same_day_multiplier), handling: String(globalRow.handling_fee_per_pallet ?? DEFAULTS[v.type].handling), storage: String(globalRow.storage_fee_per_pallet_day ?? DEFAULTS[v.type].storage) }
         : DEFAULTS[v.type];
       next[v.type] = row
-        ? { base: String(row.base_price), perKm: String(row.per_km), perPallet: String(row.per_pallet), sameDay: String(row.same_day_multiplier) }
+        ? { base: String(row.base_price), perKm: String(row.per_km), perPallet: String(row.per_pallet), sameDay: String(row.same_day_multiplier), handling: String(row.handling_fee_per_pallet ?? fallback.handling), storage: String(row.storage_fee_per_pallet_day ?? fallback.storage) }
         : fallback;
     }
     setDrafts(next);
@@ -118,6 +120,8 @@ export default function AdminFreightPricing() {
         perKm: Number(d.perKm) || 0,
         perPallet: Number(d.perPallet) || 0,
         sameDayMultiplier: Number(d.sameDay) || 1,
+        handlingFeePerPallet: Number(d.handling) || 0,
+        storageFeePerPalletDay: Number(d.storage) || 0,
       });
     } catch (err) {
       Alert.alert('Unable to save', err instanceof Error ? err.message : 'Error');
@@ -296,6 +300,11 @@ export default function AdminFreightPricing() {
                 <View style={{ flex: 1 }}><Input label="Per pallet ($)" value={d.perPallet} onChangeText={(t) => setDraft(v.type, 'perPallet', t)} keyboardType="numeric" /></View>
                 <View style={{ flex: 1 }}><Input label="Same-day ×" value={d.sameDay} onChangeText={(t) => setDraft(v.type, 'sameDay', t)} keyboardType="numeric" /></View>
               </View>
+              <Text style={styles.hubRateLabel}>Hub handling &amp; storage (per pallet)</Text>
+              <View style={styles.inlineRow}>
+                <View style={{ flex: 1 }}><Input label="Loading / unloading ($)" value={d.handling} onChangeText={(t) => setDraft(v.type, 'handling', t)} keyboardType="numeric" /></View>
+                <View style={{ flex: 1 }}><Input label="Storage ($/day)" value={d.storage} onChangeText={(t) => setDraft(v.type, 'storage', t)} keyboardType="numeric" /></View>
+              </View>
               <View style={styles.vehActions}>
                 <View style={{ flex: 1 }}>
                   <Button label={scope === 'global' ? 'Save rate' : 'Save override'} onPress={() => void saveRate(v.type)} loading={upsertRate.isPending} fullWidth size="sm" />
@@ -351,6 +360,7 @@ const styles = StyleSheet.create({
   vehHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   vehTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
   vehTag: { fontSize: 11, fontWeight: '800' as const, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  hubRateLabel: { fontSize: 11, fontWeight: '700' as const, color: C.textSecondary, marginTop: 2 },
   vehActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   vehDelete: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '40' },
 });

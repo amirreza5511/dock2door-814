@@ -27,9 +27,13 @@ const formatDuration = (min: number): string => {
   const m = min % 60;
   return m === 0 ? `${h} h` : `${h} h ${m} min`;
 };
+type StoragePayer = 'shipper' | 'receiver';
+
 type Quote = {
   distanceKm: number; freightPrice: number; commissionPct: number; commissionAmount: number;
   bookingFee: number; platformEarnings: number; providerNet: number; totalPrice: number;
+  usesHub?: boolean; hubName?: string; handlingFee?: number; storagePerDay?: number;
+  estStorageDays?: number; estStorageFee?: number; storagePayer?: StoragePayer; hubCostToShipper?: number;
 };
 
 interface PostLoadScreenProps {
@@ -59,6 +63,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [recipientName, setRecipientName] = useState<string>('');
   const [recipientPhone, setRecipientPhone] = useState<string>('');
   const [speed, setSpeed] = useState<DeliverySpeed>('NextDay');
+  const [storagePayer, setStoragePayer] = useState<StoragePayer>('shipper');
   const [notes, setNotes] = useState<string>('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState<boolean>(false);
@@ -105,7 +110,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           dropoffLat: dropoff.lat, dropoffLng: dropoff.lng,
           vehicleType: vehicle, pallets, deliverySpeed: speed,
           cargoType: cargo, weightKg: num(weightKg),
-          distanceKm: route?.distanceKm,
+          distanceKm: route?.distanceKm, storagePayer,
         })
         .then((q) => { if (id === quoteReqId.current) setQuote(q as unknown as Quote); })
         .catch(() => { if (id === quoteReqId.current) setQuote(null); })
@@ -113,7 +118,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickup, dropoff, vehicle, cargo, pallets, weightKg, speed, route]);
+  }, [pickup, dropoff, vehicle, cargo, pallets, weightKg, speed, route, storagePayer]);
 
   const selectCargo = (next: CargoType) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
@@ -224,7 +229,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         cargoType: cargo, itemCount, weightKg: num(weightKg),
         lengthCm: num(lengthCm), widthCm: num(widthCm), heightCm: num(heightCm),
         itemDescription, recipientName, recipientPhone,
-        distanceKm: route?.distanceKm,
+        distanceKm: route?.distanceKm, storagePayer,
       });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
@@ -368,6 +373,29 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           <Chip active={speed === 'SameDay'} color={C.accent} label="Same day (+40%)" onPress={() => { setSpeed('SameDay'); setQuote(null); }} />
         </View>
 
+        {quote?.usesHub ? (
+          <>
+            <View style={styles.hubBanner}>
+              <View style={styles.hubIcon}><RouteIcon size={15} color={C.accent} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.hubTitle}>Routed via {quote.hubName || 'a partner hub'}</Text>
+                <Text style={styles.hubDesc}>Pickup → hub storage → final delivery. Handling &amp; daily storage apply.</Text>
+              </View>
+            </View>
+
+            <Text style={styles.sectionTitle}>Who pays hub storage &amp; handling?</Text>
+            <View style={styles.segRow}>
+              <Chip active={storagePayer === 'shipper'} color={C.blue} label="I pay (upfront)" onPress={() => setStoragePayer('shipper')} />
+              <Chip active={storagePayer === 'receiver'} color={C.green} label="Receiver pays" onPress={() => setStoragePayer('receiver')} />
+            </View>
+            <Text style={styles.payerNote}>
+              {storagePayer === 'shipper'
+                ? 'Handling and storage are added to your total below.'
+                : 'You pay transport now; storage & handling are billed to the receiver when goods leave the hub.'}
+            </Text>
+          </>
+        ) : null}
+
         <Text style={styles.sectionTitle}>Recipient (optional)</Text>
         <Card style={styles.addrCard}>
           <View style={styles.addrRow}>
@@ -403,10 +431,31 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
               <Text style={styles.quoteTitle}>Price estimate</Text>
               {quoting ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={styles.quoteDist}>{quote.distanceKm} km</Text>}
             </View>
-            <QuoteLine label="Freight price" value={quote.freightPrice} />
+            <QuoteLine label="Transport" value={quote.freightPrice} />
             <QuoteLine label="Booking fee" value={quote.bookingFee} />
+            {quote.usesHub ? (
+              <>
+                <QuoteLine
+                  label={`Loading / unloading${quote.storagePayer === 'receiver' ? ' (receiver)' : ''}`}
+                  value={quote.handlingFee ?? 0}
+                  muted={quote.storagePayer === 'receiver'}
+                />
+                <QuoteLine
+                  label={`Storage${quote.storagePayer === 'receiver' ? ' (receiver)' : ''} · $${(quote.storagePerDay ?? 0).toFixed(2)}/day`}
+                  value={quote.estStorageFee ?? 0}
+                  muted={quote.storagePayer === 'receiver'}
+                />
+              </>
+            ) : null}
             <View style={styles.quoteDivider} />
-            <QuoteLine label="Total (shipper pays)" value={quote.totalPrice} bold />
+            <QuoteLine label="Total (you pay)" value={quote.totalPrice} bold />
+            {quote.usesHub ? (
+              <Text style={styles.storageFootnote}>
+                {quote.storagePayer === 'receiver'
+                  ? `Storage ($${(quote.storagePerDay ?? 0).toFixed(2)}/day) & handling are billed to the receiver at the hub.`
+                  : `Storage estimate is ${quote.estStorageDays ?? 1} day at $${(quote.storagePerDay ?? 0).toFixed(2)}/day; extra days are added if goods stay longer.`}
+              </Text>
+            ) : null}
             <View style={styles.platformNote}>
               <Text style={styles.platformNoteText}>
                 Platform earns ${quote.platformEarnings.toFixed(2)} ({quote.commissionPct}% commission + ${quote.bookingFee.toFixed(2)} fee)
@@ -443,11 +492,11 @@ function Chip({ active, color, label, onPress }: { active: boolean; color: strin
   );
 }
 
-function QuoteLine({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
+function QuoteLine({ label, value, bold, muted }: { label: string; value: number; bold?: boolean; muted?: boolean }) {
   return (
     <View style={styles.quoteLine}>
-      <Text style={[styles.quoteLabel, bold && { color: C.text, fontWeight: '800' as const }]}>{label}</Text>
-      <Text style={[styles.quoteValue, bold && { fontSize: 18 }]}>${value.toFixed(2)}</Text>
+      <Text style={[styles.quoteLabel, bold && { color: C.text, fontWeight: '800' as const }, muted && { color: C.textMuted }]} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.quoteValue, bold && { fontSize: 18 }, muted && { color: C.textMuted, textDecorationLine: 'line-through' as const }]}>${value.toFixed(2)}</Text>
     </View>
   );
 }
@@ -476,6 +525,12 @@ const styles = StyleSheet.create({
   routeDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.accent },
   calcCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 },
   calcText: { fontSize: 12, color: C.textSecondary, fontWeight: '600' as const },
+  hubBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55', borderRadius: 12, padding: 12 },
+  hubIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: C.accent + '22', alignItems: 'center', justifyContent: 'center' },
+  hubTitle: { fontSize: 13, fontWeight: '800' as const, color: C.text },
+  hubDesc: { fontSize: 11, color: C.textSecondary, lineHeight: 15, marginTop: 2 },
+  payerNote: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
+  storageFootnote: { fontSize: 11, color: C.textMuted, lineHeight: 15, marginTop: 2 },
   sectionTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text, marginTop: 4 },
   vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleCard: { width: '31%', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 10, gap: 2 },
