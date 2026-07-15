@@ -1,11 +1,18 @@
 "use client";
 
+import { useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Navigation, MapPin, Package, Truck, CheckCircle2, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useLoad, VEHICLE_LABEL, money, loadStageLabel } from "@/lib/hooks/use-loads";
+import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
+import { useRoadRoute } from "@/lib/route";
+
+function isCoord(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v !== 0;
+}
 
 function relativeTime(iso?: string | null): string {
   if (!iso) return "";
@@ -57,6 +64,8 @@ export default function ShipperTrackPage() {
         </CardContent>
       </Card>
 
+      <TrackMap load={load} />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Route</CardTitle></CardHeader>
         <CardContent className="space-y-2">
@@ -87,6 +96,44 @@ export default function ShipperTrackPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function TrackMap({ load }: { load: import("@/lib/hooks/use-loads").LoadRow }) {
+  const driver = isCoord(load.driver_lat) && isCoord(load.driver_lng) ? { lat: Number(load.driver_lat), lng: Number(load.driver_lng) } : null;
+  const pickup = isCoord(load.pickup_lat) && isCoord(load.pickup_lng) ? { lat: Number(load.pickup_lat), lng: Number(load.pickup_lng) } : null;
+  const dropoff = isCoord(load.dropoff_lat) && isCoord(load.dropoff_lng) ? { lat: Number(load.dropoff_lat), lng: Number(load.dropoff_lng) } : null;
+
+  // Before pickup the truck heads to the pickup; after that it heads to drop-off.
+  const beforePickup = load.status === "Accepted" || !load.picked_up_at;
+  const origin = driver ?? pickup;
+  const target = beforePickup ? pickup : dropoff;
+  const road = useRoadRoute([origin, target], Boolean(origin && target));
+
+  const points = useMemo<MapPoint[]>(() => {
+    const pts: MapPoint[] = [];
+    if (pickup) pts.push({ id: "pickup", lat: pickup.lat, lng: pickup.lng, kind: "pickup", label: "Pickup" });
+    if (dropoff) pts.push({ id: "dropoff", lat: dropoff.lat, lng: dropoff.lng, kind: "dropoff", label: "Drop-off" });
+    if (driver) pts.push({ id: "driver", lat: driver.lat, lng: driver.lng, kind: "driver", label: "Truck", selected: true });
+    return pts;
+  }, [pickup, dropoff, driver]);
+
+  const routes = useMemo<MapRoute[]>(() => {
+    const out: MapRoute[] = [];
+    if (origin && target) out.push({ from: origin, to: target, path: road.data?.path ?? undefined });
+    // Faint remaining leg to the final drop-off while still heading to pickup.
+    if (beforePickup && pickup && dropoff) out.push({ from: pickup, to: dropoff, muted: true });
+    return out;
+  }, [origin, target, road.data, beforePickup, pickup, dropoff]);
+
+  if (points.length === 0) return null;
+
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <LoadsMap points={points} routes={routes} height={320} className="rounded-2xl" />
+      </CardContent>
+    </Card>
   );
 }
 

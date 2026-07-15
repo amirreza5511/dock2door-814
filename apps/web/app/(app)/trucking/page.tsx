@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { Radar, ChevronRight } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -34,6 +36,22 @@ export default function TruckingDispatchPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Dispatch</h1>
+
+      <Link href="/trucking/dispatch" className="block">
+        <Card className="border-primary/40 transition-colors hover:bg-accent/40">
+          <CardContent className="flex items-center gap-3 py-4">
+            <div className="grid h-11 w-11 place-items-center rounded-xl bg-primary/15 text-primary">
+              <Radar className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold">Live dispatch board</p>
+              <p className="text-xs text-muted-foreground">See every truck live on the map and track each driver.</p>
+            </div>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </CardContent>
+        </Card>
+      </Link>
+
       <Card>
         <CardHeader>
           <CardTitle>Active shipments</CardTitle>

@@ -2,12 +2,14 @@
 
 import { useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import { Truck, Loader2, ArrowRight, ScanLine, Camera, Check, X, PenLine } from "lucide-react";
+import { Truck, Loader2, ArrowRight, ScanLine, Camera, Check, X, PenLine, Navigation, Flag } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
+import { useRoadRoute } from "@/lib/route";
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { SignaturePad, type SignaturePadHandle } from "@/components/signature-pad";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
@@ -55,6 +57,15 @@ export default function DriverMyLoadsPage() {
     if (filter === "Delivered") return all.filter((l) => l.status === "Delivered");
     return all;
   }, [trips.data, filter]);
+
+  // The single load the driver is actively navigating: prefer the furthest-along
+  // active trip (Arrived → EnRoute → Accepted), matching the mobile nav card.
+  const navLoad = useMemo<LoadRow | null>(() => {
+    const all = trips.data ?? [];
+    const rank: Record<string, number> = { Arrived: 3, EnRoute: 2, Accepted: 1 };
+    const active = all.filter((l) => rank[l.status]).sort((a, b) => rank[b.status] - rank[a.status]);
+    return active[0] ?? null;
+  }, [trips.data]);
 
   const handleScanned = (barcode: string) => {
     scanPiece.mutate(barcode, {
@@ -138,6 +149,8 @@ export default function DriverMyLoadsPage() {
           </button>
         ))}
       </div>
+
+      {navLoad && <DriverNavCard load={navLoad} advance={advance} openProof={openProof} />}
 
       {trips.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -253,5 +266,93 @@ export default function DriverMyLoadsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function isCoord(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v !== 0;
+}
+
+function openMaps(lat: number, lng: number) {
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function DriverNavCard({
+  load,
+  advance,
+  openProof,
+}: {
+  load: LoadRow;
+  advance: ReturnType<typeof useAdvanceLoad>;
+  openProof: (load: LoadRow, nextStatus: string, kind: "pickup" | "delivery") => void;
+}) {
+  const driver = isCoord(load.driver_lat) && isCoord(load.driver_lng) ? { lat: Number(load.driver_lat), lng: Number(load.driver_lng) } : null;
+  const pickup = isCoord(load.pickup_lat) && isCoord(load.pickup_lng) ? { lat: Number(load.pickup_lat), lng: Number(load.pickup_lng) } : null;
+  const dropoff = isCoord(load.dropoff_lat) && isCoord(load.dropoff_lng) ? { lat: Number(load.dropoff_lat), lng: Number(load.dropoff_lng) } : null;
+
+  // Accepted = still heading to pickup; otherwise heading to drop-off.
+  const toPickup = load.status === "Accepted";
+  const origin = driver ?? pickup;
+  const target = toPickup ? pickup : dropoff;
+  const road = useRoadRoute([origin, target], Boolean(origin && target));
+
+  const points = useMemo<MapPoint[]>(() => {
+    const pts: MapPoint[] = [];
+    if (pickup) pts.push({ id: "pickup", lat: pickup.lat, lng: pickup.lng, kind: "pickup", label: "Pickup" });
+    if (dropoff) pts.push({ id: "dropoff", lat: dropoff.lat, lng: dropoff.lng, kind: "dropoff", label: "Drop-off" });
+    if (driver) pts.push({ id: "driver", lat: driver.lat, lng: driver.lng, kind: "driver", label: "You", selected: true });
+    return pts;
+  }, [pickup, dropoff, driver]);
+
+  const routes = useMemo<MapRoute[]>(() => {
+    const out: MapRoute[] = [];
+    if (origin && target) out.push({ from: origin, to: target, path: road.data?.path ?? undefined });
+    if (toPickup && pickup && dropoff) out.push({ from: pickup, to: dropoff, muted: true });
+    return out;
+  }, [origin, target, road.data, toPickup, pickup, dropoff]);
+
+  const action = (() => {
+    if (load.status === "Accepted") return { label: "Arrived at pickup — confirm & start", run: () => openProof(load, "EnRoute", "pickup") };
+    if (load.status === "EnRoute") return { label: "Mark arrived at drop-off", run: () => void advance.mutateAsync({ id: load.id, status: "Arrived" }) };
+    if (load.status === "Arrived") return { label: "Complete delivery", run: () => openProof(load, "Delivered", "delivery") };
+    return null;
+  })();
+
+  const dest = target ?? dropoff ?? pickup;
+  const stageText = toPickup ? "Navigate to pickup" : "Navigate to drop-off";
+  const destText = toPickup ? (load.pickup_address || load.pickup_city || "Pickup point") : (load.dropoff_address || load.dropoff_city || "Drop-off point");
+
+  return (
+    <Card className="overflow-hidden border-primary/40">
+      <div className="flex items-center gap-2 border-b border-white/5 bg-primary/10 px-4 py-3">
+        <Navigation className="h-4 w-4 text-primary" />
+        <div className="flex-1">
+          <p className="text-sm font-semibold">{stageText}</p>
+          <p className="truncate text-xs text-muted-foreground">{destText}</p>
+        </div>
+        <Badge>{loadStageLabel(load.status)}</Badge>
+      </div>
+      {points.length > 0 && <LoadsMap points={points} routes={routes} height={280} className="rounded-none border-x-0 border-t-0" />}
+      <CardContent className="space-y-3 py-4">
+        {road.data && (
+          <p className="text-xs text-muted-foreground">
+            {road.data.distanceKm.toFixed(1)} km · about {Math.round(road.data.durationMin)} min by road
+          </p>
+        )}
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {dest && (
+            <Button variant="secondary" className="flex-1" onClick={() => openMaps(dest.lat, dest.lng)}>
+              <Navigation className="mr-2 h-4 w-4" /> Open in Google Maps
+            </Button>
+          )}
+          {action && (
+            <Button className="flex-1" onClick={action.run} disabled={advance.isPending}>
+              <Flag className="mr-2 h-4 w-4" /> {action.label}
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
