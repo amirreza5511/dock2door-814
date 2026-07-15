@@ -89,7 +89,7 @@ export default function ShipperDashboard() {
           <WorldSwitcher />
           <SupportMenu />
           <TouchableOpacity onPress={logout} style={styles.logoutBtn} testID="logout-btn" accessibilityLabel="Sign out">
-            <LogOut size={18} color={C.textMuted} />
+            <LogOut size={18} color={C.red} />
           </TouchableOpacity>
         </View>
       </View>
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
   greeting: { fontSize: 12, color: C.blue, fontWeight: '700' as const, letterSpacing: 0.4 },
   name: { fontSize: 20, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40', alignItems: 'center', justifyContent: 'center' },
   scroll: { paddingTop: 20, paddingHorizontal: 20, gap: 20 },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   statCard: { flex: 1, minWidth: '45%', backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, padding: 14, gap: 4 },
