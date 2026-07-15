@@ -1,26 +1,47 @@
-import React, { useMemo } from 'react';
-import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Print from 'expo-print';
-import { ArrowLeft, FileText, Printer, Tag } from 'lucide-react-native';
+import { ArrowLeft, CheckCircle2, FileText, PenLine, Printer, Tag } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import QRCode from '@/components/QRCode';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { CARGO_CLASS_LABEL, CargoClass, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
-import { buildBolHtml, buildLabelsHtml, type PieceInfo, type ShipmentInfo } from '@/lib/bol-print';
+import { buildBolHtml, buildDeliveredBolHtml, buildLabelsHtml, type DeliveryInfo, type PieceInfo, type ShipmentInfo } from '@/lib/bol-print';
+import { getSignedUrl } from '@/lib/storage-files';
 import { useAuthStore } from '@/store/auth';
 
+/** Fetches a stored file via signed URL and returns a base64 data URL for embedding in print HTML. */
+async function toDataUrl(path: string | null | undefined): Promise<string> {
+  if (!path) return '';
+  try {
+    const signed = await getSignedUrl('attachments', path, 300);
+    const res = await fetch(signed);
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return '';
+  }
+}
+
 type LoadRow = {
-  id: string; vehicle_type: string; cargo_type: string; cargo_class?: string | null;
+  id: string; status?: string | null; vehicle_type: string; cargo_type: string; cargo_class?: string | null;
   pallets: number; item_count?: number | null; weight_kg?: number | null;
   pickup_address?: string | null; dropoff_address?: string | null;
   recipient_name?: string | null; recipient_phone?: string | null;
   distance_km?: number | null; total_price?: number | null;
   item_description?: string | null; notes?: string | null;
   bol_number?: string | null; created_at: string;
+  receiver_name?: string | null; signature_path?: string | null;
+  delivery_photo_path?: string | null; delivered_at?: string | null;
 };
 
 type PieceRow = {
@@ -67,6 +88,24 @@ export default function ShipmentDocuments() {
     [pieces],
   );
 
+  const isDelivered = load?.status === 'Delivered' || Boolean(load?.delivered_at);
+
+  // Load delivery-proof images (signature + photo) as signed URLs for on-screen display.
+  const [sigUrl, setSigUrl] = useState<string>('');
+  const [photoUrl, setPhotoUrl] = useState<string>('');
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      if (!isDelivered) return;
+      const [s, p] = await Promise.all([
+        load?.signature_path ? getSignedUrl('attachments', load.signature_path, 300).catch(() => '') : Promise.resolve(''),
+        load?.delivery_photo_path ? getSignedUrl('attachments', load.delivery_photo_path, 300).catch(() => '') : Promise.resolve(''),
+      ]);
+      if (alive) { setSigUrl(s); setPhotoUrl(p); }
+    })();
+    return () => { alive = false; };
+  }, [isDelivered, load?.signature_path, load?.delivery_photo_path]);
+
   const printLabels = async () => {
     if (!shipment) return;
     try {
@@ -79,6 +118,21 @@ export default function ShipmentDocuments() {
     if (!shipment) return;
     try {
       await Print.printAsync({ html: buildBolHtml(shipment, pieceInfos) });
+    } catch {
+      // silent
+    }
+  };
+  const printDeliveredBol = async () => {
+    if (!shipment || !load) return;
+    try {
+      const [sig, photo] = await Promise.all([toDataUrl(load.signature_path), toDataUrl(load.delivery_photo_path)]);
+      const delivery: DeliveryInfo = {
+        receiverName: load.receiver_name ?? '',
+        deliveredAt: load.delivered_at ?? '',
+        signatureDataUrl: sig,
+        photoDataUrl: photo,
+      };
+      await Print.printAsync({ html: buildDeliveredBolHtml(shipment, pieceInfos, delivery) });
     } catch {
       // silent
     }
@@ -135,6 +189,35 @@ export default function ShipmentDocuments() {
           {Platform.OS === 'web' ? <Text style={styles.webHint}>On web, printing opens your browser print dialog — save as PDF if you don&apos;t have a printer.</Text> : null}
         </Card>
 
+        {/* Finalized BOL / proof of delivery */}
+        {isDelivered ? (
+          <Card elevated style={styles.podCard}>
+            <View style={styles.podHead}>
+              <CheckCircle2 size={18} color={C.green} />
+              <Text style={styles.podTitle}>Delivered</Text>
+              {load?.delivered_at ? <Text style={styles.podTime}>{new Date(load.delivered_at).toLocaleString()}</Text> : null}
+            </View>
+            <View style={styles.podRow}>
+              <View style={styles.podCol}>
+                <Text style={styles.podLabel}>Received by</Text>
+                <Text style={styles.podName}>{load?.receiver_name || '—'}</Text>
+                <View style={styles.podSigRow}><PenLine size={13} color={C.textMuted} /><Text style={styles.podLabel}>Signature</Text></View>
+                <View style={styles.sigBox}>
+                  {sigUrl ? <Image source={{ uri: sigUrl }} style={styles.sigImg} resizeMode="contain" /> : <Text style={styles.podEmpty}>No signature</Text>}
+                </View>
+              </View>
+              <View style={styles.podCol}>
+                <Text style={styles.podLabel}>Delivery photo</Text>
+                {photoUrl ? <Image source={{ uri: photoUrl }} style={styles.podPhoto} resizeMode="cover" /> : <View style={[styles.podPhoto, styles.podPhotoEmpty]}><Text style={styles.podEmpty}>No photo</Text></View>}
+              </View>
+            </View>
+            <TouchableOpacity style={[styles.printBtn, styles.printPrimary, { backgroundColor: C.green }]} onPress={() => void printDeliveredBol()}>
+              <FileText size={16} color={C.white} />
+              <Text style={styles.printPrimaryText}>Print finalized BOL</Text>
+            </TouchableOpacity>
+          </Card>
+        ) : null}
+
         {/* Per-piece labels */}
         <View style={styles.sectionRow}>
           <Tag size={15} color={C.accent} />
@@ -186,6 +269,20 @@ const styles = StyleSheet.create({
   printSecondary: { backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent },
   printSecondaryText: { fontSize: 14, fontWeight: '800' as const, color: C.accent },
   webHint: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
+  podCard: { gap: 14, padding: 16, borderColor: C.green, borderWidth: 1 },
+  podHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  podTitle: { fontSize: 16, fontWeight: '800' as const, color: C.green, flex: 1 },
+  podTime: { fontSize: 11, color: C.textMuted },
+  podRow: { flexDirection: 'row', gap: 14 },
+  podCol: { flex: 1, gap: 6 },
+  podLabel: { fontSize: 11, fontWeight: '700' as const, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
+  podName: { fontSize: 17, fontWeight: '800' as const, color: C.text },
+  podSigRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
+  sigBox: { minHeight: 80, borderRadius: 10, backgroundColor: C.white, alignItems: 'center', justifyContent: 'center', padding: 6, borderWidth: 1, borderColor: C.border },
+  sigImg: { width: '100%', height: 72 },
+  podPhoto: { width: '100%', height: 130, borderRadius: 10, backgroundColor: C.bgSecondary },
+  podPhotoEmpty: { alignItems: 'center', justifyContent: 'center' },
+  podEmpty: { fontSize: 12, color: C.textMuted },
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   sectionTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
   sectionHint: { fontSize: 12, color: C.textMuted, lineHeight: 16, marginTop: -6 },
