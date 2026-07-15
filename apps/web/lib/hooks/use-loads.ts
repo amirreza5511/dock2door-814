@@ -46,6 +46,65 @@ export const LOAD_STATUS_FLOW: Record<string, { label: string; next: string } | 
   Arrived: { label: "Mark delivered", next: "Delivered" },
 };
 
+export type CargoClass =
+  | "General"
+  | "Food"
+  | "Furniture"
+  | "NonStandardPallet"
+  | "Cigarettes"
+  | "Alcohol"
+  | "UnusualLoad"
+  | "Chemical"
+  | "Hazardous";
+
+export interface CargoClassOption {
+  cls: CargoClass;
+  label: string;
+  emoji: string;
+  defaultPct: number;
+  note?: string;
+  sensitive?: boolean;
+}
+
+/** Mirrors mobile CARGO_CLASS_OPTIONS; live percentages come from the DB. */
+export const CARGO_CLASS_OPTIONS: CargoClassOption[] = [
+  { cls: "General", label: "General goods", emoji: "\uD83D\uDCE6", defaultPct: 0 },
+  { cls: "Food", label: "Food / Grocery", emoji: "\uD83E\uDD6B", defaultPct: 5, note: "Keep perishables within temperature limits." },
+  { cls: "Furniture", label: "Furniture", emoji: "\uD83D\uDECB\uFE0F", defaultPct: 10 },
+  { cls: "NonStandardPallet", label: "Non-standard pallet", emoji: "\uD83E\uDEA7", defaultPct: 12, note: "Oversized / irregular pallet dimensions." },
+  { cls: "Cigarettes", label: "Cigarettes / Tobacco", emoji: "\uD83D\uDEAC", defaultPct: 15, sensitive: true, note: "Restricted goods — documentation required." },
+  { cls: "Alcohol", label: "Alcohol", emoji: "\uD83C\uDF7E", defaultPct: 20, sensitive: true, note: "Age-restricted; licensed handling required." },
+  { cls: "UnusualLoad", label: "Unusual / Oversize load", emoji: "\uD83D\uDCD0", defaultPct: 20, note: "May need permits or special equipment." },
+  { cls: "Chemical", label: "Chemical", emoji: "\uD83E\uDDEA", defaultPct: 25, sensitive: true, note: "Provide MSDS / safety data." },
+  { cls: "Hazardous", label: "Hazardous (Hazmat)", emoji: "\u2622\uFE0F", defaultPct: 35, sensitive: true, note: "Dangerous goods — full hazmat compliance required." },
+];
+
+export const CARGO_CLASS_LABEL: Record<string, string> = Object.fromEntries(
+  CARGO_CLASS_OPTIONS.map((o) => [o.cls, o.label]),
+);
+
+export interface CargoClassSurchargeRow {
+  cargo_class: string;
+  label: string;
+  surcharge_pct: number;
+  note: string | null;
+  sort_order: number;
+}
+
+export interface LoadPieceRow {
+  id: string;
+  load_id: string;
+  piece_no: number;
+  total_pieces: number;
+  barcode: string;
+  cargo_class: string | null;
+  label: string | null;
+  weight_kg: number | null;
+  scanned: boolean;
+  scanned_at: string | null;
+  scanned_by: string | null;
+}
+
 export interface LoadRow {
   id: string;
   vehicle_type: string;
@@ -164,6 +223,69 @@ export function useLoad(id: string) {
   });
 }
 
+/** Admin-tunable cargo-class surcharges (percent of freight). */
+export function useCargoClasses() {
+  const supabase = getBrowserSupabase();
+  return useQuery({
+    queryKey: ["cargo-classes"],
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<CargoClassSurchargeRow[]> => {
+      const { data, error } = await supabase
+        .from("cargo_class_surcharges")
+        .select("*")
+        .order("sort_order", { ascending: true });
+      if (error) throw error;
+      return (data as CargoClassSurchargeRow[] | null) ?? [];
+    },
+  });
+}
+
+/** Per-piece labels (with QR barcodes) for a shipment. */
+export function useLoadPieces(loadId: string) {
+  const supabase = getBrowserSupabase();
+  return useQuery({
+    queryKey: ["load-pieces", loadId],
+    enabled: Boolean(loadId),
+    refetchInterval: 15000,
+    queryFn: async (): Promise<LoadPieceRow[]> => {
+      const { data, error } = await supabase
+        .from("load_pieces")
+        .select("*")
+        .eq("load_id", loadId)
+        .order("piece_no", { ascending: true });
+      if (error) throw error;
+      return (data as LoadPieceRow[] | null) ?? [];
+    },
+  });
+}
+
+export interface ScanPieceResult {
+  loadId?: string;
+  bolNumber?: string;
+  pieceNo?: number;
+  totalPieces?: number;
+  scannedCount?: number;
+  totalCount?: number;
+  alreadyScanned?: boolean;
+  complete?: boolean;
+}
+
+/** Scan a piece barcode at pickup; returns scan progress. */
+export function useScanPiece() {
+  const supabase = getBrowserSupabase();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (barcode: string): Promise<ScanPieceResult> => {
+      const { data, error } = await supabase.rpc("scan_load_piece", { p_barcode: barcode });
+      if (error) throw error;
+      return (data as ScanPieceResult) ?? {};
+    },
+    onSuccess: (res) => {
+      if (res.loadId) void qc.invalidateQueries({ queryKey: ["load-pieces", res.loadId] });
+    },
+  });
+}
+
 export interface QuoteInput {
   pickupLat: number;
   pickupLng: number;
@@ -173,6 +295,7 @@ export interface QuoteInput {
   pallets: number;
   deliverySpeed: "SameDay" | "NextDay";
   cargoType?: string;
+  cargoClass?: string;
   weightKg?: number;
 }
 
@@ -189,6 +312,7 @@ export function useQuoteLoad() {
         p_pallets: input.pallets,
         p_delivery_speed: input.deliverySpeed,
         p_cargo_type: input.cargoType ?? "Pallet",
+        p_cargo_class: input.cargoClass ?? "General",
         p_weight_kg: input.weightKg ?? 0,
       });
       if (error) throw error;
@@ -227,6 +351,7 @@ export function usePostLoad() {
         p_delivery_speed: input.deliverySpeed,
         p_notes: input.notes ?? "",
         p_cargo_type: input.cargoType ?? "Pallet",
+        p_cargo_class: input.cargoClass ?? "General",
         p_item_count: 1,
         p_weight_kg: input.weightKg ?? 0,
         p_length_cm: 0,
@@ -265,12 +390,13 @@ export function useAdvanceLoad() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { id: string; status: string; receiverName?: string }) => {
+    mutationFn: async (input: { id: string; status: string; receiverName?: string; proofPhotoPath?: string | null; signaturePath?: string | null }) => {
       const { error } = await supabase.rpc("advance_load", {
         p_load_id: input.id,
         p_next_status: input.status,
-        p_proof_photo_path: null,
+        p_proof_photo_path: input.proofPhotoPath ?? null,
         p_receiver_name: input.receiverName ?? null,
+        p_signature_path: input.signaturePath ?? null,
       });
       if (error) throw error;
       return { success: true };

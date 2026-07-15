@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useQuoteLoad, usePostLoad, VEHICLE_LABEL, CARGO_LABEL, money } from "@/lib/hooks/use-loads";
+import { useQuoteLoad, usePostLoad, useCargoClasses, VEHICLE_LABEL, CARGO_LABEL, CARGO_CLASS_OPTIONS, money } from "@/lib/hooks/use-loads";
 
 const VEHICLES = Object.keys(VEHICLE_LABEL);
 const CARGOS = Object.keys(CARGO_LABEL);
@@ -28,6 +28,7 @@ export default function PostLoadPage() {
   const [dropoffLng, setDropoffLng] = useState("");
   const [vehicleType, setVehicleType] = useState("FiveTon");
   const [cargoType, setCargoType] = useState("Pallet");
+  const [cargoClass, setCargoClass] = useState("General");
   const [pallets, setPallets] = useState("1");
   const [deliverySpeed, setDeliverySpeed] = useState<"SameDay" | "NextDay">("NextDay");
   const [notes, setNotes] = useState("");
@@ -50,6 +51,20 @@ export default function PostLoadPage() {
     (coords.pickupLat !== 0 || coords.pickupLng !== 0) &&
     (coords.dropoffLat !== 0 || coords.dropoffLng !== 0);
 
+  const cargoClasses = useCargoClasses();
+
+  /** Live surcharge percent for a class (DB override, else default). */
+  const pctFor = (cls: string): number => {
+    const row = cargoClasses.data?.find((r) => r.cargo_class === cls);
+    if (row) return Number(row.surcharge_pct);
+    return CARGO_CLASS_OPTIONS.find((o) => o.cls === cls)?.defaultPct ?? 0;
+  };
+  const noteFor = (cls: string): string | undefined => {
+    const row = cargoClasses.data?.find((r) => r.cargo_class === cls);
+    return row?.note ?? CARGO_CLASS_OPTIONS.find((o) => o.cls === cls)?.note;
+  };
+  const activeClass = CARGO_CLASS_OPTIONS.find((o) => o.cls === cargoClass);
+
   const quoted = quote.data;
 
   const runQuote = async () => {
@@ -62,6 +77,7 @@ export default function PostLoadPage() {
         pallets: Number(pallets) || 1,
         deliverySpeed,
         cargoType,
+        cargoClass,
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to price this load");
@@ -80,6 +96,7 @@ export default function PostLoadPage() {
         dropoffCity,
         vehicleType,
         cargoType,
+        cargoClass,
         pallets: Number(pallets) || 1,
         deliverySpeed,
         notes,
@@ -131,6 +148,34 @@ export default function PostLoadPage() {
             <Field label="How many (pallets/items)" value={pallets} onChange={setPallets} placeholder="1" />
             <Select label="Delivery speed" value={deliverySpeed} onChange={(v) => setDeliverySpeed(v as "SameDay" | "NextDay")} options={["SameDay", "NextDay"]} labels={{ SameDay: "Same day", NextDay: "Next day" }} />
           </div>
+          <div className="space-y-2">
+            <Label>Cargo class (affects price)</Label>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {CARGO_CLASS_OPTIONS.map((o) => {
+                const pct = pctFor(o.cls);
+                const active = cargoClass === o.cls;
+                return (
+                  <button
+                    type="button"
+                    key={o.cls}
+                    onClick={() => setCargoClass(o.cls)}
+                    className={`flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-colors ${active ? "border-primary bg-primary/10" : "border-input hover:border-primary/40"}`}
+                  >
+                    <span className="text-sm font-medium">{o.emoji} {o.label}</span>
+                    <span className={`text-xs ${pct > 0 ? "text-amber-400" : "text-muted-foreground"}`}>{pct > 0 ? `+${pct}%` : "No surcharge"}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {activeClass?.sensitive && (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                {noteFor(cargoClass) ?? "Restricted goods — extra documentation may be required."}
+              </p>
+            )}
+            {!activeClass?.sensitive && noteFor(cargoClass) && (
+              <p className="text-xs text-muted-foreground">{noteFor(cargoClass)}</p>
+            )}
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Recipient name" value={recipientName} onChange={setRecipientName} />
             <Field label="Recipient phone" value={recipientPhone} onChange={setRecipientPhone} />
@@ -150,6 +195,9 @@ export default function PostLoadPage() {
             <p className="text-sm text-muted-foreground">Estimated price</p>
             <p className="text-3xl font-bold tracking-tight">{quoted?.total_price != null ? money(Number(quoted.total_price)) : "—"}</p>
             {quoted?.distance_km != null && <p className="text-xs text-muted-foreground">{String(quoted.distance_km)} km</p>}
+            {quoted?.cargoClassSurcharge != null && Number(quoted.cargoClassSurcharge) > 0 && (
+              <p className="text-xs text-amber-400">Cargo class (+{String(quoted.cargoClassPct ?? pctFor(cargoClass))}%): {money(Number(quoted.cargoClassSurcharge))}</p>
+            )}
           </div>
           <Button variant="outline" onClick={() => void runQuote()} disabled={quote.isPending}>
             {quote.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Calculator className="mr-2 h-4 w-4" />}
