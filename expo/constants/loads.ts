@@ -88,6 +88,46 @@ export const CARGO_LABEL: Record<CargoType, string> = CARGO_OPTIONS.reduce(
   {} as Record<CargoType, string>,
 );
 
+/** Cargo classes with default surcharge % (mirrors cargo_class_surcharges in
+ *  migration 0139). The live % comes from the server; these are display fallbacks. */
+export type CargoClass =
+  | 'General'
+  | 'Food'
+  | 'Furniture'
+  | 'NonStandardPallet'
+  | 'Cigarettes'
+  | 'Alcohol'
+  | 'UnusualLoad'
+  | 'Chemical'
+  | 'Hazardous';
+
+export interface CargoClassOption {
+  cls: CargoClass;
+  label: string;
+  emoji: string;
+  defaultPct: number;
+  note: string;
+  /** Sensitive classes get a highlighted warning banner. */
+  sensitive?: boolean;
+}
+
+export const CARGO_CLASS_OPTIONS: CargoClassOption[] = [
+  { cls: 'General', label: 'General cargo', emoji: '📦', defaultPct: 0, note: '' },
+  { cls: 'Food', label: 'Food / Groceries', emoji: '🥫', defaultPct: 5, note: 'Perishable — keep the cold chain where required.' },
+  { cls: 'Furniture', label: 'Furniture', emoji: '🛋️', defaultPct: 10, note: 'Bulky / blanket-wrap handling.' },
+  { cls: 'NonStandardPallet', label: 'Non-standard pallet', emoji: '🧱', defaultPct: 12, note: 'Oversized or irregular pallet footprint.' },
+  { cls: 'Cigarettes', label: 'Cigarettes / Tobacco', emoji: '🚬', defaultPct: 15, note: 'Excise-controlled — keep manifest & seals.', sensitive: true },
+  { cls: 'Alcohol', label: 'Alcohol', emoji: '🍾', defaultPct: 20, note: 'Licensed goods — ID may be required on delivery.', sensitive: true },
+  { cls: 'UnusualLoad', label: 'Unusual load', emoji: '🎯', defaultPct: 20, note: 'Special dimensions or handling.' },
+  { cls: 'Chemical', label: 'Chemical', emoji: '⚗️', defaultPct: 25, note: 'Follow SDS handling & segregation rules.', sensitive: true },
+  { cls: 'Hazardous', label: 'Hazardous / Dangerous', emoji: '☣️', defaultPct: 35, note: 'DG declaration & placards required.', sensitive: true },
+];
+
+export const CARGO_CLASS_LABEL: Record<CargoClass, string> = CARGO_CLASS_OPTIONS.reduce(
+  (acc, c) => { acc[c.cls] = c.label; return acc; },
+  {} as Record<CargoClass, string>,
+);
+
 export type DeliverySpeed = 'SameDay' | 'NextDay';
 
 export const LOAD_STATUS_FLOW: Record<string, { label: string; next: string } | undefined> = {

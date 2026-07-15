@@ -1366,6 +1366,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     pickupLat: number; pickupLng: number; dropoffLat: number; dropoffLng: number;
     vehicleType: string; pallets: number; deliverySpeed: 'SameDay' | 'NextDay';
     cargoType?: string; weightKg?: number; distanceKm?: number; storagePayer?: 'shipper' | 'receiver';
+    cargoClass?: string;
   }) => {
     const { data, error } = await supabase.rpc('quote_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1375,6 +1376,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_cargo_type: input.cargoType ?? 'Pallet', p_weight_kg: input.weightKg ?? 0,
       p_distance_km: input.distanceKm ?? null,
       p_storage_payer: input.storagePayer ?? 'shipper',
+      p_cargo_class: input.cargoClass ?? 'General',
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
@@ -1390,7 +1392,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     cargoType?: string; itemCount?: number; weightKg?: number;
     lengthCm?: number; widthCm?: number; heightCm?: number;
     itemDescription?: string; recipientName?: string; recipientPhone?: string;
-    distanceKm?: number; storagePayer?: 'shipper' | 'receiver';
+    distanceKm?: number; storagePayer?: 'shipper' | 'receiver'; cargoClass?: string;
   }) => {
     const { data, error } = await supabase.rpc('post_load', {
       p_pickup_lat: input.pickupLat, p_pickup_lng: input.pickupLng,
@@ -1406,12 +1408,45 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_recipient_name: input.recipientName ?? '', p_recipient_phone: input.recipientPhone ?? '',
       p_distance_km: input.distanceKm ?? null,
       p_storage_payer: input.storagePayer ?? 'shipper',
+      p_cargo_class: input.cargoClass ?? 'General',
     });
     if (error) {
       if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to post load');
     }
     return { id: data as string };
+  },
+
+  // Cargo-class surcharge catalogue (drives the shipper's cargo-class picker).
+  'loads.cargoClasses': async () => {
+    const { data, error } = await supabase.from('cargo_class_surcharges')
+      .select('*').order('sort_order', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load cargo classes');
+    }
+    return data ?? [];
+  },
+
+  // All scannable pieces (labels) for a shipment — used for labels & scan progress.
+  'loads.pieces': async (input: { loadId: string }) => {
+    const { data, error } = await supabase.from('load_pieces')
+      .select('*').eq('load_id', input.loadId).order('piece_no', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load shipment pieces');
+    }
+    return data ?? [];
+  },
+
+  // Driver scans a piece's barcode/QR at pickup; returns live scanned/total progress.
+  'loads.scanPiece': async (input: { barcode: string }) => {
+    const { data, error } = await supabase.rpc('scan_load_piece', { p_barcode: input.barcode });
+    if (error) {
+      if (isMissingRelation(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to scan this label');
+    }
+    return (data ?? {}) as AnyRecord;
   },
 
   'loads.listOpen': async (input: { vehicleType?: string | null; vehicleTypes?: string[] | null } | undefined) => {
@@ -1469,12 +1504,13 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'loads.advance': async (input: { id: string; status: string; proofPhotoPath?: string | null; receiverName?: string | null }) => {
+  'loads.advance': async (input: { id: string; status: string; proofPhotoPath?: string | null; receiverName?: string | null; signaturePath?: string | null }) => {
     const { error } = await supabase.rpc('advance_load', {
       p_load_id: input.id,
       p_next_status: input.status,
       p_proof_photo_path: input.proofPhotoPath ?? null,
       p_receiver_name: input.receiverName ?? null,
+      p_signature_path: input.signaturePath ?? null,
     });
     if (error) {
       if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);

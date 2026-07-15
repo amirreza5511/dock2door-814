@@ -4,12 +4,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { ArrowLeft, Clock, Crosshair, MapPin, Route as RouteIcon, Search, Truck, Zap } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, Clock, Crosshair, MapPin, Route as RouteIcon, Search, Truck, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LoadsMap, { type MapPoint } from '@/components/LoadsMap';
 import C from '@/constants/colors';
-import { CARGO_OPTIONS, CargoType, DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
+import { CARGO_CLASS_OPTIONS, CARGO_OPTIONS, CargoClass, CargoType, DeliverySpeed, VEHICLE_OPTIONS, VehicleType } from '@/constants/loads';
 import { autocompleteAddress, fetchRoute, geocodeAddress, reverseGeocode, type AddressSuggestion, type RouteResult } from '@/lib/geocode';
 import { trpc } from '@/lib/trpc';
 
@@ -34,7 +34,10 @@ type Quote = {
   bookingFee: number; platformEarnings: number; providerNet: number; totalPrice: number;
   usesHub?: boolean; hubName?: string; handlingFee?: number; storagePerDay?: number;
   estStorageDays?: number; estStorageFee?: number; storagePayer?: StoragePayer; hubCostToShipper?: number;
+  cargoClass?: string; cargoClassPct?: number; cargoClassSurcharge?: number;
 };
+
+type CargoClassRow = { class: string; label: string; surcharge_pct: number; note: string };
 
 interface PostLoadScreenProps {
   /** Where to send the user after a successful post (e.g. '/trucking-company/loads'). */
@@ -52,6 +55,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [pickupAddr, setPickupAddr] = useState<string>('');
   const [dropoffAddr, setDropoffAddr] = useState<string>('');
   const [cargo, setCargo] = useState<CargoType>('Pallet');
+  const [cargoClass, setCargoClass] = useState<CargoClass>('General');
   const [vehicle, setVehicle] = useState<VehicleType>('FiveTon');
   const [pallets, setPallets] = useState<number>(1);
   const [itemCount, setItemCount] = useState<number>(1);
@@ -74,6 +78,23 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
 
   const quoteMutation = trpc.loads.quote.useMutation();
   const postMutation = trpc.loads.post.useMutation();
+  const cargoClassesQuery = trpc.loads.cargoClasses.useQuery(undefined, { staleTime: 5 * 60_000 });
+
+  // Live surcharge % / notes per class from the server, falling back to the static table.
+  const classPct = useMemo<Record<string, number>>(() => {
+    const rows = (cargoClassesQuery.data ?? []) as CargoClassRow[];
+    const map: Record<string, number> = {};
+    for (const r of rows) map[r.class] = Number(r.surcharge_pct ?? 0);
+    return map;
+  }, [cargoClassesQuery.data]);
+  const classNote = useMemo<Record<string, string>>(() => {
+    const rows = (cargoClassesQuery.data ?? []) as CargoClassRow[];
+    const map: Record<string, string> = {};
+    for (const r of rows) map[r.class] = r.note ?? '';
+    return map;
+  }, [cargoClassesQuery.data]);
+  const activeClass = useMemo(() => CARGO_CLASS_OPTIONS.find((c) => c.cls === cargoClass), [cargoClass]);
+  const activeClassPct = classPct[cargoClass] ?? activeClass?.defaultPct ?? 0;
 
   const acTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const quoteReqId = useRef<number>(0);
@@ -110,7 +131,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           dropoffLat: dropoff.lat, dropoffLng: dropoff.lng,
           vehicleType: vehicle, pallets, deliverySpeed: speed,
           cargoType: cargo, weightKg: num(weightKg),
-          distanceKm: route?.distanceKm, storagePayer,
+          distanceKm: route?.distanceKm, storagePayer, cargoClass,
         })
         .then((q) => { if (id === quoteReqId.current) setQuote(q as unknown as Quote); })
         .catch(() => { if (id === quoteReqId.current) setQuote(null); })
@@ -118,7 +139,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickup, dropoff, vehicle, cargo, pallets, weightKg, speed, route, storagePayer]);
+  }, [pickup, dropoff, vehicle, cargo, cargoClass, pallets, weightKg, speed, route, storagePayer]);
 
   const selectCargo = (next: CargoType) => {
     if (Platform.OS !== 'web') void Haptics.selectionAsync();
@@ -229,7 +250,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         cargoType: cargo, itemCount, weightKg: num(weightKg),
         lengthCm: num(lengthCm), widthCm: num(widthCm), heightCm: num(heightCm),
         itemDescription, recipientName, recipientPhone,
-        distanceKm: route?.distanceKm, storagePayer,
+        distanceKm: route?.distanceKm, storagePayer, cargoClass,
       });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
@@ -324,6 +345,36 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
             );
           })}
         </View>
+
+        <Text style={styles.sectionTitle}>Cargo type &amp; handling</Text>
+        <View style={styles.classGrid}>
+          {CARGO_CLASS_OPTIONS.map((cc) => {
+            const active = cargoClass === cc.cls;
+            const pct = classPct[cc.cls] ?? cc.defaultPct;
+            return (
+              <TouchableOpacity
+                key={cc.cls}
+                style={[styles.classChip, active && styles.classChipActive]}
+                onPress={() => {
+                  if (Platform.OS !== 'web') void Haptics.selectionAsync();
+                  setCargoClass(cc.cls); setQuote(null);
+                }}
+              >
+                <Text style={styles.classEmoji}>{cc.emoji}</Text>
+                <Text style={[styles.classLabel, active && { color: C.accent }]} numberOfLines={1}>{cc.label}</Text>
+                <Text style={[styles.classPct, active && { color: C.accent }]}>{pct > 0 ? `+${pct}%` : 'no surcharge'}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {activeClass?.sensitive ? (
+          <View style={styles.warnBanner}>
+            <AlertTriangle size={15} color={C.yellow} />
+            <Text style={styles.warnText}>{classNote[cargoClass] || activeClass.note}</Text>
+          </View>
+        ) : activeClassPct > 0 ? (
+          <Text style={styles.classHint}>{classNote[cargoClass] || activeClass?.note}</Text>
+        ) : null}
 
         <Card style={styles.dimCard}>
           <Text style={styles.dimTitle}>Dimensions & weight</Text>
@@ -431,7 +482,10 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
               <Text style={styles.quoteTitle}>Price estimate</Text>
               {quoting ? <ActivityIndicator size="small" color={C.accent} /> : <Text style={styles.quoteDist}>{quote.distanceKm} km</Text>}
             </View>
-            <QuoteLine label="Transport" value={quote.freightPrice} />
+            <QuoteLine label="Transport" value={Math.max(quote.freightPrice - Number(quote.cargoClassSurcharge ?? 0), 0)} />
+            {Number(quote.cargoClassSurcharge ?? 0) > 0 ? (
+              <QuoteLine label={`Cargo class${quote.cargoClassPct ? ` (+${quote.cargoClassPct}%)` : ''}`} value={Number(quote.cargoClassSurcharge)} />
+            ) : null}
             <QuoteLine label="Booking fee" value={quote.bookingFee} />
             {quote.usesHub ? (
               <>
@@ -535,6 +589,15 @@ const styles = StyleSheet.create({
   vehicleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   vehicleCard: { width: '31%', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 10, gap: 2 },
   vehicleCardActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  classGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  classChip: { width: '31%', backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 8, alignItems: 'center', gap: 2 },
+  classChipActive: { borderColor: C.accent, backgroundColor: C.accentDim },
+  classEmoji: { fontSize: 20 },
+  classLabel: { fontSize: 11, fontWeight: '700' as const, color: C.text, textAlign: 'center' as const },
+  classPct: { fontSize: 10, fontWeight: '800' as const, color: C.textMuted },
+  warnBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.yellow + '18', borderWidth: 1, borderColor: C.yellow + '55', borderRadius: 12, padding: 12 },
+  warnText: { flex: 1, fontSize: 12, color: C.text, lineHeight: 16, fontWeight: '600' as const },
+  classHint: { fontSize: 11, color: C.textMuted, lineHeight: 15 },
   vehicleEmoji: { fontSize: 22 },
   vehicleLabel: { fontSize: 12, fontWeight: '800' as const, color: C.text, marginTop: 2 },
   vehicleDesc: { fontSize: 10, color: C.textMuted, lineHeight: 13 },

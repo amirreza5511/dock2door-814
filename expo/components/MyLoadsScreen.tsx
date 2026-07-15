@@ -6,17 +6,19 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Image } from 'expo-image';
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, MapPin, MessageCircle, Navigation, Package, Phone, Radio, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, FileText, MapPin, MessageCircle, Navigation, Package, Phone, Radio, ScanLine, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
+import BarcodeScannerModal from '@/components/BarcodeScannerModal';
+import SignaturePad from '@/components/SignaturePad';
 import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
-import { pickAndUploadFromUri } from '@/lib/storage-files';
+import { pickAndUploadFromUri, uploadFileWithMetadata } from '@/lib/storage-files';
 import { useAuthStore } from '@/store/auth';
 
 type LoadRow = {
@@ -28,6 +30,7 @@ type LoadRow = {
   uses_hub?: boolean | null; hub_name?: string | null; hub_leg_status?: string | null;
   driver_hold?: boolean | null; driver_hold_fee?: number | null;
   handling_fee?: number | null; storage_per_day?: number | null;
+  bol_number?: string | null;
 };
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
@@ -119,6 +122,33 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const [proofPhoto, setProofPhoto] = useState<string | null>(null);
   const [receiverName, setReceiverName] = useState<string>('');
   const [submittingProof, setSubmittingProof] = useState<boolean>(false);
+  const [signatureSvg, setSignatureSvg] = useState<string>('');
+
+  // --- Pickup piece scanning ---
+  const [scannerOpen, setScannerOpen] = useState<boolean>(false);
+  const [scanLoadId, setScanLoadId] = useState<string | null>(null);
+  const [scanState, setScanState] = useState<{ scanned: number; total: number }>({ scanned: 0, total: 0 });
+  const scanPiece = trpc.loads.scanPiece.useMutation();
+
+  const openScanner = (loadId: string) => {
+    setScanLoadId(loadId);
+    setScanState({ scanned: 0, total: 0 });
+    setScannerOpen(true);
+  };
+
+  const handleScanned = (barcode: string) => {
+    scanPiece.mutate({ barcode }, {
+      onSuccess: (res) => {
+        const r = res as { loadId?: string; scannedCount?: number; totalCount?: number; alreadyScanned?: boolean };
+        if (scanLoadId && r.loadId && r.loadId !== scanLoadId) {
+          Alert.alert('Different shipment', 'That label belongs to another shipment.');
+          return;
+        }
+        setScanState({ scanned: Number(r.scannedCount ?? 0), total: Number(r.totalCount ?? 0) });
+      },
+      onError: (e) => Alert.alert('Scan failed', e instanceof Error ? e.message : 'Unknown'),
+    });
+  };
 
   const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
   const active = loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status));
@@ -209,6 +239,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     setProof({ load, nextStatus, kind });
     setProofPhoto(null);
     setReceiverName('');
+    setSignatureSvg('');
   };
 
   const pickProofPhoto = async () => {
@@ -237,16 +268,35 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         entityId: proof.load.id,
         companyId: user?.companyId ?? null,
       });
+
+      // Upload the drawn signature (SVG) on delivery, when captured.
+      let signaturePath: string | null = null;
+      if (proof.kind === 'delivery' && signatureSvg.trim()) {
+        const sigBytes = new TextEncoder().encode(signatureSvg);
+        const sigMeta = await uploadFileWithMetadata({
+          bucket: 'attachments',
+          path: `load-proof/${proof.load.id}/signature_${ts}.svg`,
+          file: sigBytes,
+          contentType: 'image/svg+xml',
+          entityType: 'load_signature',
+          entityId: proof.load.id,
+          companyId: user?.companyId ?? null,
+        });
+        signaturePath = sigMeta.path;
+      }
+
       await advance.mutateAsync({
         id: proof.load.id,
         status: proof.nextStatus,
         proofPhotoPath: meta.path,
         receiverName: proof.kind === 'delivery' ? receiverName.trim() : null,
+        signaturePath,
       });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setProof(null);
       setProofPhoto(null);
       setReceiverName('');
+      setSignatureSvg('');
     } catch (err) {
       Alert.alert('Unable to submit', err instanceof Error ? err.message : 'Unknown');
     } finally {
@@ -290,6 +340,14 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
             <Navigation size={14} color={C.blue} />
             <Text style={styles.trackBtnText}>Track shipment</Text>
             <ChevronRight size={15} color={C.blue} />
+          </TouchableOpacity>
+        ) : null}
+
+        {source === 'posted' ? (
+          <TouchableOpacity style={styles.docBtn} onPress={() => router.push({ pathname: '/shipper/documents', params: { loadId: l.id } } as never)}>
+            <FileText size={14} color={C.accent} />
+            <Text style={styles.docBtnText}>Labels &amp; BOL{l.bol_number ? ` · ${l.bol_number}` : ''}</Text>
+            <ChevronRight size={15} color={C.accent} />
           </TouchableOpacity>
         ) : null}
 
@@ -397,6 +455,21 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
                 ? 'Take a photo of the cargo at pickup before you start the trip.'
                 : 'Take a photo at the drop-off and enter who received the shipment.'}
             </Text>
+            {proof?.kind === 'pickup' ? (
+              <TouchableOpacity style={styles.scanCta} onPress={() => proof && openScanner(proof.load.id)}>
+                <ScanLine size={18} color={C.accent} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.scanCtaTitle}>Scan the piece labels</Text>
+                  <Text style={styles.scanCtaDesc}>
+                    {scanLoadId === proof.load.id && scanState.total > 0
+                      ? `${scanState.scanned} of ${scanState.total} scanned`
+                      : 'Scan each pallet/box QR at pickup'}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={C.accent} />
+              </TouchableOpacity>
+            ) : null}
+
             <TouchableOpacity onPress={() => void pickProofPhoto()} style={styles.photoBox}>
               {proofPhoto ? (
                 <Image source={{ uri: proofPhoto }} style={styles.photoPreview} contentFit="cover" />
@@ -412,7 +485,11 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
             ) : null}
 
             {proof?.kind === 'delivery' ? (
-              <Input label="Received by" value={receiverName} onChangeText={setReceiverName} placeholder="Name of person who received it" />
+              <>
+                <Input label="Received by" value={receiverName} onChangeText={setReceiverName} placeholder="Name of person who received it" />
+                <Text style={styles.sigLabel}>Receiver signature</Text>
+                <SignaturePad onChange={setSignatureSvg} />
+              </>
             ) : null}
 
             <Button
@@ -460,6 +537,15 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </ScrollView>
         </View>
       </Modal>
+
+      <BarcodeScannerModal
+        visible={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanned={handleScanned}
+        title="Scan pickup labels"
+        subtitle="Point at each pallet/box QR code"
+        progress={scanState.total > 0 ? `${scanState.scanned} of ${scanState.total} scanned` : undefined}
+      />
     </View>
   );
 }
@@ -469,6 +555,12 @@ const styles = StyleSheet.create({
   centered: { justifyContent: 'center', padding: 20 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 12, backgroundColor: C.bgSecondary, borderBottomWidth: 1, borderBottomColor: C.border },
   iconBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' },
+  docBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 },
+  docBtnText: { flex: 1, fontSize: 13, fontWeight: '700' as const, color: C.accent },
+  scanCta: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55', borderRadius: 12, padding: 14 },
+  scanCtaTitle: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  scanCtaDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  sigLabel: { fontSize: 13, fontWeight: '700' as const, color: C.text, marginBottom: -2 },
   title: { fontSize: 18, fontWeight: '800' as const, color: C.text },
   shareBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: C.greenDim, borderBottomWidth: 1, borderBottomColor: C.green + '40' },
   shareBarText: { fontSize: 12, color: C.green, fontWeight: '700' as const },
