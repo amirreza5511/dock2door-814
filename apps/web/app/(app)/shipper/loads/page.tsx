@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Send } from "lucide-react";
+import { FileText, Send } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +68,12 @@ export default function ShipperLoadsPage() {
                     <span className="text-muted-foreground">{VEHICLE_LABEL[l.vehicle_type] ?? l.vehicle_type} · {l.distance_km} km</span>
                     <span className="font-semibold">{money(Number(l.total_price))}</span>
                   </div>
+                  <button
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.location.href = `/shipper/documents?loadId=${l.id}`; }}
+                    className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Labels &amp; BOL{typeof l.bol_number === "string" ? ` · ${l.bol_number}` : ""}
+                  </button>
                 </CardContent>
               </Card>
             </Link>
