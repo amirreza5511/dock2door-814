@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, Share, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { ArrowLeft, CheckCircle2, Clock, MapPin, Navigation, Package, Truck } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { ArrowLeft, CheckCircle2, Clock, Mail, MapPin, Navigation, Package, Phone, Share2, Truck } from 'lucide-react-native';
 import LoadsMap, { MapPoint, MapRoute } from '@/components/LoadsMap';
 import { useRoadRoute } from '@/lib/route';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -12,6 +13,7 @@ import C from '@/constants/colors';
 import { VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
 import { getSignedUrl } from '@/lib/storage-files';
+import { trackUrl } from '@/lib/track-link';
 
 type LoadRow = {
   id: string; vehicle_type: string; status: string;
@@ -21,6 +23,7 @@ type LoadRow = {
   pickup_photo_path?: string | null; delivery_photo_path?: string | null;
   receiver_name?: string | null; picked_up_at?: string | null; delivered_at?: string | null;
   distance_km: number; total_price: number;
+  track_token?: string | null; recipient_phone?: string | null; receiver_email?: string | null;
 };
 
 const STAGE_LABEL: Record<string, string> = {
@@ -53,6 +56,42 @@ export default function ShipperTrackScreen() {
 
   const [pickupUrl, setPickupUrl] = useState<string | null>(null);
   const [deliveryUrl, setDeliveryUrl] = useState<string | null>(null);
+  const [phone, setPhone] = useState<string>('');
+  const [email, setEmail] = useState<string>('');
+  const [contactInit, setContactInit] = useState<boolean>(false);
+  const utils = trpc.useUtils();
+  const setContact = trpc.loads.setReceiverContact.useMutation();
+
+  useEffect(() => {
+    if (load && !contactInit) {
+      setPhone(load.recipient_phone ?? '');
+      setEmail(load.receiver_email ?? '');
+      setContactInit(true);
+    }
+  }, [load, contactInit]);
+
+  const shareLink = async () => {
+    if (!load?.track_token) { Alert.alert('Link not ready', 'This shipment does not have a tracking link yet.'); return; }
+    const url = trackUrl(load.track_token);
+    if (Platform.OS !== 'web') void Haptics.selectionAsync();
+    try {
+      await Share.share({ message: `Track your delivery live: ${url}`, url });
+    } catch {
+      // Sharing was dismissed or unavailable; ignore.
+    }
+  };
+
+  const saveContact = async () => {
+    if (!loadId) return;
+    try {
+      await setContact.mutateAsync({ id: loadId, phone: phone.trim(), email: email.trim() });
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await utils.loads.get.invalidate({ id: loadId });
+      Alert.alert('Saved', 'Receiver contact updated.');
+    } catch (err) {
+      Alert.alert('Unable to save', err instanceof Error ? err.message : 'Unknown');
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +171,27 @@ export default function ShipperTrackScreen() {
 
         <LoadsMap points={points} routes={routes} height={300} />
 
+        <TouchableOpacity style={styles.shareBtn} onPress={() => void shareLink()} activeOpacity={0.85}>
+          <Share2 size={16} color={C.white} />
+          <Text style={styles.shareBtnText}>Share tracking link</Text>
+        </TouchableOpacity>
+        <Text style={styles.shareHint}>Send this to the receiver — they can follow the driver live without an account.</Text>
+
+        <Text style={styles.sectionTitle}>Receiver contact</Text>
+        <View style={styles.contactCard}>
+          <View style={styles.contactRow}>
+            <Phone size={15} color={C.textMuted} />
+            <TextInput style={styles.contactInput} placeholder="Receiver phone" placeholderTextColor={C.textMuted} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+          </View>
+          <View style={styles.contactRow}>
+            <Mail size={15} color={C.textMuted} />
+            <TextInput style={styles.contactInput} placeholder="Receiver email" placeholderTextColor={C.textMuted} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          </View>
+          <TouchableOpacity style={[styles.saveBtn, setContact.isPending && { opacity: 0.6 }]} onPress={() => void saveContact()} disabled={setContact.isPending}>
+            <Text style={styles.saveBtnText}>{setContact.isPending ? 'Saving…' : 'Save contact'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.routeCard}>
           <View style={styles.routeLineRow}><View style={[styles.dot, { backgroundColor: C.green }]} /><Text style={styles.routeText}>{load.pickup_address || 'Pickup point'}</Text></View>
           <View style={styles.routeLineRow}><View style={[styles.dot, { backgroundColor: C.red }]} /><Text style={styles.routeText}>{load.dropoff_address || 'Drop-off point'}</Text></View>
@@ -199,4 +259,12 @@ const styles = StyleSheet.create({
   proofTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   proofMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   proofPhoto: { width: '100%', height: 180, borderRadius: 12, backgroundColor: C.bgSecondary },
+  shareBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.accent, borderRadius: 12, paddingVertical: 13 },
+  shareBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
+  shareHint: { fontSize: 11, color: C.textMuted, lineHeight: 15, marginTop: -6 },
+  contactCard: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 14, padding: 14, gap: 10 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12 },
+  contactInput: { flex: 1, color: C.text, fontSize: 13, paddingVertical: 10 },
+  saveBtn: { backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.accent, borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  saveBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
 });

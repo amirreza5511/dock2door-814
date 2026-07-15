@@ -1491,6 +1491,24 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data;
   },
 
+  // Shipper sets/updates the receiver's phone &/or email after posting a load.
+  'loads.setReceiverContact': async (input: { id: string; phone?: string | null; email?: string | null }) => {
+    const { error } = await supabase.rpc('set_receiver_contact', {
+      p_load_id: input.id,
+      p_phone: input.phone ?? null,
+      p_email: input.email ?? null,
+    });
+    if (error) throwErr(error, 'Unable to update receiver contact');
+    return { success: true };
+  },
+
+  // Public, unauthenticated tracking read for an accountless receiver (by token).
+  'loads.publicTrack': async (input: { token: string }) => {
+    const { data, error } = await supabase.rpc('public_track_load', { p_token: input.token });
+    if (error) throw new Error('Unable to load tracking');
+    return (data as AnyRecord | null) ?? null;
+  },
+
   'loads.accept': async (input: { id: string }) => {
     const { error } = await supabase.rpc('accept_load', { p_load_id: input.id });
     if (error) {

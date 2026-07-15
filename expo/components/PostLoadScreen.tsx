@@ -66,6 +66,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [itemDescription, setItemDescription] = useState<string>('');
   const [recipientName, setRecipientName] = useState<string>('');
   const [recipientPhone, setRecipientPhone] = useState<string>('');
+  const [recipientEmail, setRecipientEmail] = useState<string>('');
   const [speed, setSpeed] = useState<DeliverySpeed>('NextDay');
   const [storagePayer, setStoragePayer] = useState<StoragePayer>('shipper');
   const [notes, setNotes] = useState<string>('');
@@ -78,6 +79,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
 
   const quoteMutation = trpc.loads.quote.useMutation();
   const postMutation = trpc.loads.post.useMutation();
+  const setContactMutation = trpc.loads.setReceiverContact.useMutation();
   const cargoClassesQuery = trpc.loads.cargoClasses.useQuery(undefined, { staleTime: 5 * 60_000 });
 
   // Live surcharge % / notes per class from the server, falling back to the static table.
@@ -243,7 +245,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const submit = async () => {
     if (!pickup || !dropoff) { Alert.alert('Set both points', 'Drop a pickup and a drop-off pin first.'); return; }
     try {
-      await postMutation.mutateAsync({
+      const posted = await postMutation.mutateAsync({
         pickupLat: pickup.lat, pickupLng: pickup.lng, pickupAddress: pickupAddr, pickupCity: '',
         dropoffLat: dropoff.lat, dropoffLng: dropoff.lng, dropoffAddress: dropoffAddr, dropoffCity: '',
         vehicleType: vehicle, pallets, deliverySpeed: speed, notes,
@@ -252,6 +254,10 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
         itemDescription, recipientName, recipientPhone,
         distanceKm: route?.distanceKm, storagePayer, cargoClass,
       });
+      // Email isn't part of post_load's signature; persist it right after posting.
+      if (recipientEmail.trim() && posted?.id) {
+        try { await setContactMutation.mutateAsync({ id: posted.id, email: recipientEmail.trim() }); } catch {}
+      }
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
         { text: 'OK', onPress: () => router.replace(doneRoute as never) },
@@ -455,6 +461,10 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
           <View style={styles.addrRow}>
             <TextInput style={styles.addrInput} placeholder="Recipient phone" placeholderTextColor={C.textMuted} value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" />
           </View>
+          <View style={styles.addrRow}>
+            <TextInput style={styles.addrInput} placeholder="Recipient email" placeholderTextColor={C.textMuted} value={recipientEmail} onChangeText={setRecipientEmail} keyboardType="email-address" autoCapitalize="none" />
+          </View>
+          <Text style={styles.addrHint}>Add a phone or email so you can share a live tracking link with the receiver — no account needed.</Text>
         </Card>
 
         <Card style={styles.notesCard}>

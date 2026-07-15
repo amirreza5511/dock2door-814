@@ -131,6 +131,9 @@ export interface LoadRow {
   picked_up_at: string | null;
   delivered_at: string | null;
   receiver_name: string | null;
+  recipient_phone: string | null;
+  receiver_email: string | null;
+  track_token: string | null;
   poster_user_id: string | null;
   accepted_driver_user_id: string | null;
   created_at: string;
@@ -404,6 +407,70 @@ export function useAdvanceLoad() {
     onSuccess: (_d, v) => {
       void qc.invalidateQueries({ queryKey: ["loads", "trips"] });
       void qc.invalidateQueries({ queryKey: ["loads", "one", v.id] });
+    },
+  });
+}
+
+/** Tracking-safe fields returned by the public_track_load RPC (no auth needed). */
+export interface PublicTrack {
+  id: string;
+  track_token: string;
+  status: string;
+  vehicle_type: string;
+  cargo_type: string | null;
+  item_description: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  pickup_address: string | null;
+  pickup_city: string | null;
+  dropoff_lat: number | null;
+  dropoff_lng: number | null;
+  dropoff_address: string | null;
+  dropoff_city: string | null;
+  driver_lat: number | null;
+  driver_lng: number | null;
+  driver_location_at: string | null;
+  driver_name: string | null;
+  driver_phone: string | null;
+  distance_km: number | null;
+  recipient_name: string | null;
+  picked_up_at: string | null;
+  delivered_at: string | null;
+  receiver_name: string | null;
+}
+
+/** Public, unauthenticated tracking read for an accountless receiver (by token). */
+export function usePublicTrack(token: string) {
+  const supabase = getBrowserSupabase();
+  return useQuery({
+    queryKey: ["public-track", token],
+    enabled: Boolean(token),
+    refetchInterval: 8000,
+    queryFn: async (): Promise<PublicTrack | null> => {
+      const { data, error } = await supabase.rpc("public_track_load", { p_token: token });
+      if (error) throw error;
+      return (data as PublicTrack | null) ?? null;
+    },
+  });
+}
+
+/** Shipper sets/updates the receiver's phone &/or email after posting a load. */
+export function useSetReceiverContact() {
+  const supabase = getBrowserSupabase();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: string; phone?: string | null; email?: string | null }) => {
+      const { error } = await supabase.rpc("set_receiver_contact", {
+        p_load_id: input.id,
+        p_phone: input.phone ?? null,
+        p_email: input.email ?? null,
+      });
+      if (error) throw error;
+      return { success: true };
+    },
+    onSuccess: (_d, v) => {
+      void qc.invalidateQueries({ queryKey: ["loads", "one", v.id] });
+      void qc.invalidateQueries({ queryKey: ["loads", "posted"] });
     },
   });
 }

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useQuoteLoad, usePostLoad, useCargoClasses, VEHICLE_LABEL, CARGO_LABEL, CARGO_CLASS_OPTIONS, money } from "@/lib/hooks/use-loads";
+import { useQuoteLoad, usePostLoad, useCargoClasses, useSetReceiverContact, VEHICLE_LABEL, CARGO_LABEL, CARGO_CLASS_OPTIONS, money } from "@/lib/hooks/use-loads";
 
 const VEHICLES = Object.keys(VEHICLE_LABEL);
 const CARGOS = Object.keys(CARGO_LABEL);
@@ -34,7 +34,9 @@ export default function PostLoadPage() {
   const [notes, setNotes] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const setContact = useSetReceiverContact();
 
   const coords = useMemo(
     () => ({
@@ -103,6 +105,10 @@ export default function PostLoadPage() {
         recipientName,
         recipientPhone,
       });
+      // Email isn't part of post_load's signature; persist it right after posting.
+      if (recipientEmail.trim() && res.id) {
+        try { await setContact.mutateAsync({ id: res.id, email: recipientEmail.trim() }); } catch {}
+      }
       router.push(`/shipper/track/${res.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to post load");
@@ -179,7 +185,9 @@ export default function PostLoadPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Recipient name" value={recipientName} onChange={setRecipientName} />
             <Field label="Recipient phone" value={recipientPhone} onChange={setRecipientPhone} />
+            <Field label="Recipient email" value={recipientEmail} onChange={setRecipientEmail} className="sm:col-span-2" />
           </div>
+          <p className="text-xs text-muted-foreground">Add a phone or email so you can share a live tracking link with the receiver — no account needed.</p>
           <div className="space-y-1.5">
             <Label>Notes</Label>
             <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the driver should know…" />

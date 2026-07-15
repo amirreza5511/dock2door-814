@@ -408,6 +408,13 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </TouchableOpacity>
         ) : null}
 
+        {navLoad.status === 'Arrived' && (navLoad.recipient_phone ?? '').trim() ? (
+          <TouchableOpacity style={styles.navCallBtn} onPress={() => void callRecipient(navLoad.recipient_phone as string)}>
+            <Phone size={15} color={C.green} />
+            <Text style={styles.navCallBtnText}>Call receiver{navLoad.recipient_name ? ` · ${navLoad.recipient_name}` : ''}</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity
           style={[styles.navActionBtn, { backgroundColor: stage.color }, advance.isPending && { opacity: 0.6 }]}
           disabled={advance.isPending}
@@ -697,6 +704,8 @@ const styles = StyleSheet.create({
   navNoMapText: { fontSize: 12.5, color: C.textSecondary, flex: 1 },
   navMapsBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.blue, borderRadius: 12, paddingVertical: 12 },
   navMapsBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
+  navCallBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.greenDim, borderWidth: 1, borderColor: C.green + '55', borderRadius: 12, paddingVertical: 12 },
+  navCallBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.green },
   navActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 14 },
   navActionText: { flex: 1, textAlign: 'center' as const, color: C.white, fontSize: 15, fontWeight: '800' as const },
   cardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

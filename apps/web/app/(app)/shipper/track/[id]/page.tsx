@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Navigation, MapPin, Package, Truck, CheckCircle2, Clock } from "lucide-react";
+import { ArrowLeft, Navigation, MapPin, Package, Truck, CheckCircle2, Clock, Share2, Copy, Check, Phone, Mail } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useLoad, VEHICLE_LABEL, money, loadStageLabel } from "@/lib/hooks/use-loads";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useLoad, useSetReceiverContact, VEHICLE_LABEL, money, loadStageLabel, type LoadRow } from "@/lib/hooks/use-loads";
 import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
 import { useRoadRoute } from "@/lib/route";
 
@@ -66,6 +69,9 @@ export default function ShipperTrackPage() {
 
       <TrackMap load={load} />
 
+      <ShareCard load={load} />
+      <ReceiverContactCard load={load} />
+
       <Card>
         <CardHeader><CardTitle className="text-base">Route</CardTitle></CardHeader>
         <CardContent className="space-y-2">
@@ -99,7 +105,84 @@ export default function ShipperTrackPage() {
   );
 }
 
-function TrackMap({ load }: { load: import("@/lib/hooks/use-loads").LoadRow }) {
+function ShareCard({ load }: { load: LoadRow }) {
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== "undefined" && load.track_token ? `${window.location.origin}/t/${load.track_token}` : "";
+
+  const share = async () => {
+    if (!url) return;
+    const nav = navigator as Navigator & { share?: (d: { title?: string; text?: string; url?: string }) => Promise<void> };
+    if (nav.share) {
+      try { await nav.share({ title: "Track your delivery", text: "Track your delivery live:", url }); return; } catch { /* fall through to copy */ }
+    }
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
+  };
+
+  if (!load.track_token) return null;
+  return (
+    <Card className="border-primary/30">
+      <CardContent className="space-y-3 pt-6">
+        <div className="flex items-center gap-2">
+          <Share2 className="h-4 w-4 text-primary" />
+          <p className="text-sm font-semibold">Share tracking link</p>
+        </div>
+        <p className="text-xs text-muted-foreground">Send this to the receiver — they can follow the driver live without an account.</p>
+        <div className="flex items-center gap-2">
+          <Input readOnly value={url} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+          <Button onClick={() => void share()} className="shrink-0">
+            {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+            {copied ? "Copied" : "Share"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReceiverContactCard({ load }: { load: LoadRow }) {
+  const setContact = useSetReceiverContact();
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setPhone(load.recipient_phone ?? "");
+    setEmail(load.receiver_email ?? "");
+  }, [load.recipient_phone, load.receiver_email]);
+
+  const save = async () => {
+    try {
+      await setContact.mutateAsync({ id: load.id, phone: phone.trim(), email: email.trim() });
+      setSaved(true); setTimeout(() => setSaved(false), 2000);
+    } catch { /* surfaced below */ }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Receiver contact</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5" /> Phone</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Receiver phone" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Email</Label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Receiver email" />
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => void save()} disabled={setContact.isPending}>
+            {saved ? <Check className="mr-2 h-4 w-4" /> : null}{saved ? "Saved" : setContact.isPending ? "Saving…" : "Save contact"}
+          </Button>
+          {setContact.error && <span className="text-xs text-red-400">{(setContact.error as Error).message}</span>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrackMap({ load }: { load: LoadRow }) {
   const driver = isCoord(load.driver_lat) && isCoord(load.driver_lng) ? { lat: Number(load.driver_lat), lng: Number(load.driver_lng) } : null;
   const pickup = isCoord(load.pickup_lat) && isCoord(load.pickup_lng) ? { lat: Number(load.pickup_lat), lng: Number(load.pickup_lng) } : null;
   const dropoff = isCoord(load.dropoff_lat) && isCoord(load.dropoff_lng) ? { lat: Number(load.dropoff_lat), lng: Number(load.dropoff_lng) } : null;

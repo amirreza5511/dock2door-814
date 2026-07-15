@@ -61,7 +61,8 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  const isPublicRoute = pathname === "/" || pathname.startsWith("/login");
+  // `/t/<token>` is the public, no-account tracking page for receivers.
+  const isPublicRoute = pathname === "/" || pathname.startsWith("/login") || pathname.startsWith("/t/");
 
   // Redirect unauthenticated visitors away from protected routes.
   if (!user && !isPublicRoute) {
