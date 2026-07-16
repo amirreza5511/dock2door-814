@@ -1123,9 +1123,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         },
       };
     } else if (input.entity === 'trucks') {
-      row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '', make: p.make ?? '', model: p.model ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '', make: p.make ?? '', model: p.model ?? '',
+        data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
-      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
+        data: { trailerNumber: p.trailerNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
@@ -1160,9 +1162,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         },
       };
     } else if (input.entity === 'trucks') {
-      row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '',
+        data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
-      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '' };
+      row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
+        data: { trailerNumber: p.trailerNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
@@ -1555,6 +1559,123 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) {
       if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
       throwErr(error, 'Unable to dispatch load');
+    }
+    return { success: true };
+  },
+
+  // Carrier sets the driver-pay plan (percent/flat) + fuel cost for a load.
+  'loads.setSettlement': async (input: { id: string; payType: 'Percent' | 'Flat' | null; payValue: number | null; fuelCost?: number | null }) => {
+    const { error } = await supabase.rpc('set_load_settlement', {
+      p_load_id: input.id,
+      p_pay_type: input.payType,
+      p_pay_value: input.payValue,
+      p_fuel_cost: input.fuelCost ?? null,
+    });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to save settlement');
+    }
+    return { success: true };
+  },
+
+  'loads.markSettled': async (input: { id: string; settled: boolean }) => {
+    const { error } = await supabase.rpc('mark_load_settled', { p_load_id: input.id, p_settled: input.settled });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to update settlement');
+    }
+    return { success: true };
+  },
+
+  // Delivered loads for the carrier company — powers the settlement + reports.
+  'loads.settlement': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [] as AnyRecord[];
+    const { data, error } = await supabase.from('loads').select('*')
+      .eq('accepted_company_id', ctx.user.companyId)
+      .in('status', ['Delivered'])
+      .is('archived_at', null)
+      .order('delivered_at', { ascending: false }).limit(500);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load settlement');
+    }
+    return data ?? [];
+  },
+
+  // Delivery deadline used for delay alerts on the dispatch board.
+  'loads.setDeadline': async (input: { id: string; deadline: string | null }) => {
+    const { error } = await supabase.rpc('set_load_deadline', { p_load_id: input.id, p_deadline: input.deadline });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to set deadline');
+    }
+    return { success: true };
+  },
+
+  // Geofence auto check-in: driver entered the drop-off radius while EnRoute.
+  'loads.geofenceArrive': async (input: { id: string }) => {
+    const { data, error } = await supabase.rpc('geofence_arrive', { p_load_id: input.id });
+    if (error) {
+      if (isLoadsTableMissing(error)) return { arrived: false };
+      throwErr(error, 'Unable to auto check-in');
+    }
+    return { arrived: data === true };
+  },
+
+  // Multi-stop: ordered extra stops between the primary pickup and drop-off.
+  'loads.stops': async (input: { loadId: string }) => {
+    const { data, error } = await supabase.from('load_stops').select('*')
+      .eq('load_id', input.loadId).order('seq', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load stops');
+    }
+    return data ?? [];
+  },
+
+  'loads.setStops': async (input: { loadId: string; stops: AnyRecord[] }) => {
+    const { error } = await supabase.rpc('set_load_stops', { p_load_id: input.loadId, p_stops: input.stops });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to save stops');
+    }
+    return { success: true };
+  },
+
+  'loads.completeStop': async (input: { stopId: string; done?: boolean }) => {
+    const { error } = await supabase.rpc('complete_load_stop', { p_stop_id: input.stopId, p_done: input.done ?? true });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to update stop');
+    }
+    return { success: true };
+  },
+
+  // Carrier attaches a specific truck + trailer to an active load (full set).
+  'loads.setFleet': async (input: { id: string; truckId?: string | null; trailerId?: string | null }) => {
+    const { error } = await supabase.rpc('set_load_fleet', {
+      p_load_id: input.id,
+      p_truck_id: input.truckId ?? null,
+      p_trailer_id: input.trailerId ?? null,
+    });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to assign fleet units');
+    }
+    return { success: true };
+  },
+
+  // Assigned driver accepts or rejects a dispatched load. Rejecting sends it
+  // back to the company's waiting-for-driver pool and notifies the dispatcher.
+  'loads.respondDispatch': async (input: { id: string; accept: boolean; reason?: string | null }) => {
+    const { error } = await supabase.rpc('respond_dispatch', {
+      p_load_id: input.id,
+      p_accept: input.accept,
+      p_reason: input.reason ?? null,
+    });
+    if (error) {
+      if (isLoadsTableMissing(error)) throw new Error(LOADS_NOT_READY);
+      throwErr(error, 'Unable to respond to dispatch');
     }
     return { success: true };
   },

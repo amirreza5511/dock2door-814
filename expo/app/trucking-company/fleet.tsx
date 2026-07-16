@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronLeft, Package, Plus, Truck, UserRound, Container, Copy, Check, Link2, Unlink, CircleDot, X } from 'lucide-react-native';
+import { ChevronLeft, Package, Plus, Truck, UserRound, Container, Copy, Check, Link2, Unlink, CircleDot, ShieldAlert, X } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -49,6 +49,8 @@ interface FleetFormState {
   email: string;
   status: string;
   notes: string;
+  insuranceExpiry: string;
+  inspectionExpiry: string;
 }
 
 const INITIAL_FORM: FleetFormState = {
@@ -67,7 +69,27 @@ const INITIAL_FORM: FleetFormState = {
   email: '',
   status: 'Active',
   notes: '',
+  insuranceExpiry: '',
+  inspectionExpiry: '',
 };
+
+/** Days until an ISO/date string; null when unset/invalid. Negative = expired. */
+function daysUntil(dateStr: string): number | null {
+  const s = (dateStr || '').trim();
+  if (!s) return null;
+  const t = new Date(s).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.ceil((t - Date.now()) / 86_400_000);
+}
+
+type DocState = { level: 'expired' | 'soon' | 'ok'; label: string } | null;
+function docState(dateStr: string, kind: string): DocState {
+  const d = daysUntil(dateStr);
+  if (d === null) return null;
+  if (d < 0) return { level: 'expired', label: `${kind} expired ${-d}d ago` };
+  if (d <= 30) return { level: 'soon', label: `${kind} expires in ${d}d` };
+  return { level: 'ok', label: `${kind} ok` };
+}
 
 const STATUS_OPTIONS: string[] = ['Active', 'Maintenance', 'Out of service', 'Inactive'];
 const TRAILER_TYPE_OPTIONS: string[] = ['20ft', '40ft', '53ft', 'Chassis 20/40 Combo', 'Tri-axle'];
@@ -124,6 +146,8 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     email: readText(data.email),
     status: readText(item.status, 'Active'),
     notes: readText(data.notes),
+    insuranceExpiry: readText(data.insuranceExpiry),
+    inspectionExpiry: readText(data.inspectionExpiry),
   };
 }
 
@@ -232,6 +256,8 @@ export default function TruckingFleetScreen() {
       email: form.email || null,
       status: form.status,
       notes: form.notes || null,
+      insuranceExpiry: form.insuranceExpiry || null,
+      inspectionExpiry: form.inspectionExpiry || null,
     };
     try {
       if (form.id) await updateMutation.mutateAsync({ entity, id: form.id, payload });
@@ -341,6 +367,22 @@ export default function TruckingFleetScreen() {
                   </View>
                 ) : null}
 
+                {(entity === 'trucks' || entity === 'trailers') ? (() => {
+                  const data = item.data ?? {};
+                  const badges = [docState(readText(data.insuranceExpiry), 'Insurance'), docState(readText(data.inspectionExpiry), 'Inspection')].filter((b): b is NonNullable<DocState> => b !== null && b.level !== 'ok');
+                  if (badges.length === 0) return null;
+                  return (
+                    <View style={styles.driverTags}>
+                      {badges.map((b) => (
+                        <View key={b.label} style={[styles.tag, b.level === 'expired' ? styles.tagExpired : styles.tagSoon]}>
+                          <ShieldAlert size={12} color={b.level === 'expired' ? C.red : C.yellow} />
+                          <Text style={[styles.tagText, { color: b.level === 'expired' ? C.red : C.yellow }]}>{b.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })() : null}
+
                 {entity === 'drivers' && !linkedUid ? (
                   <Text style={styles.linkHint}>Add the email this driver signed up with (or share your fleet code) so they can be dispatched.</Text>
                 ) : null}
@@ -384,6 +426,8 @@ export default function TruckingFleetScreen() {
                   <>
                     <Input label="Unit number" value={form.unitNumber} onChangeText={(value) => setForm((c) => ({ ...c, unitNumber: value }))} placeholder="TRK-102" testID="fleet-truck-unit" />
                     <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((c) => ({ ...c, plateNumber: value }))} placeholder="e.g. ABC 1234" testID="fleet-truck-plate" />
+                    <Input label="Insurance expiry (YYYY-MM-DD)" value={form.insuranceExpiry} onChangeText={(value) => setForm((c) => ({ ...c, insuranceExpiry: value }))} placeholder="2026-12-31" autoCapitalize="none" testID="fleet-truck-insurance" />
+                    <Input label="Inspection expiry (YYYY-MM-DD)" value={form.inspectionExpiry} onChangeText={(value) => setForm((c) => ({ ...c, inspectionExpiry: value }))} placeholder="2026-06-30" autoCapitalize="none" testID="fleet-truck-inspection" />
                   </>
                 ) : null}
                 {entity === 'trailers' ? (
@@ -391,6 +435,8 @@ export default function TruckingFleetScreen() {
                     <Input label="Trailer number" value={form.trailerNumber} onChangeText={(value) => setForm((c) => ({ ...c, trailerNumber: value }))} placeholder="TRL-88" testID="fleet-trailer-number" />
                     <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((c) => ({ ...c, plateNumber: value }))} placeholder="e.g. XYZ 5678" testID="fleet-trailer-plate" />
                     <ChipSelect label="Trailer type" options={TRAILER_TYPE_OPTIONS} value={form.trailerType} onChange={(v) => setForm((c) => ({ ...c, trailerType: v }))} testID="fleet-trailer-type" />
+                    <Input label="Insurance expiry (YYYY-MM-DD)" value={form.insuranceExpiry} onChangeText={(value) => setForm((c) => ({ ...c, insuranceExpiry: value }))} placeholder="2026-12-31" autoCapitalize="none" testID="fleet-trailer-insurance" />
+                    <Input label="Inspection expiry (YYYY-MM-DD)" value={form.inspectionExpiry} onChangeText={(value) => setForm((c) => ({ ...c, inspectionExpiry: value }))} placeholder="2026-06-30" autoCapitalize="none" testID="fleet-trailer-inspection" />
                   </>
                 ) : null}
                 {entity === 'containers' ? (
@@ -453,6 +499,8 @@ const styles = StyleSheet.create({
   tagUnlinked: { backgroundColor: C.bgSecondary, borderColor: C.border },
   tagBusy: { backgroundColor: C.yellow + '18', borderColor: C.yellow + '55' },
   tagFree: { backgroundColor: C.accentDim, borderColor: C.accent + '55' },
+  tagExpired: { backgroundColor: C.red + '18', borderColor: C.red + '55' },
+  tagSoon: { backgroundColor: C.yellow + '18', borderColor: C.yellow + '55' },
   linkHint: { fontSize: 12, color: C.textMuted, lineHeight: 17, marginTop: 8 },
   busyHint: { fontSize: 12, color: C.textSecondary, marginTop: 6 },
   codeCard: { gap: 8, borderColor: C.accent + '55', backgroundColor: C.accentDim },

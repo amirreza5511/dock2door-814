@@ -16,6 +16,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import BarcodeScannerModal from '@/components/BarcodeScannerModal';
 import SignaturePad from '@/components/SignaturePad';
 import LoadsMap, { MapPoint, MapRoute } from '@/components/LoadsMap';
+import { LoadStopsChecklist } from '@/components/LoadStops';
 import C from '@/constants/colors';
 import { LOAD_STATUS_FLOW, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
@@ -31,6 +32,7 @@ type LoadRow = {
   recipient_name?: string | null; recipient_phone?: string | null;
   uses_hub?: boolean | null; hub_name?: string | null; hub_leg_status?: string | null;
   driver_hold?: boolean | null; driver_hold_fee?: number | null;
+  driver_response?: string | null;
   handling_fee?: number | null; storage_per_day?: number | null;
   bol_number?: string | null;
   pickup_lat?: number | null; pickup_lng?: number | null;
@@ -40,6 +42,15 @@ type LoadRow = {
 
 function isFiniteCoord(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v) && v !== 0;
+}
+
+/** Great-circle distance between two lat/lng points, in kilometres. */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 type FleetDriver = { id: string; name: string; userId: string | null; email: string | null; phone: string | null; licenseNumber: string | null };
@@ -64,6 +75,7 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
     onSuccess: async () => { await query.refetch(); },
   });
   const updateLocation = trpc.loads.updateLocation.useMutation();
+  const geofenceArrive = trpc.loads.geofenceArrive.useMutation();
   const openThread = trpc.messaging.openLoadThread.useMutation();
 
   // Opens (or reuses) the load conversation and jumps into it. Everyone tied to
@@ -100,6 +112,29 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   const driverHold = trpc.loads.driverHold.useMutation({
     onSuccess: async () => { await query.refetch(); },
   });
+
+  // --- Driver accepts / declines a dispatched load (Phase 1: dispatch loop) ---
+  const respondDispatch = trpc.loads.respondDispatch.useMutation({
+    onSuccess: async () => { await query.refetch(); },
+  });
+  const [declineFor, setDeclineFor] = useState<string | null>(null);
+  const [declineReason, setDeclineReason] = useState<string>('');
+
+  const acceptDispatch = (l: LoadRow) => {
+    if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    respondDispatch.mutate({ id: l.id, accept: true }, {
+      onError: (e) => Alert.alert('Unable to accept', e instanceof Error ? e.message : 'Error'),
+    });
+  };
+
+  const submitDecline = () => {
+    if (!declineFor) return;
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    respondDispatch.mutate({ id: declineFor, accept: false, reason: declineReason.trim() || null }, {
+      onSuccess: () => { setDeclineFor(null); setDeclineReason(''); },
+      onError: (e) => Alert.alert('Unable to decline', e instanceof Error ? e.message : 'Error'),
+    });
+  };
 
   // Driver chooses to keep a hub-routed load in their own truck overnight (earns
   // the hub fee themselves) instead of dropping it at the warehouse.
@@ -213,6 +248,12 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   );
   const trackingLoadId = trackingLoad?.id ?? null;
 
+  // Keep the latest tracking load reachable inside the GPS callback without
+  // re-subscribing the watcher every render.
+  const trackingLoadRef = useRef<LoadRow | null>(null);
+  trackingLoadRef.current = trackingLoad;
+  const geofencedRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (source !== 'accepted' || Platform.OS === 'web' || !trackingLoadId) {
       try { watchRef.current?.remove(); } catch {}
@@ -228,7 +269,21 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         const sub = await Location.watchPositionAsync(
           { accuracy: Location.Accuracy.Balanced, distanceInterval: 30, timeInterval: 8000 },
           (loc) => {
-            void updateLocation.mutateAsync({ id: trackingLoadId, lat: loc.coords.latitude, lng: loc.coords.longitude }).catch(() => {});
+            const { latitude, longitude } = loc.coords;
+            void updateLocation.mutateAsync({ id: trackingLoadId, lat: latitude, lng: longitude }).catch(() => {});
+            // Geofence auto-arrive: once the driver is within ~180m of the
+            // drop-off while still EnRoute, flip the load to Arrived server-side.
+            const tl = trackingLoadRef.current;
+            if (tl && tl.status === 'EnRoute' && geofencedRef.current !== tl.id
+                && isFiniteCoord(tl.dropoff_lat) && isFiniteCoord(tl.dropoff_lng)) {
+              const km = haversineKm(latitude, longitude, Number(tl.dropoff_lat), Number(tl.dropoff_lng));
+              if (km <= 0.18) {
+                geofencedRef.current = tl.id;
+                void geofenceArrive.mutateAsync({ id: tl.id })
+                  .then((r) => { if ((r as { arrived?: boolean })?.arrived) { if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); void query.refetch(); } })
+                  .catch(() => { geofencedRef.current = null; });
+              }
+            }
           },
         );
         if (cancelled) { sub.remove(); return; }
@@ -475,6 +530,29 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           </TouchableOpacity>
         ) : null}
 
+        {canRun && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
+          <LoadStopsChecklist loadId={l.id} />
+        ) : null}
+
+        {canRun && l.accepted_driver_user_id === user?.id && l.driver_response === 'Pending' && ['Accepted', 'EnRoute', 'Arrived'].includes(l.status) ? (
+          <View style={styles.respondBox}>
+            <View style={styles.respondHeader}>
+              <UserCheck size={14} color={C.accent} />
+              <Text style={styles.respondTitle}>New dispatch — accept this load?</Text>
+            </View>
+            <View style={styles.respondRow}>
+              <TouchableOpacity style={styles.declineBtn} disabled={respondDispatch.isPending} onPress={() => { setDeclineFor(l.id); setDeclineReason(''); }}>
+                <X size={15} color={C.red} />
+                <Text style={styles.declineBtnText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.acceptBtn} disabled={respondDispatch.isPending} onPress={() => acceptDispatch(l)}>
+                <CheckCircle2 size={15} color={C.white} />
+                <Text style={styles.acceptBtnText}>Accept load</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
+
         {['Accepted', 'EnRoute', 'Arrived', 'Delivered'].includes(l.status) && l.accepted_driver_user_id ? (
           <View style={styles.contactRow}>
             <TouchableOpacity style={styles.contactBtn} disabled={openThread.isPending} onPress={() => void openLoadChat(l.id)}>
@@ -664,6 +742,24 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
         </View>
       </Modal>
 
+      <Modal visible={declineFor !== null} transparent animationType="fade" onRequestClose={() => setDeclineFor(null)}>
+        <View style={styles.declineOverlay}>
+          <View style={styles.declineCard}>
+            <Text style={styles.declineCardTitle}>Decline this load?</Text>
+            <Text style={styles.declineCardSub}>It goes back to your dispatcher’s waiting pool. Add a reason (optional).</Text>
+            <Input value={declineReason} onChangeText={setDeclineReason} placeholder="e.g. too far, truck in service" multiline />
+            <View style={styles.declineActions}>
+              <TouchableOpacity style={styles.declineCancel} onPress={() => setDeclineFor(null)}>
+                <Text style={styles.declineCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.declineConfirm} disabled={respondDispatch.isPending} onPress={submitDecline}>
+                <Text style={styles.declineConfirmText}>Decline load</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <BarcodeScannerModal
         visible={scannerOpen}
         onClose={() => setScannerOpen(false)}
@@ -750,4 +846,21 @@ const styles = StyleSheet.create({
   driverIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.greenDim },
   driverName: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  respondBox: { backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '66', borderRadius: 12, padding: 12, gap: 10 },
+  respondHeader: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  respondTitle: { fontSize: 13, fontWeight: '800' as const, color: C.text },
+  respondRow: { flexDirection: 'row', gap: 10 },
+  declineBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 11, backgroundColor: C.redDim, borderWidth: 1, borderColor: C.red + '55' },
+  declineBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.red },
+  acceptBtn: { flex: 1.4, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 11, backgroundColor: C.green },
+  acceptBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.white },
+  declineOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
+  declineCard: { width: '100%', backgroundColor: C.bg, borderRadius: 18, borderWidth: 1, borderColor: C.border, padding: 18, gap: 10 },
+  declineCardTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text },
+  declineCardSub: { fontSize: 13, color: C.textSecondary, lineHeight: 18 },
+  declineActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  declineCancel: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
+  declineCancelText: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  declineConfirm: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 12, backgroundColor: C.red },
+  declineConfirmText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
 });
