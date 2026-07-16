@@ -29,12 +29,12 @@ export default function DrayageCompanyDashboard() {
 
   const actions = useMemo<{ key: string; moduleKey?: string; icon: LucideIcon; color: string; title: string; text: string; route: string }[]>(() => {
     const all = [
-      { key: 'board', icon: Package, color: C.accent, title: 'Orders Board', text: 'Claim open orders & manage your fleet', route: '/drayage-company/board' },
-      { key: 'dispatch', icon: Ship, color: C.blue, title: 'Dispatch', text: 'Assign drivers & enter port reservations', route: '/drayage-company/dispatch' },
+      { key: 'board', moduleKey: 'orders-board', icon: Package, color: C.accent, title: 'Orders Board', text: 'Claim open orders & manage your fleet', route: '/drayage-company/board' },
+      { key: 'dispatch', moduleKey: 'dispatch', icon: Ship, color: C.blue, title: 'Dispatch', text: 'Assign drivers & enter port reservations', route: '/drayage-company/dispatch' },
       { key: 'terminals', moduleKey: 'terminals', icon: Anchor, color: C.green, title: term('Terminals'), text: 'BC ports, CN & CP rail terminals', route: '/drayage-company/terminals' },
-      { key: 'fleet', icon: Users, color: C.yellow, title: term('Fleet'), text: 'Manage drivers & trucks', route: '/drayage-company/fleet' },
-      { key: 'rates', icon: DollarSign, color: C.green, title: 'Rates & Zones', text: 'Set zone pricing, fuel, prepull & waiting', route: '/drayage-company/rates' },
-      { key: 'invoicing', icon: Receipt, color: C.blue, title: 'Invoicing', text: 'Send invoices, track A/R & expenses', route: '/drayage-company/invoicing' },
+      { key: 'fleet', moduleKey: 'fleet', icon: Users, color: C.yellow, title: term('Fleet'), text: 'Manage drivers & trucks', route: '/drayage-company/fleet' },
+      { key: 'rates', moduleKey: 'rates', icon: DollarSign, color: C.green, title: 'Rates & Zones', text: 'Set zone pricing, fuel, prepull & waiting', route: '/drayage-company/rates' },
+      { key: 'invoicing', moduleKey: 'invoicing', icon: Receipt, color: C.blue, title: 'Invoicing', text: 'Send invoices, track A/R & expenses', route: '/drayage-company/invoicing' },
       { key: 'settlement', moduleKey: 'settlement', icon: Coins, color: C.green, title: 'Driver settlement', text: 'Pay drivers & see per-move profit', route: '/drayage-company/settlement' },
       { key: 'reports', moduleKey: 'reports', icon: BarChart3, color: C.purple, title: 'Reports & KPIs', text: 'On-time %, fleet use, profit & driver stats', route: '/drayage-company/reports' },
       { key: 'fuel-surcharge', moduleKey: 'fuel-surcharge', icon: Fuel, color: C.blue, title: 'Fuel surcharge', text: "Set this month's FSC added to invoices", route: '/drayage-company/fuel-surcharge' },
@@ -63,6 +63,16 @@ export default function DrayageCompanyDashboard() {
       driverCount: drivers.length,
     };
   }, [dashboardQuery.data]);
+
+  const statTiles = useMemo<{ key: string; moduleKey: string; label: string; value: number; icon: LucideIcon; color: string }[]>(() => {
+    const all = [
+      { key: 'open', moduleKey: 'stat-open', label: 'Open Orders', value: stats.openCount, icon: Zap, color: C.yellow },
+      { key: 'active', moduleKey: 'stat-active', label: 'Active', value: stats.activeCount, icon: Truck, color: C.accent },
+      { key: 'transit', moduleKey: 'stat-in-transit', label: 'In Transit', value: stats.inTransit, icon: MapPin, color: C.blue },
+      { key: 'drivers', moduleKey: 'stat-drivers', label: 'Drivers', value: stats.driverCount, icon: Users, color: C.green },
+    ];
+    return all.filter((s) => !isHidden(s.moduleKey));
+  }, [stats, isHidden]);
 
   if (dashboardQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading drayage ops" /></View>;
@@ -98,20 +108,17 @@ export default function DrayageCompanyDashboard() {
         refreshControl={<RefreshControl refreshing={dashboardQuery.isFetching} onRefresh={() => void dashboardQuery.refetch()} tintColor={C.accent} />}
       >
         {/* Stats */}
-        <View style={styles.statsGrid}>
-          {[
-            { label: 'Open Orders', value: stats.openCount, icon: Zap, color: C.yellow },
-            { label: 'Active', value: stats.activeCount, icon: Truck, color: C.accent },
-            { label: 'In Transit', value: stats.inTransit, icon: MapPin, color: C.blue },
-            { label: 'Drivers', value: stats.driverCount, icon: Users, color: C.green },
-          ].map((s) => (
-            <View key={s.label} style={styles.statCard}>
-              <View style={[styles.statIconWrap, { backgroundColor: s.color + '20' }]}><s.icon size={18} color={s.color} /></View>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
-            </View>
-          ))}
-        </View>
+        {statTiles.length > 0 ? (
+          <View style={styles.statsGrid}>
+            {statTiles.map((s) => (
+              <View key={s.key} style={styles.statCard}>
+                <View style={[styles.statIconWrap, { backgroundColor: s.color + '20' }]}><s.icon size={18} color={s.color} /></View>
+                <Text style={styles.statValue}>{s.value}</Text>
+                <Text style={styles.statLabel}>{term(s.label)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* Actions */}
         {actionRows.map((row, ri) => (

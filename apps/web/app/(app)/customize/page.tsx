@@ -21,6 +21,15 @@ const HIDEABLE: { key: string; label: string }[] = [
   { key: "equipment-report", label: "Equipment & charges" },
   { key: "dead-runs", label: "Dead runs" },
   { key: "terminals", label: "Terminals" },
+  { key: "orders-board", label: "Orders Board" },
+  { key: "dispatch", label: "Dispatch" },
+  { key: "fleet", label: "Fleet" },
+  { key: "rates", label: "Rates & Zones" },
+  { key: "invoicing", label: "Invoicing" },
+  { key: "stat-open", label: "Stat: Open Orders" },
+  { key: "stat-active", label: "Stat: Active" },
+  { key: "stat-in-transit", label: "Stat: In Transit" },
+  { key: "stat-drivers", label: "Stat: Drivers" },
 ];
 
 const RENAMABLE: { key: string; label: string }[] = [
