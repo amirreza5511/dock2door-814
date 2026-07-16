@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Repeat2, Ship, Truck, User, X, Clock, Layers, DollarSign, ClipboardCheck, FileText, Plus, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Repeat2, Ship, Truck, User, X, Clock, Layers, DollarSign, ClipboardCheck, FileText, Plus, AlertTriangle, Boxes } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -112,6 +112,13 @@ export default function DrayageOrderDetailScreen() {
 
   const [customModal, setCustomModal] = useState(false);
   const [customValues, setCustomValues] = useState<Record<string, string | boolean>>({});
+
+  const [handlingModal, setHandlingModal] = useState(false);
+  const [handlingMode, setHandlingMode] = useState<'LiveLoad' | 'LiveUnload' | 'DropPick'>('LiveUnload');
+  const [pickupBackDate, setPickupBackDate] = useState('');
+  const setHandlingMutation = trpc.drayage.setHandlingMode.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setHandlingModal(false); },
+  });
 
   const assignEquipMutation = trpc.drayage.assignEquipment.useMutation({
     onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setEquipModal(false); },
@@ -264,6 +271,19 @@ export default function DrayageOrderDetailScreen() {
     setChargeModal(true);
   };
 
+  const HANDLING_LABEL: Record<string, string> = { LiveLoad: 'Live load', LiveUnload: 'Live unload', DropPick: 'Drop & pick' };
+
+  const openHandlingModal = () => {
+    setHandlingMode((order?.handling_mode as 'LiveLoad' | 'LiveUnload' | 'DropPick') ?? 'LiveUnload');
+    setPickupBackDate(order?.pickup_back_date ? String(order.pickup_back_date) : '');
+    setHandlingModal(true);
+  };
+
+  const saveHandling = () => {
+    void setHandlingMutation.mutateAsync({ orderId, handlingMode, pickupBackDate: pickupBackDate.trim() || null })
+      .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
+  };
+
   const openCustomModal = () => {
     const existing = (order?.custom_fields ?? {}) as Record<string, unknown>;
     const init: Record<string, string | boolean> = {};
@@ -386,6 +406,21 @@ export default function DrayageOrderDetailScreen() {
               <Text style={styles.routeValue}>{terminalName(order.destination_terminal_id)}</Text>
             </>
           )}
+        </Card>
+
+        {/* Handling at the stop */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Boxes size={16} color={C.accent} />
+            <Text style={styles.sectionTitle}>Handling at the stop</Text>
+          </View>
+          <Text style={styles.detailValue}>{HANDLING_LABEL[order.handling_mode] ?? 'Live unload'}</Text>
+          {order.handling_mode === 'DropPick' && order.pickup_back_date ? (
+            <Text style={styles.routeLabel}>Pick-up back on {order.pickup_back_date}</Text>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button label="Change handling" variant="ghost" size="md" fullWidth onPress={openHandlingModal} icon={<Boxes size={15} color={C.accent} />} />
+          ) : null}
         </Card>
 
         {/* Pricing */}
@@ -886,6 +921,40 @@ export default function DrayageOrderDetailScreen() {
         </View>
       </Modal>
 
+      {/* Handling mode modal */}
+      <Modal visible={handlingModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setHandlingModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Handling at the stop</Text>
+            <TouchableOpacity onPress={() => setHandlingModal(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.modalHint}>The customer proposed a handling mode. Finalize or change it here for how the container is actually handled at the warehouse stop.</Text>
+            {([
+              { key: 'LiveLoad' as const, icon: Boxes, title: 'Live load', desc: 'Driver waits while it’s loaded' },
+              { key: 'LiveUnload' as const, icon: Package, title: 'Live unload', desc: 'Driver waits while it’s unloaded' },
+              { key: 'DropPick' as const, icon: Truck, title: 'Drop & pick', desc: 'Drop now, pick up after load/unload' },
+            ]).map((m) => {
+              const active = handlingMode === m.key;
+              return (
+                <TouchableOpacity key={m.key} style={[styles.pickChip, styles.handlingRow, active && styles.pickChipActive]} onPress={() => setHandlingMode(m.key)}>
+                  <m.icon size={18} color={active ? C.accent : C.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.pickChipText, active && styles.pickChipTextActive]}>{m.title}</Text>
+                    <Text style={styles.driverMeta}>{m.desc}</Text>
+                  </View>
+                  {active ? <CheckCircle2 size={18} color={C.accent} /> : null}
+                </TouchableOpacity>
+              );
+            })}
+            {handlingMode === 'DropPick' ? (
+              <Input label="Pick-up back date (YYYY-MM-DD)" value={pickupBackDate} onChangeText={setPickupBackDate} placeholder="2026-07-20" autoCapitalize="none" />
+            ) : null}
+            <Button label="Save handling" fullWidth size="lg" loading={setHandlingMutation.isPending} onPress={saveHandling} />
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Shipping line modal */}
       <Modal visible={lineModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLineModal(false)}>
         <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
@@ -992,6 +1061,7 @@ const styles = StyleSheet.create({
   pickGroupLabel: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 6 },
   pickChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   pickChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  handlingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, width: '100%' },
   pickChipText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
   pickChipTextActive: { color: C.accent, fontWeight: '700' as const },
 });

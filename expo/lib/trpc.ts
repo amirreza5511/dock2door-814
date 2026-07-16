@@ -3016,6 +3016,18 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return (data ?? {}) as Record<string, unknown>;
   },
 
+  // Dispatch finalizes/changes how the container is handled at the stop
+  // (Live load / Live unload / Drop & pick). Migration 0151.
+  'drayage.setHandlingMode': async (input: { orderId: string; handlingMode: 'LiveLoad' | 'LiveUnload' | 'DropPick'; pickupBackDate?: string | null }) => {
+    const { error } = await supabase.rpc('set_drayage_handling_mode', {
+      p_order_id: input.orderId,
+      p_handling_mode: input.handlingMode,
+      p_pickup_back_date: input.handlingMode === 'DropPick' ? (input.pickupBackDate ?? null) : null,
+    });
+    if (error) throwErr(error, 'Unable to update handling mode');
+    return { success: true };
+  },
+
   // -------------------------------------------------------------------------
   // UNIVERSAL PROVIDER PRICING — zones, rate cards & accessorials for every
   // vertical (warehouse, trucking, labor, service, forwarding). Migration 0116.
