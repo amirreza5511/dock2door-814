@@ -142,6 +142,8 @@ export default function TruckingCompanyDashboard() {
             <Text style={styles.actionTitle}>Finance visibility</Text>
             <Text style={styles.actionText}>Payments, invoices, and payouts.</Text>
           </Card>
+        </View>
+        <View style={styles.actionsRow}>
           <Card onPress={() => router.push('/trucking-company/invoicing' as never)} style={styles.actionCard}>
             <Receipt size={20} color={C.blue} />
             <Text style={styles.actionTitle}>Invoicing</Text>
@@ -152,6 +154,8 @@ export default function TruckingCompanyDashboard() {
             <Text style={styles.actionTitle}>Driver settlement</Text>
             <Text style={styles.actionText}>Pay drivers & see per-trip profit.</Text>
           </Card>
+        </View>
+        <View style={styles.actionsRow}>
           <Card onPress={() => router.push('/trucking-company/reports' as never)} style={styles.actionCard}>
             <BarChart3 size={20} color={C.purple} />
             <Text style={styles.actionTitle}>Reports & KPIs</Text>
@@ -162,11 +166,14 @@ export default function TruckingCompanyDashboard() {
             <Text style={styles.actionTitle}>Fuel surcharge</Text>
             <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices.</Text>
           </Card>
+        </View>
+        <View style={styles.actionsRow}>
           <Card onPress={() => router.push('/trucking-company/messages' as never)} style={styles.actionCard}>
             <MessagesSquare size={20} color={C.accent} />
             <Text style={styles.actionTitle}>Inbox</Text>
             <Text style={styles.actionText}>Threads, attachments, notifications.</Text>
           </Card>
+          <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
         </View>
 
         <View style={styles.sectionRow}>
