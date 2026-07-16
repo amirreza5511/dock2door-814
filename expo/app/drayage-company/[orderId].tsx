@@ -17,6 +17,8 @@ import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { getSignedUrl } from '@/lib/storage-files';
 import { orderCharges, chargeChipLabel } from '@/lib/drayage-charges';
+import { useCustomization } from '@/providers/CustomizationProvider';
+import { Switch } from 'react-native';
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 const URGENCY_COLOR: Record<string, string> = { over: C.red, soon: C.yellow, ok: C.green, none: C.textMuted };
@@ -54,7 +56,11 @@ export default function DrayageOrderDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const utils = trpc.useUtils();
 
+  const { customFields, term } = useCustomization();
   const detailsQuery = trpc.drayage.getOrderDetails.useQuery({ id: orderId }, { refetchInterval: 15000 });
+  const setCustomFieldsMutation = trpc.drayage.setOrderCustomFields.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setCustomModal(false); },
+  });
   const portResMutation = trpc.drayage.updatePortReservation.useMutation({
     onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); },
   });
@@ -103,6 +109,9 @@ export default function DrayageOrderDetailScreen() {
 
   const [lineModal, setLineModal] = useState(false);
   const linesQuery = trpc.drayage.listShippingLines.useQuery(undefined, { enabled: lineModal });
+
+  const [customModal, setCustomModal] = useState(false);
+  const [customValues, setCustomValues] = useState<Record<string, string | boolean>>({});
 
   const assignEquipMutation = trpc.drayage.assignEquipment.useMutation({
     onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setEquipModal(false); },
@@ -253,6 +262,29 @@ export default function DrayageOrderDetailScreen() {
     setDmRate(order.demurrage_daily_rate ? String(order.demurrage_daily_rate) : ''); setDmLfd(order.demurrage_last_free_day ? String(order.demurrage_last_free_day) : '');
     setStRate(order.storage_daily_rate ? String(order.storage_daily_rate) : ''); setStLfd(order.storage_last_free_day ? String(order.storage_last_free_day) : '');
     setChargeModal(true);
+  };
+
+  const openCustomModal = () => {
+    const existing = (order?.custom_fields ?? {}) as Record<string, unknown>;
+    const init: Record<string, string | boolean> = {};
+    for (const f of customFields) {
+      const v = existing[f.key];
+      init[f.key] = f.type === 'boolean' ? v === true : v == null ? '' : String(v);
+    }
+    setCustomValues(init);
+    setCustomModal(true);
+  };
+
+  const saveCustomFields = () => {
+    const values: Record<string, unknown> = {};
+    for (const f of customFields) {
+      const v = customValues[f.key];
+      if (f.type === 'boolean') values[f.key] = v === true;
+      else if (f.type === 'number') values[f.key] = v === '' || v == null ? null : Number(v);
+      else values[f.key] = v ?? '';
+    }
+    void setCustomFieldsMutation.mutateAsync({ orderId, values })
+      .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
   };
 
   const saveCharges = () => {
@@ -411,6 +443,29 @@ export default function DrayageOrderDetailScreen() {
             <Button label="Set free days & rates" variant="ghost" size="md" fullWidth onPress={openChargeModal} icon={<DollarSign size={15} color={C.accent} />} />
           ) : null}
         </Card>
+
+        {/* Company custom fields */}
+        {customFields.length > 0 ? (
+          <Card style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <ClipboardCheck size={16} color={C.purple} />
+              <Text style={styles.sectionTitle}>{term('Custom fields')}</Text>
+            </View>
+            <View style={styles.detailGrid}>
+              {customFields.map((f) => {
+                const raw = (order?.custom_fields ?? {})[f.key];
+                const display = f.type === 'boolean' ? (raw === true ? 'Yes' : 'No') : (raw == null || raw === '' ? '—' : String(raw));
+                return (
+                  <View key={f.key} style={styles.detailCell}>
+                    <Text style={styles.detailLabel}>{f.label}{f.required ? ' *' : ''}</Text>
+                    <Text style={styles.detailValue}>{display}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            <Button label="Edit custom fields" variant="ghost" size="md" fullWidth onPress={openCustomModal} icon={<Plus size={15} color={C.accent} />} />
+          </Card>
+        ) : null}
 
         {/* Inspections */}
         <Card style={styles.sectionCard}>
@@ -776,6 +831,61 @@ export default function DrayageOrderDetailScreen() {
         </View>
       </Modal>
 
+      {/* Custom fields modal */}
+      <Modal visible={customModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setCustomModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{term('Custom fields')}</Text>
+            <TouchableOpacity onPress={() => setCustomModal(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            {customFields.map((f) => {
+              if (f.type === 'boolean') {
+                return (
+                  <View key={f.key} style={styles.customBoolRow}>
+                    <Text style={styles.customBoolLabel}>{f.label}{f.required ? ' *' : ''}</Text>
+                    <Switch
+                      value={customValues[f.key] === true}
+                      onValueChange={(v) => setCustomValues((prev) => ({ ...prev, [f.key]: v }))}
+                      trackColor={{ true: C.accent, false: C.border }}
+                    />
+                  </View>
+                );
+              }
+              if (f.type === 'select' && f.options && f.options.length > 0) {
+                return (
+                  <View key={f.key} style={{ gap: 6 }}>
+                    <Text style={styles.pickGroupLabel}>{f.label}{f.required ? ' *' : ''}</Text>
+                    <View style={styles.chipWrap}>
+                      {f.options.map((opt) => {
+                        const on = customValues[f.key] === opt;
+                        return (
+                          <TouchableOpacity key={opt} style={[styles.pickChip, on && styles.pickChipActive]} onPress={() => setCustomValues((prev) => ({ ...prev, [f.key]: on ? '' : opt }))}>
+                            <Text style={[styles.pickChipText, on && styles.pickChipTextActive]}>{opt}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              }
+              return (
+                <Input
+                  key={f.key}
+                  label={`${f.label}${f.required ? ' *' : ''}`}
+                  value={typeof customValues[f.key] === 'string' ? (customValues[f.key] as string) : ''}
+                  onChangeText={(t) => setCustomValues((prev) => ({ ...prev, [f.key]: t }))}
+                  placeholder={f.type === 'date' ? 'YYYY-MM-DD' : f.type === 'number' ? 'e.g. 123' : ''}
+                  keyboardType={f.type === 'number' ? 'numeric' : 'default'}
+                  autoCapitalize="none"
+                />
+              );
+            })}
+            <Button label="Save custom fields" fullWidth size="lg" loading={setCustomFieldsMutation.isPending} onPress={saveCustomFields} />
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Shipping line modal */}
       <Modal visible={lineModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLineModal(false)}>
         <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
@@ -814,6 +924,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   detailGrid: { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 8 },
   detailCell: { width: '48%', gap: 2 },
+  customBoolRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+  customBoolLabel: { fontSize: 14, fontWeight: '600' as const, color: C.text },
   detailLabel: { fontSize: 10, color: C.textMuted, textTransform: 'uppercase' as const, letterSpacing: 0.5 },
   detailValue: { fontSize: 14, fontWeight: '600' as const, color: C.text },
   commodity: { fontSize: 13, color: C.textSecondary, fontStyle: 'italic' as const },

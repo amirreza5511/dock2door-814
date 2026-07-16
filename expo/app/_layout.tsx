@@ -12,6 +12,7 @@ import { trpc, trpcClient } from '@/lib/trpc';
 import C from '@/constants/colors';
 import { ActiveCompanyProvider } from '@/providers/ActiveCompanyProvider';
 import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
+import { CustomizationProvider } from '@/providers/CustomizationProvider';
 import { registerPushTokenAsync } from '@/lib/push';
 import AdBanner from '@/components/AdBanner';
 import LegalGate from '@/components/LegalGate';
@@ -232,6 +233,7 @@ export default function RootLayout() {
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <ActiveCompanyProvider>
           <CurrentWorldProvider>
+            <CustomizationProvider>
             <SafeAreaProvider>
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
                 <StatusBar style="light" />
@@ -242,6 +244,7 @@ export default function RootLayout() {
                 <LegalGate />
               </GestureHandlerRootView>
             </SafeAreaProvider>
+            </CustomizationProvider>
           </CurrentWorldProvider>
         </ActiveCompanyProvider>
       </trpc.Provider>

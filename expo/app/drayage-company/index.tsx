@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, SlidersHorizontal, Sparkles, TrendingDown, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useAutoWatchdog } from '@/hooks/useAutoWatchdog';
+import { useCustomization } from '@/providers/CustomizationProvider';
+import type { LucideIcon } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -23,6 +25,31 @@ export default function DrayageCompanyDashboard() {
   const logout = useAuthStore((s) => s.logout);
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 30000 });
   useAutoWatchdog();
+  const { isHidden, term } = useCustomization();
+
+  const actions = useMemo<{ key: string; moduleKey?: string; icon: LucideIcon; color: string; title: string; text: string; route: string }[]>(() => {
+    const all = [
+      { key: 'board', icon: Package, color: C.accent, title: 'Orders Board', text: 'Claim open orders & manage your fleet', route: '/drayage-company/board' },
+      { key: 'dispatch', icon: Ship, color: C.blue, title: 'Dispatch', text: 'Assign drivers & enter port reservations', route: '/drayage-company/dispatch' },
+      { key: 'terminals', moduleKey: 'terminals', icon: Anchor, color: C.green, title: term('Terminals'), text: 'BC ports, CN & CP rail terminals', route: '/drayage-company/terminals' },
+      { key: 'fleet', icon: Users, color: C.yellow, title: term('Fleet'), text: 'Manage drivers & trucks', route: '/drayage-company/fleet' },
+      { key: 'rates', icon: DollarSign, color: C.green, title: 'Rates & Zones', text: 'Set zone pricing, fuel, prepull & waiting', route: '/drayage-company/rates' },
+      { key: 'invoicing', icon: Receipt, color: C.blue, title: 'Invoicing', text: 'Send invoices, track A/R & expenses', route: '/drayage-company/invoicing' },
+      { key: 'settlement', moduleKey: 'settlement', icon: Coins, color: C.green, title: 'Driver settlement', text: 'Pay drivers & see per-move profit', route: '/drayage-company/settlement' },
+      { key: 'reports', moduleKey: 'reports', icon: BarChart3, color: C.purple, title: 'Reports & KPIs', text: 'On-time %, fleet use, profit & driver stats', route: '/drayage-company/reports' },
+      { key: 'fuel-surcharge', moduleKey: 'fuel-surcharge', icon: Fuel, color: C.blue, title: 'Fuel surcharge', text: "Set this month's FSC added to invoices", route: '/drayage-company/fuel-surcharge' },
+      { key: 'shipping-lines', moduleKey: 'shipping-lines', icon: Ship, color: C.accent, title: 'Shipping lines', text: 'Manage steamship lines for orders', route: '/drayage-company/shipping-lines' },
+      { key: 'equipment-report', moduleKey: 'equipment-report', icon: Layers, color: C.blue, title: term('Equipment & charges'), text: 'Rental cost & per diem exposure', route: '/drayage-company/equipment-report' },
+      { key: 'dead-runs', moduleKey: 'dead-runs', icon: TrendingDown, color: C.red, title: 'Dead runs', text: 'Empty miles, cost & street-turn savings', route: '/drayage-company/dead-runs' },
+    ];
+    return all.filter((a) => !a.moduleKey || !isHidden(a.moduleKey));
+  }, [isHidden, term]);
+
+  const actionRows = useMemo(() => {
+    const rows: (typeof actions)[] = [];
+    for (let i = 0; i < actions.length; i += 2) rows.push(actions.slice(i, i + 2));
+    return rows;
+  }, [actions]);
 
   const stats = useMemo(() => {
     const open = dashboardQuery.data?.openOrders ?? [];
@@ -87,78 +114,18 @@ export default function DrayageCompanyDashboard() {
         </View>
 
         {/* Actions */}
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/board' as never)} style={styles.actionCard}>
-            <Package size={20} color={C.accent} />
-            <Text style={styles.actionTitle}>Orders Board</Text>
-            <Text style={styles.actionText}>Claim open orders & manage your fleet</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/dispatch' as never)} style={styles.actionCard}>
-            <Ship size={20} color={C.blue} />
-            <Text style={styles.actionTitle}>Dispatch</Text>
-            <Text style={styles.actionText}>Assign drivers & enter port reservations</Text>
-          </Card>
-        </View>
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/terminals' as never)} style={styles.actionCard}>
-            <Anchor size={20} color={C.green} />
-            <Text style={styles.actionTitle}>Terminals</Text>
-            <Text style={styles.actionText}>BC ports, CN & CP rail terminals</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/fleet' as never)} style={styles.actionCard}>
-            <Users size={20} color={C.yellow} />
-            <Text style={styles.actionTitle}>Fleet</Text>
-            <Text style={styles.actionText}>Manage drivers & trucks</Text>
-          </Card>
-        </View>
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/rates' as never)} style={styles.actionCard}>
-            <DollarSign size={20} color={C.green} />
-            <Text style={styles.actionTitle}>Rates & Zones</Text>
-            <Text style={styles.actionText}>Set zone pricing, fuel, prepull & waiting</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/invoicing' as never)} style={styles.actionCard}>
-            <Receipt size={20} color={C.blue} />
-            <Text style={styles.actionTitle}>Invoicing</Text>
-            <Text style={styles.actionText}>Send invoices, track A/R & expenses</Text>
-          </Card>
-        </View>
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/settlement' as never)} style={styles.actionCard}>
-            <Coins size={20} color={C.green} />
-            <Text style={styles.actionTitle}>Driver settlement</Text>
-            <Text style={styles.actionText}>Pay drivers & see per-move profit</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/reports' as never)} style={styles.actionCard}>
-            <BarChart3 size={20} color={C.purple} />
-            <Text style={styles.actionTitle}>Reports & KPIs</Text>
-            <Text style={styles.actionText}>On-time %, fleet use, profit & driver stats</Text>
-          </Card>
-        </View>
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/fuel-surcharge' as never)} style={styles.actionCard}>
-            <Fuel size={20} color={C.blue} />
-            <Text style={styles.actionTitle}>Fuel surcharge</Text>
-            <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/shipping-lines' as never)} style={styles.actionCard}>
-            <Ship size={20} color={C.accent} />
-            <Text style={styles.actionTitle}>Shipping lines</Text>
-            <Text style={styles.actionText}>Manage steamship lines for orders</Text>
-          </Card>
-        </View>
-        <View style={styles.actionsRow}>
-          <Card onPress={() => router.push('/drayage-company/equipment-report' as never)} style={styles.actionCard}>
-            <Layers size={20} color={C.blue} />
-            <Text style={styles.actionTitle}>Equipment & charges</Text>
-            <Text style={styles.actionText}>Rental cost & per diem exposure</Text>
-          </Card>
-          <Card onPress={() => router.push('/drayage-company/dead-runs' as never)} style={styles.actionCard}>
-            <TrendingDown size={20} color={C.red} />
-            <Text style={styles.actionTitle}>Dead runs</Text>
-            <Text style={styles.actionText}>Empty miles, cost & street-turn savings</Text>
-          </Card>
-        </View>
+        {actionRows.map((row, ri) => (
+          <View key={`arow-${ri}`} style={styles.actionsRow}>
+            {row.map((a) => (
+              <Card key={a.key} onPress={() => router.push(a.route as never)} style={styles.actionCard}>
+                <a.icon size={20} color={a.color} />
+                <Text style={styles.actionTitle}>{a.title}</Text>
+                <Text style={styles.actionText}>{a.text}</Text>
+              </Card>
+            ))}
+            {row.length === 1 ? <View style={styles.actionCard} /> : null}
+          </View>
+        ))}
         <Card onPress={() => router.push('/copilot' as never)} style={styles.copilotCard}>
           <View style={styles.copilotIcon}><Sparkles size={20} color={C.accent} /></View>
           <View style={{ flex: 1 }}>

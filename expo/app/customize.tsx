@@ -8,7 +8,7 @@ import { Stack, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
   ChevronLeft, SlidersHorizontal, Send, Check, Clock, X, EyeOff,
-  ListPlus, Sparkles, Building2,
+  ListPlus, Sparkles, Building2, Tag,
 } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
@@ -24,6 +24,25 @@ const HIDEABLE: { key: string; label: string }[] = [
   { key: 'dead-runs', label: 'Dead runs' },
   { key: 'terminals', label: 'Terminals' },
 ];
+
+type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'select';
+const FIELD_TYPES: { key: FieldType; label: string }[] = [
+  { key: 'text', label: 'Text' },
+  { key: 'number', label: 'Number' },
+  { key: 'date', label: 'Date' },
+  { key: 'boolean', label: 'Yes / No' },
+  { key: 'select', label: 'Dropdown' },
+];
+
+interface DraftField {
+  label: string;
+  type: FieldType;
+  required: boolean;
+  options?: string[];
+}
+
+/** Common terms a company may want to rename across its workspace. */
+const RENAMABLE = ['Terminals', 'Fleet', 'Equipment & charges', 'Custom fields', 'Chassis', 'Driver'];
 
 interface ReqRow {
   id: string;
@@ -54,9 +73,12 @@ export default function CustomizeScreen() {
   const [details, setDetails] = useState<string>('');
   const [hide, setHide] = useState<Set<string>>(new Set());
   const [fieldLabel, setFieldLabel] = useState<string>('');
-  const [customFields, setCustomFields] = useState<string[]>([]);
+  const [fieldType, setFieldType] = useState<FieldType>('text');
+  const [fieldOptions, setFieldOptions] = useState<string>('');
+  const [customFields, setCustomFields] = useState<DraftField[]>([]);
+  const [renames, setRenames] = useState<Record<string, string>>({});
 
-  const settings = (settingsQuery.data ?? {}) as { hiddenModules?: string[]; customFields?: { label?: string }[] };
+  const settings = (settingsQuery.data ?? {}) as { hiddenModules?: string[]; customFields?: { label?: string }[]; terminology?: Record<string, string> };
   const requests = useMemo(() => (requestsQuery.data ?? []) as ReqRow[], [requestsQuery.data]);
   const activeHidden = settings.hiddenModules ?? [];
 
@@ -70,31 +92,52 @@ export default function CustomizeScreen() {
   const addField = () => {
     const l = fieldLabel.trim();
     if (!l) return;
-    setCustomFields((prev) => (prev.includes(l) ? prev : [...prev, l]));
+    const opts = fieldType === 'select'
+      ? fieldOptions.split(',').map((o) => o.trim()).filter(Boolean)
+      : undefined;
+    if (fieldType === 'select' && (!opts || opts.length === 0)) {
+      Alert.alert('Add choices', 'A dropdown field needs at least one comma-separated choice.');
+      return;
+    }
+    setCustomFields((prev) =>
+      prev.some((f) => f.label === l) ? prev : [...prev, { label: l, type: fieldType, required: false, ...(opts ? { options: opts } : {}) }],
+    );
     setFieldLabel('');
+    setFieldOptions('');
+    setFieldType('text');
   };
+
+  const setRename = (t: string, value: string) =>
+    setRenames((prev) => {
+      const next = { ...prev };
+      if (value.trim()) next[t] = value.trim(); else delete next[t];
+      return next;
+    });
 
   const buildPayload = useCallback((): Record<string, unknown> => {
     const payload: Record<string, unknown> = {};
     if (hide.size > 0) payload.hiddenModules = Array.from(hide);
     if (customFields.length > 0) {
-      payload.customFields = customFields.map((label) => ({
-        key: label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
-        label,
-        type: 'text',
-        required: false,
+      payload.customFields = customFields.map((f) => ({
+        key: f.label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''),
+        label: f.label,
+        type: f.type,
+        required: f.required,
+        ...(f.options ? { options: f.options } : {}),
       }));
     }
+    if (Object.keys(renames).length > 0) payload.terminology = renames;
     return payload;
-  }, [hide, customFields]);
+  }, [hide, customFields, renames]);
 
-  const canSubmit = title.trim().length > 0 || hide.size > 0 || customFields.length > 0;
+  const canSubmit = title.trim().length > 0 || hide.size > 0 || customFields.length > 0 || Object.keys(renames).length > 0;
 
   const doSubmit = useCallback(async () => {
     const payload = buildPayload();
     const derivedTitle = title.trim()
       || (hide.size > 0 ? `Hide ${hide.size} module(s)` : '')
-      || (customFields.length > 0 ? `Add ${customFields.length} custom field(s)` : '');
+      || (customFields.length > 0 ? `Add ${customFields.length} custom field(s)` : '')
+      || (Object.keys(renames).length > 0 ? `Rename ${Object.keys(renames).length} term(s)` : '');
     if (!derivedTitle) {
       Alert.alert('Add a request', 'Describe what you want changed, or pick a module / field below.');
       return;
@@ -102,13 +145,13 @@ export default function CustomizeScreen() {
     try {
       await submit.mutateAsync({ title: derivedTitle, details: details.trim(), payload });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTitle(''); setDetails(''); setHide(new Set()); setCustomFields([]);
+      setTitle(''); setDetails(''); setHide(new Set()); setCustomFields([]); setRenames({});
       await utils.customization.myRequests.invalidate();
       Alert.alert('Request sent', 'Our team will review it and apply the changes to your workspace.');
     } catch (e) {
       Alert.alert('Unable to send', e instanceof Error ? e.message : 'Unknown error');
     }
-  }, [buildPayload, title, details, hide, customFields, submit, utils]);
+  }, [buildPayload, title, details, hide, customFields, renames, submit, utils]);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -193,6 +236,22 @@ export default function CustomizeScreen() {
           </View>
 
           <View style={styles.subHead}><ListPlus size={14} color={C.textSecondary} /><Text style={styles.subHeadText}>Add custom fields to your orders</Text></View>
+          <View style={styles.chipsWrap}>
+            {FIELD_TYPES.map((ft) => (
+              <TouchableOpacity key={ft.key} onPress={() => setFieldType(ft.key)} style={[styles.chip, fieldType === ft.key && styles.chipOn]}>
+                <Text style={[styles.chipText, fieldType === ft.key && styles.chipTextOn]}>{ft.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {fieldType === 'select' ? (
+            <TextInput
+              value={fieldOptions}
+              onChangeText={setFieldOptions}
+              placeholder="Choices, comma-separated (e.g. Yard A, Yard B)"
+              placeholderTextColor={C.textMuted}
+              style={styles.input}
+            />
+          ) : null}
           <View style={styles.fieldAddRow}>
             <TextInput
               value={fieldLabel}
@@ -209,12 +268,26 @@ export default function CustomizeScreen() {
           {customFields.length > 0 ? (
             <View style={styles.chipsWrap}>
               {customFields.map((f) => (
-                <TouchableOpacity key={f} onPress={() => setCustomFields((prev) => prev.filter((x) => x !== f))} style={[styles.chip, styles.chipOn]}>
-                  <Text style={styles.chipTextOn}>{f}  ×</Text>
+                <TouchableOpacity key={f.label} onPress={() => setCustomFields((prev) => prev.filter((x) => x.label !== f.label))} style={[styles.chip, styles.chipOn]}>
+                  <Text style={styles.chipTextOn}>{f.label} · {f.type}  ×</Text>
                 </TouchableOpacity>
               ))}
             </View>
           ) : null}
+
+          <View style={styles.subHead}><Tag size={14} color={C.textSecondary} /><Text style={styles.subHeadText}>Rename terms to match your company</Text></View>
+          {RENAMABLE.map((t) => (
+            <View key={t} style={styles.renameRow}>
+              <Text style={styles.renameLabel}>{t}</Text>
+              <TextInput
+                value={renames[t] ?? ''}
+                onChangeText={(v) => setRename(t, v)}
+                placeholder={`Keep "${t}"`}
+                placeholderTextColor={C.textMuted}
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              />
+            </View>
+          ))}
 
           <TouchableOpacity
             style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
@@ -280,6 +353,8 @@ const styles = StyleSheet.create({
   chipTextOn: { color: C.purple, fontWeight: '700' as const, fontSize: 12.5 },
   chipTextDisabled: { color: C.textMuted },
   fieldAddRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  renameRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  renameLabel: { width: 96, fontSize: 12.5, fontWeight: '700' as const, color: C.textSecondary },
   fieldAddBtn: { paddingHorizontal: 16, height: 46, borderRadius: 12, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   fieldAddBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.accent },
   submitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.purple, borderRadius: 12, paddingVertical: 13, marginTop: 4 },

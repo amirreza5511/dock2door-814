@@ -7,8 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  ChevronLeft, SlidersHorizontal, Check, X, Clock, Building2, EyeOff, ListPlus,
+  ChevronLeft, SlidersHorizontal, Check, X, Clock, Building2, EyeOff, ListPlus, Tag, MessageSquare,
 } from 'lucide-react-native';
+import { TextInput } from 'react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -22,7 +23,7 @@ interface ReqRow {
   requesterName: string;
   title: string;
   details: string;
-  payload: { hiddenModules?: string[]; customFields?: { label?: string }[] };
+  payload: { hiddenModules?: string[]; customFields?: { label?: string; type?: string }[]; terminology?: Record<string, string> };
   status: 'pending' | 'approved' | 'rejected';
   adminNote?: string;
   createdAt?: string;
@@ -43,6 +44,7 @@ export default function AdminCustomizationsScreen() {
   const decide = trpc.customization.decide.useMutation();
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   const rows = useMemo(() => (requestsQuery.data ?? []) as ReqRow[], [requestsQuery.data]);
   const pendingCount = rows.filter((r) => r.status === 'pending').length;
@@ -51,7 +53,7 @@ export default function AdminCustomizationsScreen() {
   const act = async (id: string, approve: boolean) => {
     setBusyId(id);
     try {
-      await decide.mutateAsync({ requestId: id, approve });
+      await decide.mutateAsync({ requestId: id, approve, note: notes[id]?.trim() || '' });
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await utils.customization.allRequests.invalidate();
     } catch (e) {
@@ -106,7 +108,7 @@ export default function AdminCustomizationsScreen() {
             return (
               <Card key={r.id} style={styles.reqCard}>
                 <View style={styles.reqTop}>
-                  <View style={styles.companyРow}>
+                  <View style={styles.companyRow}>
                     <Building2 size={13} color={C.textSecondary} />
                     <Text style={styles.companyName}>{r.companyName || 'Company'}</Text>
                   </View>
@@ -127,12 +129,32 @@ export default function AdminCustomizationsScreen() {
                 {fields.length > 0 ? (
                   <View style={styles.payloadRow}>
                     <ListPlus size={13} color={C.textMuted} />
-                    <Text style={styles.payloadText}>Add fields: {fields.map((f) => f.label).join(', ')}</Text>
+                    <Text style={styles.payloadText}>Add fields: {fields.map((f) => `${f.label}${f.type ? ` (${f.type})` : ''}`).join(', ')}</Text>
                   </View>
+                ) : null}
+                {Object.keys(r.payload?.terminology ?? {}).length > 0 ? (
+                  <View style={styles.payloadRow}>
+                    <Tag size={13} color={C.textMuted} />
+                    <Text style={styles.payloadText}>Rename: {Object.entries(r.payload?.terminology ?? {}).map(([k, v]) => `${k} → ${v}`).join(', ')}</Text>
+                  </View>
+                ) : null}
+                {(hidden.length > 0 || fields.length > 0 || Object.keys(r.payload?.terminology ?? {}).length > 0) && r.status === 'pending' ? (
+                  <Text style={styles.previewNote}>Approving applies these changes to {r.companyName || 'this company'} instantly.</Text>
                 ) : null}
                 {r.requesterName ? <Text style={styles.reqMeta}>Requested by {r.requesterName}</Text> : null}
 
                 {r.status === 'pending' ? (
+                  <>
+                  <View style={styles.noteRow}>
+                    <MessageSquare size={13} color={C.textMuted} />
+                    <TextInput
+                      value={notes[r.id] ?? ''}
+                      onChangeText={(t) => setNotes((prev) => ({ ...prev, [r.id]: t }))}
+                      placeholder="Optional note to the company…"
+                      placeholderTextColor={C.textMuted}
+                      style={styles.noteInput}
+                    />
+                  </View>
                   <View style={styles.actions}>
                     <TouchableOpacity
                       style={[styles.actionBtn, { backgroundColor: C.green }]}
@@ -151,6 +173,7 @@ export default function AdminCustomizationsScreen() {
                       <Text style={[styles.actionBtnText, { color: C.red }]}>Reject</Text>
                     </TouchableOpacity>
                   </View>
+                  </>
                 ) : r.adminNote ? (
                   <Text style={styles.reqMeta}>Note: {r.adminNote}</Text>
                 ) : null}
@@ -180,7 +203,10 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 16, gap: 12 },
   reqCard: { gap: 8 },
   reqTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  companyРow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  companyRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  previewNote: { fontSize: 11.5, color: C.purple, fontWeight: '600' as const },
+  noteRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
+  noteInput: { flex: 1, backgroundColor: C.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 9, color: C.text, fontSize: 13 },
   companyName: { fontSize: 12.5, fontWeight: '700' as const, color: C.textSecondary },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
   statusText: { fontSize: 10.5, fontWeight: '800' as const },
