@@ -125,6 +125,9 @@ export default function DrayageCompanyOrderDetailPage() {
   const [equipModal, setEquipModal] = useState(false);
   const [chargeModal, setChargeModal] = useState(false);
   const [lineModal, setLineModal] = useState(false);
+  const [handlingModal, setHandlingModal] = useState(false);
+  const [handlingMode, setHandlingMode] = useState<"LiveLoad" | "LiveUnload" | "DropPick">("LiveUnload");
+  const [pickupBackDate, setPickupBackDate] = useState("");
   const [selTruck, setSelTruck] = useState<string | null>(null);
   const [selChassis, setSelChassis] = useState<string | null>(null);
   const [selTrailer, setSelTrailer] = useState<string | null>(null);
@@ -326,6 +329,26 @@ export default function DrayageCompanyOrderDetailPage() {
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] }); setLineModal(false); },
   });
 
+  // Dispatch finalizes/changes how the container is handled at the stop. Migration 0151.
+  const handlingMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("set_drayage_handling_mode", {
+        p_order_id: orderId,
+        p_handling_mode: handlingMode,
+        p_pickup_back_date: handlingMode === "DropPick" ? (pickupBackDate.trim() || null) : null,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] }); setHandlingModal(false); },
+  });
+
+  const openHandlingModal = () => {
+    if (!order) return;
+    setHandlingMode(((order.handling_mode as string) as "LiveLoad" | "LiveUnload" | "DropPick") ?? "LiveUnload");
+    setPickupBackDate((order.pickup_back_date as string) ?? "");
+    setHandlingModal(true);
+  };
+
   const openChargeModal = () => {
     if (!order) return;
     setPdRate(order.per_diem_daily_rate ? String(order.per_diem_daily_rate) : ""); setPdLfd((order.per_diem_last_free_day as string) ?? "");
@@ -488,6 +511,26 @@ export default function DrayageCompanyOrderDetailPage() {
           <p className="text-sm font-medium">{shippingLine ? `${shippingLine.name as string}${shippingLine.scac ? ` (${shippingLine.scac as string})` : ""}` : "Not set"}</p>
           {order.drayage_company_id ? (
             <Button variant="outline" className="w-full" onClick={() => setLineModal(true)}>{shippingLine ? "Change shipping line" : "Set shipping line"}</Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Handling at the stop */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Package className="h-4 w-4 text-blue-400" /> Handling at the stop
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-sm font-medium">
+            {order.handling_mode === "LiveLoad" ? "Live load" : order.handling_mode === "DropPick" ? "Drop & pick" : "Live unload"}
+          </p>
+          {order.handling_mode === "DropPick" && order.pickup_back_date ? (
+            <p className="text-xs text-muted-foreground">Pick-up back on {String(order.pickup_back_date)}</p>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button variant="outline" className="w-full" onClick={openHandlingModal}><Package className="mr-2 h-4 w-4" /> Change handling</Button>
           ) : null}
         </CardContent>
       </Card>
@@ -866,6 +909,44 @@ export default function DrayageCompanyOrderDetailPage() {
               ))}
             </div>
           )}
+        </Modal>
+      ) : null}
+
+      {/* Handling mode modal */}
+      {handlingModal ? (
+        <Modal title="Handling at the stop" onClose={() => setHandlingModal(false)}>
+          <p className="text-xs text-muted-foreground">The customer proposed a handling mode. Finalize or change it here for how the container is actually handled at the warehouse stop.</p>
+          <div className="space-y-2">
+            {([
+              { key: "LiveLoad" as const, title: "Live load", desc: "Driver waits while it\u2019s loaded" },
+              { key: "LiveUnload" as const, title: "Live unload", desc: "Driver waits while it\u2019s unloaded" },
+              { key: "DropPick" as const, title: "Drop & pick", desc: "Drop now, pick up after load/unload" },
+            ]).map((m) => {
+              const active = handlingMode === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={() => setHandlingMode(m.key)}
+                  className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3 text-left ${active ? "border-primary bg-primary/10" : "border-white/5 bg-card/60 hover:bg-card"}`}
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15"><Package className="h-4 w-4 text-primary" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{m.title}</p>
+                    <p className="text-xs text-muted-foreground">{m.desc}</p>
+                  </div>
+                  {active ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          {handlingMode === "DropPick" ? (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Pick-up back date</label>
+              <Input type="date" value={pickupBackDate} onChange={(e) => setPickupBackDate(e.target.value)} />
+            </div>
+          ) : null}
+          {handlingMutation.isError ? <p className="text-xs text-red-400">{(handlingMutation.error as Error).message}</p> : null}
+          <Button className="w-full" disabled={handlingMutation.isPending} onClick={() => handlingMutation.mutate()}>Save handling</Button>
         </Modal>
       ) : null}
     </div>
