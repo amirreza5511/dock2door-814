@@ -2942,6 +2942,80 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // Auto watchdog: runs a scan at most once per throttle window per company.
+  // Safe to call on any dashboard mount — the DB enforces the cadence.
+  'ai.maybeRunWatchdog': async (input: { minMinutes?: number } | undefined) => {
+    const { data, error } = await supabase.rpc('ai_maybe_run_watchdog', { p_min_minutes: input?.minMinutes ?? 30 });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return { ran: false, created: 0, notReady: true };
+      throwErr(error, 'Unable to run system scan');
+    }
+    const r = (data ?? {}) as { ran?: boolean; created?: number };
+    return { ran: !!r.ran, created: Number(r.created ?? 0), notReady: false };
+  },
+
+  // =========================================================================
+  // WORKSPACE CUSTOMIZATIONS — companies tailor their own pages, admins approve
+  // =========================================================================
+  'customization.mySettings': async () => {
+    const { data, error } = await supabase.rpc('get_company_customizations');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return {};
+      throwErr(error, 'Unable to load workspace settings');
+    }
+    return (data ?? {}) as Record<string, unknown>;
+  },
+
+  'customization.myRequests': async () => {
+    const { data, error } = await supabase.rpc('list_customization_requests', { p_scope: 'mine' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load your requests');
+    }
+    return (data ?? []) as AnyRecord[];
+  },
+
+  'customization.allRequests': async (_input, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('list_customization_requests', { p_scope: 'all' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load requests');
+    }
+    return (data ?? []) as AnyRecord[];
+  },
+
+  'customization.submit': async (input: { title: string; details?: string; payload?: Record<string, unknown> }) => {
+    if (!input.title?.trim()) throw new Error('A short title is required');
+    const { data, error } = await supabase.rpc('submit_customization_request', {
+      p_title: input.title.trim(),
+      p_details: input.details ?? '',
+      p_payload: input.payload ?? {},
+    });
+    if (error) throwErr(error, 'Unable to submit your request');
+    return { id: data as string };
+  },
+
+  'customization.decide': async (input: { requestId: string; approve: boolean; note?: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('decide_customization_request', {
+      p_request_id: input.requestId,
+      p_approve: input.approve,
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to update the request');
+    return (data ?? {}) as Record<string, unknown>;
+  },
+
+  'drayage.setOrderCustomFields': async (input: { orderId: string; values: Record<string, unknown> }) => {
+    const { data, error } = await supabase.rpc('set_order_custom_fields', {
+      p_order_id: input.orderId,
+      p_values: input.values ?? {},
+    });
+    if (error) throwErr(error, 'Unable to save custom fields');
+    return (data ?? {}) as Record<string, unknown>;
+  },
+
   // -------------------------------------------------------------------------
   // UNIVERSAL PROVIDER PRICING — zones, rate cards & accessorials for every
   // vertical (warehouse, trucking, labor, service, forwarding). Migration 0116.

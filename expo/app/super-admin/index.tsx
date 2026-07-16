@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck, Sparkles,
+  Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck, SlidersHorizontal, Sparkles,
   Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle, Megaphone, Activity,
   Wallet, TrendingUp,
 } from 'lucide-react-native';
@@ -462,6 +462,21 @@ export default function SuperAdminOverviewScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>Payments & Finance</Text>
               <Text style={styles.toolMeta}>Internal payment engine, settle jobs, run payouts</Text>
+            </View>
+            <ChevronRight size={16} color={C.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => router.push('/super-admin/customizations' as never)}
+            style={styles.toolRow}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.toolIcon, { backgroundColor: C.purpleDim }]}>
+              <SlidersHorizontal size={16} color={C.purple} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolTitle}>Customization requests</Text>
+              <Text style={styles.toolMeta}>Approve workspace changes companies ask for</Text>
             </View>
             <ChevronRight size={16} color={C.textMuted} />
           </TouchableOpacity>

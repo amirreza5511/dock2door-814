@@ -29,6 +29,7 @@ export default function SuperAdminLayout() {
       <Tabs.Screen name="operations" options={{ href: null }} />
       <Tabs.Screen name="billing" options={{ href: null }} />
       <Tabs.Screen name="finance" options={{ href: null }} />
+      <Tabs.Screen name="customizations" options={{ href: null }} />
     </Tabs>
   );
 }

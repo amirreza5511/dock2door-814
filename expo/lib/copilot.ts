@@ -11,7 +11,8 @@ export type CopilotActionType =
   | 'assign_equipment'
   | 'set_charges'
   | 'link_street_turn'
-  | 'run_watchdog';
+  | 'run_watchdog'
+  | 'request_customization';
 
 export interface CopilotAction {
   type: CopilotActionType;
@@ -34,6 +35,7 @@ const ACTION_TYPES: CopilotActionType[] = [
   'set_charges',
   'link_street_turn',
   'run_watchdog',
+  'request_customization',
 ];
 
 /**
@@ -70,6 +72,7 @@ Action types and required params (use EXACT ids from the snapshot, never fabrica
 - set_charges: { "orderId", "perDiemFreeDays"?, "perDiemLastFreeDay"?, "perDiemDailyRate"?, "demurrageFreeDays"?, "demurrageLastFreeDay"?, "demurrageDailyRate"?, "storageFreeDays"?, "storageLastFreeDay"?, "storageDailyRate"? } (dates YYYY-MM-DD).
 - link_street_turn: { "providerOrderId", "receiverOrderId" } — from streetTurnSuggestions.
 - run_watchdog: {} — a full system scan that files alerts.
+- request_customization: { "title", "details"?, "payload"? } — file a workspace-customization request for the user's company (a human admin reviews and applies it). Use when the user asks to change/hide/add parts of their own pages. payload may contain { "hiddenModules": ["reports","settlement",...], "customFields": [{"key","label","type","required"}] }. Hideable module keys: reports, settlement, fuel-surcharge, shipping-lines, equipment-report, dead-runs, terminals.
 
 The user approves each action with one tap; NOTHING executes without approval, so propose confidently but explain the reasoning in "reason". Propose at most 3 actions at once. If you have no action to propose, do NOT emit the block.
 

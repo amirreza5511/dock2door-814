@@ -64,7 +64,17 @@ interface InvoicingScreenProps {
   providerCompanyId?: string | null;
 }
 
-const newLine = (): LineDraft => ({ key: Math.random().toString(36).slice(2), description: '', quantity: '1', unitPrice: '' });
+const newLine = (desc = '', qty = '1', unit = ''): LineDraft => ({ key: Math.random().toString(36).slice(2), description: desc, quantity: qty, unitPrice: unit });
+
+/** Common drayage accessorial charges billed as invoice line items. */
+const ACCESSORIALS: { label: string; desc: string }[] = [
+  { label: 'Per diem', desc: 'Per diem (container detention)' },
+  { label: 'Demurrage', desc: 'Demurrage (terminal storage)' },
+  { label: 'Storage', desc: 'Storage' },
+  { label: 'Chassis', desc: 'Chassis usage' },
+  { label: 'Waiting', desc: 'Waiting / detention time' },
+  { label: 'Pre-pull', desc: 'Pre-pull fee' },
+];
 
 export default function InvoicingScreen({ title = 'Invoicing', subtitle, providerCompanyId }: InvoicingScreenProps) {
   const insets = useSafeAreaInsets();
@@ -385,6 +395,24 @@ function InvoiceComposer({ visible, onClose, onCreated }: { visible: boolean; on
             <Input label="Customer email" value={customerEmail} onChangeText={setCustomerEmail} placeholder="ap@acme.com" keyboardType="email-address" autoCapitalize="none" />
 
             <Text style={[styles.fieldLabel, { marginTop: 6 }]}>Line items</Text>
+            <Text style={styles.accessorialHint}>Quick-add a common charge, then set days and rate:</Text>
+            <View style={styles.accessorialRow}>
+              {ACCESSORIALS.map((a) => (
+                <TouchableOpacity
+                  key={a.label}
+                  style={styles.accessorialChip}
+                  onPress={() => setLines((prev) => {
+                    const blankFirst = prev.length === 1 && !prev[0].description.trim();
+                    const line = newLine(a.desc, '1', '');
+                    return blankFirst ? [line] : [...prev, line];
+                  })}
+                  testID={`accessorial-${a.label}`}
+                >
+                  <Plus size={12} color={C.accent} />
+                  <Text style={styles.accessorialChipText}>{a.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             {lines.map((l, idx) => (
               <View key={l.key} style={styles.lineRow}>
                 <View style={{ flex: 1, gap: 8 }}>
@@ -544,6 +572,10 @@ const styles = StyleSheet.create({
   lineTotal: { fontSize: 13, fontWeight: '700' as const, color: C.text, minWidth: 64, textAlign: 'right' as const },
   addLineBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border },
   addLineText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
+  accessorialHint: { fontSize: 11.5, color: C.textMuted, lineHeight: 16, marginTop: -4 },
+  accessorialRow: { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 6 },
+  accessorialChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 999, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55' },
+  accessorialChipText: { fontSize: 12, color: C.accent, fontWeight: '700' as const },
   totalsBox: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14, gap: 8, marginTop: 4 },
   totalRow: { flexDirection: 'row', justifyContent: 'space-between' },
   totalLabel: { fontSize: 13, color: C.textSecondary },

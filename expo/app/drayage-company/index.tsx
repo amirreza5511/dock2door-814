@@ -2,8 +2,9 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, Sparkles, TrendingDown, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, SlidersHorizontal, Sparkles, TrendingDown, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
+import { useAutoWatchdog } from '@/hooks/useAutoWatchdog';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -21,6 +22,7 @@ export default function DrayageCompanyDashboard() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 30000 });
+  useAutoWatchdog();
 
   const stats = useMemo(() => {
     const open = dashboardQuery.data?.openOrders ?? [];
@@ -164,6 +166,13 @@ export default function DrayageCompanyDashboard() {
             <Text style={styles.actionText}>Dispatch by chat, system watchdog & revenue advisor</Text>
           </View>
         </Card>
+        <Card onPress={() => router.push('/customize' as never)} style={styles.customizeCard}>
+          <View style={styles.customizeIcon}><SlidersHorizontal size={20} color={C.purple} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>Customize this workspace</Text>
+            <Text style={styles.actionText}>Request changes to fit your company — we review & apply them</Text>
+          </View>
+        </Card>
 
         {/* Open Orders */}
         <View style={styles.sectionRow}>
@@ -240,6 +249,8 @@ const styles = StyleSheet.create({
   actionCard: { flex: 1, gap: 8 },
   copilotCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: C.accent + '55', backgroundColor: C.accentDim },
   copilotIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.accent + '22', alignItems: 'center', justifyContent: 'center' },
+  customizeCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: C.purple + '44', backgroundColor: C.purple + '12' },
+  customizeIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.purple + '22', alignItems: 'center', justifyContent: 'center' },
   actionTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   actionText: { fontSize: 12, color: C.textSecondary, lineHeight: 18 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },

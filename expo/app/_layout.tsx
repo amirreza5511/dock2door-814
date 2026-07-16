@@ -189,6 +189,7 @@ function RootLayoutNav() {
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="assistant" />
       <Stack.Screen name="copilot" />
+      <Stack.Screen name="customize" />
       <Stack.Screen name="advertise" />
       <Stack.Screen name="help" />
       <Stack.Screen name="permissions" />

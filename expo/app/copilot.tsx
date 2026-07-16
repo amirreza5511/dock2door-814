@@ -98,6 +98,7 @@ export default function CopilotScreen() {
   const assignEquipment = trpc.drayage.assignEquipment.useMutation();
   const setCharges = trpc.drayage.setCharges.useMutation();
   const linkStreetTurn = trpc.drayage.linkStreetTurn.useMutation();
+  const submitCustomization = trpc.customization.submit.useMutation();
 
   const context = contextQuery.data as Record<string, unknown> | null | undefined;
   const isCompany = !!(context && typeof context === 'object' && 'orders' in context);
@@ -200,6 +201,14 @@ export default function CopilotScreen() {
         await linkStreetTurn.mutateAsync({ providerOrderId: String(p.providerOrderId), receiverOrderId: String(p.receiverOrderId) });
       } else if (action.type === 'run_watchdog') {
         await runWatchdog.mutateAsync(undefined);
+      } else if (action.type === 'request_customization') {
+        const title = p.title ? String(p.title) : action.label;
+        if (!title.trim()) throw new Error('The proposal is missing a title.');
+        await submitCustomization.mutateAsync({
+          title,
+          details: p.details ? String(p.details) : '',
+          payload: (typeof p.payload === 'object' && p.payload !== null ? p.payload : {}) as Record<string, unknown>,
+        });
       } else {
         throw new Error('Unknown action type.');
       }
@@ -220,7 +229,7 @@ export default function CopilotScreen() {
     } finally {
       setRunningKey(null);
     }
-  }, [runningKey, doneKeys, dispatchMove, assignEquipment, setCharges, linkStreetTurn, runWatchdog, appendChat, utils, scrollDown]);
+  }, [runningKey, doneKeys, dispatchMove, assignEquipment, setCharges, linkStreetTurn, runWatchdog, submitCustomization, appendChat, utils, scrollDown]);
 
   const confirmClear = useCallback(() => {
     Alert.alert('Clear conversation?', 'The chat history will be deleted. Memories stay.', [
