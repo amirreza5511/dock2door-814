@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Store } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Sparkles, Store } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -145,6 +145,16 @@ export default function CustomerDashboard() {
               <Text style={styles.actionTitle}>Marketplace</Text>
               <Text style={styles.actionDesc}>Rent gear, mobile repair & services</Text>
             </TouchableOpacity>
+          </View>
+          <View style={[styles.actionsRow, { marginTop: 10 }]}>
+            <TouchableOpacity onPress={() => router.push('/copilot' as any)} style={[styles.actionCard, { borderColor: C.accent + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.accentDim }]}>
+                <Sparkles size={24} color={C.accent} />
+              </View>
+              <Text style={styles.actionTitle}>AI Copilot</Text>
+              <Text style={styles.actionDesc}>Track orders & get answers by chat</Text>
+            </TouchableOpacity>
+            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
           </View>
         </View>
 

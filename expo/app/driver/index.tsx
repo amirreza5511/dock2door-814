@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { AlertTriangle, Anchor, Camera, ChevronRight, Clock, FileText, HelpCircle, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, ShieldAlert, ShieldCheck, Truck, X } from 'lucide-react-native';
+import { AlertTriangle, Anchor, Camera, ChevronRight, Clock, FileText, HelpCircle, LogIn, LogOut, MapPin, Navigation, Package, Play, Radio, ShieldAlert, ShieldCheck, Sparkles, Truck, X } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { supabase } from '@/lib/supabase';
 import { useQuery } from '@tanstack/react-query';
@@ -251,6 +251,15 @@ export default function DriverHomeScreen() {
               <Text style={styles.greeting}>Today</Text>
               <Text style={styles.heroTitle}>{partitioned.active.length + partitioned.upcoming.length} jobs assigned</Text>
             </View>
+            <TouchableOpacity
+              testID="driver-copilot"
+              onPress={() => router.push('/copilot' as never)}
+              style={styles.copilotBtn}
+              accessibilityRole="button"
+              accessibilityLabel="AI Copilot"
+            >
+              <Sparkles size={16} color={C.accent} />
+            </TouchableOpacity>
             <SupportMenu />
             <TouchableOpacity
               testID="driver-logout"
@@ -401,6 +410,7 @@ const styles = StyleSheet.create({
   gpsBtnText: { fontSize: 12, fontWeight: '700' as const, color: C.accent },
   gpsMeta: { fontSize: 11, color: C.textMuted, marginTop: 4 },
   logoutBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.red + '15', borderWidth: 1, borderColor: C.red + '40', alignItems: 'center', justifyContent: 'center' },
+  copilotBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center', justifyContent: 'center' },
   helpBtn: { width: 36, height: 36, borderRadius: 10, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center', justifyContent: 'center' },
   greeting: { fontSize: 12, color: C.textMuted, fontWeight: '700' as const, letterSpacing: 1, textTransform: 'uppercase' as const },
   heroTitle: { fontSize: 22, fontWeight: '800' as const, color: C.text },

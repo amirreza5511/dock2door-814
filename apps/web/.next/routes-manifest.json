@@ -289,6 +289,12 @@
       "namedRegex": "^/company/add\\-role(?:/)?$"
     },
     {
+      "page": "/copilot",
+      "regex": "^/copilot(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/copilot(?:/)?$"
+    },
+    {
       "page": "/customer",
       "regex": "^/customer(?:/)?$",
       "routeKeys": {},
@@ -383,6 +389,12 @@
       "regex": "^/drayage\\-company/board(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/drayage\\-company/board(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/dead-runs",
+      "regex": "^/drayage\\-company/dead\\-runs(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/dead\\-runs(?:/)?$"
     },
     {
       "page": "/drayage-company/dispatch",

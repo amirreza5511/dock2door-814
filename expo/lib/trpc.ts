@@ -111,6 +111,19 @@ function isMissingColumn(error: unknown): boolean {
 }
 
 /**
+ * Detects a missing FUNCTION (undefined_function 42883, or PostgREST's
+ * "could not find the function" PGRST202). Used so brand-new RPC features whose
+ * migration hasn't been applied yet degrade to a friendly "not ready" state.
+ */
+function isMissingFunction(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  if (!e) return false;
+  if (e.code === '42883' || e.code === 'PGRST202') return true;
+  const msg = (e.message ?? '').toLowerCase();
+  return msg.includes('could not find the function') || (msg.includes('function') && msg.includes('does not exist'));
+}
+
+/**
  * Narrowly detects that the `loads` TABLE itself is absent (migrations 0082/0083
  * never applied). Unlike isMissingRelation, this does NOT match a missing
  * dependency (invoices/payments columns, payouts), an RLS denial, or a business
@@ -1126,6 +1139,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '', make: p.make ?? '', model: p.model ?? '',
+        ...(p.costPerMile != null ? { cost_per_mile: Number(p.costPerMile) || 0 } : {}),
         data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
       row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
@@ -1138,7 +1152,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
-    const { data, error } = await supabase.from(input.entity).insert(row).select().single();
+    let { data, error } = await supabase.from(input.entity).insert(row).select().single();
+    if (error && isMissingColumn(error) && 'cost_per_mile' in row) {
+      // Migration 0149 not applied yet — retry without the new column.
+      delete row.cost_per_mile;
+      ({ data, error } = await supabase.from(input.entity).insert(row).select().single());
+    }
     if (error) throwErr(error, 'Unable to create record');
     return { id: data!.id };
   },
@@ -1172,6 +1191,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       };
     } else if (input.entity === 'trucks') {
       row = { ...row, plate: p.plateNumber ?? p.unitNumber ?? '',
+        ...(p.costPerMile != null ? { cost_per_mile: Number(p.costPerMile) || 0 } : {}),
         data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
       row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
@@ -1184,7 +1204,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
-    const { error } = await supabase.from(input.entity).update(row).eq('id', input.id);
+    let { error } = await supabase.from(input.entity).update(row).eq('id', input.id);
+    if (error && isMissingColumn(error) && 'cost_per_mile' in row) {
+      delete row.cost_per_mile;
+      ({ error } = await supabase.from(input.entity).update(row).eq('id', input.id));
+    }
     if (error) throwErr(error, 'Unable to update record');
     return { success: true };
   },
@@ -2217,11 +2241,14 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (orderRes.error || !orderRes.data) throw new Error(orderRes.error?.message ?? 'Order not found');
     const order = orderRes.data as AnyRecord;
     // Resolve linked equipment (truck / chassis / trailer) for display.
-    const [truckRes, chassisRes, trailerRes, lineRes] = await Promise.all([
+    const [truckRes, chassisRes, trailerRes, lineRes, stRes] = await Promise.all([
       order.truck_id ? supabase.from('trucks').select('*').eq('id', order.truck_id).maybeSingle() : Promise.resolve({ data: null }),
       order.chassis_id ? supabase.from('chassis').select('*').eq('id', order.chassis_id).maybeSingle() : Promise.resolve({ data: null }),
       order.trailer_id ? supabase.from('trailers').select('*').eq('id', order.trailer_id).maybeSingle() : Promise.resolve({ data: null }),
       order.shipping_line_id ? supabase.from('shipping_lines').select('*').eq('id', order.shipping_line_id).maybeSingle() : Promise.resolve({ data: null }),
+      order.street_turn_order_id
+        ? supabase.from('drayage_orders').select('id, reference_code, status, container_number').eq('id', order.street_turn_order_id).maybeSingle()
+        : Promise.resolve({ data: null }),
     ]);
     return {
       order,
@@ -2233,6 +2260,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       chassis: chassisRes.data ?? null,
       trailer: trailerRes.data ?? null,
       shippingLine: lineRes.data ?? null,
+      streetTurnOrder: stRes.data ?? null,
     };
   },
 
@@ -2751,6 +2779,166 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_zone_id: input.zoneId,
     });
     if (error) throwErr(error, 'Unable to apply rate');
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // DEAD RUNS + STREET TURNS (0149)
+  // -------------------------------------------------------------------------
+
+  // Empty-mile analytics: empty legs + deadhead gaps costed per truck.
+  // Returns null when migration 0149 hasn't been applied yet.
+  'drayage.deadRuns': async (input: { days?: number } | undefined) => {
+    const { data, error } = await supabase.rpc('drayage_dead_runs', { p_days: input?.days ?? 7 });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load dead runs');
+    }
+    return data;
+  },
+
+  'drayage.streetTurnSuggestions': async () => {
+    const { data, error } = await supabase.rpc('drayage_street_turn_suggestions');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load street turn suggestions');
+    }
+    return (data ?? []) as AnyRecord[];
+  },
+
+  'drayage.linkStreetTurn': async (input: { providerOrderId: string; receiverOrderId: string }) => {
+    const { error } = await supabase.rpc('link_street_turn', {
+      p_provider_order_id: input.providerOrderId,
+      p_receiver_order_id: input.receiverOrderId,
+    });
+    if (error) throwErr(error, 'Unable to pair street turn');
+    return { success: true };
+  },
+
+  'drayage.unlinkStreetTurn': async (input: { orderId: string }) => {
+    const { error } = await supabase.rpc('unlink_street_turn', { p_order_id: input.orderId });
+    if (error) throwErr(error, 'Unable to unpair street turn');
+    return { success: true };
+  },
+
+  'drayage.setDefaultCostPerMile': async (input: { rate: number }) => {
+    const { error } = await supabase.rpc('set_company_cost_per_mile', { p_rate: input.rate });
+    if (error) throwErr(error, 'Unable to save default cost per mile');
+    return { success: true };
+  },
+
+  // -------------------------------------------------------------------------
+  // AI COPILOT (0149) — context snapshot, watchdog, events, memory, chat
+  // -------------------------------------------------------------------------
+
+  // Live role-aware data snapshot embedded into the copilot system prompt.
+  'ai.context': async () => {
+    const { data, error } = await supabase.rpc('ai_copilot_context');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load copilot context');
+    }
+    return data ?? {};
+  },
+
+  'ai.runWatchdog': async () => {
+    const { data, error } = await supabase.rpc('ai_run_watchdog');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return { created: 0, notReady: true };
+      throwErr(error, 'Unable to run system scan');
+    }
+    return { created: Number(data ?? 0), notReady: false };
+  },
+
+  'ai.events': async () => {
+    const { data, error } = await supabase
+      .from('ai_events')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(120);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load alerts');
+    return data ?? [];
+  },
+
+  'ai.setEventStatus': async (input: { id: string; status: 'open' | 'resolved' | 'dismissed' }) => {
+    const { error } = await supabase
+      .from('ai_events')
+      .update({ status: input.status, resolved_at: input.status === 'open' ? null : new Date().toISOString() })
+      .eq('id', input.id);
+    if (error) throwErr(error, 'Unable to update alert');
+    return { success: true };
+  },
+
+  'ai.logError': async (input: { title: string; body?: string; entityType?: string; entityId?: string }) => {
+    const { error } = await supabase.rpc('ai_log_event', {
+      p_kind: 'error',
+      p_severity: 'medium',
+      p_title: input.title,
+      p_body: input.body ?? '',
+      p_entity_type: input.entityType ?? '',
+      p_entity_id: input.entityId ?? '',
+      p_dedupe_key: '',
+    });
+    if (error && !isMissingFunction(error) && !isMissingRelation(error)) throwErr(error, 'Unable to log');
+    return { success: true };
+  },
+
+  'ai.memories': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('ai_memories')
+      .select('*')
+      .eq('user_id', ctx.user.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load memories');
+    return data ?? [];
+  },
+
+  'ai.addMemory': async (input: { content: string }, ctx) => {
+    const content = input.content.trim();
+    if (!content) throw new Error('Nothing to remember');
+    const { error } = await supabase
+      .from('ai_memories')
+      .insert({ user_id: ctx.user.id, company_id: ctx.user.companyId, content });
+    if (error) throwErr(error, 'Unable to save memory');
+    return { success: true };
+  },
+
+  'ai.deleteMemory': async (input: { id: string }) => {
+    const { error } = await supabase.from('ai_memories').delete().eq('id', input.id);
+    if (error) throwErr(error, 'Unable to delete memory');
+    return { success: true };
+  },
+
+  'ai.chatHistory': async (_input, ctx) => {
+    const { data, error } = await supabase
+      .from('ai_chat_messages')
+      .select('*')
+      .eq('user_id', ctx.user.id)
+      .order('created_at', { ascending: true })
+      .limit(200);
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load chat history');
+    return data ?? [];
+  },
+
+  'ai.appendChat': async (input: { items: { role: 'user' | 'assistant'; content: string; actions?: unknown[] }[] }, ctx) => {
+    const rows = input.items.map((m) => ({
+      user_id: ctx.user.id,
+      role: m.role,
+      content: m.content,
+      actions: m.actions ?? [],
+    }));
+    const { error } = await supabase.from('ai_chat_messages').insert(rows);
+    if (error && !isMissingRelation(error)) throwErr(error, 'Unable to save chat');
+    return { success: true };
+  },
+
+  'ai.clearChat': async (_input, ctx) => {
+    const { error } = await supabase.from('ai_chat_messages').delete().eq('user_id', ctx.user.id);
+    if (error) throwErr(error, 'Unable to clear chat');
     return { success: true };
   },
 
@@ -5550,6 +5738,38 @@ function procKey(ns: string, proc: string): string {
   return `${ns}.${proc}`;
 }
 
+// Best-effort AI error journal: failed procedures land in the copilot alerts
+// feed (ai_events) so nothing gets lost. Throttled per procedure, never for
+// ai.* itself (avoids loops), fire-and-forget so it can't mask the real error.
+const recentAiErrorLog = new Map<string, number>();
+function maybeLogAiError(key: string, err: unknown): void {
+  try {
+    if (key.startsWith('ai.')) return;
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg || msg === 'Not authenticated' || msg.startsWith('Unknown procedure')) return;
+    const now = Date.now();
+    const last = recentAiErrorLog.get(key) ?? 0;
+    if (now - last < 5 * 60 * 1000) return;
+    recentAiErrorLog.set(key, now);
+    void supabase
+      .rpc('ai_log_event', {
+        p_kind: 'error',
+        p_severity: 'medium',
+        p_title: `App error in ${key}`,
+        p_body: msg.slice(0, 500),
+        p_entity_type: 'procedure',
+        p_entity_id: key,
+        p_dedupe_key: `apperr:${key}:${new Date().toISOString().slice(0, 10)}`,
+      })
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+  } catch {
+    // never let error logging break the app
+  }
+}
+
 function callProcedure(ns: string, proc: string, input: unknown): Promise<unknown> {
   const key = procKey(ns, proc);
   const fn = PROCEDURES[key];
@@ -5563,6 +5783,7 @@ function callProcedure(ns: string, proc: string, input: unknown): Promise<unknow
       // Always log the real error so it's visible in Metro / Rork console,
       // not just a generic screen message with no details.
       console.error('[trpc-shim] procedure error:', key, err instanceof Error ? err.message : String(err));
+      maybeLogAiError(key, err);
       throw err;
     });
 }

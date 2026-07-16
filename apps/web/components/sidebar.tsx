@@ -74,6 +74,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
   sections.push({
     label: "Platform",
     items: [
+      { href: "/copilot", label: "AI Copilot", icon: Sparkles },
       { href: "/messages", label: "Messages", icon: MessageSquare },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/reviews", label: "Reviews", icon: Star },
@@ -260,6 +261,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/drayage-company/fuel-surcharge", label: "Fuel surcharge", icon: DollarSign },
         { href: "/drayage-company/settlement", label: "Driver settlement", icon: DollarSign },
         { href: "/drayage-company/equipment-report", label: "Equipment & charges", icon: Layers },
+        { href: "/drayage-company/dead-runs", label: "Dead runs", icon: Activity },
         { href: "/drayage-company/reports", label: "Reports & KPIs", icon: BarChart3 },
         { href: "/drayage-company/invoicing", label: "Invoicing", icon: DollarSign },
       ],

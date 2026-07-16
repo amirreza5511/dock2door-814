@@ -1,0 +1,692 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Sparkles, Radar, Lightbulb, ShieldCheck, AlertTriangle, Info, OctagonAlert,
+  Check, X, Play, Brain, Trash2, Repeat2, TrendingDown, DollarSign, Plus, Send,
+} from "lucide-react";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { askAssistant, type AiMessage } from "@/lib/ai";
+import {
+  buildCopilotSystemPrompt, parseCopilotReply, COPILOT_SUGGESTIONS,
+  type CopilotAction,
+} from "@/lib/copilot";
+import { cn } from "@/lib/utils";
+
+type TabKey = "chat" | "alerts" | "insights";
+
+interface UiMsg {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  actions: CopilotAction[];
+}
+
+interface AiEvent {
+  id: string;
+  kind: string;
+  severity: string;
+  source: string;
+  title: string;
+  body: string;
+  status: string;
+  created_at: string;
+}
+
+interface MemoryRow {
+  id: string;
+  content: string;
+}
+
+interface StreetTurnSuggestion {
+  provider_order_id: string;
+  provider_ref: string | null;
+  receiver_order_id: string;
+  receiver_ref: string | null;
+  terminal: string | null;
+  saved_miles: number | null;
+  saved_cost: number | null;
+}
+
+const SEVERITY_TEXT: Record<string, string> = {
+  critical: "text-red-400", high: "text-red-400", medium: "text-yellow-400", low: "text-blue-400",
+};
+const SEVERITY_BG: Record<string, string> = {
+  critical: "bg-red-500/15", high: "bg-red-500/15", medium: "bg-yellow-500/15", low: "bg-blue-500/15",
+};
+
+function kindIcon(kind: string) {
+  if (kind === "error") return OctagonAlert;
+  if (kind === "suggestion") return Lightbulb;
+  if (kind === "info") return Info;
+  return AlertTriangle;
+}
+
+function timeAgo(iso?: string | null): string {
+  if (!iso) return "";
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return `${secs}s ago`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+function sanitizeActions(raw: unknown): CopilotAction[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((a): a is CopilotAction => typeof a === "object" && a !== null && typeof (a as { type?: unknown }).type === "string")
+    .map((a) => ({ ...a, label: a.label ?? String(a.type), params: a.params ?? {} }));
+}
+
+export default function CopilotPage() {
+  const supabase = getBrowserSupabase();
+  const qc = useQueryClient();
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const [tab, setTab] = useState<TabKey>("chat");
+  const [messages, setMessages] = useState<UiMsg[] | null>(null);
+  const [input, setInput] = useState<string>("");
+  const [sending, setSending] = useState<boolean>(false);
+  const [runningKey, setRunningKey] = useState<string | null>(null);
+  const [doneKeys, setDoneKeys] = useState<Set<string>>(new Set());
+  const [actionError, setActionError] = useState<string>("");
+  const [memoryDraft, setMemoryDraft] = useState<string>("");
+  const [ideas, setIdeas] = useState<string>("");
+  const [ideasLoading, setIdeasLoading] = useState<boolean>(false);
+  const [alertFilter, setAlertFilter] = useState<"open" | "all">("open");
+
+  const contextQ = useQuery({
+    queryKey: ["ai", "context"],
+    refetchInterval: 60000,
+    queryFn: async (): Promise<Record<string, unknown> | null> => {
+      const { data, error } = await supabase.rpc("ai_copilot_context");
+      if (error) {
+        if (error.message.includes("function") || error.code === "PGRST202") return null;
+        throw error;
+      }
+      return (data as Record<string, unknown> | null) ?? {};
+    },
+  });
+
+  const historyQ = useQuery({
+    queryKey: ["ai", "chatHistory"],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return [];
+      const { data, error } = await supabase
+        .from("ai_chat_messages")
+        .select("*")
+        .eq("user_id", u.user.id)
+        .order("created_at", { ascending: true })
+        .limit(200);
+      if (error) {
+        if (error.code === "42P01" || error.message.includes("schema cache")) return [];
+        throw error;
+      }
+      return data ?? [];
+    },
+  });
+
+  const memoriesQ = useQuery({
+    queryKey: ["ai", "memories"],
+    queryFn: async (): Promise<MemoryRow[]> => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return [];
+      const { data, error } = await supabase
+        .from("ai_memories")
+        .select("id, content")
+        .eq("user_id", u.user.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        if (error.code === "42P01" || error.message.includes("schema cache")) return [];
+        throw error;
+      }
+      return (data as MemoryRow[] | null) ?? [];
+    },
+  });
+
+  const eventsQ = useQuery({
+    queryKey: ["ai", "events"],
+    refetchInterval: 30000,
+    queryFn: async (): Promise<AiEvent[]> => {
+      const { data, error } = await supabase
+        .from("ai_events")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(120);
+      if (error) {
+        if (error.code === "42P01" || error.message.includes("schema cache")) return [];
+        throw error;
+      }
+      return (data as AiEvent[] | null) ?? [];
+    },
+  });
+
+  const streetTurnsQ = useQuery({
+    queryKey: ["ai", "streetTurns"],
+    queryFn: async (): Promise<StreetTurnSuggestion[]> => {
+      const { data, error } = await supabase.rpc("drayage_street_turn_suggestions");
+      if (error) {
+        if (error.message.includes("function") || error.code === "PGRST202") return [];
+        throw error;
+      }
+      return (data as StreetTurnSuggestion[] | null) ?? [];
+    },
+  });
+
+  const appendChat = useMutation({
+    mutationFn: async (items: { role: "user" | "assistant"; content: string; actions?: unknown[] }[]) => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return;
+      await supabase.from("ai_chat_messages").insert(
+        items.map((m) => ({ user_id: u.user!.id, role: m.role, content: m.content, actions: m.actions ?? [] })),
+      );
+    },
+  });
+
+  const addMemory = useMutation({
+    mutationFn: async (content: string) => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Not signed in");
+      const { error } = await supabase.from("ai_memories").insert({ user_id: u.user.id, content });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ai", "memories"] }),
+  });
+
+  const deleteMemory = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("ai_memories").delete().eq("id", id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ai", "memories"] }),
+  });
+
+  const clearChat = useMutation({
+    mutationFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return;
+      await supabase.from("ai_chat_messages").delete().eq("user_id", u.user.id);
+    },
+    onSuccess: () => setMessages([]),
+  });
+
+  const runWatchdog = useMutation({
+    mutationFn: async (): Promise<number> => {
+      const { data, error } = await supabase.rpc("ai_run_watchdog");
+      if (error) {
+        if (error.message.includes("function") || error.code === "PGRST202") return 0;
+        throw new Error(error.message);
+      }
+      return Number(data ?? 0);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ai", "events"] }),
+  });
+
+  const setEventStatus = useMutation({
+    mutationFn: async (v: { id: string; status: "resolved" | "dismissed" }) => {
+      const { error } = await supabase
+        .from("ai_events")
+        .update({ status: v.status, resolved_at: new Date().toISOString() })
+        .eq("id", v.id);
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["ai", "events"] }),
+  });
+
+  const linkStreetTurn = useMutation({
+    mutationFn: async (s: { providerOrderId: string; receiverOrderId: string }) => {
+      const { error } = await supabase.rpc("link_street_turn", {
+        p_provider_order_id: s.providerOrderId,
+        p_receiver_order_id: s.receiverOrderId,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["ai", "streetTurns"] }),
+        qc.invalidateQueries({ queryKey: ["ai", "context"] }),
+      ]);
+    },
+  });
+
+  const context = contextQ.data;
+  const isCompany = !!(context && typeof context === "object" && "orders" in context);
+  const memories = useMemo(() => memoriesQ.data ?? [], [memoriesQ.data]);
+  const companyName = (context as { companyName?: string } | null | undefined)?.companyName ?? "";
+  const dead = (context as { deadRuns7d?: { empty_miles?: number; deadhead_miles?: number; dead_cost?: number; savings_cost?: number } } | null | undefined)?.deadRuns7d;
+
+  // Hydrate chat from persisted history once.
+  useEffect(() => {
+    if (messages === null && historyQ.data) {
+      const rows = (historyQ.data as { id: string; role: string; content: string; actions?: unknown }[]).map((r): UiMsg => ({
+        id: r.id,
+        role: r.role === "assistant" ? "assistant" : "user",
+        content: r.content,
+        actions: sanitizeActions(r.actions),
+      }));
+      setMessages(rows);
+    }
+  }, [historyQ.data, messages]);
+
+  // Kick a watchdog scan on open (fire-and-forget).
+  const scannedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (!scannedRef.current) {
+      scannedRef.current = true;
+      runWatchdog.mutate(undefined, { onError: () => undefined });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages?.length, sending]);
+
+  const send = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || sending) return;
+    const userMsg: UiMsg = { id: `u-${Date.now()}`, role: "user", content: trimmed, actions: [] };
+    const history = [...(messages ?? []), userMsg];
+    setMessages(history);
+    setInput("");
+    setSending(true);
+    void appendChat.mutateAsync([{ role: "user", content: trimmed }]).catch(() => undefined);
+    try {
+      const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
+      const prior: AiMessage[] = history.slice(-16).map((m) => ({ role: m.role, content: m.content }));
+      const raw = await askAssistant([{ role: "system", content: system }, ...prior]);
+      const parsed = parseCopilotReply(raw);
+      const aiMsg: UiMsg = { id: `a-${Date.now()}`, role: "assistant", content: parsed.text, actions: parsed.actions };
+      setMessages((prev) => [...(prev ?? []), aiMsg]);
+      void appendChat.mutateAsync([{ role: "assistant", content: parsed.text, actions: parsed.actions }]).catch(() => undefined);
+      if (parsed.memory) {
+        void addMemory.mutateAsync(parsed.memory).catch(() => undefined);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Something went wrong.";
+      setMessages((prev) => [...(prev ?? []), { id: `e-${Date.now()}`, role: "assistant", content: msg, actions: [] }]);
+    } finally {
+      setSending(false);
+    }
+  }, [messages, sending, context, memories, appendChat, addMemory]);
+
+  const runAction = useCallback(async (msgId: string, idx: number, action: CopilotAction) => {
+    const key = `${msgId}:${idx}`;
+    if (runningKey || doneKeys.has(key)) return;
+    setRunningKey(key);
+    setActionError("");
+    try {
+      const p = action.params as Record<string, unknown>;
+      if (action.type === "dispatch_move") {
+        if (!p.moveId || !p.driverUserId) throw new Error("The proposal is missing the move or driver id.");
+        const { error } = await supabase.rpc("dispatch_drayage_move", {
+          p_move_id: String(p.moveId),
+          p_driver_user_id: String(p.driverUserId),
+          p_appt_date: p.apptDate ? String(p.apptDate) : null,
+          p_appt_time: p.apptTime ? String(p.apptTime) : "",
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "assign_equipment") {
+        if (!p.orderId) throw new Error("The proposal is missing the order id.");
+        const { error } = await supabase.rpc("assign_drayage_equipment", {
+          p_order_id: String(p.orderId),
+          p_truck_id: p.truckId ? String(p.truckId) : null,
+          p_chassis_id: p.chassisId ? String(p.chassisId) : null,
+          p_trailer_id: p.trailerId ? String(p.trailerId) : null,
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "set_charges") {
+        if (!p.orderId) throw new Error("The proposal is missing the order id.");
+        const num = (v: unknown): number | null => (v == null || v === "" ? null : Number(v));
+        const str = (v: unknown): string | null => (v == null || v === "" ? null : String(v));
+        const { error } = await supabase.rpc("set_drayage_charges", {
+          p_order_id: String(p.orderId),
+          p_per_diem_free_days: num(p.perDiemFreeDays), p_per_diem_last_free_day: str(p.perDiemLastFreeDay), p_per_diem_daily_rate: num(p.perDiemDailyRate),
+          p_demurrage_free_days: num(p.demurrageFreeDays), p_demurrage_last_free_day: str(p.demurrageLastFreeDay), p_demurrage_daily_rate: num(p.demurrageDailyRate),
+          p_storage_free_days: num(p.storageFreeDays), p_storage_last_free_day: str(p.storageLastFreeDay), p_storage_daily_rate: num(p.storageDailyRate),
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "link_street_turn") {
+        if (!p.providerOrderId || !p.receiverOrderId) throw new Error("The proposal is missing order ids.");
+        await linkStreetTurn.mutateAsync({ providerOrderId: String(p.providerOrderId), receiverOrderId: String(p.receiverOrderId) });
+      } else if (action.type === "run_watchdog") {
+        await runWatchdog.mutateAsync();
+      } else {
+        throw new Error("Unknown action type.");
+      }
+      setDoneKeys((prev) => new Set(prev).add(key));
+      const confirm = `✅ Done: ${action.label}`;
+      setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: "assistant", content: confirm, actions: [] }]);
+      void appendChat.mutateAsync([{ role: "assistant", content: confirm }]).catch(() => undefined);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["ai", "context"] }),
+        qc.invalidateQueries({ queryKey: ["ai", "events"] }),
+        qc.invalidateQueries({ queryKey: ["drayage"] }),
+      ]);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setRunningKey(null);
+    }
+  }, [runningKey, doneKeys, supabase, linkStreetTurn, runWatchdog, appendChat, qc]);
+
+  const generateIdeas = useCallback(async () => {
+    if (ideasLoading) return;
+    setIdeasLoading(true);
+    setIdeas("");
+    try {
+      const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
+      const raw = await askAssistant([
+        { role: "system", content: system },
+        { role: "user", content: "Give me your best concrete money-making and cost-cutting suggestions right now, strictly based on the snapshot: pairable street turns, accruing or soon-due per diem/demurrage/storage, idle or overdue rentals, dead-run cost, unassigned moves. Short bullet list with $ estimates where possible. Do NOT emit an actions block." },
+      ]);
+      setIdeas(parseCopilotReply(raw).text);
+    } catch (e) {
+      setIdeas(e instanceof Error ? e.message : "Unable to generate suggestions.");
+    } finally {
+      setIdeasLoading(false);
+    }
+  }, [ideasLoading, context, memories]);
+
+  const events = eventsQ.data ?? [];
+  const shownEvents = alertFilter === "open" ? events.filter((e) => e.status === "open") : events;
+  const openCount = events.filter((e) => e.status === "open").length;
+  const streetTurns = streetTurnsQ.data ?? [];
+  const empty = (messages ?? []).length === 0;
+
+  return (
+    <div className="mx-auto flex h-[calc(100vh-8rem)] max-w-4xl flex-col space-y-4">
+      <div className="flex items-end justify-between">
+        <div>
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <Sparkles className="h-3.5 w-3.5" /> AI Copilot
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{companyName ? `Watching ${companyName}` : "Your operations co-pilot"}</h1>
+        </div>
+        {tab === "chat" && !empty ? (
+          <Button variant="outline" size="sm" onClick={() => clearChat.mutate()} disabled={clearChat.isPending}>
+            <Trash2 className="mr-1.5 h-4 w-4" /> Clear chat
+          </Button>
+        ) : null}
+      </div>
+
+      <div className="flex gap-2">
+        {([
+          ["chat", "Chat", Sparkles],
+          ["alerts", "Alerts", Radar],
+          ["insights", "Insights", Lightbulb],
+        ] as [TabKey, string, typeof Sparkles][]).map(([key, label, Icon]) => (
+          <Button key={key} size="sm" variant={tab === key ? "default" : "outline"} onClick={() => setTab(key)}>
+            <Icon className="mr-1.5 h-4 w-4" /> {label}
+            {key === "alerts" && openCount > 0 ? (
+              <span className="ml-1.5 rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">{openCount}</span>
+            ) : null}
+          </Button>
+        ))}
+      </div>
+
+      {tab === "chat" ? (
+        <>
+          <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-border bg-card/40 p-4">
+            {empty ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/15">
+                  <Sparkles className="h-7 w-7 text-primary" />
+                </div>
+                <p className="text-lg font-semibold">Your operation, on autopilot</p>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  I see your live orders, moves, equipment, deadlines and dead runs. Ask me to dispatch, pair street turns, or find money — you approve every action with one click.
+                </p>
+                <div className="mt-2 grid w-full max-w-md gap-2">
+                  {COPILOT_SUGGESTIONS.map((s) => (
+                    <button key={s} className="rounded-lg border border-border bg-card px-4 py-3 text-left text-sm transition hover:bg-accent" onClick={() => void send(s)}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              (messages ?? []).map((m) => (
+                <div key={m.id}>
+                  <div className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                    <div className={cn(
+                      "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+                      m.role === "user" ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm border border-border bg-card",
+                    )}>
+                      {m.content}
+                    </div>
+                  </div>
+                  {m.actions.map((a, idx) => {
+                    const key = `${m.id}:${idx}`;
+                    const done = doneKeys.has(key);
+                    const running = runningKey === key;
+                    return (
+                      <div key={key} className="mt-2 max-w-[85%] space-y-2 rounded-xl border border-purple-500/40 bg-purple-500/10 p-3">
+                        <p className="flex items-center gap-2 text-sm font-semibold">
+                          <ShieldCheck className="h-4 w-4 text-purple-400" /> {a.label}
+                        </p>
+                        {a.reason ? <p className="text-xs text-muted-foreground">{a.reason}</p> : null}
+                        <div className="flex gap-2">
+                          <Button size="sm" className={cn(done && "bg-emerald-600 hover:bg-emerald-600")} disabled={done || running} onClick={() => void runAction(m.id, idx, a)}>
+                            {done ? <Check className="mr-1.5 h-4 w-4" /> : <Play className="mr-1.5 h-4 w-4" />}
+                            {running ? "Running…" : done ? "Executed" : "Approve & run"}
+                          </Button>
+                          {!done ? (
+                            <Button size="sm" variant="outline" disabled={running} onClick={() => setDoneKeys((prev) => new Set(prev).add(key))}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+            {sending ? (
+              <div className="flex justify-start">
+                <div className="rounded-2xl rounded-bl-sm border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
+                  Checking your operation…
+                </div>
+              </div>
+            ) : null}
+            {actionError ? <p className="text-xs text-red-400">{actionError}</p> : null}
+            <div ref={bottomRef} />
+          </div>
+
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => { e.preventDefault(); void send(input); }}
+          >
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder='Ask, dispatch, or say "remember…"'
+              disabled={sending}
+              className="flex-1"
+            />
+            <Button type="submit" disabled={sending || input.trim().length === 0}>
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        </>
+      ) : tab === "alerts" ? (
+        <div className="flex-1 space-y-3 overflow-y-auto">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex gap-2">
+              {(["open", "all"] as const).map((f) => (
+                <Button key={f} size="sm" variant={alertFilter === f ? "default" : "outline"} onClick={() => setAlertFilter(f)}>
+                  {f === "open" ? `Open (${openCount})` : "All"}
+                </Button>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              disabled={runWatchdog.isPending}
+              onClick={() => runWatchdog.mutate()}
+            >
+              <Radar className="mr-1.5 h-4 w-4" /> {runWatchdog.isPending ? "Scanning…" : "Scan now"}
+            </Button>
+          </div>
+          {runWatchdog.isSuccess && runWatchdog.data != null ? (
+            <p className="text-xs text-muted-foreground">
+              Last scan: {runWatchdog.data > 0 ? `${runWatchdog.data} new finding(s) recorded.` : "no new issues found."}
+            </p>
+          ) : null}
+
+          {shownEvents.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+                <ShieldCheck className="h-8 w-8 text-emerald-400" />
+                <p className="font-semibold">All clear</p>
+                <p className="text-sm text-muted-foreground">The watchdog found nothing that needs your attention. Errors and risks show up here automatically.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            shownEvents.map((e) => {
+              const KindIcon = kindIcon(e.kind);
+              const isOpen = e.status === "open";
+              return (
+                <Card key={e.id} className={cn(isOpen && "border-l-2", isOpen && (e.severity === "critical" || e.severity === "high" ? "border-l-red-400" : "border-l-yellow-400"))}>
+                  <CardContent className="space-y-2 py-4">
+                    <div className="flex items-start gap-3">
+                      <div className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg", SEVERITY_BG[e.severity] ?? "bg-muted")}>
+                        <KindIcon className={cn("h-4 w-4", SEVERITY_TEXT[e.severity] ?? "")} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn("text-sm font-semibold", !isOpen && "text-muted-foreground")}>{e.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {e.severity.toUpperCase()} · {e.source === "app_error" ? "app error" : e.source} · {timeAgo(e.created_at)}{!isOpen ? ` · ${e.status}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                    {e.body ? <p className="text-sm text-muted-foreground">{e.body}</p> : null}
+                    {isOpen ? (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setEventStatus.mutate({ id: e.id, status: "resolved" })}>
+                          <Check className="mr-1.5 h-4 w-4 text-emerald-400" /> Resolved
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setEventStatus.mutate({ id: e.id, status: "dismissed" })}>
+                          <X className="mr-1.5 h-4 w-4" /> Dismiss
+                        </Button>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        <div className="flex-1 space-y-4 overflow-y-auto">
+          {isCompany ? (
+            <>
+              <Card>
+                <CardContent className="space-y-3 py-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <TrendingDown className="h-4 w-4 text-red-400" /> Dead runs — last 7 days
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-lg border border-border bg-card p-3 text-center">
+                      <p className="text-lg font-bold">{(Number(dead?.empty_miles ?? 0) + Number(dead?.deadhead_miles ?? 0)).toFixed(1)} mi</p>
+                      <p className="text-xs text-muted-foreground">empty miles</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-3 text-center">
+                      <p className="text-lg font-bold text-red-400">${Number(dead?.dead_cost ?? 0).toFixed(0)}</p>
+                      <p className="text-xs text-muted-foreground">cost</p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-3 text-center">
+                      <p className="text-lg font-bold text-emerald-400">${Number(dead?.savings_cost ?? 0).toFixed(0)}</p>
+                      <p className="text-xs text-muted-foreground">saved</p>
+                    </div>
+                  </div>
+                  <Link href="/drayage-company/dead-runs" className="text-sm font-semibold text-primary hover:underline">
+                    Open full report ›
+                  </Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="space-y-3 py-4">
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    <Repeat2 className="h-4 w-4 text-purple-400" /> Street-turn opportunities
+                  </p>
+                  {streetTurns.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No pairable moves right now. New matches appear as empties head back.</p>
+                  ) : (
+                    streetTurns.map((s) => (
+                      <div key={`${s.provider_order_id}-${s.receiver_order_id}`} className="flex items-center gap-3 border-t border-border pt-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold">{s.provider_ref} → {s.receiver_ref}</p>
+                          <p className="text-xs text-muted-foreground">{s.terminal} · ≈{s.saved_miles ?? 0} mi · ${s.saved_cost ?? 0} saved</p>
+                        </div>
+                        <Button size="sm" disabled={linkStreetTurn.isPending} onClick={() => linkStreetTurn.mutate({ providerOrderId: s.provider_order_id, receiverOrderId: s.receiver_order_id })}>
+                          Pair
+                        </Button>
+                      </div>
+                    ))
+                  )}
+                  {linkStreetTurn.isError ? <p className="text-xs text-red-400">{(linkStreetTurn.error as Error).message}</p> : null}
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+
+          <Card>
+            <CardContent className="space-y-3 py-4">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <DollarSign className="h-4 w-4 text-emerald-400" /> Revenue advisor
+              </p>
+              <p className="text-sm text-muted-foreground">Concrete ways to make (or stop losing) money, based on your live data.</p>
+              <Button disabled={ideasLoading} onClick={() => void generateIdeas()}>
+                <Sparkles className="mr-1.5 h-4 w-4" /> {ideasLoading ? "Analyzing…" : "Generate suggestions"}
+              </Button>
+              {ideas ? (
+                <div className="whitespace-pre-wrap rounded-lg border border-border bg-card p-4 text-sm leading-relaxed">{ideas}</div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-3 py-4">
+              <p className="flex items-center gap-2 text-sm font-semibold">
+                <Brain className="h-4 w-4 text-blue-400" /> Memory
+              </p>
+              <p className="text-sm text-muted-foreground">Facts the copilot keeps across sessions. Say &ldquo;remember …&rdquo; in chat, or add one here.</p>
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const c = memoryDraft.trim();
+                  if (!c) return;
+                  setMemoryDraft("");
+                  addMemory.mutate(c);
+                }}
+              >
+                <Input value={memoryDraft} onChange={(e) => setMemoryDraft(e.target.value)} placeholder="e.g. Always keep two chassis at the yard" className="flex-1" />
+                <Button type="submit" variant="outline" disabled={memoryDraft.trim().length === 0 || addMemory.isPending}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </form>
+              {memories.map((m) => (
+                <div key={m.id} className="flex items-center gap-3 border-t border-border pt-3">
+                  <p className="flex-1 text-sm">{m.content}</p>
+                  <button className="text-muted-foreground transition hover:text-red-400" onClick={() => deleteMemory.mutate(m.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}

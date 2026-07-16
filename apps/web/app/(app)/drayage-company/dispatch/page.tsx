@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Radio, Ship, Truck, User, MapPin, Layers, AlertTriangle } from "lucide-react";
+import { Radio, Repeat2, Ship, TrendingDown, Truck, User, MapPin, Layers, AlertTriangle } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +156,51 @@ function useEquipmentLive(companyId: string | null) {
   });
 }
 
+interface StreetTurnSuggestion {
+  provider_order_id: string;
+  provider_ref: string | null;
+  provider_container: string | null;
+  receiver_order_id: string;
+  receiver_ref: string | null;
+  receiver_container: string | null;
+  terminal: string | null;
+  saved_miles: number | null;
+  saved_cost: number | null;
+}
+
+function useStreetTurnSuggestions(companyId: string | null) {
+  const supabase = getBrowserSupabase();
+  return useQuery({
+    queryKey: ["drayage", "streetTurns", companyId],
+    enabled: !!companyId,
+    refetchInterval: 30000,
+    queryFn: async (): Promise<StreetTurnSuggestion[]> => {
+      const { data, error } = await supabase.rpc("drayage_street_turn_suggestions");
+      if (error) {
+        if (error.message.includes("function") || error.code === "PGRST202") return [];
+        throw error;
+      }
+      return (data as StreetTurnSuggestion[] | null) ?? [];
+    },
+  });
+}
+
+function useDeadRunSummary(companyId: string | null) {
+  const supabase = getBrowserSupabase();
+  return useQuery({
+    queryKey: ["drayage", "deadRuns", 7, companyId],
+    enabled: !!companyId,
+    queryFn: async (): Promise<{ empty_miles?: number; deadhead_miles?: number; dead_cost?: number } | null> => {
+      const { data, error } = await supabase.rpc("drayage_dead_runs", { p_days: 7 });
+      if (error) {
+        if (error.message.includes("function") || error.code === "PGRST202") return null;
+        throw error;
+      }
+      return ((data as { summary?: { empty_miles?: number; deadhead_miles?: number; dead_cost?: number } } | null)?.summary) ?? null;
+    },
+  });
+}
+
 function useCompanyOrders(companyId: string | null) {
   const supabase = getBrowserSupabase();
   return useQuery({
@@ -177,6 +222,8 @@ export default function DrayageDispatchPage() {
   const fleetQ = useFleetLive(companyId);
   const equipmentQ = useEquipmentLive(companyId);
   const ordersQ = useCompanyOrders(companyId);
+  const streetTurnsQ = useStreetTurnSuggestions(companyId);
+  const deadRunsQ = useDeadRunSummary(companyId);
 
   const [dropModal, setDropModal] = useState<{ type: "chassis" | "trailer"; id: string; label: string } | null>(null);
   const [dropLabel, setDropLabel] = useState("");
@@ -195,6 +242,22 @@ export default function DrayageDispatchPage() {
       if (error) throw new Error(error.message);
     },
     onSuccess: async () => { await qc.invalidateQueries({ queryKey: ["drayage", "equipmentLive"] }); },
+  });
+  const linkStreetTurn = useMutation({
+    mutationFn: async (s: StreetTurnSuggestion) => {
+      const { error } = await supabase.rpc("link_street_turn", {
+        p_provider_order_id: s.provider_order_id,
+        p_receiver_order_id: s.receiver_order_id,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["drayage", "streetTurns"] }),
+        qc.invalidateQueries({ queryKey: ["drayage", "deadRuns"] }),
+        qc.invalidateQueries({ queryKey: ["drayage", "companyOrders"] }),
+      ]);
+    },
   });
 
   const equipment = equipmentQ.data ?? [];
@@ -289,6 +352,48 @@ export default function DrayageDispatchPage() {
           </div>
         )}
       </section>
+
+      {(streetTurnsQ.data ?? []).length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Repeat2 className="h-4 w-4 text-purple-400" />
+            <h2 className="text-sm font-semibold">Street turns ({(streetTurnsQ.data ?? []).length})</h2>
+          </div>
+          <div className="space-y-2">
+            {(streetTurnsQ.data ?? []).map((s) => (
+              <Card key={`${s.provider_order_id}-${s.receiver_order_id}`} className="border-purple-500/40">
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{s.provider_ref} → {s.receiver_ref}</p>
+                    <p className="text-sm text-muted-foreground">Empty back at {s.terminal} · pick up the next load there</p>
+                    {Number(s.saved_miles ?? 0) > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-emerald-400">≈ {s.saved_miles} empty mi avoided · ${s.saved_cost} saved</p>
+                    ) : null}
+                  </div>
+                  <Button size="sm" disabled={linkStreetTurn.isPending} onClick={() => linkStreetTurn.mutate(s)}>
+                    <Repeat2 className="mr-1.5 h-4 w-4" /> Pair
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+            {linkStreetTurn.isError ? <p className="text-xs text-red-400">{(linkStreetTurn.error as Error).message}</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {deadRunsQ.data ? (
+        <Link href="/drayage-company/dead-runs">
+          <Card className="border-red-500/40 transition hover:bg-accent">
+            <CardContent className="flex items-center gap-3 py-3">
+              <TrendingDown className="h-4 w-4 shrink-0 text-red-400" />
+              <p className="flex-1 text-sm font-medium">
+                Dead runs 7d: {(Number(deadRunsQ.data.empty_miles ?? 0) + Number(deadRunsQ.data.deadhead_miles ?? 0)).toFixed(1)} mi · ${Number(deadRunsQ.data.dead_cost ?? 0).toFixed(0)}
+              </p>
+              <span className="text-sm font-semibold text-red-400">Report ›</span>
+            </CardContent>
+          </Card>
+        </Link>
+      ) : null}
 
       {chargeAlerts.length > 0 ? (
         <section className="space-y-3">

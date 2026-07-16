@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, Sparkles, TrendingDown, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -151,8 +151,19 @@ export default function DrayageCompanyDashboard() {
             <Text style={styles.actionTitle}>Equipment & charges</Text>
             <Text style={styles.actionText}>Rental cost & per diem exposure</Text>
           </Card>
-          <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+          <Card onPress={() => router.push('/drayage-company/dead-runs' as never)} style={styles.actionCard}>
+            <TrendingDown size={20} color={C.red} />
+            <Text style={styles.actionTitle}>Dead runs</Text>
+            <Text style={styles.actionText}>Empty miles, cost & street-turn savings</Text>
+          </Card>
         </View>
+        <Card onPress={() => router.push('/copilot' as never)} style={styles.copilotCard}>
+          <View style={styles.copilotIcon}><Sparkles size={20} color={C.accent} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionTitle}>AI Copilot</Text>
+            <Text style={styles.actionText}>Dispatch by chat, system watchdog & revenue advisor</Text>
+          </View>
+        </Card>
 
         {/* Open Orders */}
         <View style={styles.sectionRow}>
@@ -227,6 +238,8 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, color: C.textSecondary },
   actionsRow: { flexDirection: 'row', gap: 10 },
   actionCard: { flex: 1, gap: 8 },
+  copilotCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderColor: C.accent + '55', backgroundColor: C.accentDim },
+  copilotIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.accent + '22', alignItems: 'center', justifyContent: 'center' },
   actionTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   actionText: { fontSize: 12, color: C.textSecondary, lineHeight: 18 },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },

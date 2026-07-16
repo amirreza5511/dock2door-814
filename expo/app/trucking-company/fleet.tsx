@@ -36,6 +36,7 @@ interface FleetItem {
   rental_return_date?: string | null;
   is_dropped?: boolean | null;
   dropped_label?: string | null;
+  cost_per_mile?: number | null;
 }
 
 type ActiveLoad = { id: string; status: string; accepted_driver_user_id?: string | null; dropoff_address?: string | null; pickup_address?: string | null };
@@ -55,6 +56,7 @@ interface FleetFormState {
   isRental: boolean;
   rentalDailyRate: string;
   rentalReturnDate: string;
+  costPerMile: string;
   licenseNumber: string;
   phone: string;
   email: string;
@@ -81,6 +83,7 @@ const INITIAL_FORM: FleetFormState = {
   isRental: false,
   rentalDailyRate: '',
   rentalReturnDate: '',
+  costPerMile: '',
   licenseNumber: '',
   phone: '',
   email: '',
@@ -141,7 +144,7 @@ function getPrimaryLabel(entity: FleetEntity, item: FleetItem): string {
 function getSecondaryLabel(entity: FleetEntity, item: FleetItem): string {
   const data = item.data ?? {};
   if (entity === 'drivers') return [readText(item.license_number), readText(item.phone), readText(data.email)].filter(Boolean).join(' · ');
-  if (entity === 'trucks') return [readText(item.plate_number), readText(data.notes)].filter(Boolean).join(' · ');
+  if (entity === 'trucks') return [readText(item.plate_number), item.cost_per_mile ? `$${item.cost_per_mile}/mi` : '', readText(data.notes)].filter(Boolean).join(' · ');
   if (entity === 'trailers') return [readText(item.trailer_type), readText(data.notes)].filter(Boolean).join(' · ');
   if (entity === 'chassis') return [readText(item.chassis_type), readText(item.plate), item.is_rental ? 'Rental' : 'Owned'].filter(Boolean).join(' · ');
   return [readText(item.container_type), readText(data.notes)].filter(Boolean).join(' · ');
@@ -169,6 +172,7 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     isRental: !!item.is_rental,
     rentalDailyRate: item.rental_daily_rate != null ? String(item.rental_daily_rate) : '',
     rentalReturnDate: readText(item.rental_return_date),
+    costPerMile: item.cost_per_mile != null && item.cost_per_mile !== 0 ? String(item.cost_per_mile) : '',
     licenseNumber: readText(item.license_number),
     phone: readText(item.phone),
     email: readText(data.email),
@@ -314,6 +318,7 @@ export default function TruckingFleetScreen() {
       isRental: form.isRental,
       rentalDailyRate: form.rentalDailyRate.trim() === '' ? 0 : Number(form.rentalDailyRate),
       rentalReturnDate: form.rentalReturnDate || null,
+      costPerMile: form.costPerMile.trim() === '' ? 0 : Number(form.costPerMile),
       licenseNumber: form.licenseNumber || null,
       phone: form.phone || null,
       email: form.email || null,
@@ -514,6 +519,8 @@ export default function TruckingFleetScreen() {
                   <>
                     <Input label="Unit number" value={form.unitNumber} onChangeText={(value) => setForm((c) => ({ ...c, unitNumber: value }))} placeholder="TRK-102" testID="fleet-truck-unit" />
                     <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((c) => ({ ...c, plateNumber: value }))} placeholder="e.g. ABC 1234" testID="fleet-truck-plate" />
+                    <Input label="Cost per mile ($/mi)" value={form.costPerMile} onChangeText={(value) => setForm((c) => ({ ...c, costPerMile: value }))} placeholder="e.g. 2.10" keyboardType="numeric" testID="fleet-truck-cpm" />
+                    <Text style={styles.chassisNote}>Used to price dead runs (empty miles). Leave blank to use your company default.</Text>
                     <Input label="Insurance expiry (YYYY-MM-DD)" value={form.insuranceExpiry} onChangeText={(value) => setForm((c) => ({ ...c, insuranceExpiry: value }))} placeholder="2026-12-31" autoCapitalize="none" testID="fleet-truck-insurance" />
                     <Input label="Inspection expiry (YYYY-MM-DD)" value={form.inspectionExpiry} onChangeText={(value) => setForm((c) => ({ ...c, inspectionExpiry: value }))} placeholder="2026-06-30" autoCapitalize="none" testID="fleet-truck-inspection" />
                   </>

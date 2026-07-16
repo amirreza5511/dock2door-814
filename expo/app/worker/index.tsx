@@ -1081,7 +1081,7 @@ export default function WorkerDashboard() {
               { label: 'Browse Open Shifts', icon: Search, color: C.accent, path: '/worker/browse' },
               { label: 'My Shifts & Applications', icon: Clock, color: C.blue, path: '/worker/my-shifts' },
               { label: 'Documents & Certificates', icon: Shield, color: C.yellow, path: '/worker/profile' },
-              { label: 'AI Assistant', icon: Sparkles, color: C.accent, path: '/assistant' },
+              { label: 'AI Copilot', icon: Sparkles, color: C.accent, path: '/copilot' },
               { label: 'Help Center & Manual', icon: BookOpen, color: C.green, path: '/help' },
               { label: 'My Reviews', icon: Star, color: C.yellow, path: '/reviews' },
               { label: 'Messages', icon: MessageCircle, color: C.blue, path: '/messages' },

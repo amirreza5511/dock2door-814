@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, UserPlus, X, XCircle, Zap, Layers, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Repeat2, Ship, TrendingDown, Truck, User, UserPlus, X, XCircle, Zap, Layers, AlertTriangle } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -49,6 +49,8 @@ export default function DrayageDispatchScreen() {
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 20000 });
   const fleetQuery = trpc.drayage.fleetLive.useQuery(undefined, { refetchInterval: 8000 });
   const equipmentQuery = trpc.drayage.equipmentLive.useQuery(undefined, { refetchInterval: 15000 });
+  const streetTurnQuery = trpc.drayage.streetTurnSuggestions.useQuery(undefined, { refetchInterval: 30000 });
+  const deadRunsQuery = trpc.drayage.deadRuns.useQuery({ days: 7 });
 
   const [dropModal, setDropModal] = useState<{ type: 'chassis' | 'trailer'; id: string; label: string } | null>(null);
   const [dropLabel, setDropLabel] = useState('');
@@ -56,6 +58,30 @@ export default function DrayageDispatchScreen() {
   const dropMutation = trpc.drayage.dropEquipment.useMutation({
     onSuccess: async () => { await utils.drayage.equipmentLive.invalidate(); setDropModal(null); },
   });
+  const linkStreetTurnMutation = trpc.drayage.linkStreetTurn.useMutation({
+    onSuccess: async () => {
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await Promise.all([
+        utils.drayage.streetTurnSuggestions.invalidate(),
+        utils.drayage.dashboard.invalidate(),
+        utils.drayage.deadRuns.invalidate({ days: 7 }),
+      ]);
+    },
+  });
+  const pairStreetTurn = useCallback((s: any) => {
+    Alert.alert(
+      'Pair street turn?',
+      `${s.provider_ref} returns its empty at ${s.terminal} \u2014 the same truck picks up ${s.receiver_ref} there. Est. ${s.saved_miles ?? 0} empty miles saved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Pair', onPress: () => void linkStreetTurnMutation
+            .mutateAsync({ providerOrderId: s.provider_order_id, receiverOrderId: s.receiver_order_id })
+            .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')),
+        },
+      ],
+    );
+  }, [linkStreetTurnMutation]);
   const pickupMutation = trpc.drayage.pickupEquipment.useMutation({
     onSuccess: async () => { await utils.drayage.equipmentLive.invalidate(); },
   });
@@ -368,6 +394,53 @@ export default function DrayageDispatchScreen() {
               </Card>
             )}
 
+            {/* Street turn opportunities */}
+            {((streetTurnQuery.data ?? []) as any[]).length > 0 ? (
+              <>
+                <View style={styles.sectionRow}>
+                  <Repeat2 size={16} color={C.purple} />
+                  <Text style={styles.sectionTitle}>Street turns</Text>
+                  <View style={styles.countPill}><Text style={styles.countPillText}>{((streetTurnQuery.data ?? []) as any[]).length}</Text></View>
+                </View>
+                {((streetTurnQuery.data ?? []) as any[]).map((s) => (
+                  <Card key={`${s.provider_order_id}-${s.receiver_order_id}`} style={[styles.orderCard, { borderColor: C.purple + '55' }]}>
+                    <View style={styles.stRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.stTitle}>{s.provider_ref} → {s.receiver_ref}</Text>
+                        <Text style={styles.truckMeta}>Empty back at {s.terminal} · pick up the next load there</Text>
+                        {Number(s.saved_miles ?? 0) > 0 ? (
+                          <Text style={styles.stSave}>≈ {s.saved_miles} empty mi avoided · ${s.saved_cost} saved</Text>
+                        ) : null}
+                      </View>
+                      <TouchableOpacity
+                        style={styles.stBtn}
+                        disabled={linkStreetTurnMutation.isPending}
+                        onPress={() => pairStreetTurn(s)}
+                      >
+                        <Repeat2 size={14} color={C.white} />
+                        <Text style={styles.stBtnText}>Pair</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </Card>
+                ))}
+              </>
+            ) : null}
+
+            {/* Dead runs quick stat */}
+            {deadRunsQuery.data?.summary ? (
+              <TouchableOpacity
+                style={styles.deadRunBar}
+                activeOpacity={0.85}
+                onPress={() => router.push('/drayage-company/dead-runs' as never)}
+              >
+                <TrendingDown size={16} color={C.red} />
+                <Text style={styles.deadRunText}>
+                  Dead runs 7d: {Number(deadRunsQuery.data.summary.empty_miles ?? 0) + Number(deadRunsQuery.data.summary.deadhead_miles ?? 0)} mi · ${deadRunsQuery.data.summary.dead_cost ?? 0}
+                </Text>
+                <Text style={styles.deadRunLink}>Report ›</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {/* Per diem / demurrage / storage alerts */}
             {chargeAlerts.length > 0 ? (
               <>
@@ -582,4 +655,12 @@ const styles = StyleSheet.create({
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chargeChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
   chargeChipText: { fontSize: 11.5, fontWeight: '800' as const },
+  stRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  stSave: { fontSize: 12, fontWeight: '700' as const, color: C.green, marginTop: 4 },
+  stBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: C.purple, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  stBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.white },
+  deadRunBar: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.red + '12', borderWidth: 1, borderColor: C.red + '40', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  deadRunText: { flex: 1, fontSize: 12.5, fontWeight: '700' as const, color: C.text },
+  deadRunLink: { fontSize: 12.5, fontWeight: '800' as const, color: C.red },
 });

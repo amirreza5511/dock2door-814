@@ -15,6 +15,7 @@ import {
   Clock,
   MapPin,
   Package,
+  Repeat2,
   Ship,
   Truck,
   User,
@@ -61,6 +62,9 @@ interface DrayageOrder {
   trailer_id?: string | null;
   shipping_line_id?: string | null;
   mt_reported_at?: string | null;
+  street_turn_order_id?: string | null;
+  street_turn_role?: string | null;
+  street_turn_saved_miles?: number | null;
   per_diem_last_free_day?: string | null;
   per_diem_daily_rate?: number | null;
   demurrage_last_free_day?: string | null;
@@ -142,11 +146,14 @@ export default function DrayageCompanyOrderDetailPage() {
       ]);
       if (orderRes.error || !orderRes.data) throw new Error(orderRes.error?.message ?? "Order not found");
       const ord = orderRes.data as DrayageOrder;
-      const [truckRes, chassisRes, trailerRes, lineRes] = await Promise.all([
+      const [truckRes, chassisRes, trailerRes, lineRes, stRes] = await Promise.all([
         ord.truck_id ? supabase.from("trucks").select("*").eq("id", ord.truck_id as string).maybeSingle() : Promise.resolve({ data: null }),
         ord.chassis_id ? supabase.from("chassis").select("*").eq("id", ord.chassis_id as string).maybeSingle() : Promise.resolve({ data: null }),
         ord.trailer_id ? supabase.from("trailers").select("*").eq("id", ord.trailer_id as string).maybeSingle() : Promise.resolve({ data: null }),
         ord.shipping_line_id ? supabase.from("shipping_lines").select("*").eq("id", ord.shipping_line_id as string).maybeSingle() : Promise.resolve({ data: null }),
+        ord.street_turn_order_id
+          ? supabase.from("drayage_orders").select("id, reference_code, status").eq("id", ord.street_turn_order_id as string).maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
       return {
         order: ord,
@@ -158,6 +165,7 @@ export default function DrayageCompanyOrderDetailPage() {
         chassis: chassisRes.data as Record<string, unknown> | null,
         trailer: trailerRes.data as Record<string, unknown> | null,
         shippingLine: lineRes.data as Record<string, unknown> | null,
+        streetTurnOrder: stRes.data as { id: string; reference_code: string | null; status: string } | null,
       };
     },
   });
@@ -172,6 +180,7 @@ export default function DrayageCompanyOrderDetailPage() {
   const linkedChassis = detailsQuery.data?.chassis ?? null;
   const linkedTrailer = detailsQuery.data?.trailer ?? null;
   const shippingLine = detailsQuery.data?.shippingLine ?? null;
+  const streetTurnOrder = detailsQuery.data?.streetTurnOrder ?? null;
   const charges = useMemo(() => (order ? orderCharges(order as Record<string, unknown>) : []), [order]);
 
   const terminalsQuery = useQuery({
@@ -238,6 +247,16 @@ export default function DrayageCompanyOrderDetailPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] });
       setDispatchModal(null);
+    },
+  });
+
+  const unlinkStreetTurn = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("unlink_street_turn", { p_order_id: orderId });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] });
     },
   });
 
@@ -584,6 +603,38 @@ export default function DrayageCompanyOrderDetailPage() {
               Container picked up {order.prepull_pickup_date ? `on ${order.prepull_pickup_date}` : "day before"} and held at{" "}
               {terminalName(order.prepull_yard_terminal_id)}. Delivered next day.
             </p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Street turn pairing */}
+      {order.street_turn_order_id ? (
+        <Card className="border-purple-500/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Repeat2 className="h-4 w-4 text-purple-400" /> Street Turn
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {order.street_turn_role === "provider"
+                ? "This order’s empty return is paired with a pickup at the same terminal — one loaded round trip instead of two dead runs."
+                : "This order’s pickup is covered by a paired empty return arriving at the same terminal."}
+              {Number(order.street_turn_saved_miles ?? 0) > 0 ? ` ≈${order.street_turn_saved_miles} empty miles avoided.` : ""}
+            </p>
+            {streetTurnOrder ? (
+              <button
+                className="flex w-full items-center justify-between rounded-lg border border-border bg-card px-3 py-2.5 text-left transition hover:bg-accent"
+                onClick={() => router.push(`/drayage-company/${streetTurnOrder.id}`)}
+              >
+                <span className="text-sm font-semibold">Paired with {streetTurnOrder.reference_code}</span>
+                <Badge variant="secondary">{streetTurnOrder.status}</Badge>
+              </button>
+            ) : null}
+            <Button variant="outline" size="sm" className="w-full" disabled={unlinkStreetTurn.isPending} onClick={() => unlinkStreetTurn.mutate()}>
+              {unlinkStreetTurn.isPending ? "Unpairing…" : "Unpair street turn"}
+            </Button>
+            {unlinkStreetTurn.isError ? <p className="text-xs text-red-400">{(unlinkStreetTurn.error as Error).message}</p> : null}
           </CardContent>
         </Card>
       ) : null}

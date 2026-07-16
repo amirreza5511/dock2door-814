@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Ship, Truck, User, X, Clock, Layers, DollarSign, ClipboardCheck, FileText, Plus, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Repeat2, Ship, Truck, User, X, Clock, Layers, DollarSign, ClipboardCheck, FileText, Plus, AlertTriangle } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -83,6 +83,7 @@ export default function DrayageOrderDetailScreen() {
   const linkedChassis = detailsQuery.data?.chassis as any;
   const linkedTrailer = detailsQuery.data?.trailer as any;
   const shippingLine = detailsQuery.data?.shippingLine as any;
+  const streetTurnOrder = detailsQuery.data?.streetTurnOrder as any;
 
   const charges = useMemo(() => (order ? orderCharges(order) : []), [order]);
 
@@ -111,6 +112,9 @@ export default function DrayageOrderDetailScreen() {
   });
   const setLineMutation = trpc.drayage.setOrderShippingLine.useMutation({
     onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setLineModal(false); },
+  });
+  const unlinkStreetTurnMutation = trpc.drayage.unlinkStreetTurn.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); },
   });
 
   // Resolve signed URLs for any captured pickup/delivery proof photos so ops can audit them.
@@ -492,6 +496,42 @@ export default function DrayageOrderDetailScreen() {
           </Card>
         ) : null}
 
+        {/* Street turn pairing */}
+        {order.street_turn_order_id ? (
+          <Card style={[styles.sectionCard, { borderColor: C.purple + '55' }]}>
+            <View style={styles.sectionHeader}>
+              <Repeat2 size={16} color={C.purple} />
+              <Text style={styles.sectionTitle}>Street Turn</Text>
+            </View>
+            <Text style={styles.prepullDesc}>
+              {order.street_turn_role === 'provider'
+                ? 'This order\u2019s empty return is paired with a pickup at the same terminal \u2014 one loaded round trip instead of two dead runs.'
+                : 'This order\u2019s pickup is covered by a paired empty return arriving at the same terminal.'}
+              {Number(order.street_turn_saved_miles ?? 0) > 0 ? ` \u2248${order.street_turn_saved_miles} empty miles avoided.` : ''}
+            </Text>
+            {streetTurnOrder ? (
+              <TouchableOpacity
+                style={styles.stLinkRow}
+                onPress={() => router.push({ pathname: '/drayage-company/[orderId]', params: { orderId: streetTurnOrder.id } } as never)}
+              >
+                <Text style={styles.stLinkText}>Paired with {streetTurnOrder.reference_code}</Text>
+                <StatusBadge status={streetTurnOrder.status} />
+              </TouchableOpacity>
+            ) : null}
+            <Button
+              label="Unpair street turn"
+              variant="ghost"
+              size="sm"
+              fullWidth
+              loading={unlinkStreetTurnMutation.isPending}
+              onPress={() => Alert.alert('Unpair street turn?', 'Both orders go back to separate empty legs.', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Unpair', style: 'destructive', onPress: () => void unlinkStreetTurnMutation.mutateAsync({ orderId: order.id }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')) },
+              ])}
+            />
+          </Card>
+        ) : null}
+
         {/* Moves / Work Orders */}
         <View style={styles.sectionHeader}>
           <Truck size={16} color={C.accent} />
@@ -788,6 +828,8 @@ const styles = StyleSheet.create({
   confirmedText: { fontSize: 11, fontWeight: '700' as const, color: C.green },
   noRes: { fontSize: 13, color: C.textMuted },
   prepullDesc: { fontSize: 12, color: C.purple, lineHeight: 18 },
+  stLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, backgroundColor: C.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: C.border, paddingHorizontal: 12, paddingVertical: 10 },
+  stLinkText: { fontSize: 13, fontWeight: '800' as const, color: C.text },
   moveCard: { gap: 8 },
   moveTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   moveNum: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },

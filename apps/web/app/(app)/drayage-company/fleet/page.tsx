@@ -19,6 +19,7 @@ interface TruckRow {
   model: string | null;
   year: number | null;
   status: string;
+  cost_per_mile?: number | null;
 }
 interface TrailerRow {
   id: string;
@@ -68,7 +69,7 @@ export default function DrayageFleetPage() {
   const companyId = useActiveCompanyId("DrayageCompany") ?? null;
   const [tab, setTab] = useState<"trucks" | "chassis" | "trailers" | "drivers">("trucks");
   const [showAdd, setShowAdd] = useState(false);
-  const [truckForm, setTruckForm] = useState({ plate: "", make: "", model: "", year: new Date().getFullYear() });
+  const [truckForm, setTruckForm] = useState({ plate: "", make: "", model: "", year: new Date().getFullYear(), cost_per_mile: "" });
   const [trailerForm, setTrailerForm] = useState({ plate: "", trailer_type: "Container Chassis", is_rental: false, rental_daily_rate: "", rental_return_date: "" });
   const [chassisForm, setChassisForm] = useState({ chassis_number: "", plate: "", chassis_type: "40ft", is_rental: false, rental_daily_rate: "", rental_return_date: "" });
 
@@ -76,14 +77,23 @@ export default function DrayageFleetPage() {
     queryKey: ["drayage", "fleet", "trucks", companyId],
     enabled: !!companyId,
     queryFn: async (): Promise<TruckRow[]> => {
-      const { data, error } = await supabase
+      let res = await supabase
         .from("trucks")
-        .select("id,plate,make,model,year,status")
+        .select("id,plate,make,model,year,status,cost_per_mile")
         .eq("company_id", companyId)
         .is("archived_at", null)
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data as TruckRow[] | null) ?? [];
+      if (res.error && res.error.message.includes("cost_per_mile")) {
+        // Migration 0149 not applied yet — fall back to the base columns.
+        res = await supabase
+          .from("trucks")
+          .select("id,plate,make,model,year,status")
+          .eq("company_id", companyId)
+          .is("archived_at", null)
+          .order("created_at", { ascending: false });
+      }
+      if (res.error) throw res.error;
+      return (res.data as TruckRow[] | null) ?? [];
     },
   });
 
@@ -130,20 +140,25 @@ export default function DrayageFleetPage() {
   const addTruck = useMutation({
     mutationFn: async () => {
       if (!companyId) throw new Error("No active drayage company.");
-      const { error } = await supabase.from("trucks").insert({
+      const base = {
         company_id: companyId,
         plate: truckForm.plate.trim().toUpperCase(),
         make: truckForm.make.trim() || null,
         model: truckForm.model.trim() || null,
         year: truckForm.year || null,
         status: "Active" as FleetStatus,
-      });
+      };
+      const cpm = truckForm.cost_per_mile.trim() === "" ? 0 : Number(truckForm.cost_per_mile);
+      let { error } = await supabase.from("trucks").insert({ ...base, cost_per_mile: cpm });
+      if (error && error.message.includes("cost_per_mile")) {
+        ({ error } = await supabase.from("trucks").insert(base));
+      }
       if (error) throw error;
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["drayage", "fleet", "trucks"] });
       setShowAdd(false);
-      setTruckForm({ plate: "", make: "", model: "", year: new Date().getFullYear() });
+      setTruckForm({ plate: "", make: "", model: "", year: new Date().getFullYear(), cost_per_mile: "" });
     },
   });
 
@@ -241,7 +256,7 @@ export default function DrayageFleetPage() {
           rows={trucks.map((t) => ({
             id: t.id,
             title: t.plate || "—",
-            sub: [t.year, t.make, t.model].filter(Boolean).join(" ") || "—",
+            sub: [[t.year, t.make, t.model].filter(Boolean).join(" ") || "—", t.cost_per_mile ? `$${t.cost_per_mile}/mi` : ""].filter(Boolean).join(" · "),
             status: t.status,
           }))}
         />
@@ -290,6 +305,11 @@ export default function DrayageFleetPage() {
                   <Label>Model</Label>
                   <Input value={truckForm.model} onChange={(e) => setTruckForm({ ...truckForm, model: e.target.value })} placeholder="Cascadia" />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Cost per mile ($/mi)</Label>
+                <Input value={truckForm.cost_per_mile} onChange={(e) => setTruckForm({ ...truckForm, cost_per_mile: e.target.value })} placeholder="2.10" inputMode="decimal" />
+                <p className="text-xs text-muted-foreground">Used to price dead runs (empty miles). Leave blank to use the company default.</p>
               </div>
               {addTruck.isError ? <p className="text-sm text-red-500">{addTruck.error instanceof Error ? addTruck.error.message : "Failed"}</p> : null}
             </div>

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { BarChart3, CalendarClock, Coins, CreditCard, Fuel, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Truck, Users, Store } from 'lucide-react-native';
+import { BarChart3, CalendarClock, Coins, CreditCard, Fuel, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Sparkles, Truck, Users, Store } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
 import Card from '@/components/ui/Card';
@@ -173,7 +173,11 @@ export default function TruckingCompanyDashboard() {
             <Text style={styles.actionTitle}>Inbox</Text>
             <Text style={styles.actionText}>Threads, attachments, notifications.</Text>
           </Card>
-          <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+          <Card onPress={() => router.push('/copilot' as never)} style={styles.actionCard}>
+            <Sparkles size={20} color={C.accent} />
+            <Text style={styles.actionTitle}>AI Copilot</Text>
+            <Text style={styles.actionText}>Watchdog, dead runs & dispatch by chat.</Text>
+          </Card>
         </View>
 
         <View style={styles.sectionRow}>
