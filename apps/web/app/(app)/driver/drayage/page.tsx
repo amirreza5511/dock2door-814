@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Anchor, Ship, ChevronRight, Loader2, Users } from "lucide-react";
+import { Anchor, Ship, ChevronRight, Loader2, Users, Package } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 import {
   useDriverWorkOrders,
   useAdvanceMove,
@@ -33,7 +34,13 @@ export default function DriverDrayagePage() {
   const [joinCode, setJoinCode] = useState("");
   const [receiverOrder, setReceiverOrder] = useState<{ order: WorkOrder; nextStatus: string } | null>(null);
   const [receiverName, setReceiverName] = useState("");
+  const [condition, setCondition] = useState<"Good" | "Damaged">("Good");
+  const [damageNotes, setDamageNotes] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [mtOrder, setMtOrder] = useState<WorkOrder | null>(null);
+  const [mtNumber, setMtNumber] = useState("");
+  const [mtBusy, setMtBusy] = useState(false);
+  const supabase = getBrowserSupabase();
 
   const orders = useMemo<WorkOrder[]>(() => q.data ?? [], [q.data]);
 
@@ -76,11 +83,43 @@ export default function DriverDrayagePage() {
         nextStatus: receiverOrder.nextStatus,
         receiverName: receiverName.trim(),
       });
+      // Record the container inspection at drop.
+      await supabase.rpc("record_equipment_inspection", {
+        p_order_id: receiverOrder.order.order_id,
+        p_equipment_type: "Container",
+        p_reference: receiverOrder.order.drayage_orders?.container_number ?? "",
+        p_phase: "Drop",
+        p_condition: condition,
+        p_damage_notes: condition === "Damaged" ? damageNotes.trim() : "",
+        p_photo_paths: [],
+        p_move_id: receiverOrder.order.id,
+        p_inspector_role: "Driver",
+      });
       setReceiverOrder(null);
+      setCondition("Good");
+      setDamageNotes("");
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Unable to advance move");
     } finally {
       setBusyId(null);
+    }
+  };
+
+  const submitMt = async () => {
+    if (!mtOrder) return;
+    const num = mtNumber.trim().toUpperCase();
+    if (num.length < 4) { window.alert("Enter the empty container number you picked up."); return; }
+    setMtBusy(true);
+    try {
+      const { error } = await supabase.rpc("report_empty_container", { p_order_id: mtOrder.order_id, p_container_number: num });
+      if (error) throw new Error(error.message);
+      await q.refetch();
+      setMtOrder(null);
+      setMtNumber("");
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Unable to report container");
+    } finally {
+      setMtBusy(false);
     }
   };
 
@@ -135,6 +174,11 @@ export default function DriverDrayagePage() {
               {busyId === order.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {next.label}
               <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          ) : null}
+          {(order.move_type === "EmptyPickup" || order.move_type === "Pickup") && !o?.mt_reported_at ? (
+            <Button variant="outline" className="w-full" onClick={() => { setMtOrder(order); setMtNumber(o?.container_number ?? ""); }}>
+              <Package className="mr-1.5 h-4 w-4" /> Report empty container #
             </Button>
           ) : null}
         </CardContent>
@@ -231,17 +275,49 @@ export default function DriverDrayagePage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!mtOrder} onOpenChange={(o) => !o && setMtOrder(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Empty container #</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Enter the empty (MT) container number you picked up. Dispatch is notified immediately.</p>
+            <div className="space-y-1.5">
+              <Label>Container number</Label>
+              <Input value={mtNumber} placeholder="e.g. MSKU1234567" onChange={(e) => setMtNumber(e.target.value.toUpperCase())} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMtOrder(null)}>Cancel</Button>
+            <Button onClick={() => void submitMt()} disabled={mtBusy || mtNumber.trim().length < 4}>{mtBusy ? "Reporting…" : "Report to dispatch"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!receiverOrder} onOpenChange={(o) => !o && setReceiverOrder(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm delivery</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Record who received the container to mark it at destination.</p>
+            <p className="text-sm text-muted-foreground">Record who received the container and its condition to mark it at destination.</p>
             <div className="space-y-1.5">
               <Label>Received by</Label>
               <Input value={receiverName} placeholder="Receiver name" onChange={(e) => setReceiverName(e.target.value)} />
             </div>
+            <div className="space-y-1.5">
+              <Label>Container condition</Label>
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant={condition === "Good" ? "default" : "outline"} onClick={() => setCondition("Good")}>Good</Button>
+                <Button type="button" size="sm" variant={condition === "Damaged" ? "default" : "outline"} onClick={() => setCondition("Damaged")}>Damaged</Button>
+              </div>
+            </div>
+            {condition === "Damaged" ? (
+              <div className="space-y-1.5">
+                <Label>Damage notes</Label>
+                <Input value={damageNotes} placeholder="Describe the damage" onChange={(e) => setDamageNotes(e.target.value)} />
+              </div>
+            ) : null}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReceiverOrder(null)}>Cancel</Button>

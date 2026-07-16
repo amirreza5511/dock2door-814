@@ -1084,7 +1084,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { companyId: row.company_id as string, companyName: (row.company_name as string) ?? 'your fleet' };
   },
 
-  'operations.listFleet': async (input: { entity: 'drivers' | 'trucks' | 'trailers' | 'containers'; search?: string }, ctx) => {
+  'operations.listFleet': async (input: { entity: 'drivers' | 'trucks' | 'trailers' | 'containers' | 'chassis'; search?: string }, ctx) => {
     if (!ctx.user.companyId && !isAdmin(ctx.user.role)) return [];
     let q = supabase.from(input.entity).select('*').is('archived_at', null).order('updated_at', { ascending: false });
     if (ctx.user.companyId && !isAdmin(ctx.user.role)) q = q.eq('company_id', ctx.user.companyId);
@@ -1129,7 +1129,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
       row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
+        is_rental: !!p.isRental, rental_daily_rate: p.rentalDailyRate ?? 0, rental_return_date: p.rentalReturnDate || null,
         data: { trailerNumber: p.trailerNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
+    } else if (input.entity === 'chassis') {
+      row = { ...row, chassis_number: p.chassisNumber ?? '', plate: p.plateNumber ?? '', chassis_type: p.chassisType ?? '',
+        is_rental: !!p.isRental, rental_daily_rate: p.rentalDailyRate ?? 0, rental_return_date: p.rentalReturnDate || null,
+        data: { notes: p.notes ?? '' } };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
@@ -1170,7 +1175,12 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         data: { unitNumber: p.unitNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
     } else if (input.entity === 'trailers') {
       row = { ...row, plate: p.plateNumber ?? p.trailerNumber ?? '', trailer_type: p.trailerType ?? p.containerType ?? '',
+        is_rental: !!p.isRental, rental_daily_rate: p.rentalDailyRate ?? 0, rental_return_date: p.rentalReturnDate || null,
         data: { trailerNumber: p.trailerNumber ?? '', notes: p.notes ?? '', insuranceExpiry: p.insuranceExpiry ?? '', inspectionExpiry: p.inspectionExpiry ?? '' } };
+    } else if (input.entity === 'chassis') {
+      row = { ...row, chassis_number: p.chassisNumber ?? '', plate: p.plateNumber ?? '', chassis_type: p.chassisType ?? '',
+        is_rental: !!p.isRental, rental_daily_rate: p.rentalDailyRate ?? 0, rental_return_date: p.rentalReturnDate || null,
+        data: { notes: p.notes ?? '' } };
     } else if (input.entity === 'containers') {
       row = { ...row, container_number: p.containerNumber ?? '', container_type: p.containerType ?? '' };
     }
@@ -2197,17 +2207,189 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   'drayage.getOrderDetails': async (input: { id: string }) => {
-    const [orderRes, movesRes, trackingRes] = await Promise.all([
+    const [orderRes, movesRes, trackingRes, inspRes, docsRes] = await Promise.all([
       supabase.from('drayage_orders').select('*').eq('id', input.id).maybeSingle(),
       supabase.from('drayage_moves').select('*').eq('order_id', input.id).order('sequence', { ascending: true }),
       supabase.from('container_tracking').select('*').eq('order_id', input.id).order('recorded_at', { ascending: false }).limit(1),
+      supabase.from('equipment_inspections').select('*').eq('order_id', input.id).order('created_at', { ascending: false }),
+      supabase.from('drayage_documents').select('*').eq('order_id', input.id).order('created_at', { ascending: false }),
     ]);
     if (orderRes.error || !orderRes.data) throw new Error(orderRes.error?.message ?? 'Order not found');
+    const order = orderRes.data as AnyRecord;
+    // Resolve linked equipment (truck / chassis / trailer) for display.
+    const [truckRes, chassisRes, trailerRes, lineRes] = await Promise.all([
+      order.truck_id ? supabase.from('trucks').select('*').eq('id', order.truck_id).maybeSingle() : Promise.resolve({ data: null }),
+      order.chassis_id ? supabase.from('chassis').select('*').eq('id', order.chassis_id).maybeSingle() : Promise.resolve({ data: null }),
+      order.trailer_id ? supabase.from('trailers').select('*').eq('id', order.trailer_id).maybeSingle() : Promise.resolve({ data: null }),
+      order.shipping_line_id ? supabase.from('shipping_lines').select('*').eq('id', order.shipping_line_id).maybeSingle() : Promise.resolve({ data: null }),
+    ]);
     return {
-      order: orderRes.data,
+      order,
       moves: movesRes.data ?? [],
       latestTracking: trackingRes.data?.[0] ?? null,
+      inspections: inspRes.data ?? [],
+      documents: docsRes.data ?? [],
+      truck: truckRes.data ?? null,
+      chassis: chassisRes.data ?? null,
+      trailer: trailerRes.data ?? null,
+      shippingLine: lineRes.data ?? null,
     };
+  },
+
+  // -------------------------------------------------------------------------
+  // EQUIPMENT TRACKING, CHARGES, INSPECTIONS, DOCS, SHIPPING LINES (0148)
+  // -------------------------------------------------------------------------
+  'drayage.assignEquipment': async (input: { orderId: string; truckId?: string | null; chassisId?: string | null; trailerId?: string | null }) => {
+    const { error } = await supabase.rpc('assign_drayage_equipment', {
+      p_order_id: input.orderId,
+      p_truck_id: input.truckId ?? null,
+      p_chassis_id: input.chassisId ?? null,
+      p_trailer_id: input.trailerId ?? null,
+    });
+    if (error) throwErr(error, 'Unable to assign equipment');
+    return { success: true };
+  },
+
+  'drayage.dropEquipment': async (input: { equipmentType: 'chassis' | 'trailer'; equipmentId: string; lat?: number | null; lng?: number | null; label?: string }) => {
+    const { error } = await supabase.rpc('drop_equipment', {
+      p_equipment_type: input.equipmentType,
+      p_equipment_id: input.equipmentId,
+      p_lat: input.lat ?? null,
+      p_lng: input.lng ?? null,
+      p_label: input.label ?? '',
+    });
+    if (error) throwErr(error, 'Unable to drop equipment');
+    return { success: true };
+  },
+
+  'drayage.pickupEquipment': async (input: { equipmentType: 'chassis' | 'trailer'; equipmentId: string; truckId?: string | null }) => {
+    const { error } = await supabase.rpc('pickup_equipment', {
+      p_equipment_type: input.equipmentType,
+      p_equipment_id: input.equipmentId,
+      p_truck_id: input.truckId ?? null,
+    });
+    if (error) throwErr(error, 'Unable to pick up equipment');
+    return { success: true };
+  },
+
+  // Live location of all chassis + trailers for the current company (attached to a
+  // truck => follows the driver's latest GPS; dropped => last drop location).
+  'drayage.equipmentLive': async (_input, ctx) => {
+    if (!ctx.user.companyId) return { chassis: [] as AnyRecord[], trailers: [] as AnyRecord[] };
+    const [chassisRes, trailersRes] = await Promise.all([
+      supabase.from('chassis').select('*').eq('company_id', ctx.user.companyId).is('archived_at', null),
+      supabase.from('trailers').select('*').eq('company_id', ctx.user.companyId).is('archived_at', null),
+    ]);
+    if (isMissingRelation(chassisRes.error)) return { chassis: [], trailers: [] };
+    const chassis = (chassisRes.data ?? []) as AnyRecord[];
+    const trailers = (trailersRes.data ?? []) as AnyRecord[];
+    // Resolve live truck GPS for attached equipment via the latest container_tracking ping
+    // of any order that references that truck.
+    const truckIds = Array.from(new Set([...chassis, ...trailers].map((e) => e.current_truck_id).filter(Boolean)));
+    const truckLoc = new Map<string, AnyRecord>();
+    if (truckIds.length > 0) {
+      const { data: ords } = await supabase.from('drayage_orders').select('id, truck_id').in('truck_id', truckIds as string[]);
+      const orderToTruck = new Map<string, string>();
+      for (const o of (ords ?? []) as AnyRecord[]) if (o.truck_id) orderToTruck.set(String(o.id), String(o.truck_id));
+      const orderIds = Array.from(orderToTruck.keys());
+      if (orderIds.length > 0) {
+        const { data: tracks } = await supabase.from('container_tracking').select('order_id, lat, lng, recorded_at').in('order_id', orderIds).order('recorded_at', { ascending: false }).limit(300);
+        for (const t of (tracks ?? []) as AnyRecord[]) {
+          const tId = orderToTruck.get(String(t.order_id));
+          if (tId && !truckLoc.has(tId)) truckLoc.set(tId, t);
+        }
+      }
+    }
+    const decorate = (e: AnyRecord) => {
+      const truckId = e.current_truck_id ? String(e.current_truck_id) : null;
+      if (!e.is_dropped && truckId && truckLoc.has(truckId)) {
+        const t = truckLoc.get(truckId)!;
+        return { ...e, live_lat: Number(t.lat), live_lng: Number(t.lng), live_at: t.recorded_at, live_source: 'truck' };
+      }
+      if (e.is_dropped && e.dropped_lat != null) {
+        return { ...e, live_lat: Number(e.dropped_lat), live_lng: Number(e.dropped_lng), live_at: e.dropped_at, live_source: 'dropped' };
+      }
+      return { ...e, live_lat: null, live_lng: null, live_at: null, live_source: 'unknown' };
+    };
+    return { chassis: chassis.map(decorate), trailers: trailers.map(decorate) };
+  },
+
+  'drayage.setCharges': async (input: {
+    orderId: string;
+    perDiemFreeDays?: number | null; perDiemLastFreeDay?: string | null; perDiemDailyRate?: number | null;
+    demurrageFreeDays?: number | null; demurrageLastFreeDay?: string | null; demurrageDailyRate?: number | null;
+    storageFreeDays?: number | null; storageLastFreeDay?: string | null; storageDailyRate?: number | null;
+  }) => {
+    const { error } = await supabase.rpc('set_drayage_charges', {
+      p_order_id: input.orderId,
+      p_per_diem_free_days: input.perDiemFreeDays ?? null,
+      p_per_diem_last_free_day: input.perDiemLastFreeDay ?? null,
+      p_per_diem_daily_rate: input.perDiemDailyRate ?? null,
+      p_demurrage_free_days: input.demurrageFreeDays ?? null,
+      p_demurrage_last_free_day: input.demurrageLastFreeDay ?? null,
+      p_demurrage_daily_rate: input.demurrageDailyRate ?? null,
+      p_storage_free_days: input.storageFreeDays ?? null,
+      p_storage_last_free_day: input.storageLastFreeDay ?? null,
+      p_storage_daily_rate: input.storageDailyRate ?? null,
+    });
+    if (error) throwErr(error, 'Unable to save charges');
+    return { success: true };
+  },
+
+  'drayage.listShippingLines': async () => {
+    const { data, error } = await supabase.from('shipping_lines').select('*').eq('is_active', true).order('name', { ascending: true });
+    if (isMissingRelation(error)) return [];
+    if (error) throwErr(error, 'Unable to load shipping lines');
+    return data ?? [];
+  },
+
+  'drayage.addShippingLine': async (input: { name: string; scac?: string }) => {
+    const { data, error } = await supabase.rpc('add_shipping_line', { p_name: input.name, p_scac: input.scac ?? '' });
+    if (error) throwErr(error, 'Unable to add shipping line');
+    return data;
+  },
+
+  'drayage.setOrderShippingLine': async (input: { orderId: string; shippingLineId: string }) => {
+    const { error } = await supabase.rpc('set_order_shipping_line', { p_order_id: input.orderId, p_shipping_line_id: input.shippingLineId });
+    if (error) throwErr(error, 'Unable to set shipping line');
+    return { success: true };
+  },
+
+  'drayage.reportEmptyContainer': async (input: { orderId: string; containerNumber: string }) => {
+    const { error } = await supabase.rpc('report_empty_container', { p_order_id: input.orderId, p_container_number: input.containerNumber });
+    if (error) throwErr(error, 'Unable to report empty container');
+    return { success: true };
+  },
+
+  'drayage.recordInspection': async (input: {
+    orderId: string; equipmentType: 'Container' | 'Chassis'; reference: string; phase: 'Pickup' | 'Drop';
+    condition: 'Good' | 'Damaged'; damageNotes?: string; photoPaths?: string[]; moveId?: string | null; inspectorRole?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('record_equipment_inspection', {
+      p_order_id: input.orderId,
+      p_equipment_type: input.equipmentType,
+      p_reference: input.reference,
+      p_phase: input.phase,
+      p_condition: input.condition,
+      p_damage_notes: input.damageNotes ?? '',
+      p_photo_paths: input.photoPaths ?? [],
+      p_move_id: input.moveId ?? null,
+      p_inspector_role: input.inspectorRole ?? 'Driver',
+    });
+    if (error) throwErr(error, 'Unable to record inspection');
+    return { id: data };
+  },
+
+  'drayage.addDocument': async (input: { orderId: string; docType: string; filePaths: string[]; signerName?: string; notes?: string }) => {
+    const { data, error } = await supabase.rpc('add_drayage_document', {
+      p_order_id: input.orderId,
+      p_doc_type: input.docType,
+      p_file_paths: input.filePaths,
+      p_signer_name: input.signerName ?? '',
+      p_notes: input.notes ?? '',
+    });
+    if (error) throwErr(error, 'Unable to add document');
+    return { id: data };
   },
 
   'drayage.assignOrder': async (input: { orderId: string }) => {

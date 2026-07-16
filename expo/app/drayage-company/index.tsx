@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -138,6 +138,18 @@ export default function DrayageCompanyDashboard() {
             <Fuel size={20} color={C.blue} />
             <Text style={styles.actionTitle}>Fuel surcharge</Text>
             <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices</Text>
+          </Card>
+          <Card onPress={() => router.push('/drayage-company/shipping-lines' as never)} style={styles.actionCard}>
+            <Ship size={20} color={C.accent} />
+            <Text style={styles.actionTitle}>Shipping lines</Text>
+            <Text style={styles.actionText}>Manage steamship lines for orders</Text>
+          </Card>
+        </View>
+        <View style={styles.actionsRow}>
+          <Card onPress={() => router.push('/drayage-company/equipment-report' as never)} style={styles.actionCard}>
+            <Layers size={20} color={C.blue} />
+            <Text style={styles.actionTitle}>Equipment & charges</Text>
+            <Text style={styles.actionText}>Rental cost & per diem exposure</Text>
           </Card>
           <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
         </View>

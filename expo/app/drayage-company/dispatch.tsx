@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, UserPlus, X, XCircle, Zap } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, MessageCircle, Navigation, Package, Radio, Ship, Truck, User, UserPlus, X, XCircle, Zap, Layers, AlertTriangle } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -12,6 +12,9 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { orderCharges, chargeChipLabel } from '@/lib/drayage-charges';
+
+const URGENCY_COLOR: Record<string, string> = { over: C.red, soon: C.yellow, ok: C.green, none: C.textMuted };
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
 const ACTIVE_STATUSES = ['Assigned', 'Dispatched', 'EnRoute', 'PickedUp', 'InTransit', 'AtOrigin', 'Loaded', 'AtDestination', 'Unloaded'];
@@ -45,6 +48,23 @@ export default function DrayageDispatchScreen() {
 
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 20000 });
   const fleetQuery = trpc.drayage.fleetLive.useQuery(undefined, { refetchInterval: 8000 });
+  const equipmentQuery = trpc.drayage.equipmentLive.useQuery(undefined, { refetchInterval: 15000 });
+
+  const [dropModal, setDropModal] = useState<{ type: 'chassis' | 'trailer'; id: string; label: string } | null>(null);
+  const [dropLabel, setDropLabel] = useState('');
+
+  const dropMutation = trpc.drayage.dropEquipment.useMutation({
+    onSuccess: async () => { await utils.drayage.equipmentLive.invalidate(); setDropModal(null); },
+  });
+  const pickupMutation = trpc.drayage.pickupEquipment.useMutation({
+    onSuccess: async () => { await utils.drayage.equipmentLive.invalidate(); },
+  });
+
+  const equipment = useMemo(() => {
+    const chassis = ((equipmentQuery.data?.chassis ?? []) as any[]).map((e) => ({ ...e, _type: 'chassis' as const, _label: e.chassis_number }));
+    const trailers = ((equipmentQuery.data?.trailers ?? []) as any[]).map((e) => ({ ...e, _type: 'trailer' as const, _label: e.plate || e.data?.trailerNumber || 'Trailer' }));
+    return [...chassis, ...trailers];
+  }, [equipmentQuery.data]);
 
   const trucks = useMemo(() => (fleetQuery.data?.trucks ?? []) as any[], [fleetQuery.data]);
   const locatedTrucks = useMemo(
@@ -120,6 +140,13 @@ export default function DrayageDispatchScreen() {
     return orders.filter((o) => o.status !== 'Delivered' && o.status !== 'Cancelled' && o.status !== 'Completed');
   }, [dashboardQuery.data]);
 
+  // Orders whose per diem / demurrage / storage is overdue or due within 2 days.
+  const chargeAlerts = useMemo(() => {
+    return myOrders
+      .map((o) => ({ order: o, charges: orderCharges(o).filter((c) => c.urgency === 'over' || c.urgency === 'soon') }))
+      .filter((x) => x.charges.length > 0);
+  }, [myOrders]);
+
   const needsReservation = useMemo(() => myOrders.filter((o) => !o.port_reservation_date), [myOrders]);
   const dispatched = useMemo(() => myOrders.filter((o) => ACTIVE_STATUSES.includes(o.status)), [myOrders]);
   const ready = useMemo(() => myOrders.filter((o) => o.status === 'Assigned' || o.status === 'Claimed'), [myOrders]);
@@ -129,6 +156,12 @@ export default function DrayageDispatchScreen() {
     setResTime(order.port_reservation_time ?? '');
     setPortModal(order);
   }, []);
+
+  const confirmDrop = useCallback(() => {
+    if (!dropModal) return;
+    void dropMutation.mutateAsync({ equipmentType: dropModal.type, equipmentId: dropModal.id, label: dropLabel.trim() })
+      .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
+  }, [dropModal, dropLabel, dropMutation]);
 
   const savePortReservation = useCallback(() => {
     if (!portModal) return;
@@ -291,6 +324,73 @@ export default function DrayageDispatchScreen() {
               </Card>
             )}
 
+            {/* Equipment on the road / dropped */}
+            <View style={styles.sectionRow}>
+              <Layers size={16} color={C.blue} />
+              <Text style={styles.sectionTitle}>Equipment locations</Text>
+              <View style={styles.countPill}><Text style={styles.countPillText}>{equipment.length}</Text></View>
+            </View>
+            {equipment.length === 0 ? (
+              <Text style={styles.emptyLine}>Add chassis & trailers in Fleet to track them here.</Text>
+            ) : (
+              <Card style={{ padding: 0, overflow: 'hidden' as const }}>
+                {equipment.map((e, idx) => {
+                  const attached = !e.is_dropped && e.current_truck_id;
+                  const hasGps = e.live_lat != null;
+                  return (
+                    <View key={`${e._type}-${e.id}`} style={[styles.truckRow, idx === 0 && { borderTopWidth: 0 }]}>
+                      <View style={[styles.truckDot, { backgroundColor: e.is_dropped ? C.yellow : attached ? C.green : C.textMuted }]}>
+                        <Layers size={14} color={C.white} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.truckName}>{e._label} <Text style={styles.eqType}>· {e._type === 'chassis' ? 'Chassis' : 'Trailer'}</Text></Text>
+                        <Text style={styles.truckMeta}>
+                          {e.is_dropped
+                            ? `Dropped${e.dropped_label ? ` · ${e.dropped_label}` : ''}${e.live_at ? ` · ${timeAgo(e.live_at)}` : ''}`
+                            : attached
+                              ? `On truck${hasGps ? ` · ${timeAgo(e.live_at)}` : ' · no GPS'}`
+                              : 'Idle · not attached'}
+                          {e.is_rental ? ` · Rental $${e.rental_daily_rate ?? 0}/d` : ''}
+                        </Text>
+                      </View>
+                      {e.is_dropped ? (
+                        <TouchableOpacity style={styles.eqBtn} onPress={() => void pickupMutation.mutateAsync({ equipmentType: e._type, equipmentId: e.id }).catch((err) => Alert.alert('Failed', err instanceof Error ? err.message : 'Unknown'))}>
+                          <Text style={styles.eqBtnText}>Pick up</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity style={[styles.eqBtn, styles.eqBtnDrop]} onPress={() => { setDropLabel(''); setDropModal({ type: e._type, id: e.id, label: e._label }); }}>
+                          <Text style={[styles.eqBtnText, { color: C.yellow }]}>Drop</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </Card>
+            )}
+
+            {/* Per diem / demurrage / storage alerts */}
+            {chargeAlerts.length > 0 ? (
+              <>
+                <View style={styles.sectionRow}>
+                  <AlertTriangle size={16} color={C.red} />
+                  <Text style={styles.sectionTitle}>Free-day alerts</Text>
+                  <View style={styles.countPill}><Text style={styles.countPillText}>{chargeAlerts.length}</Text></View>
+                </View>
+                {chargeAlerts.map(({ order, charges }) => (
+                  <Card key={`alert-${order.id}`} onPress={() => router.push({ pathname: '/drayage-company/[orderId]', params: { orderId: order.id } } as never)} style={[styles.orderCard, { borderColor: C.red + '55' }]}>
+                    <OrderHead order={order} />
+                    <View style={styles.chipWrap}>
+                      {charges.map((c) => (
+                        <View key={c.kind} style={[styles.chargeChip, { borderColor: URGENCY_COLOR[c.urgency] + '66', backgroundColor: URGENCY_COLOR[c.urgency] + '18' }]}>
+                          <Text style={[styles.chargeChipText, { color: URGENCY_COLOR[c.urgency] }]}>{chargeChipLabel(c)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </Card>
+                ))}
+              </>
+            ) : null}
+
             {/* Needs port reservation */}
             <View style={styles.sectionRow}>
               <CalendarClock size={16} color={C.yellow} />
@@ -357,6 +457,21 @@ export default function DrayageDispatchScreen() {
             <Input label="Reservation date" placeholder="2026-07-10" value={resDate} onChangeText={setResDate} autoCapitalize="none" />
             <Input label="Reservation time / window" placeholder="08:00–10:00" value={resTime} onChangeText={setResTime} autoCapitalize="none" />
             <Button label="Save reservation" fullWidth loading={portResMutation.isPending} onPress={savePortReservation} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Drop equipment modal */}
+      <Modal visible={dropModal !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDropModal(null)}>
+        <View style={[styles.modalRoot, { backgroundColor: C.bg }]}>
+          <View style={[styles.modalHeader, { paddingTop: insets.top + 12 }]}>
+            <Text style={styles.modalTitle}>Drop {dropModal?.label}</Text>
+            <TouchableOpacity onPress={() => setDropModal(null)} style={styles.iconBtn}><X size={20} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+            <Text style={styles.modalHint}>Where is this {dropModal?.type} being left? The truck goes bobtail until it is picked back up.</Text>
+            <Input label="Drop location" placeholder="e.g. ABC Warehouse yard, Surrey" value={dropLabel} onChangeText={setDropLabel} />
+            <Button label="Confirm drop" fullWidth loading={dropMutation.isPending} onPress={confirmDrop} />
           </ScrollView>
         </View>
       </Modal>
@@ -460,4 +575,11 @@ const styles = StyleSheet.create({
   gpsMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   gpsMetaText: { fontSize: 11, fontWeight: '600' as const },
   msgIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center' as const, justifyContent: 'center' as const },
+  eqType: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const },
+  eqBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.accent + '15', borderWidth: 1, borderColor: C.accent + '40' },
+  eqBtnDrop: { backgroundColor: C.yellow + '15', borderColor: C.yellow + '40' },
+  eqBtnText: { fontSize: 12, fontWeight: '700' as const, color: C.accent },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chargeChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  chargeChipText: { fontSize: 11.5, fontWeight: '800' as const },
 });

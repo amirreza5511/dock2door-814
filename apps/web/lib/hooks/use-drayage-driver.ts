@@ -10,6 +10,7 @@ export interface DrayageOrder {
   container_size: string | null;
   is_hazmat: boolean | null;
   is_overweight: boolean | null;
+  mt_reported_at?: string | null;
 }
 
 export interface WorkOrder {

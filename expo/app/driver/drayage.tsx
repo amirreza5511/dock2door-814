@@ -58,6 +58,22 @@ export default function DriverDrayageWorkOrders() {
   });
   const pingMutation = trpc.drayage.pingLocation.useMutation();
   const openThreadMutation = trpc.drayage.openThread.useMutation();
+  const inspectionMutation = trpc.drayage.recordInspection.useMutation();
+  const mtMutation = trpc.drayage.reportEmptyContainer.useMutation({
+    onSuccess: async () => {
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await utils.drayage.driverWorkOrders.invalidate();
+      setMtOrder(null); setMtNumber('');
+    },
+  });
+
+  // Empty (MT) container report
+  const [mtOrder, setMtOrder] = useState<WorkOrder | null>(null);
+  const [mtNumber, setMtNumber] = useState('');
+
+  // Inspection condition captured alongside pickup/drop proof
+  const [condition, setCondition] = useState<'Good' | 'Damaged'>('Good');
+  const [damageNotes, setDamageNotes] = useState('');
 
   // Join a fleet by code (for drivers created without a fleet code at signup)
   const [joinVisible, setJoinVisible] = useState(false);
@@ -178,6 +194,16 @@ export default function DriverDrayageWorkOrders() {
     setPhotoUri(null);
     setContainerNumberInput(order.drayage_orders?.container_number ?? '');
     setReceiverName('');
+    setCondition('Good');
+    setDamageNotes('');
+  };
+
+  const submitMt = () => {
+    if (!mtOrder) return;
+    const num = mtNumber.trim().toUpperCase();
+    if (num.length < 4) { Alert.alert('Container number required', 'Enter the empty container number you picked up.'); return; }
+    void mtMutation.mutateAsync({ orderId: mtOrder.order_id, containerNumber: num })
+      .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
   };
 
   const closeProof = () => {
@@ -223,6 +249,18 @@ export default function DriverDrayageWorkOrders() {
         containerNumber: proofKind === 'pickup' ? containerNumberInput.trim() || null : null,
         receiverName: proofKind === 'delivery' ? receiverName.trim() : null,
       });
+      // Record the container inspection at pickup / drop.
+      await inspectionMutation.mutateAsync({
+        orderId: proofOrder.order_id,
+        moveId: proofOrder.id,
+        equipmentType: 'Container',
+        reference: (proofKind === 'pickup' ? containerNumberInput.trim() : proofOrder.drayage_orders?.container_number) || '',
+        phase: proofKind === 'pickup' ? 'Pickup' : 'Drop',
+        condition,
+        damageNotes: condition === 'Damaged' ? damageNotes.trim() : '',
+        photoPaths: [meta.path],
+        inspectorRole: 'Driver',
+      }).catch(() => {});
       closeProof();
     } catch (e) {
       Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown error');
@@ -301,6 +339,16 @@ export default function DriverDrayageWorkOrders() {
             {NextIcon ? <NextIcon size={16} color={C.white} /> : null}
             <Text style={styles.primaryBtnText}>{next.label}</Text>
             <ChevronRight size={16} color={C.white} />
+          </TouchableOpacity>
+        ) : null}
+
+        {(order.move_type === 'EmptyPickup' || order.move_type === 'Pickup') && !order.drayage_orders?.mt_reported_at ? (
+          <TouchableOpacity
+            onPress={() => { setMtOrder(order); setMtNumber(order.drayage_orders?.container_number ?? ''); }}
+            style={styles.mtBtn}
+          >
+            <Package size={15} color={C.blue} />
+            <Text style={styles.mtBtnText}>Report empty container #</Text>
           </TouchableOpacity>
         ) : null}
 
@@ -437,6 +485,22 @@ export default function DriverDrayageWorkOrders() {
         </View>
       </Modal>
 
+      {/* Empty (MT) container report modal */}
+      <Modal visible={mtOrder !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setMtOrder(null)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Empty container #</Text>
+            <TouchableOpacity onPress={() => setMtOrder(null)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.modalSub}>Enter the empty (MT) container number you picked up from the port or off-dock. Dispatch is notified immediately.</Text>
+            <Input label="Container number" value={mtNumber} onChangeText={setMtNumber} placeholder="e.g. MSKU1234567" autoCapitalize="characters" />
+            <Button label="Report to dispatch" onPress={submitMt} loading={mtMutation.isPending} fullWidth size="lg" icon={<Package size={16} color={C.white} />} />
+            <Button label="Cancel" onPress={() => setMtOrder(null)} variant="ghost" fullWidth />
+          </ScrollView>
+        </View>
+      </Modal>
+
       {/* Proof capture modal */}
       <Modal visible={proofOrder !== null} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeProof}>
         <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
@@ -471,6 +535,18 @@ export default function DriverDrayageWorkOrders() {
             ) : (
               <Input label="Received by" value={receiverName} onChangeText={setReceiverName} placeholder="Receiver name" />
             )}
+
+            <Text style={styles.proofLabel}>Container condition</Text>
+            <View style={styles.condRow}>
+              {(['Good', 'Damaged'] as const).map((c) => (
+                <TouchableOpacity key={c} style={[styles.condChip, condition === c && (c === 'Damaged' ? styles.condChipBad : styles.condChipGood)]} onPress={() => setCondition(c)}>
+                  <Text style={[styles.condChipText, condition === c && { color: c === 'Damaged' ? C.red : C.green }]}>{c}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {condition === 'Damaged' ? (
+              <Input label="Damage notes" value={damageNotes} onChangeText={setDamageNotes} placeholder="Describe the damage" multiline numberOfLines={3} />
+            ) : null}
 
             <Button
               label={proofKind === 'pickup' ? 'Confirm pickup' : 'Confirm delivery'}
@@ -542,4 +618,11 @@ const styles = StyleSheet.create({
   photoPlaceholder: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8 },
   photoPreview: { width: '100%' as const, height: '100%' as const },
   photoHint: { fontSize: 12, color: C.textSecondary },
+  condRow: { flexDirection: 'row', gap: 10 },
+  condChip: { flex: 1, alignItems: 'center' as const, paddingVertical: 12, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  condChipGood: { backgroundColor: C.green + '18', borderColor: C.green },
+  condChipBad: { backgroundColor: C.red + '18', borderColor: C.red },
+  condChipText: { fontSize: 14, fontWeight: '700' as const, color: C.textSecondary },
+  mtBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: C.blue + '15', borderRadius: 12, borderWidth: 1, borderColor: C.blue + '40', paddingVertical: 11 },
+  mtBtnText: { fontSize: 13, fontWeight: '700' as const, color: C.blue },
 });

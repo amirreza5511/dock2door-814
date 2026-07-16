@@ -19,7 +19,16 @@ import {
   Truck,
   User,
   X,
+  Layers,
+  DollarSign,
+  ClipboardCheck,
+  FileText,
+  AlertTriangle,
 } from "lucide-react";
+import { orderCharges, chargeChipLabel } from "@/lib/drayage-charges";
+
+const URGENCY_TEXT: Record<string, string> = { over: "text-red-400", soon: "text-yellow-400", ok: "text-emerald-400", none: "text-muted-foreground" };
+const URGENCY_BG: Record<string, string> = { over: "bg-red-500/15", soon: "bg-yellow-500/15", ok: "bg-emerald-500/15", none: "bg-muted" };
 
 interface DrayageOrder {
   id: string;
@@ -47,6 +56,17 @@ interface DrayageOrder {
   prepull_pickup_date: string | null;
   prepull_yard_terminal_id: string | null;
   drayage_company_id: string | null;
+  truck_id?: string | null;
+  chassis_id?: string | null;
+  trailer_id?: string | null;
+  shipping_line_id?: string | null;
+  mt_reported_at?: string | null;
+  per_diem_last_free_day?: string | null;
+  per_diem_daily_rate?: number | null;
+  demurrage_last_free_day?: string | null;
+  demurrage_daily_rate?: number | null;
+  storage_last_free_day?: string | null;
+  storage_daily_rate?: number | null;
   [k: string]: unknown;
 }
 
@@ -98,22 +118,46 @@ export default function DrayageCompanyOrderDetailPage() {
   const [dispatchModal, setDispatchModal] = useState<MoveRow | null>(null);
   const [resDate, setResDate] = useState("");
   const [resTime, setResTime] = useState("");
+  const [equipModal, setEquipModal] = useState(false);
+  const [chargeModal, setChargeModal] = useState(false);
+  const [lineModal, setLineModal] = useState(false);
+  const [selTruck, setSelTruck] = useState<string | null>(null);
+  const [selChassis, setSelChassis] = useState<string | null>(null);
+  const [selTrailer, setSelTrailer] = useState<string | null>(null);
+  const [pdRate, setPdRate] = useState(""); const [pdLfd, setPdLfd] = useState("");
+  const [dmRate, setDmRate] = useState(""); const [dmLfd, setDmLfd] = useState("");
+  const [stRate, setStRate] = useState(""); const [stLfd, setStLfd] = useState("");
 
   const detailsQuery = useQuery({
     queryKey: ["dc", "drayage-order", orderId],
     refetchInterval: 15000,
     enabled: !!orderId,
     queryFn: async () => {
-      const [orderRes, movesRes, trackingRes] = await Promise.all([
+      const [orderRes, movesRes, trackingRes, inspRes, docsRes] = await Promise.all([
         supabase.from("drayage_orders").select("*").eq("id", orderId).maybeSingle(),
         supabase.from("drayage_moves").select("*").eq("order_id", orderId).order("sequence", { ascending: true }),
         supabase.from("container_tracking").select("*").eq("order_id", orderId).order("recorded_at", { ascending: false }).limit(20),
+        supabase.from("equipment_inspections").select("*").eq("order_id", orderId).order("created_at", { ascending: false }),
+        supabase.from("drayage_documents").select("*").eq("order_id", orderId).order("created_at", { ascending: false }),
       ]);
       if (orderRes.error || !orderRes.data) throw new Error(orderRes.error?.message ?? "Order not found");
+      const ord = orderRes.data as DrayageOrder;
+      const [truckRes, chassisRes, trailerRes, lineRes] = await Promise.all([
+        ord.truck_id ? supabase.from("trucks").select("*").eq("id", ord.truck_id as string).maybeSingle() : Promise.resolve({ data: null }),
+        ord.chassis_id ? supabase.from("chassis").select("*").eq("id", ord.chassis_id as string).maybeSingle() : Promise.resolve({ data: null }),
+        ord.trailer_id ? supabase.from("trailers").select("*").eq("id", ord.trailer_id as string).maybeSingle() : Promise.resolve({ data: null }),
+        ord.shipping_line_id ? supabase.from("shipping_lines").select("*").eq("id", ord.shipping_line_id as string).maybeSingle() : Promise.resolve({ data: null }),
+      ]);
       return {
-        order: orderRes.data as DrayageOrder,
+        order: ord,
         moves: (movesRes.data as MoveRow[] | null) ?? [],
         tracking: (trackingRes.data as TrackingRow[] | null) ?? [],
+        inspections: (inspRes.data as Record<string, unknown>[] | null) ?? [],
+        documents: (docsRes.data as Record<string, unknown>[] | null) ?? [],
+        truck: truckRes.data as Record<string, unknown> | null,
+        chassis: chassisRes.data as Record<string, unknown> | null,
+        trailer: trailerRes.data as Record<string, unknown> | null,
+        shippingLine: lineRes.data as Record<string, unknown> | null,
       };
     },
   });
@@ -122,6 +166,13 @@ export default function DrayageCompanyOrderDetailPage() {
   const moves = useMemo(() => detailsQuery.data?.moves ?? [], [detailsQuery.data]);
   const allTracking = useMemo(() => detailsQuery.data?.tracking ?? [], [detailsQuery.data]);
   const latestTracking = allTracking[0] ?? null;
+  const inspections = useMemo(() => detailsQuery.data?.inspections ?? [], [detailsQuery.data]);
+  const documents = useMemo(() => detailsQuery.data?.documents ?? [], [detailsQuery.data]);
+  const linkedTruck = detailsQuery.data?.truck ?? null;
+  const linkedChassis = detailsQuery.data?.chassis ?? null;
+  const linkedTrailer = detailsQuery.data?.trailer ?? null;
+  const shippingLine = detailsQuery.data?.shippingLine ?? null;
+  const charges = useMemo(() => (order ? orderCharges(order as Record<string, unknown>) : []), [order]);
 
   const terminalsQuery = useQuery({
     queryKey: ["terminals-active"],
@@ -189,6 +240,80 @@ export default function DrayageCompanyOrderDetailPage() {
       setDispatchModal(null);
     },
   });
+
+  const equipQuery = useQuery({
+    queryKey: ["dc", "equip-lists", order?.drayage_company_id, equipModal],
+    enabled: !!order?.drayage_company_id && equipModal,
+    queryFn: async () => {
+      const cid = order!.drayage_company_id!;
+      const [tk, ch, tr] = await Promise.all([
+        supabase.from("trucks").select("id,plate,data").eq("company_id", cid).is("archived_at", null),
+        supabase.from("chassis").select("id,chassis_number,is_rental").eq("company_id", cid).is("archived_at", null),
+        supabase.from("trailers").select("id,plate,data").eq("company_id", cid).is("archived_at", null),
+      ]);
+      return {
+        trucks: (tk.data as Record<string, unknown>[] | null) ?? [],
+        chassis: (ch.data as Record<string, unknown>[] | null) ?? [],
+        trailers: (tr.data as Record<string, unknown>[] | null) ?? [],
+      };
+    },
+  });
+
+  const linesQuery = useQuery({
+    queryKey: ["shipping-lines", lineModal],
+    enabled: lineModal,
+    queryFn: async (): Promise<Record<string, unknown>[]> => {
+      const { data } = await supabase.from("shipping_lines").select("*").eq("is_active", true).order("name");
+      return (data as Record<string, unknown>[] | null) ?? [];
+    },
+  });
+
+  useEffect(() => {
+    if (equipModal && order) {
+      setSelTruck((order.truck_id as string) ?? null);
+      setSelChassis((order.chassis_id as string) ?? null);
+      setSelTrailer((order.trailer_id as string) ?? null);
+    }
+  }, [equipModal, order]);
+
+  const assignEquipMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("assign_drayage_equipment", {
+        p_order_id: orderId, p_truck_id: selTruck, p_chassis_id: selChassis, p_trailer_id: selTrailer,
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] }); setEquipModal(false); },
+  });
+
+  const chargesMutation = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.rpc("set_drayage_charges", {
+        p_order_id: orderId,
+        p_per_diem_free_days: null, p_per_diem_last_free_day: pdLfd.trim() || null, p_per_diem_daily_rate: pdRate.trim() === "" ? 0 : Number(pdRate),
+        p_demurrage_free_days: null, p_demurrage_last_free_day: dmLfd.trim() || null, p_demurrage_daily_rate: dmRate.trim() === "" ? 0 : Number(dmRate),
+        p_storage_free_days: null, p_storage_last_free_day: stLfd.trim() || null, p_storage_daily_rate: stRate.trim() === "" ? 0 : Number(stRate),
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] }); setChargeModal(false); },
+  });
+
+  const lineMutation = useMutation({
+    mutationFn: async (lineId: string) => {
+      const { error } = await supabase.rpc("set_order_shipping_line", { p_order_id: orderId, p_shipping_line_id: lineId });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["dc", "drayage-order", orderId] }); setLineModal(false); },
+  });
+
+  const openChargeModal = () => {
+    if (!order) return;
+    setPdRate(order.per_diem_daily_rate ? String(order.per_diem_daily_rate) : ""); setPdLfd((order.per_diem_last_free_day as string) ?? "");
+    setDmRate(order.demurrage_daily_rate ? String(order.demurrage_daily_rate) : ""); setDmLfd((order.demurrage_last_free_day as string) ?? "");
+    setStRate(order.storage_daily_rate ? String(order.storage_daily_rate) : ""); setStLfd((order.storage_last_free_day as string) ?? "");
+    setChargeModal(true);
+  };
 
   // Resolve signed URLs for captured pickup/delivery proof photos.
   const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
@@ -307,6 +432,111 @@ export default function DrayageCompanyOrderDetailPage() {
               />
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Equipment */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Layers className="h-4 w-4 text-blue-400" /> Equipment
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Detail label="Truck" value={(linkedTruck?.plate as string) || "—"} />
+            <Detail label="Chassis" value={(linkedChassis?.chassis_number as string) || "—"} />
+            <Detail label="Trailer" value={(linkedTrailer?.plate as string) || "—"} />
+            <Detail label="Container" value={order.container_number || "TBD"} />
+          </div>
+          {linkedTruck && !linkedChassis && !linkedTrailer ? (
+            <p className="flex items-center gap-1.5 text-xs font-medium text-yellow-400"><AlertTriangle className="h-3.5 w-3.5" /> Bobtail — no chassis or trailer attached</p>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button variant="outline" className="w-full" onClick={() => setEquipModal(true)}><Layers className="mr-2 h-4 w-4" /> Assign equipment set</Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Shipping line */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Ship className="h-4 w-4 text-primary" /> Shipping line
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm font-medium">{shippingLine ? `${shippingLine.name as string}${shippingLine.scac ? ` (${shippingLine.scac as string})` : ""}` : "Not set"}</p>
+          {order.drayage_company_id ? (
+            <Button variant="outline" className="w-full" onClick={() => setLineModal(true)}>{shippingLine ? "Change shipping line" : "Set shipping line"}</Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Free days & accessorials */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <DollarSign className="h-4 w-4 text-yellow-400" /> Free days &amp; accessorials
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {charges.map((c) => (
+              <span key={c.kind} className={`rounded-full px-2.5 py-1 text-xs font-bold ${URGENCY_BG[c.urgency]} ${URGENCY_TEXT[c.urgency]}`}>{chargeChipLabel(c)}</span>
+            ))}
+          </div>
+          {charges.some((c) => c.amount > 0) ? (
+            <p className="text-xs text-muted-foreground">Accrued to date: ${charges.reduce((s, c) => s + c.amount, 0).toFixed(2)} — added to the customer invoice.</p>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button variant="outline" className="w-full" onClick={openChargeModal}><DollarSign className="mr-2 h-4 w-4" /> Set free days &amp; rates</Button>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Inspections */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ClipboardCheck className="h-4 w-4 text-emerald-400" /> Inspections
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {inspections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No inspections recorded yet. Drivers log condition at pickup and drop.</p>
+          ) : inspections.map((ins) => (
+            <div key={ins.id as string} className="flex items-start gap-2">
+              <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${ins.condition === "Damaged" ? "bg-red-500" : "bg-emerald-500"}`} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{ins.equipment_type as string} · {ins.phase as string} · {ins.condition as string}</p>
+                <p className="text-xs text-muted-foreground">{(ins.reference as string) || ""}{ins.damage_notes ? ` — ${ins.damage_notes as string}` : ""}</p>
+                <p className="text-[11px] text-muted-foreground">{ins.inspector_role as string} · {new Date(ins.created_at as string).toLocaleString()}</p>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Documents / POD */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4 text-blue-400" /> Documents (POD / BOL / Interchange)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {documents.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No documents attached yet. Drivers scan and upload POD pages from their app.</p>
+          ) : documents.map((doc) => (
+            <div key={doc.id as string} className="flex items-start gap-2">
+              <FileText className="mt-0.5 h-4 w-4 text-primary" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{doc.doc_type as string} · {((doc.file_paths as unknown[])?.length ?? 0)} page(s)</p>
+                <p className="text-xs text-muted-foreground">{doc.signer_name ? `Signed by ${doc.signer_name as string}` : "Unsigned"} · {new Date(doc.created_at as string).toLocaleString()}</p>
+              </div>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
@@ -520,6 +750,114 @@ export default function DrayageCompanyOrderDetailPage() {
           )}
         </Modal>
       ) : null}
+
+      {/* Equipment assignment modal */}
+      {equipModal ? (
+        <Modal title="Assign equipment set" onClose={() => setEquipModal(false)}>
+          <PickGroup
+            label="Truck"
+            items={(equipQuery.data?.trucks ?? []).map((t) => ({ id: t.id as string, label: (t.plate as string) || "Truck" }))}
+            selected={selTruck}
+            onSelect={(id) => setSelTruck(selTruck === id ? null : id)}
+            empty="No trucks in fleet."
+          />
+          <PickGroup
+            label="Chassis"
+            items={(equipQuery.data?.chassis ?? []).map((c) => ({ id: c.id as string, label: `${c.chassis_number as string}${c.is_rental ? " · R" : ""}` }))}
+            selected={selChassis}
+            onSelect={(id) => setSelChassis(selChassis === id ? null : id)}
+            empty="No chassis in fleet."
+          />
+          <PickGroup
+            label="Trailer (optional)"
+            items={(equipQuery.data?.trailers ?? []).map((t) => ({ id: t.id as string, label: (t.plate as string) || "Trailer" }))}
+            selected={selTrailer}
+            onSelect={(id) => setSelTrailer(selTrailer === id ? null : id)}
+            empty="No trailers in fleet."
+          />
+          {assignEquipMutation.isError ? <p className="text-xs text-red-400">{(assignEquipMutation.error as Error).message}</p> : null}
+          <Button className="w-full" disabled={assignEquipMutation.isPending} onClick={() => assignEquipMutation.mutate()}>Save equipment</Button>
+        </Modal>
+      ) : null}
+
+      {/* Charges modal */}
+      {chargeModal ? (
+        <Modal title="Free days & rates" onClose={() => setChargeModal(false)}>
+          <ChargeInputs title="Per diem (steamship line)" lfd={pdLfd} rate={pdRate} onLfd={setPdLfd} onRate={setPdRate} />
+          <ChargeInputs title="Demurrage (port/terminal)" lfd={dmLfd} rate={dmRate} onLfd={setDmLfd} onRate={setDmRate} />
+          <ChargeInputs title="Storage (yard/warehouse)" lfd={stLfd} rate={stRate} onLfd={setStLfd} onRate={setStRate} />
+          {chargesMutation.isError ? <p className="text-xs text-red-400">{(chargesMutation.error as Error).message}</p> : null}
+          <Button className="w-full" disabled={chargesMutation.isPending} onClick={() => chargesMutation.mutate()}>Save charges</Button>
+        </Modal>
+      ) : null}
+
+      {/* Shipping line modal */}
+      {lineModal ? (
+        <Modal title="Shipping line" onClose={() => setLineModal(false)}>
+          {(linesQuery.data ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {(linesQuery.data ?? []).map((l) => (
+                <button
+                  key={l.id as string}
+                  disabled={lineMutation.isPending}
+                  onClick={() => lineMutation.mutate(l.id as string)}
+                  className="flex w-full items-center gap-3 rounded-lg border border-white/5 bg-card/60 px-4 py-3 text-left hover:bg-card disabled:opacity-50"
+                >
+                  <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15"><Ship className="h-4 w-4 text-primary" /></div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{l.name as string}</p>
+                    {l.scac ? <p className="text-xs text-muted-foreground">{l.scac as string}</p> : null}
+                  </div>
+                  {shippingLine?.id === l.id ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : null}
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+function PickGroup({ label, items, selected, onSelect, empty }: { label: string; items: { id: string; label: string }[]; selected: string | null; onSelect: (id: string) => void; empty: string }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+      {items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {items.map((it) => (
+            <button
+              key={it.id}
+              onClick={() => onSelect(it.id)}
+              className={`rounded-lg border px-3 py-1.5 text-sm ${selected === it.id ? "border-primary bg-primary/15 text-primary" : "border-white/10 bg-card/60 text-muted-foreground"}`}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChargeInputs({ title, lfd, rate, onLfd, onRate }: { title: string; lfd: string; rate: string; onLfd: (v: string) => void; onRate: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <div className="flex gap-3">
+        <label className="flex-1 space-y-1">
+          <span className="text-[11px] text-muted-foreground">Last free day</span>
+          <Input type="date" value={lfd} onChange={(e) => onLfd(e.target.value)} />
+        </label>
+        <label className="flex-1 space-y-1">
+          <span className="text-[11px] text-muted-foreground">Daily rate ($/day)</span>
+          <Input value={rate} onChange={(e) => onRate(e.target.value)} placeholder="150" inputMode="decimal" />
+        </label>
+      </div>
     </div>
   );
 }

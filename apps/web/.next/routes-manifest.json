@@ -391,6 +391,12 @@
       "namedRegex": "^/drayage\\-company/dispatch(?:/)?$"
     },
     {
+      "page": "/drayage-company/equipment-report",
+      "regex": "^/drayage\\-company/equipment\\-report(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/equipment\\-report(?:/)?$"
+    },
+    {
       "page": "/drayage-company/fleet",
       "regex": "^/drayage\\-company/fleet(?:/)?$",
       "routeKeys": {},
@@ -425,6 +431,12 @@
       "regex": "^/drayage\\-company/settlement(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/drayage\\-company/settlement(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/shipping-lines",
+      "regex": "^/drayage\\-company/shipping\\-lines(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/shipping\\-lines(?:/)?$"
     },
     {
       "page": "/drayage-company/terminals",

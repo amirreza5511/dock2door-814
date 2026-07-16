@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronLeft, Package, Plus, Truck, UserRound, Container, Copy, Check, Link2, Unlink, CircleDot, ShieldAlert, X } from 'lucide-react-native';
+import { ChevronLeft, Package, Plus, Truck, UserRound, Container, Copy, Check, Link2, Unlink, CircleDot, ShieldAlert, X, Layers } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -14,7 +14,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 
-type FleetEntity = 'drivers' | 'trucks' | 'trailers' | 'containers';
+type FleetEntity = 'drivers' | 'trucks' | 'trailers' | 'containers' | 'chassis';
 
 interface FleetItem {
   id: string;
@@ -29,6 +29,13 @@ interface FleetItem {
   container_number?: string | null;
   container_type?: string | null;
   trailer_type?: string | null;
+  chassis_number?: string | null;
+  chassis_type?: string | null;
+  is_rental?: boolean | null;
+  rental_daily_rate?: number | null;
+  rental_return_date?: string | null;
+  is_dropped?: boolean | null;
+  dropped_label?: string | null;
 }
 
 type ActiveLoad = { id: string; status: string; accepted_driver_user_id?: string | null; dropoff_address?: string | null; pickup_address?: string | null };
@@ -44,6 +51,10 @@ interface FleetFormState {
   trailerType: string;
   truckNumber: string;
   chassisNumber: string;
+  chassisType: string;
+  isRental: boolean;
+  rentalDailyRate: string;
+  rentalReturnDate: string;
   licenseNumber: string;
   phone: string;
   email: string;
@@ -66,6 +77,10 @@ const INITIAL_FORM: FleetFormState = {
   trailerType: '',
   truckNumber: '',
   chassisNumber: '',
+  chassisType: '',
+  isRental: false,
+  rentalDailyRate: '',
+  rentalReturnDate: '',
   licenseNumber: '',
   phone: '',
   email: '',
@@ -98,6 +113,7 @@ function docState(dateStr: string, kind: string): DocState {
 const STATUS_OPTIONS: string[] = ['Active', 'Maintenance', 'Out of service', 'Inactive'];
 const DRIVER_TYPE_OPTIONS: string[] = ['Company', 'Owner-operator'];
 const TRAILER_TYPE_OPTIONS: string[] = ['20ft', '40ft', '53ft', 'Chassis 20/40 Combo', 'Tri-axle'];
+const CHASSIS_TYPE_OPTIONS: string[] = ['20ft', '40ft', '40/45 Slider', 'Tri-axle', 'Gooseneck', 'Combo'];
 const CONTAINER_TYPE_OPTIONS: string[] = ['20GP', '40GP', '40HC', '45HC', 'Reefer'];
 const ACTIVE_LOAD_STATUS = ['Accepted', 'EnRoute', 'Arrived'];
 
@@ -109,6 +125,7 @@ function getEntityIcon(entity: FleetEntity) {
   if (entity === 'drivers') return UserRound;
   if (entity === 'trucks') return Truck;
   if (entity === 'trailers') return Package;
+  if (entity === 'chassis') return Layers;
   return Container;
 }
 
@@ -117,6 +134,7 @@ function getPrimaryLabel(entity: FleetEntity, item: FleetItem): string {
   if (entity === 'drivers') return readText(data.name, readText((item as { name?: string }).name, 'Driver'));
   if (entity === 'trucks') return readText(item.plate, readText(item.unit_number, 'Truck'));
   if (entity === 'trailers') return readText(item.plate, readText(item.trailer_number, 'Trailer'));
+  if (entity === 'chassis') return readText(item.chassis_number, 'Chassis');
   return readText(item.container_number, 'Container');
 }
 
@@ -125,6 +143,7 @@ function getSecondaryLabel(entity: FleetEntity, item: FleetItem): string {
   if (entity === 'drivers') return [readText(item.license_number), readText(item.phone), readText(data.email)].filter(Boolean).join(' · ');
   if (entity === 'trucks') return [readText(item.plate_number), readText(data.notes)].filter(Boolean).join(' · ');
   if (entity === 'trailers') return [readText(item.trailer_type), readText(data.notes)].filter(Boolean).join(' · ');
+  if (entity === 'chassis') return [readText(item.chassis_type), readText(item.plate), item.is_rental ? 'Rental' : 'Owned'].filter(Boolean).join(' · ');
   return [readText(item.container_type), readText(data.notes)].filter(Boolean).join(' · ');
 }
 
@@ -145,7 +164,11 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     containerType: readText(item.container_type),
     trailerType: readText(item.trailer_type, readText(data.trailerType)),
     truckNumber: readText(data.truckNumber),
-    chassisNumber: readText(data.chassisNumber),
+    chassisNumber: readText(item.chassis_number, readText(data.chassisNumber)),
+    chassisType: readText(item.chassis_type),
+    isRental: !!item.is_rental,
+    rentalDailyRate: item.rental_daily_rate != null ? String(item.rental_daily_rate) : '',
+    rentalReturnDate: readText(item.rental_return_date),
     licenseNumber: readText(item.license_number),
     phone: readText(item.phone),
     email: readText(data.email),
@@ -156,6 +179,32 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     driverType: readText(data.driverType, 'Company'),
     defaultHourlyRate: data.defaultHourlyRate != null ? String(data.defaultHourlyRate) : '',
   };
+}
+
+function RentalFields({ form, setForm }: { form: FleetFormState; setForm: React.Dispatch<React.SetStateAction<FleetFormState>> }) {
+  return (
+    <View style={{ gap: 12 }}>
+      <View>
+        <Text style={styles.chipLabel}>Ownership</Text>
+        <View style={styles.chipRow}>
+          {([['Owned', false], ['Rental', true]] as [string, boolean][]).map(([lbl, val]) => {
+            const selected = form.isRental === val;
+            return (
+              <TouchableOpacity key={lbl} activeOpacity={0.8} onPress={() => setForm((c) => ({ ...c, isRental: val }))} style={[styles.chip, selected && styles.chipActive]} testID={`fleet-ownership-${lbl}`}>
+                <Text style={[styles.chipText, selected && styles.chipTextActive]}>{lbl}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+      {form.isRental ? (
+        <>
+          <Input label="Rental daily rate ($/day)" value={form.rentalDailyRate} onChangeText={(value) => setForm((c) => ({ ...c, rentalDailyRate: value }))} placeholder="e.g. 25" keyboardType="numeric" testID="fleet-rental-rate" />
+          <Input label="Rental return date (YYYY-MM-DD)" value={form.rentalReturnDate} onChangeText={(value) => setForm((c) => ({ ...c, rentalReturnDate: value }))} placeholder="2026-08-31" autoCapitalize="none" testID="fleet-rental-return" />
+        </>
+      ) : null}
+    </View>
+  );
 }
 
 function ChipSelect({ label, options, value, onChange, testID }: { label: string; options: string[]; value: string; onChange: (v: string) => void; testID?: string }) {
@@ -204,6 +253,7 @@ export default function TruckingFleetScreen() {
   const driversQuery = trpc.operations.listFleet.useQuery({ entity: 'drivers', search });
   const trucksQuery = trpc.operations.listFleet.useQuery({ entity: 'trucks', search });
   const trailersQuery = trpc.operations.listFleet.useQuery({ entity: 'trailers', search });
+  const chassisQuery = trpc.operations.listFleet.useQuery({ entity: 'chassis', search });
   const containersQuery = trpc.operations.listFleet.useQuery({ entity: 'containers', search });
   // Active loads let us show which drivers are currently busy vs available.
   const loadsQuery = trpc.loads.listAccepted.useQuery(undefined, { enabled: entity === 'drivers' });
@@ -216,8 +266,9 @@ export default function TruckingFleetScreen() {
     if (entity === 'drivers') return driversQuery;
     if (entity === 'trucks') return trucksQuery;
     if (entity === 'trailers') return trailersQuery;
+    if (entity === 'chassis') return chassisQuery;
     return containersQuery;
-  }, [containersQuery, driversQuery, entity, trailersQuery, trucksQuery]);
+  }, [chassisQuery, containersQuery, driversQuery, entity, trailersQuery, trucksQuery]);
 
   const items: FleetItem[] = activeQuery.data ?? [];
   const Icon = getEntityIcon(entity);
@@ -238,6 +289,7 @@ export default function TruckingFleetScreen() {
       utils.operations.listFleet.invalidate({ entity: 'drivers', search }),
       utils.operations.listFleet.invalidate({ entity: 'trucks', search }),
       utils.operations.listFleet.invalidate({ entity: 'trailers', search }),
+      utils.operations.listFleet.invalidate({ entity: 'chassis', search }),
       utils.operations.listFleet.invalidate({ entity: 'containers', search }),
       utils.operations.truckingDashboard.invalidate(),
     ]);
@@ -258,6 +310,10 @@ export default function TruckingFleetScreen() {
       trailerType: form.trailerType || null,
       truckNumber: form.truckNumber || null,
       chassisNumber: form.chassisNumber || null,
+      chassisType: form.chassisType || null,
+      isRental: form.isRental,
+      rentalDailyRate: form.rentalDailyRate.trim() === '' ? 0 : Number(form.rentalDailyRate),
+      rentalReturnDate: form.rentalReturnDate || null,
       licenseNumber: form.licenseNumber || null,
       phone: form.phone || null,
       email: form.email || null,
@@ -304,7 +360,7 @@ export default function TruckingFleetScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Fleet</Text>
-          <Text style={styles.subtitle}>Drivers, trucks, trailers & containers</Text>
+          <Text style={styles.subtitle}>Drivers, trucks, trailers, chassis & containers</Text>
         </View>
         <TouchableOpacity onPress={openCreate} style={styles.addBtn} testID="fleet-add">
           <Plus size={18} color={C.white} />
@@ -317,6 +373,7 @@ export default function TruckingFleetScreen() {
             ['drivers', 'Drivers'],
             ['trucks', 'Trucks'],
             ['trailers', 'Trailers'],
+            ['chassis', 'Chassis'],
             ['containers', 'Containers'],
           ] as [FleetEntity, string][]).map(([key, label]) => (
             <TouchableOpacity key={key} activeOpacity={0.8} onPress={() => setEntity(key)} style={[styles.segment, entity === key && styles.segmentActive]} testID={`fleet-segment-${key}`}>
@@ -392,6 +449,26 @@ export default function TruckingFleetScreen() {
                   );
                 })() : null}
 
+                {(entity === 'chassis' || entity === 'trailers') ? (() => {
+                  const tags: { key: string; label: string; level: 'expired' | 'soon' | 'ok' | 'info' }[] = [];
+                  if (item.is_rental) {
+                    const rs = docState(readText(item.rental_return_date), 'Rental due');
+                    if (rs) tags.push({ key: 'rental', label: rs.label, level: rs.level });
+                    else tags.push({ key: 'rental', label: `Rental $${item.rental_daily_rate ?? 0}/day`, level: 'info' });
+                  }
+                  if (item.is_dropped) tags.push({ key: 'dropped', label: `Dropped${item.dropped_label ? ` · ${item.dropped_label}` : ''}`, level: 'soon' });
+                  if (tags.length === 0) return null;
+                  return (
+                    <View style={styles.driverTags}>
+                      {tags.map((t) => (
+                        <View key={t.key} style={[styles.tag, t.level === 'expired' ? styles.tagExpired : t.level === 'soon' ? styles.tagSoon : styles.tagUnlinked]}>
+                          <Text style={[styles.tagText, { color: t.level === 'expired' ? C.red : t.level === 'soon' ? C.yellow : C.textSecondary }]}>{t.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })() : null}
+
                 {entity === 'drivers' && !linkedUid ? (
                   <Text style={styles.linkHint}>Add the email this driver signed up with (or share your fleet code) so they can be dispatched.</Text>
                 ) : null}
@@ -446,8 +523,18 @@ export default function TruckingFleetScreen() {
                     <Input label="Trailer number" value={form.trailerNumber} onChangeText={(value) => setForm((c) => ({ ...c, trailerNumber: value }))} placeholder="TRL-88" testID="fleet-trailer-number" />
                     <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((c) => ({ ...c, plateNumber: value }))} placeholder="e.g. XYZ 5678" testID="fleet-trailer-plate" />
                     <ChipSelect label="Trailer type" options={TRAILER_TYPE_OPTIONS} value={form.trailerType} onChange={(v) => setForm((c) => ({ ...c, trailerType: v }))} testID="fleet-trailer-type" />
+                    <RentalFields form={form} setForm={setForm} />
                     <Input label="Insurance expiry (YYYY-MM-DD)" value={form.insuranceExpiry} onChangeText={(value) => setForm((c) => ({ ...c, insuranceExpiry: value }))} placeholder="2026-12-31" autoCapitalize="none" testID="fleet-trailer-insurance" />
                     <Input label="Inspection expiry (YYYY-MM-DD)" value={form.inspectionExpiry} onChangeText={(value) => setForm((c) => ({ ...c, inspectionExpiry: value }))} placeholder="2026-06-30" autoCapitalize="none" testID="fleet-trailer-inspection" />
+                  </>
+                ) : null}
+                {entity === 'chassis' ? (
+                  <>
+                    <Input label="Chassis number" value={form.chassisNumber} onChangeText={(value) => setForm((c) => ({ ...c, chassisNumber: value }))} placeholder="CH-2201" testID="fleet-chassis-number" />
+                    <Input label="Plate number" value={form.plateNumber} onChangeText={(value) => setForm((c) => ({ ...c, plateNumber: value }))} placeholder="e.g. CHS 4421" testID="fleet-chassis-plate" />
+                    <ChipSelect label="Chassis type" options={CHASSIS_TYPE_OPTIONS} value={form.chassisType} onChange={(v) => setForm((c) => ({ ...c, chassisType: v }))} testID="fleet-chassis-type" />
+                    <Text style={styles.chassisNote}>Chassis number is tracked separately from the truck number. Assign a chassis to a container when you dispatch.</Text>
+                    <RentalFields form={form} setForm={setForm} />
                   </>
                 ) : null}
                 {entity === 'containers' ? (

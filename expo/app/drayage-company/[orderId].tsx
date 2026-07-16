@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, A
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Ship, Truck, User, X, Anchor, Clock } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, CheckCircle2, MapPin, Package, Ship, Truck, User, X, Clock, Layers, DollarSign, ClipboardCheck, FileText, Plus, AlertTriangle } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import Card from '@/components/ui/Card';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -16,8 +16,10 @@ import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { getSignedUrl } from '@/lib/storage-files';
+import { orderCharges, chargeChipLabel } from '@/lib/drayage-charges';
 
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
+const URGENCY_COLOR: Record<string, string> = { over: C.red, soon: C.yellow, ok: C.green, none: C.textMuted };
 
 // react-native-maps does not render on web (needs a Google Maps loader/key), so we
 // only pull it in on native and show a graceful fallback on web.
@@ -75,6 +77,41 @@ export default function DrayageOrderDetailScreen() {
   const order = detailsQuery.data?.order as any;
   const moves = (detailsQuery.data?.moves ?? []) as any[];
   const latestTracking = detailsQuery.data?.latestTracking as any;
+  const inspections = (detailsQuery.data?.inspections ?? []) as any[];
+  const documents = (detailsQuery.data?.documents ?? []) as any[];
+  const linkedTruck = detailsQuery.data?.truck as any;
+  const linkedChassis = detailsQuery.data?.chassis as any;
+  const linkedTrailer = detailsQuery.data?.trailer as any;
+  const shippingLine = detailsQuery.data?.shippingLine as any;
+
+  const charges = useMemo(() => (order ? orderCharges(order) : []), [order]);
+
+  // Equipment assignment + charges + shipping line state
+  const [equipModal, setEquipModal] = useState(false);
+  const [selTruck, setSelTruck] = useState<string | null>(null);
+  const [selChassis, setSelChassis] = useState<string | null>(null);
+  const [selTrailer, setSelTrailer] = useState<string | null>(null);
+  const [trucksList, setTrucksList] = useState<any[]>([]);
+  const [chassisList, setChassisList] = useState<any[]>([]);
+  const [trailersList, setTrailersList] = useState<any[]>([]);
+
+  const [chargeModal, setChargeModal] = useState(false);
+  const [pdRate, setPdRate] = useState(''); const [pdLfd, setPdLfd] = useState('');
+  const [dmRate, setDmRate] = useState(''); const [dmLfd, setDmLfd] = useState('');
+  const [stRate, setStRate] = useState(''); const [stLfd, setStLfd] = useState('');
+
+  const [lineModal, setLineModal] = useState(false);
+  const linesQuery = trpc.drayage.listShippingLines.useQuery(undefined, { enabled: lineModal });
+
+  const assignEquipMutation = trpc.drayage.assignEquipment.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setEquipModal(false); },
+  });
+  const setChargesMutation = trpc.drayage.setCharges.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setChargeModal(false); },
+  });
+  const setLineMutation = trpc.drayage.setOrderShippingLine.useMutation({
+    onSuccess: async () => { await utils.drayage.getOrderDetails.invalidate({ id: orderId }); setLineModal(false); },
+  });
 
   // Resolve signed URLs for any captured pickup/delivery proof photos so ops can audit them.
   const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
@@ -189,6 +226,40 @@ export default function DrayageOrderDetailScreen() {
     };
   }, [containerCoord, originCoord, destCoord]);
 
+  // Load company equipment lists for the assignment modal.
+  useEffect(() => {
+    if (!order?.drayage_company_id || !equipModal) return;
+    void (async () => {
+      const [tk, ch, tr] = await Promise.all([
+        supabase.from('trucks').select('*').eq('company_id', order.drayage_company_id).is('archived_at', null),
+        supabase.from('chassis').select('*').eq('company_id', order.drayage_company_id).is('archived_at', null),
+        supabase.from('trailers').select('*').eq('company_id', order.drayage_company_id).is('archived_at', null),
+      ]);
+      setTrucksList(tk.data ?? []);
+      setChassisList(ch.data ?? []);
+      setTrailersList(tr.data ?? []);
+      setSelTruck(order.truck_id ?? null);
+      setSelChassis(order.chassis_id ?? null);
+      setSelTrailer(order.trailer_id ?? null);
+    })();
+  }, [order?.drayage_company_id, order?.truck_id, order?.chassis_id, order?.trailer_id, equipModal]);
+
+  const openChargeModal = () => {
+    setPdRate(order.per_diem_daily_rate ? String(order.per_diem_daily_rate) : ''); setPdLfd(order.per_diem_last_free_day ? String(order.per_diem_last_free_day) : '');
+    setDmRate(order.demurrage_daily_rate ? String(order.demurrage_daily_rate) : ''); setDmLfd(order.demurrage_last_free_day ? String(order.demurrage_last_free_day) : '');
+    setStRate(order.storage_daily_rate ? String(order.storage_daily_rate) : ''); setStLfd(order.storage_last_free_day ? String(order.storage_last_free_day) : '');
+    setChargeModal(true);
+  };
+
+  const saveCharges = () => {
+    void setChargesMutation.mutateAsync({
+      orderId,
+      perDiemDailyRate: pdRate.trim() === '' ? 0 : Number(pdRate), perDiemLastFreeDay: pdLfd.trim() || null,
+      demurrageDailyRate: dmRate.trim() === '' ? 0 : Number(dmRate), demurrageLastFreeDay: dmLfd.trim() || null,
+      storageDailyRate: stRate.trim() === '' ? 0 : Number(stRate), storageLastFreeDay: stLfd.trim() || null,
+    }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'));
+  };
+
   const handleSavePortReservation = async () => {
     if (!resDate.trim() || !resTime.trim()) {
       Alert.alert('Required', 'Enter both date and time from the port portal.');
@@ -283,6 +354,100 @@ export default function DrayageOrderDetailScreen() {
 
         {/* Pricing */}
         <DrayagePricingCard orderId={orderId} order={order} canApply={!!order.drayage_company_id} />
+
+        {/* Equipment set */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Layers size={16} color={C.blue} />
+            <Text style={styles.sectionTitle}>Equipment</Text>
+          </View>
+          <View style={styles.detailGrid}>
+            <View style={styles.detailCell}><Text style={styles.detailLabel}>Truck</Text><Text style={styles.detailValue}>{linkedTruck?.plate || linkedTruck?.data?.unitNumber || '—'}</Text></View>
+            <View style={styles.detailCell}><Text style={styles.detailLabel}>Chassis</Text><Text style={styles.detailValue}>{linkedChassis?.chassis_number || '—'}</Text></View>
+            <View style={styles.detailCell}><Text style={styles.detailLabel}>Trailer</Text><Text style={styles.detailValue}>{linkedTrailer?.plate || linkedTrailer?.data?.trailerNumber || '—'}</Text></View>
+            <View style={styles.detailCell}><Text style={styles.detailLabel}>Container</Text><Text style={styles.detailValue}>{order.container_number || 'TBD'}</Text></View>
+          </View>
+          {linkedTruck && !linkedChassis && !linkedTrailer ? (
+            <View style={styles.bobtailRow}><AlertTriangle size={12} color={C.yellow} /><Text style={styles.bobtailText}>Bobtail — no chassis or trailer attached</Text></View>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button label="Assign equipment set" variant="ghost" size="md" fullWidth onPress={() => setEquipModal(true)} icon={<Layers size={15} color={C.accent} />} />
+          ) : null}
+        </Card>
+
+        {/* Shipping line */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ship size={16} color={C.accent} />
+            <Text style={styles.sectionTitle}>Shipping line</Text>
+          </View>
+          <Text style={styles.detailValue}>{shippingLine ? `${shippingLine.name}${shippingLine.scac ? ` (${shippingLine.scac})` : ''}` : 'Not set'}</Text>
+          {order.drayage_company_id ? (
+            <Button label={shippingLine ? 'Change shipping line' : 'Set shipping line'} variant="ghost" size="md" fullWidth onPress={() => setLineModal(true)} />
+          ) : null}
+        </Card>
+
+        {/* Per diem / demurrage / storage */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <DollarSign size={16} color={C.yellow} />
+            <Text style={styles.sectionTitle}>Free days & accessorials</Text>
+          </View>
+          <View style={styles.chipWrap}>
+            {charges.map((c) => (
+              <View key={c.kind} style={[styles.chargeChip, { borderColor: URGENCY_COLOR[c.urgency] + '66', backgroundColor: URGENCY_COLOR[c.urgency] + '18' }]}>
+                <Text style={[styles.chargeChipText, { color: URGENCY_COLOR[c.urgency] }]}>{chargeChipLabel(c)}</Text>
+              </View>
+            ))}
+          </View>
+          {charges.some((c) => c.amount > 0) ? (
+            <Text style={styles.accrText}>Accrued to date: ${charges.reduce((s, c) => s + c.amount, 0).toFixed(2)} — added to the customer invoice.</Text>
+          ) : null}
+          {order.drayage_company_id ? (
+            <Button label="Set free days & rates" variant="ghost" size="md" fullWidth onPress={openChargeModal} icon={<DollarSign size={15} color={C.accent} />} />
+          ) : null}
+        </Card>
+
+        {/* Inspections */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <ClipboardCheck size={16} color={C.green} />
+            <Text style={styles.sectionTitle}>Inspections</Text>
+          </View>
+          {inspections.length === 0 ? (
+            <Text style={styles.noRes}>No inspections recorded yet. Drivers log condition at pickup and drop.</Text>
+          ) : inspections.map((ins) => (
+            <View key={ins.id} style={styles.inspRow}>
+              <View style={[styles.inspDot, { backgroundColor: ins.condition === 'Damaged' ? C.red : C.green }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inspTitle}>{ins.equipment_type} · {ins.phase} · {ins.condition}</Text>
+                <Text style={styles.inspMeta}>{ins.reference || ''}{ins.damage_notes ? ` — ${ins.damage_notes}` : ''}</Text>
+                <Text style={styles.inspTime}>{ins.inspector_role} · {new Date(ins.created_at).toLocaleString()}</Text>
+              </View>
+            </View>
+          ))}
+        </Card>
+
+        {/* Documents / POD */}
+        <Card style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <FileText size={16} color={C.blue} />
+            <Text style={styles.sectionTitle}>Documents (POD / BOL / Interchange)</Text>
+          </View>
+          {documents.length === 0 ? (
+            <Text style={styles.noRes}>No documents attached yet.</Text>
+          ) : documents.map((doc) => (
+            <View key={doc.id} style={styles.inspRow}>
+              <FileText size={16} color={C.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inspTitle}>{doc.doc_type} · {(doc.file_paths?.length ?? 0)} page(s)</Text>
+                <Text style={styles.inspMeta}>{doc.signer_name ? `Signed by ${doc.signer_name}` : 'Unsigned'}</Text>
+                <Text style={styles.inspTime}>{new Date(doc.created_at).toLocaleString()}</Text>
+              </View>
+            </View>
+          ))}
+          <Text style={styles.docHint}>Drivers scan and upload POD pages from their app.</Text>
+        </Card>
 
         {/* Port reservation card */}
         <Card style={styles.sectionCard}>
@@ -507,6 +672,91 @@ export default function DrayageOrderDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Equipment assignment modal */}
+      <Modal visible={equipModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEquipModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Assign equipment set</Text>
+            <TouchableOpacity onPress={() => setEquipModal(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.pickGroupLabel}>Truck</Text>
+            <View style={styles.chipWrap}>
+              {trucksList.map((t) => (
+                <TouchableOpacity key={t.id} style={[styles.pickChip, selTruck === t.id && styles.pickChipActive]} onPress={() => setSelTruck(selTruck === t.id ? null : t.id)}>
+                  <Text style={[styles.pickChipText, selTruck === t.id && styles.pickChipTextActive]}>{t.plate || t.data?.unitNumber || 'Truck'}</Text>
+                </TouchableOpacity>
+              ))}
+              {trucksList.length === 0 ? <Text style={styles.noRes}>No trucks in fleet.</Text> : null}
+            </View>
+            <Text style={styles.pickGroupLabel}>Chassis</Text>
+            <View style={styles.chipWrap}>
+              {chassisList.map((c) => (
+                <TouchableOpacity key={c.id} style={[styles.pickChip, selChassis === c.id && styles.pickChipActive]} onPress={() => setSelChassis(selChassis === c.id ? null : c.id)}>
+                  <Text style={[styles.pickChipText, selChassis === c.id && styles.pickChipTextActive]}>{c.chassis_number}{c.is_rental ? ' · R' : ''}</Text>
+                </TouchableOpacity>
+              ))}
+              {chassisList.length === 0 ? <Text style={styles.noRes}>No chassis in fleet.</Text> : null}
+            </View>
+            <Text style={styles.pickGroupLabel}>Trailer (optional)</Text>
+            <View style={styles.chipWrap}>
+              {trailersList.map((t) => (
+                <TouchableOpacity key={t.id} style={[styles.pickChip, selTrailer === t.id && styles.pickChipActive]} onPress={() => setSelTrailer(selTrailer === t.id ? null : t.id)}>
+                  <Text style={[styles.pickChipText, selTrailer === t.id && styles.pickChipTextActive]}>{t.plate || t.data?.trailerNumber || 'Trailer'}</Text>
+                </TouchableOpacity>
+              ))}
+              {trailersList.length === 0 ? <Text style={styles.noRes}>No trailers in fleet.</Text> : null}
+            </View>
+            <Button label="Save equipment" fullWidth size="lg" loading={assignEquipMutation.isPending}
+              onPress={() => void assignEquipMutation.mutateAsync({ orderId, truckId: selTruck, chassisId: selChassis, trailerId: selTrailer }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'))} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Charges modal */}
+      <Modal visible={chargeModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setChargeModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Free days & rates</Text>
+            <TouchableOpacity onPress={() => setChargeModal(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody} keyboardShouldPersistTaps="handled">
+            <Text style={styles.pickGroupLabel}>Per diem (steamship line)</Text>
+            <Input label="Last free day (YYYY-MM-DD)" value={pdLfd} onChangeText={setPdLfd} placeholder="2026-07-20" autoCapitalize="none" />
+            <Input label="Daily rate ($/day)" value={pdRate} onChangeText={setPdRate} placeholder="e.g. 150" keyboardType="numeric" />
+            <Text style={styles.pickGroupLabel}>Demurrage (port/terminal)</Text>
+            <Input label="Last free day (YYYY-MM-DD)" value={dmLfd} onChangeText={setDmLfd} placeholder="2026-07-18" autoCapitalize="none" />
+            <Input label="Daily rate ($/day)" value={dmRate} onChangeText={setDmRate} placeholder="e.g. 200" keyboardType="numeric" />
+            <Text style={styles.pickGroupLabel}>Storage (yard/warehouse)</Text>
+            <Input label="Last free day (YYYY-MM-DD)" value={stLfd} onChangeText={setStLfd} placeholder="2026-07-25" autoCapitalize="none" />
+            <Input label="Daily rate ($/day)" value={stRate} onChangeText={setStRate} placeholder="e.g. 75" keyboardType="numeric" />
+            <Button label="Save charges" fullWidth size="lg" loading={setChargesMutation.isPending} onPress={saveCharges} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Shipping line modal */}
+      <Modal visible={lineModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLineModal(false)}>
+        <View style={[styles.modal, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20 }]}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Shipping line</Text>
+            <TouchableOpacity onPress={() => setLineModal(false)} style={styles.closeBtn}><X size={18} color={C.text} /></TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalBody}>
+            {(linesQuery.data ?? []).map((l: any) => (
+              <TouchableOpacity key={l.id} style={styles.driverItem} onPress={() => void setLineMutation.mutateAsync({ orderId, shippingLineId: l.id }).catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown'))}>
+                <View style={styles.driverIcon}><Ship size={16} color={C.accent} /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.driverName}>{l.name}</Text>
+                  {l.scac ? <Text style={styles.driverMeta}>{l.scac}</Text> : null}
+                </View>
+                {shippingLine?.id === l.id ? <CheckCircle2 size={18} color={C.green} /> : null}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -573,4 +823,21 @@ const styles = StyleSheet.create({
   driverMeta: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   driverStepHint: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bgSecondary, borderRadius: 10, padding: 10 },
   driverStepHintText: { flex: 1, fontSize: 11, color: C.textMuted, lineHeight: 16 },
+  bobtailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bobtailText: { fontSize: 12, color: C.yellow, fontWeight: '600' as const },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap' as const, gap: 8 },
+  chargeChip: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999, borderWidth: 1 },
+  chargeChipText: { fontSize: 11.5, fontWeight: '800' as const },
+  accrText: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  inspRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 6 },
+  inspDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  inspTitle: { fontSize: 13, fontWeight: '700' as const, color: C.text },
+  inspMeta: { fontSize: 12, color: C.textSecondary, marginTop: 1 },
+  inspTime: { fontSize: 11, color: C.textMuted, marginTop: 1 },
+  docHint: { fontSize: 11, color: C.textMuted, fontStyle: 'italic' as const },
+  pickGroupLabel: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.5, marginTop: 6 },
+  pickChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  pickChipActive: { backgroundColor: C.accentDim, borderColor: C.accent },
+  pickChipText: { fontSize: 13, color: C.textSecondary, fontWeight: '600' as const },
+  pickChipTextActive: { color: C.accent, fontWeight: '700' as const },
 });
