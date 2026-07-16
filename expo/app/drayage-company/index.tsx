@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, CalendarClock, DollarSign, Fuel, HelpCircle, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -119,6 +119,18 @@ export default function DrayageCompanyDashboard() {
             <Receipt size={20} color={C.blue} />
             <Text style={styles.actionTitle}>Invoicing</Text>
             <Text style={styles.actionText}>Send invoices, track A/R & expenses</Text>
+          </Card>
+        </View>
+        <View style={styles.actionsRow}>
+          <Card onPress={() => router.push('/drayage-company/settlement' as never)} style={styles.actionCard}>
+            <Coins size={20} color={C.green} />
+            <Text style={styles.actionTitle}>Driver settlement</Text>
+            <Text style={styles.actionText}>Pay drivers & see per-move profit</Text>
+          </Card>
+          <Card onPress={() => router.push('/drayage-company/reports' as never)} style={styles.actionCard}>
+            <BarChart3 size={20} color={C.purple} />
+            <Text style={styles.actionTitle}>Reports & KPIs</Text>
+            <Text style={styles.actionText}>On-time %, fleet use, profit & driver stats</Text>
           </Card>
         </View>
         <View style={styles.actionsRow}>
