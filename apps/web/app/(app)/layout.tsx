@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentSessionContext } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { AutoWatchdog } from "@/components/auto-watchdog";
 import type { UserRole } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Topbar email={ctx.user.email ?? null} role={role} />
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
+      <AutoWatchdog />
     </div>
   );
 }

@@ -49,10 +49,26 @@ import {
   Layers,
   Handshake,
   Store,
+  SlidersHorizontal,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
+import { useCustomization } from "@/lib/hooks/use-customization";
 import { cn } from "@/lib/utils";
+
+/** Maps a nav href to the customization module key it belongs to (for hide/rename). */
+const HREF_MODULE: Record<string, string> = {
+  "/drayage-company/reports": "reports",
+  "/drayage-company/settlement": "settlement",
+  "/drayage-company/fuel-surcharge": "fuel-surcharge",
+  "/drayage-company/shipping-lines": "shipping-lines",
+  "/drayage-company/equipment-report": "equipment-report",
+  "/drayage-company/dead-runs": "dead-runs",
+  "/drayage-company/terminals": "terminals",
+  "/trucking/reports": "reports",
+  "/trucking/settlement": "settlement",
+  "/trucking/fuel-surcharge": "fuel-surcharge",
+};
 
 interface NavItem {
   href: string;
@@ -88,6 +104,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/partners", label: "Partners", icon: Handshake },
         { href: "/company/add-role", label: "Add a role", icon: Layers },
+        { href: "/customize", label: "Customize workspace", icon: SlidersHorizontal },
       ],
     });
   }
@@ -150,6 +167,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/super-admin/billing", label: "Billing oversight", icon: CreditCard },
         { href: "/super-admin/finance", label: "Payments & finance", icon: Wallet },
         { href: "/super-admin/support", label: "Support inbox", icon: LifeBuoy },
+        { href: "/super-admin/customizations", label: "Customization requests", icon: SlidersHorizontal },
       ],
     });
   }
@@ -373,7 +391,18 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
 
 export function Sidebar({ role, isAdmin }: { role: UserRole | null; isAdmin: boolean }) {
   const pathname = usePathname();
-  const sections = buildNav(role, isAdmin);
+  const { isHidden, term } = useCustomization();
+  const sections = buildNav(role, isAdmin)
+    .map((section) => ({
+      ...section,
+      items: section.items
+        .filter((item) => {
+          const moduleKey = HREF_MODULE[item.href];
+          return !moduleKey || !isHidden(moduleKey);
+        })
+        .map((item) => ({ ...item, label: term(item.label, item.label) })),
+    }))
+    .filter((section) => section.items.length > 0);
   return (
     <aside className="glass-panel hidden w-64 shrink-0 border-r border-white/5 md:flex md:flex-col">
       <div className="flex h-14 items-center border-b border-white/5 px-5">

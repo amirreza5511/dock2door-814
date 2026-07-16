@@ -358,6 +358,14 @@ export default function CopilotPage() {
         await linkStreetTurn.mutateAsync({ providerOrderId: String(p.providerOrderId), receiverOrderId: String(p.receiverOrderId) });
       } else if (action.type === "run_watchdog") {
         await runWatchdog.mutateAsync();
+      } else if (action.type === "request_customization") {
+        const title = typeof p.title === "string" && p.title.trim() ? p.title.trim() : "Customize workspace";
+        const { error } = await supabase.rpc("submit_customization_request", {
+          p_title: title,
+          p_details: typeof p.details === "string" ? p.details : "",
+          p_payload: (typeof p.payload === "object" && p.payload !== null ? p.payload : {}) as Record<string, unknown>,
+        });
+        if (error) throw new Error(error.message);
       } else {
         throw new Error("Unknown action type.");
       }

@@ -21,6 +21,15 @@ function money(n: number | null | undefined, currency = "CAD"): string {
   return `${currency} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const ACCESSORIALS: { label: string; desc: string }[] = [
+  { label: "Per diem", desc: "Per diem (container detention)" },
+  { label: "Demurrage", desc: "Demurrage (terminal storage)" },
+  { label: "Storage", desc: "Storage" },
+  { label: "Chassis", desc: "Chassis usage" },
+  { label: "Waiting", desc: "Waiting / detention time" },
+  { label: "Pre-pull", desc: "Pre-pull fee" },
+];
+
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline"> = {
   Paid: "default",
   Issued: "secondary",
@@ -191,6 +200,23 @@ function InvoiceComposer({
 
           <div className="space-y-2">
             <Label>Line items</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {ACCESSORIALS.map((a) => (
+                <button
+                  key={a.label}
+                  type="button"
+                  className="rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition hover:bg-primary/20"
+                  onClick={() =>
+                    setLines((prev) => {
+                      const next = prev.filter((l) => l.description.trim().length > 0 || Number(l.unitPrice) > 0);
+                      return [...next, { description: a.desc, quantity: 1, unitPrice: 0 }];
+                    })
+                  }
+                >
+                  <Plus className="mr-1 inline h-3 w-3" />{a.label}
+                </button>
+              ))}
+            </div>
             {lines.map((l, i) => (
               <div key={i} className="flex items-center gap-2">
                 <Input
