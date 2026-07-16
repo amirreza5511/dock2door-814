@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { SlidersHorizontal, EyeOff, ListPlus, Tag, Check, Clock, X, Plus } from "lucide-react";
+import { SlidersHorizontal, EyeOff, ListPlus, Tag, Check, Clock, X, Plus, ArrowUp, ArrowDown, ArrowUpDown, Settings2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +41,23 @@ const RENAMABLE: { key: string; label: string }[] = [
   { key: "Driver", label: "Driver" },
 ];
 
+const ORDERABLE: { key: string; label: string }[] = [
+  { key: "orders-board", label: "Orders Board" },
+  { key: "dispatch", label: "Dispatch" },
+  { key: "terminals", label: "Terminals" },
+  { key: "fleet", label: "Fleet" },
+  { key: "rates", label: "Rates & Zones" },
+  { key: "invoicing", label: "Invoicing" },
+  { key: "settlement", label: "Driver settlement" },
+  { key: "reports", label: "Reports & KPIs" },
+  { key: "fuel-surcharge", label: "Fuel surcharge" },
+  { key: "shipping-lines", label: "Shipping lines" },
+  { key: "equipment-report", label: "Equipment & charges" },
+  { key: "dead-runs", label: "Dead runs" },
+];
+
+const CURRENCIES = ["USD", "CAD", "EUR", "GBP"];
+
 const FIELD_TYPES = ["text", "number", "date", "boolean", "select"] as const;
 type FieldType = (typeof FIELD_TYPES)[number];
 
@@ -66,6 +83,28 @@ export default function CustomizePage() {
   const [fields, setFields] = useState<DraftField[]>([]);
   const [renames, setRenames] = useState<Record<string, string>>({});
   const [details, setDetails] = useState("");
+  const [order, setOrder] = useState<string[]>([]);
+  const [invoiceDueDays, setInvoiceDueDays] = useState("");
+  const [currency, setCurrency] = useState("");
+
+  const orderedList = useMemo(() => {
+    const rank = new Map(order.map((k, i) => [k, i]));
+    return [...ORDERABLE].sort((a, b) => {
+      const ra = rank.has(a.key) ? (rank.get(a.key) as number) : Number.MAX_SAFE_INTEGER;
+      const rb = rank.has(b.key) ? (rank.get(b.key) as number) : Number.MAX_SAFE_INTEGER;
+      return ra === rb ? 0 : ra - rb;
+    });
+  }, [order]);
+
+  const moveSection = (key: string, dir: -1 | 1) => {
+    const base = orderedList.map((o) => o.key);
+    const idx = base.indexOf(key);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= base.length) return;
+    const next = [...base];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setOrder(next);
+  };
 
   const toggleHide = (key: string) =>
     setHide((prev) => {
@@ -99,15 +138,24 @@ export default function CustomizePage() {
     [renames],
   );
 
-  const canSubmit = hide.size > 0 || cleanFields.length > 0 || Object.keys(cleanRenames).length > 0;
+  const cleanDefaults = useMemo(() => {
+    const d: Record<string, unknown> = {};
+    if (invoiceDueDays.trim() && Number.isFinite(Number(invoiceDueDays))) d.invoiceDueDays = Number(invoiceDueDays);
+    if (currency.trim()) d.currency = currency.trim();
+    return d;
+  }, [invoiceDueDays, currency]);
+
+  const canSubmit = hide.size > 0 || cleanFields.length > 0 || Object.keys(cleanRenames).length > 0 || order.length > 0 || Object.keys(cleanDefaults).length > 0;
 
   const derivedTitle = useMemo(() => {
     const parts: string[] = [];
     if (hide.size > 0) parts.push(`hide ${hide.size} section${hide.size > 1 ? "s" : ""}`);
     if (cleanFields.length > 0) parts.push(`add ${cleanFields.length} field${cleanFields.length > 1 ? "s" : ""}`);
     if (Object.keys(cleanRenames).length > 0) parts.push(`rename ${Object.keys(cleanRenames).length} term${Object.keys(cleanRenames).length > 1 ? "s" : ""}`);
+    if (order.length > 0) parts.push("reorder sections");
+    if (Object.keys(cleanDefaults).length > 0) parts.push("set defaults");
     return parts.length ? `Customize: ${parts.join(", ")}` : "Customize workspace";
-  }, [hide, cleanFields, cleanRenames]);
+  }, [hide, cleanFields, cleanRenames, order, cleanDefaults]);
 
   const onSubmit = () => {
     if (!canSubmit) return;
@@ -119,6 +167,8 @@ export default function CustomizePage() {
           hiddenModules: [...hide],
           customFields: cleanFields,
           terminology: cleanRenames,
+          ...(order.length > 0 ? { sectionOrder: order } : {}),
+          ...(Object.keys(cleanDefaults).length > 0 ? { defaults: cleanDefaults } : {}),
         },
       },
       {
@@ -127,6 +177,9 @@ export default function CustomizePage() {
           setFields([]);
           setRenames({});
           setDetails("");
+          setOrder([]);
+          setInvoiceDueDays("");
+          setCurrency("");
         },
       },
     );
@@ -233,6 +286,57 @@ export default function CustomizePage() {
                   onChange={(e) => setRenames((p) => ({ ...p, [r.key]: e.target.value }))}
                 />
               </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reorder sections */}
+      <Card>
+        <CardContent className="space-y-3 py-4">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <ArrowUpDown className="h-4 w-4 text-muted-foreground" /> Reorder your sections (most-used first)
+          </p>
+          <div className="space-y-1.5">
+            {orderedList.map((s, i) => (
+              <div key={s.key} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
+                <span className="w-5 text-center text-xs font-bold text-muted-foreground">{i + 1}</span>
+                <span className="flex-1 text-sm font-medium">{s.label}</span>
+                <Button size="icon" variant="ghost" disabled={i === 0} onClick={() => moveSection(s.key, -1)}>
+                  <ArrowUp className="h-4 w-4" />
+                </Button>
+                <Button size="icon" variant="ghost" disabled={i === orderedList.length - 1} onClick={() => moveSection(s.key, 1)}>
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Defaults */}
+      <Card>
+        <CardContent className="space-y-3 py-4">
+          <p className="flex items-center gap-2 text-sm font-semibold">
+            <Settings2 className="h-4 w-4 text-muted-foreground" /> Workspace defaults for new records
+          </p>
+          <div className="flex items-center gap-3">
+            <span className="w-40 shrink-0 text-sm text-muted-foreground">Invoice due (days)</span>
+            <Input type="number" placeholder="e.g. 21" value={invoiceDueDays} onChange={(e) => setInvoiceDueDays(e.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {CURRENCIES.map((cur) => (
+              <button
+                key={cur}
+                type="button"
+                onClick={() => setCurrency((prev) => (prev === cur ? "" : cur))}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                  currency === cur ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:bg-accent",
+                )}
+              >
+                {cur}
+              </button>
             ))}
           </div>
         </CardContent>

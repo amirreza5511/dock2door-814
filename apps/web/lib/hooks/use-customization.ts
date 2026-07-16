@@ -18,6 +18,7 @@ export interface CustomizationSettings {
   customFields: CustomField[];
   defaults: Record<string, unknown>;
   terminology: Record<string, string>;
+  sectionOrder: string[];
 }
 
 const EMPTY: CustomizationSettings = {
@@ -25,6 +26,7 @@ const EMPTY: CustomizationSettings = {
   customFields: [],
   defaults: {},
   terminology: {},
+  sectionOrder: [],
 };
 
 function normalizeField(raw: unknown): CustomField | null {
@@ -52,6 +54,7 @@ function normalizeSettings(raw: unknown): CustomizationSettings {
     terminology: (typeof settings.terminology === "object" && settings.terminology !== null
       ? Object.fromEntries(Object.entries(settings.terminology).filter(([, v]) => typeof v === "string"))
       : {}) as Record<string, string>,
+    sectionOrder: Array.isArray(settings.sectionOrder) ? settings.sectionOrder.filter((m): m is string => typeof m === "string") : [],
   };
 }
 
@@ -77,6 +80,18 @@ export function useCustomization() {
     const isHidden = (moduleKey: string): boolean => settings.hiddenModules.includes(moduleKey);
     const term = (key: string, fallback: string): string => settings.terminology[key] ?? fallback;
     const getDefault = <T,>(key: string, fallback: T): T => (settings.defaults[key] as T | undefined) ?? fallback;
+    const orderSections = <T,>(items: T[], keyOf: (item: T) => string): T[] => {
+      if (settings.sectionOrder.length === 0) return items;
+      const rank = new Map(settings.sectionOrder.map((k, i) => [k, i]));
+      return items
+        .map((item, i) => ({ item, i }))
+        .sort((a, b) => {
+          const ra = rank.has(keyOf(a.item)) ? (rank.get(keyOf(a.item)) as number) : Number.MAX_SAFE_INTEGER;
+          const rb = rank.has(keyOf(b.item)) ? (rank.get(keyOf(b.item)) as number) : Number.MAX_SAFE_INTEGER;
+          return ra === rb ? a.i - b.i : ra - rb;
+        })
+        .map((x) => x.item);
+    };
     return {
       settings,
       hiddenModules: settings.hiddenModules,
@@ -84,6 +99,8 @@ export function useCustomization() {
       isHidden,
       term,
       getDefault,
+      orderSections,
+      sectionOrder: settings.sectionOrder,
       isLoading: q.isLoading,
     };
   }, [settings, q.isLoading]);
@@ -100,6 +117,8 @@ export interface CustomizationRequestRow {
     hiddenModules?: string[];
     customFields?: { label?: string; type?: string }[];
     terminology?: Record<string, string>;
+    sectionOrder?: string[];
+    defaults?: Record<string, unknown>;
   } | null;
   admin_note: string | null;
   requester_name: string | null;
@@ -161,6 +180,22 @@ export function useDecideCustomizationRequest() {
         p_request_id: input.requestId,
         p_approve: input.approve,
         p_note: input.note ?? "",
+      });
+      if (error) throw new Error(error.message);
+    },
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["customization"] }),
+  });
+}
+
+/** Admins edit a company's active settings directly (no request needed). Migration 0152. */
+export function useAdminSetCustomizations() {
+  const supabase = getBrowserSupabase();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { companyId: string; payload: Record<string, unknown> }) => {
+      const { error } = await supabase.rpc("admin_set_company_customizations", {
+        p_company_id: input.companyId,
+        p_payload: input.payload ?? {},
       });
       if (error) throw new Error(error.message);
     },

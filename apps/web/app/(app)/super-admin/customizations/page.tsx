@@ -1,15 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { SlidersHorizontal, EyeOff, ListPlus, Tag, Check, X, Clock, Building2, MessageSquare } from "lucide-react";
+import { useMemo, useState } from "react";
+import { SlidersHorizontal, EyeOff, ListPlus, Tag, Check, X, Clock, Building2, MessageSquare, ArrowUpDown, Settings2, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   useAllCustomizationRequests,
   useDecideCustomizationRequest,
+  useAdminSetCustomizations,
 } from "@/lib/hooks/use-customization";
 import { cn } from "@/lib/utils";
+
+const DIRECT_HIDEABLE: { key: string; label: string }[] = [
+  { key: "reports", label: "Reports & KPIs" },
+  { key: "settlement", label: "Driver settlement" },
+  { key: "fuel-surcharge", label: "Fuel surcharge" },
+  { key: "shipping-lines", label: "Shipping lines" },
+  { key: "equipment-report", label: "Equipment & charges" },
+  { key: "dead-runs", label: "Dead runs" },
+  { key: "terminals", label: "Terminals" },
+  { key: "invoicing", label: "Invoicing" },
+];
 
 const STATUS_BADGE: Record<string, string> = {
   pending: "bg-yellow-500/15 text-yellow-500",
@@ -21,8 +33,32 @@ export default function SuperAdminCustomizationsPage() {
   const [filter, setFilter] = useState<"pending" | "all">("pending");
   const requestsQ = useAllCustomizationRequests(filter);
   const decide = useDecideCustomizationRequest();
+  const adminSet = useAdminSetCustomizations();
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [editCompany, setEditCompany] = useState<string>("");
+  const [directHide, setDirectHide] = useState<Set<string>>(new Set());
+
+  const companies = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of requestsQ.data ?? []) {
+      if (r.company_id) map.set(r.company_id, r.company_name ?? "Company");
+    }
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [requestsQ.data]);
+
+  const toggleDirectHide = (key: string) =>
+    setDirectHide((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const applyDirect = async () => {
+    if (!editCompany) return;
+    await adminSet.mutateAsync({ companyId: editCompany, payload: { hiddenModules: [...directHide] } });
+  };
 
   const act = async (id: string, approve: boolean) => {
     setBusyId(id);
@@ -72,7 +108,7 @@ export default function SuperAdminCustomizationsPage() {
             const fields = r.payload?.customFields ?? [];
             const terminology = r.payload?.terminology ?? {};
             const busy = busyId === r.id;
-            const hasChanges = hidden.length > 0 || fields.length > 0 || Object.keys(terminology).length > 0;
+            const hasChanges = hidden.length > 0 || fields.length > 0 || Object.keys(terminology).length > 0 || (r.payload?.sectionOrder ?? []).length > 0 || Boolean(r.payload?.defaults && Object.keys(r.payload.defaults).length > 0);
             return (
               <Card key={r.id}>
                 <CardContent className="space-y-2.5 py-4">
@@ -104,6 +140,16 @@ export default function SuperAdminCustomizationsPage() {
                   {Object.keys(terminology).length > 0 ? (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Tag className="h-3.5 w-3.5" /> Rename: {Object.entries(terminology).map(([k, v]) => `${k} → ${v}`).join(", ")}
+                    </div>
+                  ) : null}
+                  {(r.payload?.sectionOrder ?? []).length > 0 ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <ArrowUpDown className="h-3.5 w-3.5" /> Reorder: {(r.payload?.sectionOrder ?? []).join(" → ")}
+                    </div>
+                  ) : null}
+                  {r.payload?.defaults && Object.keys(r.payload.defaults).length > 0 ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Settings2 className="h-3.5 w-3.5" /> Defaults: {Object.entries(r.payload.defaults).map(([k, v]) => `${k}=${String(v)}`).join(", ")}
                     </div>
                   ) : null}
 

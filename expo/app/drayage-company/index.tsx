@@ -25,7 +25,7 @@ export default function DrayageCompanyDashboard() {
   const logout = useAuthStore((s) => s.logout);
   const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 30000 });
   useAutoWatchdog();
-  const { isHidden, term } = useCustomization();
+  const { isHidden, term, orderSections } = useCustomization();
 
   const actions = useMemo<{ key: string; moduleKey?: string; icon: LucideIcon; color: string; title: string; text: string; route: string }[]>(() => {
     const all = [
@@ -42,8 +42,9 @@ export default function DrayageCompanyDashboard() {
       { key: 'equipment-report', moduleKey: 'equipment-report', icon: Layers, color: C.blue, title: term('Equipment & charges'), text: 'Rental cost & per diem exposure', route: '/drayage-company/equipment-report' },
       { key: 'dead-runs', moduleKey: 'dead-runs', icon: TrendingDown, color: C.red, title: 'Dead runs', text: 'Empty miles, cost & street-turn savings', route: '/drayage-company/dead-runs' },
     ];
-    return all.filter((a) => !a.moduleKey || !isHidden(a.moduleKey));
-  }, [isHidden, term]);
+    const visible = all.filter((a) => !a.moduleKey || !isHidden(a.moduleKey));
+    return orderSections(visible, (a) => a.moduleKey ?? a.key);
+  }, [isHidden, term, orderSections]);
 
   const actionRows = useMemo(() => {
     const rows: (typeof actions)[] = [];

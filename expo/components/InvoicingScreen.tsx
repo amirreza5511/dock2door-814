@@ -13,6 +13,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { useCustomization } from '@/providers/CustomizationProvider';
 
 type Tab = 'invoices' | 'accounting';
 
@@ -314,19 +315,21 @@ function InvoiceComposer({ visible, onClose, onCreated }: { visible: boolean; on
   const insets = useSafeAreaInsets();
   const companiesQuery = trpc.invoicing.customerCompanies.useQuery(undefined, { enabled: visible });
   const createMutation = trpc.invoicing.create.useMutation();
+  const { getDefault } = useCustomization();
+  const defaultDueDays = String(getDefault<number>('invoiceDueDays', 14));
 
   const [customer, setCustomer] = useState<CompanyOpt | null>(null);
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
   const [customerName, setCustomerName] = useState<string>('');
   const [customerEmail, setCustomerEmail] = useState<string>('');
   const [taxRate, setTaxRate] = useState<string>('0');
-  const [dueDays, setDueDays] = useState<string>('14');
+  const [dueDays, setDueDays] = useState<string>(defaultDueDays);
   const [notes, setNotes] = useState<string>('');
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
 
   const reset = () => {
     setCustomer(null); setCustomerName(''); setCustomerEmail(''); setTaxRate('0');
-    setDueDays('14'); setNotes(''); setLines([newLine()]);
+    setDueDays(defaultDueDays); setNotes(''); setLines([newLine()]);
   };
 
   const subtotal = useMemo(() =>
@@ -349,7 +352,7 @@ function InvoiceComposer({ visible, onClose, onCreated }: { visible: boolean; on
         customerName: customerName.trim() || customer?.name || '',
         customerEmail: customerEmail.trim(),
         taxRate: Number(taxRate) || 0,
-        dueDays: Number(dueDays) || 14,
+        dueDays: Number(dueDays) || Number(defaultDueDays) || 14,
         notes: notes.trim(),
         status,
         lines: cleanLines,

@@ -56,8 +56,13 @@ import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
 import { useCustomization } from "@/lib/hooks/use-customization";
 import { cn } from "@/lib/utils";
 
-/** Maps a nav href to the customization module key it belongs to (for hide/rename). */
+/** Maps a nav href to the customization module key it belongs to (for hide/rename/reorder). */
 const HREF_MODULE: Record<string, string> = {
+  "/drayage-company/board": "orders-board",
+  "/drayage-company/dispatch": "dispatch",
+  "/drayage-company/fleet": "fleet",
+  "/drayage-company/rates": "rates",
+  "/drayage-company/invoicing": "invoicing",
   "/drayage-company/reports": "reports",
   "/drayage-company/settlement": "settlement",
   "/drayage-company/fuel-surcharge": "fuel-surcharge",
@@ -391,16 +396,17 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
 
 export function Sidebar({ role, isAdmin }: { role: UserRole | null; isAdmin: boolean }) {
   const pathname = usePathname();
-  const { isHidden, term } = useCustomization();
+  const { isHidden, term, orderSections } = useCustomization();
   const sections = buildNav(role, isAdmin)
     .map((section) => ({
       ...section,
-      items: section.items
-        .filter((item) => {
+      items: orderSections(
+        section.items.filter((item) => {
           const moduleKey = HREF_MODULE[item.href];
           return !moduleKey || !isHidden(moduleKey);
-        })
-        .map((item) => ({ ...item, label: term(item.label, item.label) })),
+        }),
+        (item) => HREF_MODULE[item.href] ?? item.href,
+      ).map((item) => ({ ...item, label: term(item.label, item.label) })),
     }))
     .filter((section) => section.items.length > 0);
   return (

@@ -3007,6 +3007,27 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return (data ?? {}) as Record<string, unknown>;
   },
 
+  // Admins read/edit a company's active settings directly (no request needed). Migration 0152.
+  'customization.adminGet': async (input: { companyId: string }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('admin_get_company_customizations', { p_company_id: input.companyId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return {};
+      throwErr(error, 'Unable to load company settings');
+    }
+    return (data ?? {}) as Record<string, unknown>;
+  },
+
+  'customization.adminSet': async (input: { companyId: string; payload: Record<string, unknown> }, ctx) => {
+    if (!isAdmin(ctx.user.role)) throw new Error('Admins only');
+    const { data, error } = await supabase.rpc('admin_set_company_customizations', {
+      p_company_id: input.companyId,
+      p_payload: input.payload ?? {},
+    });
+    if (error) throwErr(error, 'Unable to save company settings');
+    return (data ?? {}) as Record<string, unknown>;
+  },
+
   'drayage.setOrderCustomFields': async (input: { orderId: string; values: Record<string, unknown> }) => {
     const { data, error } = await supabase.rpc('set_order_custom_fields', {
       p_order_id: input.orderId,

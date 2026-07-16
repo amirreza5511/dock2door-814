@@ -17,6 +17,8 @@ export interface CustomizationSettings {
   customFields: CustomField[];
   defaults: Record<string, unknown>;
   terminology: Record<string, string>;
+  /** Ordered module keys the company wants shown first (partial list is fine). */
+  sectionOrder: string[];
 }
 
 const EMPTY: CustomizationSettings = {
@@ -24,6 +26,7 @@ const EMPTY: CustomizationSettings = {
   customFields: [],
   defaults: {},
   terminology: {},
+  sectionOrder: [],
 };
 
 function normalizeField(raw: unknown): CustomField | null {
@@ -61,7 +64,10 @@ function normalize(raw: unknown): CustomizationSettings {
       if (typeof v === 'string' && v.trim()) terminology[k] = v;
     }
   }
-  return { hiddenModules, customFields, defaults, terminology };
+  const sectionOrder = Array.isArray(r.sectionOrder)
+    ? r.sectionOrder.filter((m): m is string => typeof m === 'string')
+    : [];
+  return { hiddenModules, customFields, defaults, terminology, sectionOrder };
 }
 
 /**
@@ -99,6 +105,27 @@ export const [CustomizationProvider, useCustomization] = createContextHook(() =>
     [settings.defaults],
   );
 
+  /**
+   * Order a list of items by the company's preferred section order. Items whose
+   * key appears in sectionOrder come first (in that order); the rest keep their
+   * original order. Stable and safe when sectionOrder is empty.
+   */
+  const orderSections = useCallback(
+    <T,>(items: T[], keyOf: (item: T) => string): T[] => {
+      if (settings.sectionOrder.length === 0) return items;
+      const rank = new Map(settings.sectionOrder.map((k, i) => [k, i]));
+      return items
+        .map((item, i) => ({ item, i }))
+        .sort((a, b) => {
+          const ra = rank.has(keyOf(a.item)) ? (rank.get(keyOf(a.item)) as number) : Number.MAX_SAFE_INTEGER;
+          const rb = rank.has(keyOf(b.item)) ? (rank.get(keyOf(b.item)) as number) : Number.MAX_SAFE_INTEGER;
+          return ra === rb ? a.i - b.i : ra - rb;
+        })
+        .map((x) => x.item);
+    },
+    [settings.sectionOrder],
+  );
+
   return {
     settings,
     hiddenModules: settings.hiddenModules,
@@ -106,6 +133,8 @@ export const [CustomizationProvider, useCustomization] = createContextHook(() =>
     isHidden,
     term,
     getDefault,
+    orderSections,
+    sectionOrder: settings.sectionOrder,
     isLoading: settingsQuery.isLoading,
     refresh: settingsQuery.refetch,
   };
