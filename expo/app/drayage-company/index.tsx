@@ -127,6 +127,7 @@ export default function DrayageCompanyDashboard() {
             <Text style={styles.actionTitle}>Fuel surcharge</Text>
             <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices</Text>
           </Card>
+          <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
         </View>
 
         {/* Open Orders */}
