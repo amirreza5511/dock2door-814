@@ -14,7 +14,7 @@ import { SUPPORT_PHONE, COMPANY_NAME, COMPANY_ADDRESS, COMPANY_PHONES, COMPANY_E
 
 /**
  * Shared support entry point. Renders a compact header icon button that opens a
- * sheet giving every screen the same four actions: AI Assistant, Help Center,
+ * sheet giving every screen the same actions: AI Copilot, Help Center,
  * message the admin/support team, and call support. Drop it into any screen
  * header so users are never more than one tap from help.
  */
@@ -81,9 +81,9 @@ export default function SupportMenu({ tint }: { tint?: string }) {
             <SupportRow
               icon={<Sparkles size={20} color={C.accent} />}
               tint={C.accentDim}
-              title="AI Assistant"
-              subtitle="Ask anything about your work — instant answers"
-              onPress={() => go('/assistant')}
+              title="AI Copilot"
+              subtitle="Knows your live work — chat, alerts & one-tap actions"
+              onPress={() => go('/copilot')}
             />
             <SupportRow
               icon={<BookOpen size={20} color={C.green} />}

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CircleCheckBig, HelpCircle, LogOut, Search, ShieldAlert, Warehouse, X } from 'lucide-react-native';
+import { CircleCheckBig, HelpCircle, LogOut, Search, ShieldAlert, Sparkles, Warehouse, X } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
@@ -224,6 +224,9 @@ export default function GatePanelScreen() {
         <View style={styles.headerRow}>
           <Text style={styles.title}>Gate Staff Panel</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity onPress={() => router.push('/copilot' as never)} style={[styles.logoutBtn, { backgroundColor: C.purple + '15', borderColor: C.purple + '40' }]} testID="gate-copilot-btn">
+              <Sparkles size={18} color={C.purple} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/help' as never)} style={[styles.logoutBtn, { backgroundColor: C.accent + '15', borderColor: C.accent + '40' }]} testID="gate-help-btn">
               <HelpCircle size={18} color={C.accent} />
             </TouchableOpacity>

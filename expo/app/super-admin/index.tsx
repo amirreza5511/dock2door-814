@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck,
+  Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck, Sparkles,
   Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle, Megaphone, Activity,
   Wallet, TrendingUp,
 } from 'lucide-react-native';
@@ -172,6 +172,16 @@ export default function SuperAdminOverviewScreen() {
               {user?.name ? <Text style={styles.userName}>{user.name}</Text> : null}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => router.push('/copilot' as never)}
+                style={styles.logoutBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="AI Copilot"
+                testID="super-admin-copilot-btn"
+              >
+                <Sparkles size={18} color={C.purple} />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/help' as never)}
                 style={styles.logoutBtn}
