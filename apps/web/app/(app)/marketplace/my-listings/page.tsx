@@ -29,6 +29,7 @@ interface Listing {
 const TYPE_BADGE: Record<ServiceType, "success" | "warning" | "secondary"> = {
   service: "success",
   equipment_rental: "warning",
+  crane_service: "warning",
   mobile_repair: "secondary",
   cargo_insurance: "warning",
 };

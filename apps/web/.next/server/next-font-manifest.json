@@ -76,6 +76,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/cargo-insurer/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/company/[id]/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -164,6 +168,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/drayage-company/fuel-surcharge/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/drayage-company/invoicing/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -173,6 +181,14 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/drayage-company/rates/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/drayage-company/reports/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/drayage-company/settlement/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -316,6 +332,38 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/marketplace-buyer/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/browse/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/create/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/my-listings/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/order/[id]/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/provider/[id]/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/marketplace/requests/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/messages/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -329,6 +377,14 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/partners/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/rental-company/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/repair-provider/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -397,6 +453,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/service-provider/team/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/shipper/documents/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -488,6 +548,10 @@
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
+    "[project]/app/(app)/trucking/fuel-surcharge/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
     "[project]/app/(app)/trucking/invoicing/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
@@ -513,6 +577,14 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/(app)/trucking/rates/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/trucking/reports/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/(app)/trucking/settlement/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
@@ -641,6 +713,10 @@
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ],
     "[project]/app/page": [
+      "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
+      "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
+    ],
+    "[project]/app/t/[token]/page": [
       "static/media/6bd983bd58a87a3d-s.p.0h108oidc_0fm.woff2",
       "static/media/83afe278b6a6bb3c-s.p.0q-301v4kxxnr.woff2"
     ]

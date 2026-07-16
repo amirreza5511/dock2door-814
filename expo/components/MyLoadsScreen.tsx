@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { Image } from 'expo-image';
-import { ArrowLeft, Camera, CheckCircle2, ChevronRight, Flag, FileText, MapPin, MessageCircle, Navigation, Navigation2, Package, Phone, Radio, ScanLine, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
+import { ArrowLeft, Camera, CheckCircle2, ChevronRight, Flag, FileText, MapPin, MessageCircle, Navigation, Navigation2, Package, Phone, Radio, ScanLine, Timer, Truck, UserCheck, UserRound, Warehouse, Moon, X } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -98,6 +98,59 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
   };
 
   const user = useAuthStore((s) => s.user);
+
+  // --- Driver shift time-clock (hourly pay). Drivers on the accepted view only. ---
+  const isDriver = source === 'accepted' && user?.role === 'Driver';
+  const openShiftQuery = trpc.driverShifts.open.useQuery(undefined, { enabled: isDriver, refetchInterval: 60000 });
+  const openShift = (openShiftQuery.data ?? null) as { id: string; started_at: string } | null;
+  const startShift = trpc.driverShifts.start.useMutation({ onSuccess: async () => { await openShiftQuery.refetch(); } });
+  const endShift = trpc.driverShifts.end.useMutation({ onSuccess: async () => { await openShiftQuery.refetch(); } });
+  const [nowTick, setNowTick] = useState<number>(Date.now());
+  useEffect(() => {
+    if (!openShift) return;
+    const t = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, [openShift]);
+
+  const toggleShift = () => {
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (openShift) {
+      endShift.mutate(undefined, { onError: (e) => Alert.alert('Unable to end shift', e instanceof Error ? e.message : 'Error') });
+    } else {
+      startShift.mutate(undefined, { onError: (e) => Alert.alert('Unable to start shift', e instanceof Error ? e.message : 'Error') });
+    }
+  };
+
+  const renderShiftClock = () => {
+    if (!isDriver) return null;
+    const on = !!openShift;
+    let elapsed = '';
+    if (on && openShift) {
+      const mins = Math.max(0, Math.round((nowTick - new Date(openShift.started_at).getTime()) / 60000));
+      elapsed = `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    }
+    return (
+      <Card style={StyleSheet.flatten([styles.shiftCard, on && styles.shiftCardOn])}>
+        <View style={styles.shiftRow}>
+          <View style={[styles.shiftIcon, { backgroundColor: (on ? C.green : C.accent) + '1E' }]}>
+            <Timer size={18} color={on ? C.green : C.accent} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.shiftTitle}>{on ? 'On the clock' : 'Off the clock'}</Text>
+            <Text style={styles.shiftSub}>{on ? `Working ${elapsed} · hourly pay is tracking` : 'Start your shift to log hourly work time'}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.shiftBtn, on ? styles.shiftBtnEnd : styles.shiftBtnStart]}
+            disabled={startShift.isPending || endShift.isPending}
+            onPress={toggleShift}
+          >
+            <Text style={[styles.shiftBtnText, on && { color: C.white }]}>{on ? 'End shift' : 'Start shift'}</Text>
+          </TouchableOpacity>
+        </View>
+      </Card>
+    );
+  };
+
   // Only a carrier (trucking) company can dispatch accepted loads to its drivers.
   const canDispatch = source === 'accepted' && user?.role === 'TruckingCompany' && Boolean(user?.companyId);
   const [dispatchFor, setDispatchFor] = useState<string | null>(null);
@@ -629,6 +682,8 @@ export default function MyLoadsScreen({ title = 'My loads', source = 'accepted' 
           <EmptyState icon={Truck} title={source === 'posted' ? 'No posted loads yet' : 'No accepted loads yet'} description={source === 'posted' ? 'Post a load and track its progress here as a driver picks it up.' : 'Accept a load from the marketplace and it will show up here to run.'} />
         ) : null}
 
+        {renderShiftClock()}
+
         {renderNav()}
 
         {active.length > 0 ? (
@@ -790,6 +845,16 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '800' as const, color: C.textSecondary, textTransform: 'uppercase' as const, letterSpacing: 0.6 },
   card: { gap: 10 },
   cardActive: { borderColor: C.accent, borderWidth: 2 },
+  shiftCard: { gap: 0 },
+  shiftCardOn: { borderColor: C.green + '88', borderWidth: 1.5 },
+  shiftRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  shiftIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  shiftTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  shiftSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  shiftBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  shiftBtnStart: { backgroundColor: C.accentDim, borderColor: C.accent },
+  shiftBtnEnd: { backgroundColor: C.green, borderColor: C.green },
+  shiftBtnText: { fontSize: 13.5, fontWeight: '800' as const, color: C.accent },
   navCard: { gap: 12, borderColor: C.accent, borderWidth: 2 },
   navStageRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   navStageIcon: { width: 38, height: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },

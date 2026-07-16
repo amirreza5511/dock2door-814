@@ -3,7 +3,9 @@
   "config": {
     "env": {
       "NEXT_PUBLIC_SUPABASE_URL": "https://hyargzciywuqhlcaorwy.supabase.co",
-      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz"
+      "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz",
+      "NEXT_PUBLIC_TOOLKIT_URL": "",
+      "NEXT_PUBLIC_RORK_TOOLKIT_SECRET_KEY": ""
     },
     "webpack": null,
     "typescript": {

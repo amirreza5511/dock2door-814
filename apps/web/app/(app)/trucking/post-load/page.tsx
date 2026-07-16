@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuoteLoad, usePostLoad, VEHICLE_LABEL, CARGO_LABEL, money } from "@/lib/hooks/use-loads";
+import { getBrowserSupabase } from "@/lib/supabase/browser";
 
 const VEHICLES = Object.keys(VEHICLE_LABEL);
 const CARGOS = Object.keys(CARGO_LABEL);
@@ -33,6 +34,8 @@ export default function TruckingPostLoadPage() {
   const [notes, setNotes] = useState("");
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
+  const [deadlineDate, setDeadlineDate] = useState("");
+  const [deadlineTime, setDeadlineTime] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const coords = useMemo(
@@ -66,7 +69,7 @@ export default function TruckingPostLoadPage() {
     setError(null);
     if (!coordsValid) { setError("Enter valid pickup and drop-off coordinates first."); return; }
     try {
-      await post.mutateAsync({
+      const posted = await post.mutateAsync({
         ...coords,
         pickupAddress,
         pickupCity,
@@ -80,6 +83,13 @@ export default function TruckingPostLoadPage() {
         recipientName,
         recipientPhone,
       });
+      // Optional delivery deadline — feeds the dispatch-board delay alerts.
+      if (deadlineDate.trim() && posted?.id) {
+        const iso = new Date(`${deadlineDate.trim()}T${(deadlineTime.trim() || "17:00")}:00`).toISOString();
+        if (Number.isFinite(new Date(iso).getTime())) {
+          try { await getBrowserSupabase().rpc("set_load_deadline", { p_load_id: posted.id, p_deadline: iso }); } catch { /* non-fatal */ }
+        }
+      }
       router.push("/trucking/my-loads");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to post load");
@@ -128,6 +138,10 @@ export default function TruckingPostLoadPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Recipient name" value={recipientName} onChange={setRecipientName} />
             <Field label="Recipient phone" value={recipientPhone} onChange={setRecipientPhone} />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Delivery deadline date" value={deadlineDate} onChange={setDeadlineDate} placeholder="YYYY-MM-DD" />
+            <Field label="Deadline time (optional)" value={deadlineTime} onChange={setDeadlineTime} placeholder="HH:MM (defaults 17:00)" />
           </div>
           <div className="space-y-1.5">
             <Label>Notes</Label>

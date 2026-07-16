@@ -3,7 +3,7 @@ import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, Toucha
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { CheckCircle2, ChevronLeft, Circle, Coins, DollarSign, Fuel, TrendingUp, UserRound, X } from 'lucide-react-native';
+import { CheckCircle2, ChevronLeft, Circle, Coins, DollarSign, Fuel, Timer, TrendingUp, UserRound, X } from 'lucide-react-native';
 import EmptyState from '@/components/ui/EmptyState';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
@@ -14,13 +14,18 @@ type LoadRow = {
   id: string; vehicle_type: string; status: string;
   accepted_driver_user_id?: string | null; driver_name?: string | null;
   pickup_address?: string | null; dropoff_address?: string | null;
-  provider_net?: number | null; total_price?: number | null;
+  provider_net?: number | null; total_price?: number | null; freight_price?: number | null;
   driver_pay_type?: string | null; driver_pay_value?: number | null; fuel_cost?: number | null;
   driver_settled?: boolean | null; delivered_at?: string | null;
 };
 
-type FleetDriver = { id: string; name?: string | null; data?: { name?: string; userId?: string } | null };
+type FleetDriver = { id: string; name?: string | null; data?: { name?: string; userId?: string; driverType?: string; defaultHourlyRate?: number } | null };
+type ShiftRow = { id: string; driver_user_id: string; minutes?: number | null; ended_at?: string | null };
+type FscRow = { month: string; percent: number };
 
+type PayType = 'Percent' | 'Flat' | 'Hourly';
+
+/** Per-load driver pay. Hourly loads contribute 0 here (paid from shift hours). */
 function driverPay(l: LoadRow): number {
   const net = Number(l.provider_net ?? 0);
   if (l.driver_pay_type === 'Percent') return Math.round(net * Number(l.driver_pay_value ?? 0)) / 100;
@@ -30,6 +35,10 @@ function driverPay(l: LoadRow): number {
 function tripProfit(l: LoadRow): number {
   return Number(l.provider_net ?? 0) - driverPay(l) - Number(l.fuel_cost ?? 0);
 }
+/** Freight basis for FSC (falls back to carrier net when freight isn't set). */
+function freightOf(l: LoadRow): number {
+  return Number(l.freight_price ?? l.provider_net ?? 0);
+}
 
 export default function SettlementScreen() {
   const insets = useSafeAreaInsets();
@@ -37,23 +46,59 @@ export default function SettlementScreen() {
   const utils = trpc.useUtils();
   const query = trpc.loads.settlement.useQuery(undefined, { refetchInterval: 30000 });
   const driversQuery = trpc.operations.listFleet.useQuery({ entity: 'drivers' });
+  const shiftsQuery = trpc.driverShifts.company.useQuery({ days: 90 });
+  const fscQuery = trpc.fsc.list.useQuery();
   const setSettlement = trpc.loads.setSettlement.useMutation();
   const markSettled = trpc.loads.markSettled.useMutation();
 
   const [editing, setEditing] = useState<LoadRow | null>(null);
-  const [payType, setPayType] = useState<'Percent' | 'Flat'>('Percent');
+  const [payType, setPayType] = useState<PayType>('Percent');
   const [payValue, setPayValue] = useState<string>('');
   const [fuel, setFuel] = useState<string>('');
   const [onlyUnsettled, setOnlyUnsettled] = useState<boolean>(false);
 
   const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
   const drivers = useMemo<FleetDriver[]>(() => (driversQuery.data ?? []) as FleetDriver[], [driversQuery.data]);
+  const shifts = useMemo<ShiftRow[]>(() => (shiftsQuery.data ?? []) as ShiftRow[], [shiftsQuery.data]);
+  const fscRows = useMemo<FscRow[]>(() => (fscQuery.data ?? []) as FscRow[], [fscQuery.data]);
+
+  // FSC percent that applies to a load, by its delivered month (0 if none set).
+  const fscPercentForMonth = useCallback((iso?: string | null): number => {
+    if (!iso) return fscRows[0] ? Number(fscRows[0].percent) : 0;
+    const key = iso.slice(0, 7);
+    const row = fscRows.find((r) => (r.month || '').slice(0, 7) === key);
+    return row ? Number(row.percent) : 0;
+  }, [fscRows]);
+
+  // Logged shift hours per driver over the period (for hourly pay).
+  const hoursByUid = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const s of shifts) {
+      if (!s.ended_at) continue;
+      const mins = Number(s.minutes ?? 0);
+      if (mins <= 0) continue;
+      m.set(s.driver_user_id, (m.get(s.driver_user_id) ?? 0) + mins / 60);
+    }
+    return m;
+  }, [shifts]);
 
   const nameByUid = useMemo(() => {
     const m = new Map<string, string>();
     for (const d of drivers) { const uid = d.data?.userId; if (uid) m.set(uid, d.name || d.data?.name || 'Driver'); }
     return m;
   }, [drivers]);
+
+  // Default hourly rate per driver (from their fleet record), keyed by auth uid.
+  const rateByUid = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const d of drivers) { const uid = d.data?.userId; if (uid) m.set(uid, Number(d.data?.defaultHourlyRate ?? 0)); }
+    return m;
+  }, [drivers]);
+
+  const hourlyPayForUid = useCallback((uid?: string | null): number => {
+    if (!uid) return 0;
+    return Math.round((hoursByUid.get(uid) ?? 0) * (rateByUid.get(uid) ?? 0));
+  }, [hoursByUid, rateByUid]);
 
   const driverLabel = useCallback((l: LoadRow): string => {
     if (l.driver_name?.trim()) return l.driver_name.trim();
@@ -73,21 +118,36 @@ export default function SettlementScreen() {
   }, [loads, driverLabel]);
 
   const totals = useMemo(() => {
-    let revenue = 0, pay = 0, fuelCost = 0, profit = 0, unpaid = 0;
+    let revenue = 0, pay = 0, fuelCost = 0, profit = 0, unpaid = 0, fsc = 0;
     for (const l of loads) {
       revenue += Number(l.provider_net ?? 0);
       pay += driverPay(l);
       fuelCost += Number(l.fuel_cost ?? 0);
       profit += tripProfit(l);
+      fsc += Math.round(freightOf(l) * fscPercentForMonth(l.delivered_at)) / 100;
       if (!l.driver_settled) unpaid += driverPay(l);
     }
-    return { revenue, pay, fuelCost, profit, unpaid };
-  }, [loads]);
+    // Add hourly pay across drivers that appear in the delivered set.
+    const uids = new Set<string>();
+    for (const l of loads) { if (l.accepted_driver_user_id) uids.add(l.accepted_driver_user_id); }
+    let hourly = 0;
+    for (const uid of uids) hourly += hourlyPayForUid(uid);
+    pay += hourly;
+    profit -= hourly;
+    return { revenue, pay, fuelCost, profit, unpaid, fsc, hourly };
+  }, [loads, fscPercentForMonth, hourlyPayForUid]);
 
   const openEdit = (l: LoadRow) => {
     setEditing(l);
-    setPayType((l.driver_pay_type as 'Percent' | 'Flat') || 'Percent');
-    setPayValue(l.driver_pay_value != null ? String(l.driver_pay_value) : '');
+    // Pre-fill pay method from the load, else from the driver's type.
+    let pt: PayType = (l.driver_pay_type as PayType) || 'Percent';
+    let pv = l.driver_pay_value != null ? String(l.driver_pay_value) : '';
+    if (!l.driver_pay_type && l.accepted_driver_user_id) {
+      const d = drivers.find((x) => x.data?.userId === l.accepted_driver_user_id);
+      if (d?.data?.driverType === 'Company') { pt = 'Hourly'; pv = String(rateByUid.get(l.accepted_driver_user_id) ?? ''); }
+    }
+    setPayType(pt);
+    setPayValue(pv);
     setFuel(l.fuel_cost != null ? String(l.fuel_cost) : '');
   };
 
@@ -133,6 +193,8 @@ export default function SettlementScreen() {
           <View style={styles.sumCard}><DollarSign size={15} color={C.green} /><Text style={styles.sumValue}>${totals.revenue.toFixed(0)}</Text><Text style={styles.sumLabel}>Revenue</Text></View>
           <View style={styles.sumCard}><Coins size={15} color={C.accent} /><Text style={styles.sumValue}>${totals.pay.toFixed(0)}</Text><Text style={styles.sumLabel}>Driver pay</Text></View>
           <View style={styles.sumCard}><Fuel size={15} color={C.yellow} /><Text style={styles.sumValue}>${totals.fuelCost.toFixed(0)}</Text><Text style={styles.sumLabel}>Fuel</Text></View>
+          <View style={styles.sumCard}><Fuel size={15} color={C.blue} /><Text style={styles.sumValue}>${totals.fsc.toFixed(0)}</Text><Text style={styles.sumLabel}>Fuel surcharge</Text></View>
+          <View style={styles.sumCard}><Timer size={15} color={C.accent} /><Text style={styles.sumValue}>${totals.hourly.toFixed(0)}</Text><Text style={styles.sumLabel}>Hourly pay</Text></View>
           <View style={styles.sumCard}><TrendingUp size={15} color={C.green} /><Text style={[styles.sumValue, { color: totals.profit >= 0 ? C.green : C.red }]}>${totals.profit.toFixed(0)}</Text><Text style={styles.sumLabel}>Profit</Text></View>
         </View>
 
@@ -146,7 +208,10 @@ export default function SettlementScreen() {
         ) : groups.map((g) => {
           const gLoads = onlyUnsettled ? g.loads.filter((l) => !l.driver_settled) : g.loads;
           if (gLoads.length === 0) return null;
-          const gPay = gLoads.reduce((s, l) => s + driverPay(l), 0);
+          const gUid = gLoads.find((l) => l.accepted_driver_user_id)?.accepted_driver_user_id ?? null;
+          const gHourly = hourlyPayForUid(gUid);
+          const gHours = gUid ? (hoursByUid.get(gUid) ?? 0) : 0;
+          const gPay = gLoads.reduce((s, l) => s + driverPay(l), 0) + gHourly;
           const gUnpaid = gLoads.filter((l) => !l.driver_settled).reduce((s, l) => s + driverPay(l), 0);
           return (
             <View key={g.name} style={styles.group}>
@@ -154,7 +219,7 @@ export default function SettlementScreen() {
                 <View style={styles.groupAvatar}><UserRound size={16} color={C.accent} /></View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.groupName}>{g.name}</Text>
-                  <Text style={styles.groupMeta}>{gLoads.length} load{gLoads.length > 1 ? 's' : ''} · ${gPay.toFixed(0)} pay</Text>
+                  <Text style={styles.groupMeta}>{gLoads.length} load{gLoads.length > 1 ? 's' : ''} · ${gPay.toFixed(0)} pay{gHourly > 0 ? ` · ${gHours.toFixed(1)}h hourly` : ''}</Text>
                 </View>
                 {gUnpaid > 0 ? <View style={styles.unpaidTag}><Text style={styles.unpaidTagText}>${gUnpaid.toFixed(0)} due</Text></View> : <CheckCircle2 size={18} color={C.green} />}
               </View>
@@ -200,14 +265,15 @@ export default function SettlementScreen() {
               <TouchableOpacity onPress={() => setEditing(null)} style={styles.modalClose}><X size={18} color={C.text} /></TouchableOpacity>
             </View>
             <View style={styles.segment}>
-              {(['Percent', 'Flat'] as const).map((t) => (
+              {(['Percent', 'Flat', 'Hourly'] as const).map((t) => (
                 <TouchableOpacity key={t} style={[styles.segBtn, payType === t && styles.segBtnOn]} onPress={() => setPayType(t)}>
-                  <Text style={[styles.segText, payType === t && styles.segTextOn]}>{t === 'Percent' ? '% of net' : 'Flat rate'}</Text>
+                  <Text style={[styles.segText, payType === t && styles.segTextOn]}>{t === 'Percent' ? '% of net' : t === 'Flat' ? 'Flat rate' : 'Hourly'}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={styles.inputLabel}>{payType === 'Percent' ? 'Percent of carrier net (%)' : 'Flat trip amount ($)'}</Text>
-            <TextInput value={payValue} onChangeText={setPayValue} keyboardType="numeric" placeholder={payType === 'Percent' ? 'e.g. 70' : 'e.g. 850'} placeholderTextColor={C.textMuted} style={styles.input} />
+            <Text style={styles.inputLabel}>{payType === 'Percent' ? 'Percent of carrier net (%)' : payType === 'Flat' ? 'Flat trip amount ($)' : 'Hourly rate ($/h)'}</Text>
+            <TextInput value={payValue} onChangeText={setPayValue} keyboardType="numeric" placeholder={payType === 'Percent' ? 'e.g. 70' : payType === 'Flat' ? 'e.g. 850' : 'e.g. 28'} placeholderTextColor={C.textMuted} style={styles.input} />
+            {payType === 'Hourly' ? <Text style={styles.hourlyNote}>Hourly drivers are paid from their logged shift hours × this rate. The per-load figure stays $0; hourly pay is summed per driver from the shift clock.</Text> : null}
             <Text style={styles.inputLabel}>Fuel cost for this trip ($)</Text>
             <TextInput value={fuel} onChangeText={setFuel} keyboardType="numeric" placeholder="e.g. 220" placeholderTextColor={C.textMuted} style={styles.input} />
             {editing ? (
@@ -276,6 +342,7 @@ const styles = StyleSheet.create({
   segTextOn: { color: C.accent },
   inputLabel: { fontSize: 12.5, fontWeight: '700' as const, color: C.textSecondary },
   input: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingHorizontal: 14, height: 48, color: C.text, fontSize: 15 },
+  hourlyNote: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
   previewRow: { backgroundColor: C.greenDim, borderRadius: 10, padding: 12 },
   previewText: { fontSize: 13, fontWeight: '700' as const, color: C.green },
   saveBtn: { alignItems: 'center', justifyContent: 'center', backgroundColor: C.accent, borderRadius: 14, paddingVertical: 14, marginTop: 2 },

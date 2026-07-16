@@ -123,7 +123,7 @@ export default function DriverMyLoadsPage() {
         id: proof.load.id,
         status: proof.nextStatus,
         proofPhotoPath: photoPath,
-        receiverName: proof.kind === "delivery" ? receiverName.trim() : null,
+        receiverName: proof.kind === "delivery" ? receiverName.trim() : undefined,
         signaturePath,
       });
       closeProof();

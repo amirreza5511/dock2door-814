@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
-import { AlertTriangle, ArrowLeft, Clock, Crosshair, MapPin, Route as RouteIcon, Search, Truck, Zap } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, CalendarClock, Clock, Crosshair, MapPin, Route as RouteIcon, Search, Truck, Zap } from 'lucide-react-native';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import LoadsMap, { type MapPoint } from '@/components/LoadsMap';
@@ -70,6 +70,8 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const [speed, setSpeed] = useState<DeliverySpeed>('NextDay');
   const [storagePayer, setStoragePayer] = useState<StoragePayer>('shipper');
   const [notes, setNotes] = useState<string>('');
+  const [deadlineDate, setDeadlineDate] = useState<string>('');
+  const [deadlineTime, setDeadlineTime] = useState<string>('');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoting, setQuoting] = useState<boolean>(false);
   const [geocoding, setGeocoding] = useState<'pickup' | 'dropoff' | null>(null);
@@ -80,6 +82,7 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
   const quoteMutation = trpc.loads.quote.useMutation();
   const postMutation = trpc.loads.post.useMutation();
   const setContactMutation = trpc.loads.setReceiverContact.useMutation();
+  const setDeadlineMutation = trpc.loads.setDeadline.useMutation();
   const cargoClassesQuery = trpc.loads.cargoClasses.useQuery(undefined, { staleTime: 5 * 60_000 });
 
   // Live surcharge % / notes per class from the server, falling back to the static table.
@@ -257,6 +260,13 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
       // Email isn't part of post_load's signature; persist it right after posting.
       if (recipientEmail.trim() && posted?.id) {
         try { await setContactMutation.mutateAsync({ id: posted.id, email: recipientEmail.trim() }); } catch {}
+      }
+      // Delivery deadline (optional) — feeds the dispatch-board delay alerts.
+      if (deadlineDate.trim() && posted?.id) {
+        const iso = new Date(`${deadlineDate.trim()}T${(deadlineTime.trim() || '17:00')}:00`).toISOString();
+        if (Number.isFinite(new Date(iso).getTime())) {
+          try { await setDeadlineMutation.mutateAsync({ id: posted.id, deadline: iso }); } catch {}
+        }
       }
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Load posted', 'Your load is now live on the marketplace.', [
@@ -465,6 +475,16 @@ export default function PostLoadScreen({ doneRoute, title = 'Post a load' }: Pos
             <TextInput style={styles.addrInput} placeholder="Recipient email" placeholderTextColor={C.textMuted} value={recipientEmail} onChangeText={setRecipientEmail} keyboardType="email-address" autoCapitalize="none" />
           </View>
           <Text style={styles.addrHint}>Add a phone or email so you can share a live tracking link with the receiver — no account needed.</Text>
+        </Card>
+
+        <Text style={styles.sectionTitle}>Delivery deadline (optional)</Text>
+        <Card style={styles.addrCard}>
+          <View style={styles.addrRow}>
+            <CalendarClock size={14} color={C.accent} />
+            <TextInput style={styles.addrInput} placeholder="Date (YYYY-MM-DD)" placeholderTextColor={C.textMuted} value={deadlineDate} onChangeText={setDeadlineDate} autoCapitalize="none" />
+            <TextInput style={[styles.addrInput, { flex: 0.6 }]} placeholder="HH:MM" placeholderTextColor={C.textMuted} value={deadlineTime} onChangeText={setDeadlineTime} autoCapitalize="none" />
+          </View>
+          <Text style={styles.addrHint}>Set a delivery deadline to power on-time vs late alerts on the carrier&apos;s dispatch board. Defaults to 5:00 PM if no time is given.</Text>
         </Card>
 
         <Card style={styles.notesCard}>

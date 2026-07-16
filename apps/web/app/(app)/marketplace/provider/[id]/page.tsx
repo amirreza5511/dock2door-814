@@ -30,6 +30,7 @@ interface Listing {
 const TYPE_BADGE: Record<ServiceType, "success" | "warning" | "secondary"> = {
   service: "success",
   equipment_rental: "warning",
+  crane_service: "warning",
   mobile_repair: "secondary",
   cargo_insurance: "warning",
 };
@@ -69,9 +70,9 @@ export default function ProviderProfilePage() {
           .order("created_at", { ascending: false }),
         supabase.from("reviews").select("rating").eq("target_id", companyId),
       ]);
-      const rows = reviews ?? [];
+      const rows = (reviews ?? []) as { rating: number | null }[];
       const reviewCount = rows.length;
-      const rating = reviewCount > 0 ? rows.reduce((s, r) => s + Number(r.rating ?? 0), 0) / reviewCount : 0;
+      const rating = reviewCount > 0 ? rows.reduce((s: number, r) => s + Number(r.rating ?? 0), 0) / reviewCount : 0;
       return {
         company: company as { id: string; name: string; city: string | null } | null,
         listings: (listings ?? []) as Listing[],

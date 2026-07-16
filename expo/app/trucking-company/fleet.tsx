@@ -51,6 +51,8 @@ interface FleetFormState {
   notes: string;
   insuranceExpiry: string;
   inspectionExpiry: string;
+  driverType: string;
+  defaultHourlyRate: string;
 }
 
 const INITIAL_FORM: FleetFormState = {
@@ -71,6 +73,8 @@ const INITIAL_FORM: FleetFormState = {
   notes: '',
   insuranceExpiry: '',
   inspectionExpiry: '',
+  driverType: 'Company',
+  defaultHourlyRate: '',
 };
 
 /** Days until an ISO/date string; null when unset/invalid. Negative = expired. */
@@ -92,6 +96,7 @@ function docState(dateStr: string, kind: string): DocState {
 }
 
 const STATUS_OPTIONS: string[] = ['Active', 'Maintenance', 'Out of service', 'Inactive'];
+const DRIVER_TYPE_OPTIONS: string[] = ['Company', 'Owner-operator'];
 const TRAILER_TYPE_OPTIONS: string[] = ['20ft', '40ft', '53ft', 'Chassis 20/40 Combo', 'Tri-axle'];
 const CONTAINER_TYPE_OPTIONS: string[] = ['20GP', '40GP', '40HC', '45HC', 'Reefer'];
 const ACTIVE_LOAD_STATUS = ['Accepted', 'EnRoute', 'Arrived'];
@@ -148,6 +153,8 @@ function mapItemToForm(entity: FleetEntity, item: FleetItem): FleetFormState {
     notes: readText(data.notes),
     insuranceExpiry: readText(data.insuranceExpiry),
     inspectionExpiry: readText(data.inspectionExpiry),
+    driverType: readText(data.driverType, 'Company'),
+    defaultHourlyRate: data.defaultHourlyRate != null ? String(data.defaultHourlyRate) : '',
   };
 }
 
@@ -258,6 +265,8 @@ export default function TruckingFleetScreen() {
       notes: form.notes || null,
       insuranceExpiry: form.insuranceExpiry || null,
       inspectionExpiry: form.inspectionExpiry || null,
+      driverType: form.driverType || 'Company',
+      defaultHourlyRate: form.defaultHourlyRate.trim() === '' ? 0 : Number(form.defaultHourlyRate),
     };
     try {
       if (form.id) await updateMutation.mutateAsync({ entity, id: form.id, payload });
@@ -420,6 +429,8 @@ export default function TruckingFleetScreen() {
                     <Input label="Account email (to link for dispatch)" value={form.email} onChangeText={(value) => setForm((c) => ({ ...c, email: value }))} placeholder="driver@dock2door.com" autoCapitalize="none" keyboardType="email-address" testID="fleet-driver-email" />
                     <Input label="Truck number" value={form.truckNumber} onChangeText={(value) => setForm((c) => ({ ...c, truckNumber: value }))} placeholder="TRK-102" testID="fleet-driver-truck" />
                     <Input label="Chassis number" value={form.chassisNumber} onChangeText={(value) => setForm((c) => ({ ...c, chassisNumber: value }))} placeholder="CH-2201" testID="fleet-driver-chassis" />
+                    <ChipSelect label="Driver type" options={DRIVER_TYPE_OPTIONS} value={form.driverType} onChange={(v) => setForm((c) => ({ ...c, driverType: v || 'Company' }))} testID="fleet-driver-type" />
+                    <Input label="Default hourly rate ($/h)" value={form.defaultHourlyRate} onChangeText={(value) => setForm((c) => ({ ...c, defaultHourlyRate: value }))} placeholder="e.g. 28" keyboardType="numeric" testID="fleet-driver-rate" />
                   </>
                 ) : null}
                 {entity === 'trucks' ? (

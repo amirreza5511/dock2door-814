@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { BarChart3, CalendarClock, Coins, CreditCard, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Truck, Users, Store } from 'lucide-react-native';
+import { BarChart3, CalendarClock, Coins, CreditCard, Fuel, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Truck, Users, Store } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
 import Card from '@/components/ui/Card';
@@ -156,6 +156,11 @@ export default function TruckingCompanyDashboard() {
             <BarChart3 size={20} color={C.purple} />
             <Text style={styles.actionTitle}>Reports & KPIs</Text>
             <Text style={styles.actionText}>On-time %, fleet use, profit & driver stats.</Text>
+          </Card>
+          <Card onPress={() => router.push('/trucking-company/fuel-surcharge' as never)} style={styles.actionCard}>
+            <Fuel size={20} color={C.blue} />
+            <Text style={styles.actionTitle}>Fuel surcharge</Text>
+            <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices.</Text>
           </Card>
           <Card onPress={() => router.push('/trucking-company/messages' as never)} style={styles.actionCard}>
             <MessagesSquare size={20} color={C.accent} />

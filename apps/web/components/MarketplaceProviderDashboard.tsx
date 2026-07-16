@@ -54,7 +54,7 @@ export default function MarketplaceProviderDashboard({ config }: { config: Provi
         .from("service_listings")
         .select("id, title, service_type, subcategory, status, hourly_rate")
         .eq("company_id", companyId);
-      const listingIds = (listings ?? []).map((l) => l.id as string);
+      const listingIds = ((listings ?? []) as { id: string }[]).map((l) => l.id);
 
       let jobs: any[] = [];
       if (listingIds.length > 0) {

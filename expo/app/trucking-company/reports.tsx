@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Clock, Gauge, Route as RouteIcon, TrendingUp, Truck, UserRound } from 'lucide-react-native';
+import { ChevronLeft, Clock, Fuel, Gauge, Route as RouteIcon, Timer, TrendingUp, Truck, UserRound } from 'lucide-react-native';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import EmptyState from '@/components/ui/EmptyState';
 import C from '@/constants/colors';
@@ -12,12 +12,14 @@ type LoadRow = {
   id: string; status: string; distance_km?: number | null;
   accepted_driver_user_id?: string | null; driver_name?: string | null;
   assigned_truck_id?: string | null;
-  provider_net?: number | null;
+  provider_net?: number | null; freight_price?: number | null;
   driver_pay_type?: string | null; driver_pay_value?: number | null; fuel_cost?: number | null;
   deadline_at?: string | null; delivered_at?: string | null;
 };
-type FleetDriver = { id: string; name?: string | null; data?: { name?: string; userId?: string } | null };
+type FleetDriver = { id: string; name?: string | null; data?: { name?: string; userId?: string; defaultHourlyRate?: number } | null };
 type FleetUnit = { id: string; status?: string | null };
+type ShiftRow = { driver_user_id: string; minutes?: number | null; ended_at?: string | null; started_at?: string | null };
+type FscRow = { month: string; percent: number };
 
 const PERIODS: [number, string][] = [[7, '7d'], [30, '30d'], [90, '90d']];
 
@@ -27,6 +29,9 @@ function driverPay(l: LoadRow): number {
   if (l.driver_pay_type === 'Flat') return Number(l.driver_pay_value ?? 0);
   return 0;
 }
+function freightOf(l: LoadRow): number {
+  return Number(l.freight_price ?? l.provider_net ?? 0);
+}
 
 export default function ReportsScreen() {
   const insets = useSafeAreaInsets();
@@ -35,6 +40,8 @@ export default function ReportsScreen() {
   const activeQuery = trpc.loads.listAccepted.useQuery(undefined, { refetchInterval: 30000 });
   const driversQuery = trpc.operations.listFleet.useQuery({ entity: 'drivers' });
   const trucksQuery = trpc.operations.listFleet.useQuery({ entity: 'trucks' });
+  const shiftsQuery = trpc.driverShifts.company.useQuery({ days: 90 });
+  const fscQuery = trpc.fsc.list.useQuery();
 
   const [days, setDays] = useState<number>(30);
 
@@ -52,6 +59,8 @@ export default function ReportsScreen() {
   );
   const drivers = useMemo<FleetDriver[]>(() => (driversQuery.data ?? []) as FleetDriver[], [driversQuery.data]);
   const trucks = useMemo<FleetUnit[]>(() => (trucksQuery.data ?? []) as FleetUnit[], [trucksQuery.data]);
+  const shifts = useMemo<ShiftRow[]>(() => (shiftsQuery.data ?? []) as ShiftRow[], [shiftsQuery.data]);
+  const fscRows = useMemo<FscRow[]>(() => (fscQuery.data ?? []) as FscRow[], [fscQuery.data]);
 
   const nameByUid = useMemo(() => {
     const m = new Map<string, string>();
@@ -59,28 +68,57 @@ export default function ReportsScreen() {
     return m;
   }, [drivers]);
 
+  const rateByUid = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const d of drivers) { const uid = d.data?.userId; if (uid) m.set(uid, Number(d.data?.defaultHourlyRate ?? 0)); }
+    return m;
+  }, [drivers]);
+
+  const fscPercentForMonth = (iso?: string | null): number => {
+    if (!iso) return fscRows[0] ? Number(fscRows[0].percent) : 0;
+    const key = iso.slice(0, 7);
+    const row = fscRows.find((r) => (r.month || '').slice(0, 7) === key);
+    return row ? Number(row.percent) : 0;
+  };
+
+  // Hourly pay over the selected period, from ended shifts within the window.
+  const hourlyPay = useMemo(() => {
+    const since = Date.now() - days * 86_400_000;
+    let total = 0;
+    for (const s of shifts) {
+      if (!s.ended_at) continue;
+      const t = s.started_at ? new Date(s.started_at).getTime() : 0;
+      if (t < since) continue;
+      const hrs = Number(s.minutes ?? 0) / 60;
+      total += hrs * (rateByUid.get(s.driver_user_id) ?? 0);
+    }
+    return Math.round(total);
+  }, [shifts, days, rateByUid]);
+
   const kpis = useMemo(() => {
-    let revenue = 0, cost = 0, loadedKm = 0, withDeadline = 0, onTime = 0;
+    let revenue = 0, cost = 0, loadedKm = 0, withDeadline = 0, onTime = 0, fsc = 0;
     for (const l of delivered) {
       revenue += Number(l.provider_net ?? 0);
       cost += driverPay(l) + Number(l.fuel_cost ?? 0);
       loadedKm += Number(l.distance_km ?? 0);
+      fsc += Math.round(freightOf(l) * fscPercentForMonth(l.delivered_at)) / 100;
       if (l.deadline_at && l.delivered_at) {
         withDeadline += 1;
         if (new Date(l.delivered_at).getTime() <= new Date(l.deadline_at).getTime()) onTime += 1;
       }
     }
+    cost += hourlyPay;
     const busyTrucks = new Set(active.filter((l) => l.assigned_truck_id).map((l) => l.assigned_truck_id as string)).size;
     const totalTrucks = trucks.filter((t) => (t.status ?? 'Active') === 'Active').length;
     return {
-      revenue, cost, profit: revenue - cost, loadedKm,
+      revenue, cost, profit: revenue - cost, loadedKm, fsc, hourlyPay,
       onTimePct: withDeadline > 0 ? Math.round((onTime / withDeadline) * 100) : null,
       withDeadline,
       utilization: totalTrucks > 0 ? Math.round((busyTrucks / totalTrucks) * 100) : null,
       busyTrucks, totalTrucks,
       activeCount: active.length, completedCount: delivered.length,
     };
-  }, [delivered, active, trucks]);
+  }, [delivered, active, trucks, hourlyPay]);
 
   const perDriver = useMemo(() => {
     const map = new Map<string, { name: string; loads: number; revenue: number; pay: number; profit: number; onTime: number; withDl: number }>();
@@ -148,6 +186,8 @@ export default function ReportsScreen() {
         <View style={styles.financeCard}>
           <Text style={styles.financeTitle}>Period summary</Text>
           <View style={styles.financeRow}><Text style={styles.financeLabel}>Revenue</Text><Text style={styles.financeVal}>${kpis.revenue.toFixed(0)}</Text></View>
+          <View style={styles.financeRow}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Fuel size={13} color={C.blue} /><Text style={styles.financeLabel}>Fuel surcharge collected</Text></View><Text style={[styles.financeVal, { color: C.blue }]}>${kpis.fsc.toFixed(0)}</Text></View>
+          <View style={styles.financeRow}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Timer size={13} color={C.accent} /><Text style={styles.financeLabel}>Hourly pay</Text></View><Text style={[styles.financeVal, { color: C.textSecondary }]}>-${kpis.hourlyPay.toFixed(0)}</Text></View>
           <View style={styles.financeRow}><Text style={styles.financeLabel}>Driver + fuel cost</Text><Text style={[styles.financeVal, { color: C.textSecondary }]}>-${kpis.cost.toFixed(0)}</Text></View>
           <View style={[styles.financeRow, styles.financeTotal]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><TrendingUp size={15} color={C.green} /><Text style={[styles.financeLabel, { color: C.text, fontWeight: '800' }]}>Net profit</Text></View>

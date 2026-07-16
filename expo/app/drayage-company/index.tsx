@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, CalendarClock, DollarSign, HelpCircle, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, CalendarClock, DollarSign, Fuel, HelpCircle, LogOut, MapPin, Package, Plus, Receipt, Ship, Truck, Users, Zap } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
@@ -119,6 +119,13 @@ export default function DrayageCompanyDashboard() {
             <Receipt size={20} color={C.blue} />
             <Text style={styles.actionTitle}>Invoicing</Text>
             <Text style={styles.actionText}>Send invoices, track A/R & expenses</Text>
+          </Card>
+        </View>
+        <View style={styles.actionsRow}>
+          <Card onPress={() => router.push('/drayage-company/fuel-surcharge' as never)} style={styles.actionCard}>
+            <Fuel size={20} color={C.blue} />
+            <Text style={styles.actionTitle}>Fuel surcharge</Text>
+            <Text style={styles.actionText}>Set this month&apos;s FSC added to invoices</Text>
           </Card>
         </View>
 

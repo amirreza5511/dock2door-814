@@ -87,6 +87,22 @@
       "namedRegex": "^/fulfillment/(?<nxtPbookingId>[^/]+?)(?:/)?$"
     },
     {
+      "page": "/marketplace/order/[id]",
+      "regex": "^/marketplace/order/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/marketplace/order/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/marketplace/provider/[id]",
+      "regex": "^/marketplace/provider/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPid": "nxtPid"
+      },
+      "namedRegex": "^/marketplace/provider/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
       "page": "/sales-agent/clients/[id]",
       "regex": "^/sales\\-agent/clients/([^/]+?)(?:/)?$",
       "routeKeys": {
@@ -101,6 +117,14 @@
         "nxtPid": "nxtPid"
       },
       "namedRegex": "^/shipper/track/(?<nxtPid>[^/]+?)(?:/)?$"
+    },
+    {
+      "page": "/t/[token]",
+      "regex": "^/t/([^/]+?)(?:/)?$",
+      "routeKeys": {
+        "nxtPtoken": "nxtPtoken"
+      },
+      "namedRegex": "^/t/(?<nxtPtoken>[^/]+?)(?:/)?$"
     },
     {
       "page": "/warehouse/listings/[id]/edit",
@@ -253,6 +277,12 @@
       "namedRegex": "^/admin/work\\-photos(?:/)?$"
     },
     {
+      "page": "/cargo-insurer",
+      "regex": "^/cargo\\-insurer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/cargo\\-insurer(?:/)?$"
+    },
+    {
       "page": "/company/add-role",
       "regex": "^/company/add\\-role(?:/)?$",
       "routeKeys": {},
@@ -367,6 +397,12 @@
       "namedRegex": "^/drayage\\-company/fleet(?:/)?$"
     },
     {
+      "page": "/drayage-company/fuel-surcharge",
+      "regex": "^/drayage\\-company/fuel\\-surcharge(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/fuel\\-surcharge(?:/)?$"
+    },
+    {
       "page": "/drayage-company/invoicing",
       "regex": "^/drayage\\-company/invoicing(?:/)?$",
       "routeKeys": {},
@@ -377,6 +413,18 @@
       "regex": "^/drayage\\-company/rates(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/drayage\\-company/rates(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/reports",
+      "regex": "^/drayage\\-company/reports(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/reports(?:/)?$"
+    },
+    {
+      "page": "/drayage-company/settlement",
+      "regex": "^/drayage\\-company/settlement(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/drayage\\-company/settlement(?:/)?$"
     },
     {
       "page": "/drayage-company/terminals",
@@ -571,6 +619,42 @@
       "namedRegex": "^/login(?:/)?$"
     },
     {
+      "page": "/marketplace",
+      "regex": "^/marketplace(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace(?:/)?$"
+    },
+    {
+      "page": "/marketplace/browse",
+      "regex": "^/marketplace/browse(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace/browse(?:/)?$"
+    },
+    {
+      "page": "/marketplace/create",
+      "regex": "^/marketplace/create(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace/create(?:/)?$"
+    },
+    {
+      "page": "/marketplace/my-listings",
+      "regex": "^/marketplace/my\\-listings(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace/my\\-listings(?:/)?$"
+    },
+    {
+      "page": "/marketplace/requests",
+      "regex": "^/marketplace/requests(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace/requests(?:/)?$"
+    },
+    {
+      "page": "/marketplace-buyer",
+      "regex": "^/marketplace\\-buyer(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/marketplace\\-buyer(?:/)?$"
+    },
+    {
       "page": "/messages",
       "regex": "^/messages(?:/)?$",
       "routeKeys": {},
@@ -593,6 +677,18 @@
       "regex": "^/partners(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/partners(?:/)?$"
+    },
+    {
+      "page": "/rental-company",
+      "regex": "^/rental\\-company(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/rental\\-company(?:/)?$"
+    },
+    {
+      "page": "/repair-provider",
+      "regex": "^/repair\\-provider(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/repair\\-provider(?:/)?$"
     },
     {
       "page": "/reviews",
@@ -695,6 +791,12 @@
       "regex": "^/shipper(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/shipper(?:/)?$"
+    },
+    {
+      "page": "/shipper/documents",
+      "regex": "^/shipper/documents(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/shipper/documents(?:/)?$"
     },
     {
       "page": "/shipper/loads",
@@ -823,6 +925,12 @@
       "namedRegex": "^/trucking/fleet(?:/)?$"
     },
     {
+      "page": "/trucking/fuel-surcharge",
+      "regex": "^/trucking/fuel\\-surcharge(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/fuel\\-surcharge(?:/)?$"
+    },
+    {
       "page": "/trucking/invoicing",
       "regex": "^/trucking/invoicing(?:/)?$",
       "routeKeys": {},
@@ -857,6 +965,18 @@
       "regex": "^/trucking/rates(?:/)?$",
       "routeKeys": {},
       "namedRegex": "^/trucking/rates(?:/)?$"
+    },
+    {
+      "page": "/trucking/reports",
+      "regex": "^/trucking/reports(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/reports(?:/)?$"
+    },
+    {
+      "page": "/trucking/settlement",
+      "regex": "^/trucking/settlement(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/trucking/settlement(?:/)?$"
     },
     {
       "page": "/trucking/team",

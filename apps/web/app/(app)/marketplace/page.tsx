@@ -48,7 +48,7 @@ export default function MarketplaceHomePage() {
         .from("service_listings")
         .select("id")
         .eq("company_id", companyId);
-      const listingIds = (myList ?? []).map((l) => l.id as string);
+      const listingIds = ((myList ?? []) as { id: string }[]).map((l) => l.id);
 
       const { count: sentCount } = await supabase
         .from("service_jobs")

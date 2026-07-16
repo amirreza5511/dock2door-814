@@ -1119,6 +1119,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
           truckNumber: p.truckNumber ?? '',
           chassisNumber: p.chassisNumber ?? '',
           notes: p.notes ?? '',
+          driverType: p.driverType ?? 'Company',
+          defaultHourlyRate: p.defaultHourlyRate ?? 0,
           ...(linkedUserId ? { userId: linkedUserId } : {}),
         },
       };
@@ -1158,6 +1160,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
           truckNumber: p.truckNumber ?? '',
           chassisNumber: p.chassisNumber ?? '',
           notes: p.notes ?? '',
+          driverType: p.driverType ?? 'Company',
+          defaultHourlyRate: p.defaultHourlyRate ?? 0,
           ...(linkedUserId ? { userId: linkedUserId } : {}),
         },
       };
@@ -1680,6 +1684,109 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
+  // =========================================================================
+  // DRIVER SHIFT CLOCK (hourly pay) — migration 0147
+  // =========================================================================
+  // Driver's current open shift (or null). Powers the Start/End toggle.
+  'driverShifts.open': async (_input, ctx) => {
+    const { data, error } = await supabase.from('driver_shifts').select('*')
+      .eq('driver_user_id', ctx.user.id).is('ended_at', null)
+      .order('started_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) {
+      if (isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load shift');
+    }
+    return (data as AnyRecord | null) ?? null;
+  },
+
+  // Driver's recent shifts (for their own log).
+  'driverShifts.mine': async (input: { days?: number } | undefined, ctx) => {
+    const since = new Date(); since.setDate(since.getDate() - (input?.days ?? 30));
+    const { data, error } = await supabase.from('driver_shifts').select('*')
+      .eq('driver_user_id', ctx.user.id)
+      .gte('started_at', since.toISOString())
+      .order('started_at', { ascending: false }).limit(200);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load shifts');
+    }
+    return data ?? [];
+  },
+
+  'driverShifts.start': async (_input, ctx) => {
+    const { data, error } = await supabase.rpc('start_shift', { p_company_id: ctx.user.companyId });
+    if (error) {
+      if (isMissingRelation(error)) throw new Error('Shift tracking isn\u2019t set up on the server yet. Apply migration 0147 and try again.');
+      throwErr(error, 'Unable to start shift');
+    }
+    return (data as AnyRecord) ?? {};
+  },
+
+  'driverShifts.end': async () => {
+    const { data, error } = await supabase.rpc('end_shift');
+    if (error) throwErr(error, 'Unable to end shift');
+    return (data as AnyRecord) ?? {};
+  },
+
+  // Company view: all shifts within a period, for hourly settlement.
+  'driverShifts.company': async (input: { days?: number } | undefined, ctx) => {
+    if (!ctx.user.companyId) return [] as AnyRecord[];
+    const since = new Date(); since.setDate(since.getDate() - (input?.days ?? 30));
+    const { data, error } = await supabase.from('driver_shifts').select('*')
+      .eq('company_id', ctx.user.companyId)
+      .gte('started_at', since.toISOString())
+      .order('started_at', { ascending: false }).limit(1000);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load shifts');
+    }
+    return data ?? [];
+  },
+
+  'driverShifts.setMinutes': async (input: { id: string; minutes: number }) => {
+    const { error } = await supabase.rpc('set_shift_minutes', { p_shift_id: input.id, p_minutes: input.minutes });
+    if (error) throwErr(error, 'Unable to update shift hours');
+    return { success: true };
+  },
+
+  // =========================================================================
+  // FUEL SURCHARGE (FSC) — migration 0147
+  // =========================================================================
+  'fsc.list': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [] as AnyRecord[];
+    const { data, error } = await supabase.from('fuel_surcharges').select('*')
+      .eq('company_id', ctx.user.companyId)
+      .order('month', { ascending: false }).limit(36);
+    if (error) {
+      if (isMissingRelation(error)) return [] as AnyRecord[];
+      throwErr(error, 'Unable to load fuel surcharge');
+    }
+    return data ?? [];
+  },
+
+  // Current month's FSC percent (0 if not set).
+  'fsc.current': async (_input, ctx) => {
+    if (!ctx.user.companyId) return { percent: 0 };
+    const month = new Date(); month.setUTCDate(1); month.setUTCHours(0, 0, 0, 0);
+    const monthStr = month.toISOString().slice(0, 10);
+    const { data, error } = await supabase.from('fuel_surcharges').select('percent')
+      .eq('company_id', ctx.user.companyId).eq('month', monthStr).maybeSingle();
+    if (error) {
+      if (isMissingRelation(error)) return { percent: 0 };
+      throwErr(error, 'Unable to load fuel surcharge');
+    }
+    return { percent: Number((data as AnyRecord | null)?.percent ?? 0) };
+  },
+
+  'fsc.set': async (input: { month: string; percent: number }) => {
+    const { data, error } = await supabase.rpc('set_fuel_surcharge', { p_month: input.month, p_percent: input.percent });
+    if (error) {
+      if (isMissingRelation(error)) throw new Error('Fuel surcharge isn\u2019t set up on the server yet. Apply migration 0147 and try again.');
+      throwErr(error, 'Unable to save fuel surcharge');
+    }
+    return (data as AnyRecord) ?? {};
+  },
+
   // Freight arriving at / stored in the current company's warehouse hub(s).
   // Pending = expected inbound, AtHub = received & in storage.
   'loads.hubInbound': async (_input, ctx) => {
@@ -1737,6 +1844,8 @@ const PROCEDURES: Record<string, ProcedureFn> = {
         email: meta.email ? String(meta.email) : null,
         phone: row.phone ? String(row.phone) : null,
         licenseNumber: row.license_number ? String(row.license_number) : null,
+        driverType: (meta.driverType as string) ?? 'Company',
+        defaultHourlyRate: Number(meta.defaultHourlyRate ?? 0),
       };
     });
   },
