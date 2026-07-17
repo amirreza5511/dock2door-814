@@ -91,6 +91,61 @@ export default function SuperAdminCustomizationsPage() {
         ))}
       </div>
 
+      {companies.length > 0 ? (
+        <Card>
+          <CardContent className="space-y-3 py-4">
+            <div className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-primary" />
+              <p className="text-sm font-semibold">Edit a company&apos;s settings directly</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Applies instantly without a request. Pick a company, choose which sections to hide, then save.
+            </p>
+            <select
+              value={editCompany}
+              onChange={(e) => setEditCompany(e.target.value)}
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Select a company…</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            {editCompany ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {DIRECT_HIDEABLE.map((m) => {
+                    const on = directHide.has(m.key);
+                    return (
+                      <button
+                        key={m.key}
+                        type="button"
+                        onClick={() => toggleDirectHide(m.key)}
+                        className={cn(
+                          "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition",
+                          on ? "border-primary bg-primary/10 text-primary" : "border-input text-muted-foreground hover:bg-muted",
+                        )}
+                      >
+                        <EyeOff className="h-3 w-3" /> {m.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" disabled={adminSet.isPending} onClick={() => void applyDirect()}>
+                    <Check className="mr-1.5 h-4 w-4" /> {adminSet.isPending ? "Saving…" : "Save changes"}
+                  </Button>
+                  {adminSet.isSuccess ? <span className="text-xs text-emerald-500">Applied.</span> : null}
+                  {adminSet.isError ? (
+                    <span className="text-xs text-red-500">{adminSet.error instanceof Error ? adminSet.error.message : "Failed"}</span>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {requestsQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : requests.length === 0 ? (

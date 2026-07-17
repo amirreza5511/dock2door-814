@@ -16,6 +16,7 @@ import {
   useCustomerCompanies,
   type InvoiceLineInput,
 } from "@/lib/hooks/use-invoicing";
+import { useCustomization } from "@/lib/hooks/use-customization";
 
 function money(n: number | null | undefined, currency = "CAD"): string {
   return `${currency} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -143,8 +144,11 @@ function InvoiceComposer({
 }) {
   const companiesQ = useCustomerCompanies(companyId);
   const create = useCreateInvoice(companyId);
+  const { getDefault } = useCustomization();
+  const defaultDueDays = String(getDefault<number>("invoiceDueDays", 14));
   const [customerId, setCustomerId] = useState<string>("");
   const [taxRate, setTaxRate] = useState("0");
+  const [dueDays, setDueDays] = useState<string>(defaultDueDays);
   const [lines, setLines] = useState<InvoiceLineInput[]>([{ description: "", quantity: 1, unitPrice: 0 }]);
 
   const total = useMemo(() => {
@@ -161,6 +165,7 @@ function InvoiceComposer({
         customerCompanyId: customerId || null,
         customerName: companiesQ.data?.find((c) => c.id === customerId)?.name ?? "",
         taxRate: Number(taxRate) || 0,
+        dueDays: Number(dueDays) || Number(defaultDueDays) || 14,
         status: "Issued",
         lines,
       },
@@ -170,6 +175,7 @@ function InvoiceComposer({
           setLines([{ description: "", quantity: 1, unitPrice: 0 }]);
           setCustomerId("");
           setTaxRate("0");
+          setDueDays(defaultDueDays);
         },
       },
     );
