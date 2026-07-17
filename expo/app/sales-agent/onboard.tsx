@@ -12,6 +12,7 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { webBaseUrl } from '@/lib/track-link';
 import type { SalesVertical } from '@/constants/types';
 
 const VERTICALS: { id: SalesVertical; label: string; blurb: string }[] = [
@@ -27,11 +28,10 @@ const VERTICALS: { id: SalesVertical; label: string; blurb: string }[] = [
   { id: 'driver', label: 'Driver', blurb: 'Owner-operator' },
 ];
 
+/** Shareable affiliate sign-up link. Works on native + web via the public web base URL. */
 function buildInviteLink(code: string): string | null {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    return `${window.location.origin}/auth/signup?ref=${encodeURIComponent(code)}`;
-  }
-  return null;
+  if (!code) return null;
+  return `${webBaseUrl().replace(/\/+$/, '')}/auth/signup?ref=${encodeURIComponent(code)}`;
 }
 
 export default function OnboardClient() {
