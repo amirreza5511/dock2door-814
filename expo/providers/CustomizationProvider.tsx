@@ -1,6 +1,7 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useCallback, useMemo } from 'react';
 import { trpc } from '@/lib/trpc';
+import { useAuthStore } from '@/store/auth';
 
 /** A company-defined custom field shown on the order form. */
 export interface CustomField {
@@ -77,9 +78,14 @@ function normalize(raw: unknown): CustomizationSettings {
  * backend migration is applied or when the company has no customizations.
  */
 export const [CustomizationProvider, useCustomization] = createContextHook(() => {
+  // Only fetch once a user is signed in — the RPC requires an authenticated
+  // session, so firing it on the landing/login screens just logs a
+  // "Not authenticated" error for nothing.
+  const isSignedIn = useAuthStore((s) => !!s.user);
   const settingsQuery = trpc.customization.mySettings.useQuery(undefined, {
     staleTime: 60_000,
     retry: false,
+    enabled: isSignedIn,
   });
 
   const settings = useMemo<CustomizationSettings>(() => normalize(settingsQuery.data), [settingsQuery.data]);
