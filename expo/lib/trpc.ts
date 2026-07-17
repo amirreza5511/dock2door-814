@@ -4493,6 +4493,118 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // EMPLOYMENT AGENCY (Domain 1) — roster, clients, claims, payables (0154)
+  // =========================================================================
+  'agency.workers': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('agency_workers')
+      .select('*')
+      .eq('agency_company_id', ctx.user.companyId)
+      .neq('status', 'Removed')
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load your worker roster');
+    }
+    return data ?? [];
+  },
+  'agency.addWorker': async (input: { name: string; email?: string; phone?: string; hourlyCost?: number }) => {
+    const { data, error } = await supabase.rpc('agency_add_worker', {
+      p_name: input.name,
+      p_email: input.email ?? '',
+      p_phone: input.phone ?? '',
+      p_hourly_cost: input.hourlyCost ?? 0,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Agency features are not live yet — apply migration 0154.');
+      throwErr(error, 'Unable to add worker');
+    }
+    return { id: data as string };
+  },
+  'agency.setWorkerStatus': async (input: { id: string; status: 'Active' | 'Removed' }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Company context required');
+    const { error } = await supabase
+      .from('agency_workers')
+      .update({ status: input.status, updated_at: new Date().toISOString() })
+      .eq('id', input.id)
+      .eq('agency_company_id', ctx.user.companyId);
+    if (error) throwErr(error, 'Unable to update worker');
+    return { success: true };
+  },
+  'agency.clients': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('agency_clients')
+      .select('*')
+      .eq('agency_company_id', ctx.user.companyId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load clients');
+    }
+    return data ?? [];
+  },
+  'agency.addClient': async (input: { name: string; contactName?: string; email?: string; phone?: string; address?: string; notes?: string }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Company context required');
+    const { data, error } = await supabase
+      .from('agency_clients')
+      .insert({
+        agency_company_id: ctx.user.companyId,
+        name: input.name,
+        contact_name: input.contactName ?? '',
+        email: input.email ?? '',
+        phone: input.phone ?? '',
+        address: input.address ?? '',
+        notes: input.notes ?? '',
+      })
+      .select('id')
+      .single();
+    if (error) {
+      if (isMissingRelation(error)) throw new Error('Agency features are not live yet — apply migration 0154.');
+      throwErr(error, 'Unable to add client');
+    }
+    return { id: data!.id as string };
+  },
+  'agency.setClientStatus': async (input: { id: string; status: 'Active' | 'Inactive' }, ctx) => {
+    if (!ctx.user.companyId) throw new Error('Company context required');
+    const { error } = await supabase
+      .from('agency_clients')
+      .update({ status: input.status, updated_at: new Date().toISOString() })
+      .eq('id', input.id)
+      .eq('agency_company_id', ctx.user.companyId);
+    if (error) throwErr(error, 'Unable to update client');
+    return { success: true };
+  },
+  'agency.claimShift': async (input: { shiftId: string; agencyWorkerId: string }) => {
+    const { data, error } = await supabase.rpc('agency_claim_shift', {
+      p_shift_id: input.shiftId,
+      p_agency_worker_id: input.agencyWorkerId,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Agency features are not live yet — apply migration 0154.');
+      throwErr(error, 'Unable to claim shift');
+    }
+    return { assignmentId: data as string };
+  },
+  'agency.assignments': async () => {
+    const { data, error } = await supabase.rpc('agency_list_assignments');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load placements');
+    }
+    return data ?? [];
+  },
+  'agency.payables': async () => {
+    const { data, error } = await supabase.rpc('agency_list_payables');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load payables');
+    }
+    return data ?? [];
+  },
+
+  // =========================================================================
   // COMPANY STAFF
   // =========================================================================
   'company.listMembers': async (input: { companyId: string }) => {

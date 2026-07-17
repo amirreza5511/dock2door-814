@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen, Anchor,
-  Store, Forklift, Hammer, Construction,
+  Store, Forklift, Hammer, Construction, UsersRound,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
@@ -38,6 +38,7 @@ const WORLDS: WorldDef[] = [
     bullets: [
       { icon: Clock, label: 'Employers', sub: 'Post & fill shifts fast' },
       { icon: Users, label: 'Workers', sub: 'Find shifts that fit you' },
+      { icon: UsersRound, label: 'Employment Agencies', sub: 'Your workers & clients, our platform' },
     ],
   },
   {
@@ -248,6 +249,7 @@ export default function Landing() {
               { role: 'Service Provider', desc: 'Offer industrial services', icon: Wrench, color: C.green },
               { role: 'Employer', desc: 'Post and fill shifts fast', icon: Clock, color: C.yellow },
               { role: 'Worker', desc: 'Find shifts that fit you', icon: Users, color: C.purple },
+              { role: 'Employment Agency', desc: 'Your workers, our booking system', icon: UsersRound, color: C.purple },
               { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green },
               { role: 'Owner-Operator', desc: 'Own one truck, deliver loads', icon: Truck, color: C.green },
               { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green },

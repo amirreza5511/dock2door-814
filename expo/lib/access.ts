@@ -7,7 +7,7 @@ export const ENABLE_DOMAINS = true;
 export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace';
 
 /** Roles belonging to the Labour world. */
-export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer'];
+export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer', 'EmploymentAgency'];
 
 /** Roles belonging to the Logistics & Warehousing world. */
 export const LOGISTICS_ROLES: UserRole[] = [
@@ -45,6 +45,7 @@ export const ADMIN_ROLES: UserRole[] = ['Admin', 'SuperAdmin'];
 export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Worker: 'labour',
   Employer: 'labour',
+  EmploymentAgency: 'labour',
   Customer: 'logistics',
   WarehouseProvider: 'logistics',
   ServiceProvider: 'logistics',
@@ -79,6 +80,7 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   'WarehouseProvider',
   'ServiceProvider',
   'Employer',
+  'EmploymentAgency',
   'TruckingCompany',
   'GateStaff',
   'Shipper',
@@ -103,6 +105,7 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   WarehouseProvider: '/warehouse-provider',
   ServiceProvider: '/service-provider',
   Employer: '/employer',
+  EmploymentAgency: '/agency',
   Worker: '/worker',
   TruckingCompany: '/trucking-company',
   Driver: '/driver',
@@ -123,6 +126,7 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'WarehouseProvider',
   'ServiceProvider',
   'Employer',
+  'EmploymentAgency',
   'TruckingCompany',
   'GateStaff',
   'Shipper',
@@ -136,6 +140,7 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   WarehouseProvider: 'WarehouseProvider',
   ServiceProvider: 'ServiceProvider',
   Employer: 'Employer',
+  EmploymentAgency: 'EmploymentAgency',
   TruckingCompany: 'TruckingCompany',
   GateStaff: 'WarehouseProvider',
   Shipper: 'Shipper',
@@ -152,6 +157,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   'warehouse-provider': ['WarehouseProvider'],
   'service-provider': ['ServiceProvider'],
   employer: ['Employer'],
+  agency: ['EmploymentAgency'],
   worker: ['Worker'],
   'trucking-company': ['TruckingCompany'],
   driver: ['Driver'],

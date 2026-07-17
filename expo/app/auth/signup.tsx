@@ -22,6 +22,7 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
   labour: [
     { id: 'Employer', role: 'Employer', label: 'Employer', desc: 'Post and manage work shifts' },
     { id: 'Worker', role: 'Worker', label: 'Worker', desc: 'Find and apply for shifts' },
+    { id: 'EmploymentAgency', role: 'EmploymentAgency', label: 'Employment Agency', desc: 'Bring your own workers & clients — book shifts, coordinate and invoice through Dock2Door' },
   ],
   logistics: [
     { id: 'Customer', role: 'Customer', label: 'Customer', desc: 'Book warehouse space & services' },

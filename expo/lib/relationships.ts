@@ -20,6 +20,7 @@ export const BUSINESS_ROLES: UserRole[] = [
   'WarehouseProvider',
   'ServiceProvider',
   'Employer',
+  'EmploymentAgency',
   'TruckingCompany',
   'Shipper',
   'FreightForwarder',
@@ -34,7 +35,8 @@ export const INDIVIDUAL_ROLES: UserRole[] = ['Worker', 'Driver', 'GateStaff', 'S
  * but declared per-role so the directory can filter precisely.
  */
 export const WORKS_WITH: Partial<Record<UserRole, UserRole[]>> = {
-  Employer: ['Worker', 'Customer', 'WarehouseProvider', 'ServiceProvider'],
+  Employer: ['Worker', 'Customer', 'WarehouseProvider', 'ServiceProvider', 'EmploymentAgency'],
+  EmploymentAgency: ['Worker', 'Employer', 'WarehouseProvider', 'ServiceProvider'],
   Customer: ['WarehouseProvider', 'ServiceProvider', 'Shipper', 'FreightForwarder', 'Employer', 'TruckingCompany'],
   WarehouseProvider: ['Customer', 'ServiceProvider', 'TruckingCompany', 'Employer'],
   ServiceProvider: ['Customer', 'WarehouseProvider'],
@@ -42,7 +44,7 @@ export const WORKS_WITH: Partial<Record<UserRole, UserRole[]>> = {
   TruckingCompany: ['Shipper', 'Customer', 'WarehouseProvider', 'DrayageCompany'],
   FreightForwarder: ['DrayageCompany', 'Customer', 'Shipper'],
   DrayageCompany: ['FreightForwarder', 'TruckingCompany', 'Customer'],
-  Worker: ['Employer'],
+  Worker: ['Employer', 'EmploymentAgency'],
 };
 
 /**
@@ -66,6 +68,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   WarehouseProvider: 'Warehouse Provider',
   ServiceProvider: 'Service Provider',
   Employer: 'Employer',
+  EmploymentAgency: 'Employment Agency',
   Worker: 'Worker',
   TruckingCompany: 'Trucking Company',
   Driver: 'Driver',
@@ -88,6 +91,7 @@ export const ROLE_BLURB: Partial<Record<UserRole, string>> = {
   WarehouseProvider: 'List warehouse space, manage bookings and fulfillment.',
   ServiceProvider: 'Offer labour, forklift, rework and other logistics services.',
   Employer: 'Post shifts, hire workers, manage assignments and payroll.',
+  EmploymentAgency: 'Bring your own workers and clients — book shifts, coordinate and invoice through Dock2Door.',
   TruckingCompany: 'Run a fleet, dispatch loads and manage dock appointments.',
   Shipper: 'Post deliveries and hire carriers to move freight.',
   FreightForwarder: 'Post container drayage orders to move import/export freight.',
@@ -100,6 +104,7 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   WarehouseProvider: 'WarehouseProvider',
   ServiceProvider: 'ServiceProvider',
   Employer: 'Employer',
+  EmploymentAgency: 'EmploymentAgency',
   TruckingCompany: 'TruckingCompany',
   Shipper: 'Shipper',
   FreightForwarder: 'FreightForwarder',
