@@ -25,6 +25,7 @@ export const BUSINESS_ROLES: UserRole[] = [
   'Shipper',
   'FreightForwarder',
   'DrayageCompany',
+  'CustomsBroker',
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
@@ -37,13 +38,14 @@ export const INDIVIDUAL_ROLES: UserRole[] = ['Worker', 'Driver', 'GateStaff', 'S
 export const WORKS_WITH: Partial<Record<UserRole, UserRole[]>> = {
   Employer: ['Worker', 'Customer', 'WarehouseProvider', 'ServiceProvider', 'EmploymentAgency'],
   EmploymentAgency: ['Worker', 'Employer', 'WarehouseProvider', 'ServiceProvider'],
-  Customer: ['WarehouseProvider', 'ServiceProvider', 'Shipper', 'FreightForwarder', 'Employer', 'TruckingCompany'],
+  Customer: ['WarehouseProvider', 'ServiceProvider', 'Shipper', 'FreightForwarder', 'Employer', 'TruckingCompany', 'CustomsBroker'],
   WarehouseProvider: ['Customer', 'ServiceProvider', 'TruckingCompany', 'Employer'],
   ServiceProvider: ['Customer', 'WarehouseProvider'],
-  Shipper: ['TruckingCompany', 'Customer', 'FreightForwarder'],
+  Shipper: ['TruckingCompany', 'Customer', 'FreightForwarder', 'CustomsBroker'],
   TruckingCompany: ['Shipper', 'Customer', 'WarehouseProvider', 'DrayageCompany'],
-  FreightForwarder: ['DrayageCompany', 'Customer', 'Shipper'],
-  DrayageCompany: ['FreightForwarder', 'TruckingCompany', 'Customer'],
+  FreightForwarder: ['DrayageCompany', 'Customer', 'Shipper', 'CustomsBroker'],
+  DrayageCompany: ['FreightForwarder', 'TruckingCompany', 'Customer', 'CustomsBroker'],
+  CustomsBroker: ['FreightForwarder', 'DrayageCompany', 'Customer', 'Shipper'],
   Worker: ['Employer', 'EmploymentAgency'],
 };
 
@@ -59,7 +61,8 @@ export const ADDABLE_ROLES: Partial<Record<UserRole, UserRole[]>> = {
   TruckingCompany: ['Customer', 'Shipper', 'DrayageCompany'],
   Shipper: ['Customer', 'FreightForwarder'],
   DrayageCompany: ['Customer', 'TruckingCompany', 'FreightForwarder'],
-  FreightForwarder: ['Customer', 'DrayageCompany'],
+  FreightForwarder: ['Customer', 'DrayageCompany', 'CustomsBroker'],
+  CustomsBroker: ['Customer', 'FreightForwarder'],
 };
 
 /** Human-friendly labels for every role. */
@@ -76,6 +79,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   Shipper: 'Shipper',
   DrayageCompany: 'Drayage Company',
   FreightForwarder: 'Freight Forwarder',
+  CustomsBroker: 'Customs Broker',
   EquipmentRentalCompany: 'Equipment / Crane Rental',
   MobileRepairProvider: 'Mobile Repair & Services',
   CargoInsurer: 'Cargo Insurer',
@@ -96,6 +100,7 @@ export const ROLE_BLURB: Partial<Record<UserRole, string>> = {
   Shipper: 'Post deliveries and hire carriers to move freight.',
   FreightForwarder: 'Post container drayage orders to move import/export freight.',
   DrayageCompany: 'Run container drayage — pull, deliver and return containers.',
+  CustomsBroker: 'Receive clearance requests & documents, quote and clear shipments through customs.',
 };
 
 /** Maps every business role to its `company_type` value. */
@@ -109,6 +114,7 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   Shipper: 'Shipper',
   FreightForwarder: 'FreightForwarder',
   DrayageCompany: 'DrayageCompany',
+  CustomsBroker: 'CustomsBroker',
 };
 
 export function isBusinessRole(role: UserRole | string | null | undefined): boolean {

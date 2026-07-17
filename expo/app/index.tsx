@@ -81,6 +81,7 @@ const WORLDS: WorldDef[] = [
       { icon: Anchor, label: 'Freight Forwarders', sub: 'Post import/export container orders' },
       { icon: Truck, label: 'Drayage Companies', sub: 'Claim orders, dispatch & track live' },
       { icon: Users, label: 'Drivers', sub: 'Receive work orders & advance moves' },
+      { icon: ShieldCheck, label: 'Customs Brokers', sub: 'Docs, quotes & clearance on-platform' },
     ],
   },
   {
@@ -255,6 +256,7 @@ export default function Landing() {
               { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green },
               { role: 'Freight Forwarder', desc: 'Post import/export containers', icon: Anchor, color: C.blue },
               { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue },
+              { role: 'Customs Broker', desc: 'Clear shipments through customs', icon: ShieldCheck, color: C.blue },
               { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue },
               { role: 'Crane / Equipment Co.', desc: 'Rent out cranes & heavy gear', icon: Construction, color: C.yellow },
               { role: 'Mobile Repair', desc: 'Dispatch techs & crews on-site', icon: Hammer, color: C.purple },

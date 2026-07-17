@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { supabase } from '@/lib/supabase';
 
-export type Bucket = 'certifications' | 'warehouse-docs' | 'booking-docs' | 'invoices' | 'attachments' | 'worker-photos' | 'shift-attachments';
+export type Bucket = 'certifications' | 'warehouse-docs' | 'booking-docs' | 'invoices' | 'attachments' | 'worker-photos' | 'shift-attachments' | 'clearance-docs';
 
 export interface UploadArgs {
   bucket: Bucket;
@@ -43,6 +43,11 @@ export function buildWorkerPhotoPath(workerUserId: string, photoId: string, file
 
 export function buildShiftAttachmentPath(companyId: string, shiftId: string, filename: string): string {
   return `${companyId}/${shiftId}/${sanitize(filename)}`;
+}
+
+/** Clearance docs are keyed by request id first so storage RLS can authorize by request party. */
+export function buildClearanceDocPath(requestId: string, uploaderUserId: string, filename: string): string {
+  return `${requestId}/${uploaderUserId}/${Date.now()}_${sanitize(filename)}`;
 }
 
 export async function uploadFileWithMetadata(args: UploadArgs): Promise<UploadedFileMeta> {

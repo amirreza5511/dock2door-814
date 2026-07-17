@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Pla
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, CalendarClock, Clock, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users, Boxes, Truck, CheckCircle2, MapPin, Tag } from 'lucide-react-native';
+import { ArrowLeft, CalendarClock, Clock, LogOut, Package, Plus, Ship, Train, X, Anchor, Building2, Users, Boxes, Truck, CheckCircle2, MapPin, Tag, FileCheck2 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
@@ -27,13 +27,15 @@ type Props = {
   subtitle?: string;
   /** Optional route to a Rates & Zones screen; shows a pricing button in the home header. */
   ratesPath?: string;
+  /** Optional route to the Customs Clearance screen; shows a clearance button in the home header. */
+  clearancePath?: string;
 };
 
 /**
  * Shared "post & track container orders" screen used by both the logistics Customer
  * (as a sub-screen) and the Freight Forwarder (as their home).
  */
-export default function ContainerOrdersScreen({ detailPath, showBack = true, subtitle, ratesPath }: Props) {
+export default function ContainerOrdersScreen({ detailPath, showBack = true, subtitle, ratesPath, clearancePath }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -174,6 +176,11 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
             {ratesPath ? (
               <TouchableOpacity onPress={() => router.push(ratesPath as never)} style={styles.iconBtn}>
                 <Tag size={18} color={C.green} />
+              </TouchableOpacity>
+            ) : null}
+            {clearancePath ? (
+              <TouchableOpacity onPress={() => router.push(clearancePath as never)} style={styles.iconBtn}>
+                <FileCheck2 size={18} color={C.blue} />
               </TouchableOpacity>
             ) : null}
             <SupportMenu />

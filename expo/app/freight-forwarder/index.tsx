@@ -8,6 +8,7 @@ export default function FreightForwarderHome() {
       showBack={false}
       subtitle="Import & export containers — post and track live"
       ratesPath="/freight-forwarder/rates"
+      clearancePath="/freight-forwarder/clearance"
     />
   );
 }

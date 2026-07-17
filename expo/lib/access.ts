@@ -21,7 +21,7 @@ export const LOGISTICS_ROLES: UserRole[] = [
 export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'];
 
 /** Roles belonging to the Container Drayage world. */
-export const DRAYAGE_ROLES: UserRole[] = ['FreightForwarder', 'DrayageCompany'];
+export const DRAYAGE_ROLES: UserRole[] = ['FreightForwarder', 'DrayageCompany', 'CustomsBroker'];
 
 /**
  * Roles that live natively in the Rentals & Services world (Domain 5). These are
@@ -55,6 +55,7 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Shipper: 'freight',
   DrayageCompany: 'drayage',
   FreightForwarder: 'drayage',
+  CustomsBroker: 'drayage',
   EquipmentRentalCompany: 'marketplace',
   MobileRepairProvider: 'marketplace',
   CargoInsurer: 'marketplace',
@@ -86,6 +87,7 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   'Shipper',
   'DrayageCompany',
   'FreightForwarder',
+  'CustomsBroker',
   ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
@@ -113,6 +115,7 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   Shipper: '/shipper',
   DrayageCompany: '/drayage-company',
   FreightForwarder: '/freight-forwarder',
+  CustomsBroker: '/customs-broker',
   EquipmentRentalCompany: '/rental-company',
   MobileRepairProvider: '/repair-provider',
   CargoInsurer: '/cargo-insurer',
@@ -132,6 +135,7 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'Shipper',
   'DrayageCompany',
   'FreightForwarder',
+  'CustomsBroker',
   ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
@@ -146,6 +150,7 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   Shipper: 'Shipper',
   DrayageCompany: 'DrayageCompany',
   FreightForwarder: 'FreightForwarder',
+  CustomsBroker: 'CustomsBroker',
   EquipmentRentalCompany: 'EquipmentRentalCompany',
   MobileRepairProvider: 'MobileRepairProvider',
   CargoInsurer: 'CargoInsurer',
@@ -165,6 +170,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   shipper: ['Shipper'],
   'drayage-company': ['DrayageCompany'],
   'freight-forwarder': ['FreightForwarder'],
+  'customs-broker': ['CustomsBroker'],
   'rental-company': ['EquipmentRentalCompany'],
   'repair-provider': ['MobileRepairProvider'],
   'cargo-insurer': ['CargoInsurer'],

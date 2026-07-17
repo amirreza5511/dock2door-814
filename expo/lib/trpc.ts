@@ -4605,6 +4605,183 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // CUSTOMS BROKER (Domain 4) — clearance requests, docs, messages (0155)
+  // =========================================================================
+  'clearance.create': async (input: {
+    title: string; mode?: 'Import' | 'Export'; containerNo?: string; blNumber?: string;
+    port?: string; eta?: string; cargoDescription?: string; commercialValue?: number;
+    currency?: string; incoterms?: string; notes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('clearance_create_request', {
+      p_title: input.title,
+      p_mode: input.mode ?? 'Import',
+      p_container_no: input.containerNo ?? '',
+      p_bl_number: input.blNumber ?? '',
+      p_port: input.port ?? '',
+      p_eta: input.eta ?? null,
+      p_cargo_description: input.cargoDescription ?? '',
+      p_commercial_value: input.commercialValue ?? 0,
+      p_currency: input.currency ?? 'CAD',
+      p_incoterms: input.incoterms ?? '',
+      p_notes: input.notes ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Customs clearance is not live yet — apply migration 0155.');
+      throwErr(error, 'Unable to submit clearance request');
+    }
+    return { id: data as string };
+  },
+  'clearance.mine': async () => {
+    const { data, error } = await supabase.rpc('clearance_list_mine');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load clearance requests');
+    }
+    return data ?? [];
+  },
+  'clearance.get': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('clearance_requests')
+      .select('*')
+      .eq('id', input.requestId)
+      .maybeSingle();
+    if (error) {
+      if (isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load request');
+    }
+    return data ?? null;
+  },
+  'clearance.documents': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('clearance_documents')
+      .select('*')
+      .eq('request_id', input.requestId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load documents');
+    }
+    return data ?? [];
+  },
+  'clearance.messages': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('clearance_messages')
+      .select('*')
+      .eq('request_id', input.requestId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load messages');
+    }
+    return data ?? [];
+  },
+  'clearance.sendMessage': async (input: { requestId: string; body: string }) => {
+    const { error } = await supabase.rpc('clearance_send_message', {
+      p_request_id: input.requestId,
+      p_body: input.body,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Customs clearance is not live yet — apply migration 0155.');
+      throwErr(error, 'Unable to send message');
+    }
+    return { success: true };
+  },
+  'clearance.acceptQuote': async (input: { requestId: string }) => {
+    const { error } = await supabase.rpc('clearance_accept_quote', { p_request_id: input.requestId });
+    if (error) throwErr(error, 'Unable to accept quote');
+    return { success: true };
+  },
+  'clearance.cancel': async (input: { requestId: string }) => {
+    const { error } = await supabase.rpc('clearance_cancel_request', { p_request_id: input.requestId });
+    if (error) throwErr(error, 'Unable to cancel request');
+    return { success: true };
+  },
+  'clearance.submitDocument': async (input: {
+    requestId: string; filePath: string; name: string; docType?: string; documentId?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('clearance_submit_document', {
+      p_request_id: input.requestId,
+      p_file_path: input.filePath,
+      p_name: input.name,
+      p_doc_type: input.docType ?? 'Other',
+      p_document_id: input.documentId ?? null,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Customs clearance is not live yet — apply migration 0155.');
+      throwErr(error, 'Unable to save document');
+    }
+    return { id: data as string };
+  },
+  'broker.requests': async (input: { scope?: 'open' | 'mine' } | undefined) => {
+    const { data, error } = await supabase.rpc('broker_list_requests', { p_scope: input?.scope ?? 'mine' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load requests');
+    }
+    return data ?? [];
+  },
+  'broker.claim': async (input: { requestId: string }) => {
+    const { error } = await supabase.rpc('broker_claim_request', { p_request_id: input.requestId });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Customs broker features are not live yet — apply migration 0155.');
+      throwErr(error, 'Unable to claim request');
+    }
+    return { success: true };
+  },
+  'broker.quote': async (input: { requestId: string; amount: number; note?: string }) => {
+    const { error } = await supabase.rpc('broker_quote', {
+      p_request_id: input.requestId,
+      p_amount: input.amount,
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to send quote');
+    return { success: true };
+  },
+  'broker.requestDocument': async (input: { requestId: string; name: string; docType?: string; note?: string }) => {
+    const { data, error } = await supabase.rpc('broker_request_document', {
+      p_request_id: input.requestId,
+      p_name: input.name,
+      p_doc_type: input.docType ?? 'Other',
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to request document');
+    return { id: data as string };
+  },
+  'broker.setDocumentStatus': async (input: { documentId: string; status: 'Accepted' | 'Rejected'; note?: string }) => {
+    const { error } = await supabase.rpc('broker_set_document_status', {
+      p_document_id: input.documentId,
+      p_status: input.status,
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to update document');
+    return { success: true };
+  },
+  'broker.markCleared': async (input: { requestId: string; entryNumber?: string }) => {
+    const { data, error } = await supabase.rpc('broker_mark_cleared', {
+      p_request_id: input.requestId,
+      p_entry_number: input.entryNumber ?? '',
+    });
+    if (error) throwErr(error, 'Unable to mark as cleared');
+    return { invoiceId: data as string };
+  },
+  'broker.reject': async (input: { requestId: string; reason?: string }) => {
+    const { error } = await supabase.rpc('broker_reject_request', {
+      p_request_id: input.requestId,
+      p_reason: input.reason ?? '',
+    });
+    if (error) throwErr(error, 'Unable to decline request');
+    return { success: true };
+  },
+  'broker.billing': async () => {
+    const { data, error } = await supabase.rpc('broker_list_billing');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load billing');
+    }
+    return data ?? [];
+  },
+
+  // =========================================================================
   // COMPANY STAFF
   // =========================================================================
   'company.listMembers': async (input: { companyId: string }) => {

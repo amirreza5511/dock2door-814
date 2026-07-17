@@ -39,6 +39,7 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { id: 'FreightForwarder', role: 'FreightForwarder', label: 'Importer / Exporter / Freight Forwarder', desc: 'Post import & export container orders and track them live' },
     { id: 'DrayageCompany', role: 'DrayageCompany', label: 'Drayage Company', desc: 'Claim container orders, dispatch drivers & track live' },
     { id: 'DrayageDriver', role: 'Driver', label: 'Drayage Driver', desc: 'Drive container moves — enter your drayage company’s fleet code' },
+    { id: 'CustomsBroker', role: 'CustomsBroker', label: 'Customs Broker', desc: 'Receive clearance requests & documents, quote and clear shipments' },
   ],
   // Rentals & Services (Domain 5) — a first-class world with its own provider
   // roles plus a standalone buyer for people who don't belong to another world.
