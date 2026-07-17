@@ -20,7 +20,6 @@ interface Appointment {
   status: string;
   scheduled_start: string | null;
   scheduled_end: string | null;
-  warehouse_company_id: string | null;
   trucking_company_id: string | null;
   driver_id: string | null;
   truck_id: string | null;
@@ -41,7 +40,7 @@ export default function DispatchPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("dock_appointments")
-        .select("id,status,scheduled_start,scheduled_end,warehouse_company_id,trucking_company_id,driver_id,truck_id,trailer_id,created_at")
+        .select("id,status,scheduled_start,scheduled_end,trucking_company_id,driver_id,truck_id,trailer_id,created_at")
         .is("archived_at", null)
         .order("scheduled_start", { ascending: true })
         .limit(300);
