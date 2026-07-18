@@ -162,39 +162,6 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="auth" />
-      <Stack.Screen name="customer" />
-      <Stack.Screen name="warehouse-provider" />
-      <Stack.Screen name="service-provider" />
-      <Stack.Screen name="employer" />
-      <Stack.Screen name="worker" />
-      <Stack.Screen name="trucking-company" />
-      <Stack.Screen name="driver" />
-      <Stack.Screen name="gate-staff" />
-      <Stack.Screen name="shipper" />
-      <Stack.Screen name="drayage-company" />
-      <Stack.Screen name="freight-forwarder" />
-      <Stack.Screen name="rental-company" />
-      <Stack.Screen name="repair-provider" />
-      <Stack.Screen name="cargo-insurer" />
-      <Stack.Screen name="marketplace-buyer" />
-      <Stack.Screen name="sales-agent" />
-      <Stack.Screen name="admin" />
-      <Stack.Screen name="super-admin" />
-      <Stack.Screen name="fulfillment" />
-      <Stack.Screen name="marketplace" />
-      <Stack.Screen name="partners" />
-      <Stack.Screen name="company" />
-      <Stack.Screen name="messages" />
-      <Stack.Screen name="notifications" />
-      <Stack.Screen name="reviews" />
-      <Stack.Screen name="onboarding" />
-      <Stack.Screen name="assistant" />
-      <Stack.Screen name="copilot" />
-      <Stack.Screen name="customize" />
-      <Stack.Screen name="advertise" />
-      <Stack.Screen name="help" />
-      <Stack.Screen name="permissions" />
-      <Stack.Screen name="device-tools" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
