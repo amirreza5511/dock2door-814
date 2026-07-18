@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, Tag, Receipt, Store, ArrowDownToLine } from 'lucide-react-native';
+import { Warehouse, TrendingUp, DollarSign, Clock, CheckCircle, LogOut, ShieldCheck, Truck, ClipboardList, Tag, Receipt, Store, ArrowDownToLine, Ruler } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -181,6 +181,17 @@ export default function WarehouseProviderDashboard() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.createTitle}>Marketplace</Text>
                 <Text style={styles.createDesc}>Rent equipment, mobile repair & post services</Text>
+              </View>
+            </View>
+          </Card>
+          <Card onPress={() => router.push('/warehouse-provider/spaces' as any)} elevated style={{ marginTop: 10 }}>
+            <View style={styles.createRow}>
+              <View style={[styles.createIcon, { backgroundColor: C.greenDim }]}>
+                <Ruler size={22} color={C.green} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.createTitle}>Space Rentals (per sqft)</Text>
+                <Text style={styles.createDesc}>Rent out square footage — tiers, term discounts & add-on pricing</Text>
               </View>
             </View>
           </Card>

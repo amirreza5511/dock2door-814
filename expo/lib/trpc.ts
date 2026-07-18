@@ -4807,6 +4807,159 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // WAREHOUSE SHARED SPACE (0157) — rent by the square foot
+  // =========================================================================
+  // Browse all Active spaces across providers (with tiers + addons inline).
+  'spaces.browse': async () => {
+    const { data, error } = await supabase.rpc('space_browse');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load spaces');
+    }
+    return data ?? [];
+  },
+  // Transparent server-side quote: tier rate + term discount + addons.
+  'spaces.quote': async (input: { spaceId: string; sqft: number; termMonths: number; addonIds?: string[] }) => {
+    const { data, error } = await supabase.rpc('warehouse_space_quote', {
+      p_space_id: input.spaceId,
+      p_sqft: input.sqft,
+      p_term_months: input.termMonths,
+      p_addon_ids: input.addonIds ?? [],
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Space rentals are not live yet — apply migration 0157.');
+      throwErr(error, 'Unable to price this request');
+    }
+    return data as AnyRecord;
+  },
+  'spaces.requestBooking': async (input: { spaceId: string; sqft: number; termMonths: number; startDate: string; addonIds?: string[]; notes?: string }) => {
+    const { data, error } = await supabase.rpc('space_request_booking', {
+      p_space_id: input.spaceId,
+      p_sqft: input.sqft,
+      p_term_months: input.termMonths,
+      p_start_date: input.startDate,
+      p_addon_ids: input.addonIds ?? [],
+      p_notes: input.notes ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Space rentals are not live yet — apply migration 0157.');
+      throwErr(error, 'Unable to request this space');
+    }
+    return { id: data as string };
+  },
+  'spaces.bookings': async (input: { scope?: 'provider' | 'customer' }) => {
+    const { data, error } = await supabase.rpc('space_list_bookings', { p_scope: input?.scope ?? 'customer' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load space bookings');
+    }
+    return data ?? [];
+  },
+  'spaces.respond': async (input: { bookingId: string; action: 'approve' | 'decline'; note?: string }) => {
+    const { error } = await supabase.rpc('space_respond_booking', {
+      p_booking_id: input.bookingId,
+      p_action: input.action,
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to respond to this request');
+    return { success: true };
+  },
+  'spaces.billMonth': async (input: { bookingId: string }) => {
+    const { data, error } = await supabase.rpc('space_bill_month', { p_booking_id: input.bookingId });
+    if (error) throwErr(error, 'Unable to bill this month');
+    return { invoiceId: data as string };
+  },
+  'spaces.endBooking': async (input: { bookingId: string; note?: string }) => {
+    const { error } = await supabase.rpc('space_end_booking', { p_booking_id: input.bookingId, p_note: input.note ?? '' });
+    if (error) throwErr(error, 'Unable to end this booking');
+    return { success: true };
+  },
+  // Provider: my spaces with tiers + addons for management.
+  'spaces.mySpaces': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('warehouse_spaces')
+      .select('*, warehouse_space_tiers(*), warehouse_space_addons(*)')
+      .eq('company_id', ctx.user.companyId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load your spaces');
+    }
+    return data ?? [];
+  },
+  'spaces.createSpace': async (input: AnyRecord, ctx) => {
+    if (!ctx.user.companyId) throw new Error('No active company');
+    const { data, error } = await supabase.from('warehouse_spaces').insert({
+      company_id: ctx.user.companyId,
+      name: input.name,
+      space_kind: input.spaceKind ?? 'Floor',
+      address: input.address ?? '',
+      city: input.city ?? '',
+      total_sqft: input.totalSqft ?? 0,
+      min_sqft: input.minSqft ?? 100,
+      max_sqft: input.maxSqft ?? null,
+      base_rate_per_sqft_month: input.baseRate ?? 0,
+      currency: input.currency ?? 'CAD',
+      min_term_months: input.minTermMonths ?? 1,
+      term_discount_3m_pct: input.discount3m ?? 0,
+      term_discount_6m_pct: input.discount6m ?? 0,
+      term_discount_12m_pct: input.discount12m ?? 0,
+      ceiling_height_ft: input.ceilingHeightFt ?? null,
+      features: input.features ?? [],
+      notes: input.notes ?? '',
+      status: input.status ?? 'Active',
+    }).select().single();
+    if (error) {
+      if (isMissingRelation(error)) throw new Error('Space rentals are not live yet — apply migration 0157.');
+      throwErr(error, 'Unable to create space');
+    }
+    return data as AnyRecord;
+  },
+  'spaces.updateSpace': async (input: AnyRecord) => {
+    const map: Record<string, string> = {
+      name: 'name', spaceKind: 'space_kind', address: 'address', city: 'city',
+      totalSqft: 'total_sqft', minSqft: 'min_sqft', maxSqft: 'max_sqft',
+      baseRate: 'base_rate_per_sqft_month', currency: 'currency',
+      minTermMonths: 'min_term_months', discount3m: 'term_discount_3m_pct',
+      discount6m: 'term_discount_6m_pct', discount12m: 'term_discount_12m_pct',
+      ceilingHeightFt: 'ceiling_height_ft', features: 'features', notes: 'notes', status: 'status',
+    };
+    const db: AnyRecord = { updated_at: new Date().toISOString() };
+    for (const [k, col] of Object.entries(map)) {
+      if (input[k] !== undefined) db[col] = input[k];
+    }
+    const { error } = await supabase.from('warehouse_spaces').update(db).eq('id', input.id as string);
+    if (error) throwErr(error, 'Unable to update space');
+    return { success: true };
+  },
+  'spaces.addTier': async (input: { spaceId: string; minSqft: number; rate: number }) => {
+    const { error } = await supabase.from('warehouse_space_tiers').insert({
+      space_id: input.spaceId, min_sqft: input.minSqft, rate_per_sqft_month: input.rate,
+    });
+    if (error) throwErr(error, 'Unable to add tier');
+    return { success: true };
+  },
+  'spaces.removeTier': async (input: { tierId: string }) => {
+    const { error } = await supabase.from('warehouse_space_tiers').delete().eq('id', input.tierId);
+    if (error) throwErr(error, 'Unable to remove tier');
+    return { success: true };
+  },
+  'spaces.addAddon': async (input: { spaceId: string; name: string; pricingUnit: string; rate: number; required?: boolean }) => {
+    const { error } = await supabase.from('warehouse_space_addons').insert({
+      space_id: input.spaceId, name: input.name, pricing_unit: input.pricingUnit,
+      rate: input.rate, is_required: input.required ?? false,
+    });
+    if (error) throwErr(error, 'Unable to add service');
+    return { success: true };
+  },
+  'spaces.removeAddon': async (input: { addonId: string }) => {
+    const { error } = await supabase.from('warehouse_space_addons').delete().eq('id', input.addonId);
+    if (error) throwErr(error, 'Unable to remove service');
+    return { success: true };
+  },
+
+  // =========================================================================
   // COMPANY STAFF
   // =========================================================================
   'company.listMembers': async (input: { companyId: string }) => {

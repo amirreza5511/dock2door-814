@@ -34,6 +34,7 @@ import {
   CreditCard,
   FileText,
   RotateCcw,
+  Ruler,
   Tag,
   Boxes,
   ClipboardCheck,
@@ -185,6 +186,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/warehouse", label: "Operations", icon: Warehouse },
         { href: "/warehouse/listings", label: "Listings", icon: PackageSearch },
         { href: "/warehouse/bookings", label: "Bookings", icon: ClipboardList },
+        { href: "/warehouse/spaces", label: "Space rentals (sqft)", icon: Ruler },
         { href: "/warehouse/wms", label: "WMS overview", icon: Boxes },
         { href: "/warehouse/staff", label: "Staff", icon: Users },
         { href: "/warehouse/stations", label: "Stations", icon: Wrench },
@@ -268,6 +270,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/shipper/post-load", label: "Post a delivery", icon: Plus },
         { href: "/shipper/loads", label: "My deliveries", icon: ClipboardList },
         { href: "/clearance", label: "Customs clearance", icon: Landmark },
+        { href: "/spaces", label: "Warehouse space", icon: Ruler },
       ],
     });
   }
@@ -336,6 +339,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/guest", label: "Services", icon: LayoutDashboard },
         { href: "/clearance", label: "Customs clearance", icon: Landmark },
+        { href: "/spaces", label: "Warehouse space", icon: Ruler },
         { href: "/guest/billing", label: "Billing & prepay", icon: CreditCard },
       ],
     });
@@ -346,6 +350,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Warehousing",
       items: [
         { href: "/customer/warehouses", label: "Find warehouses", icon: Search },
+        { href: "/spaces", label: "Rent space (sqft)", icon: Ruler },
         { href: "/customer/bookings", label: "My bookings", icon: ClipboardList },
         { href: "/customer/inventory", label: "Inventory", icon: Package },
       ],

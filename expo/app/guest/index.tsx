@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  LogOut, Container, Landmark, Store, Receipt, Zap, ShieldCheck, CreditCard,
+  LogOut, Container, Landmark, Store, Receipt, Zap, ShieldCheck, CreditCard, Ruler,
 } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import SupportMenu from '@/components/SupportMenu';
@@ -45,6 +45,11 @@ export default function GuestHome() {
       icon: Store, color: C.green, title: 'Rentals & services',
       sub: 'Rent forklifts & cranes, book mobile repair, insure cargo',
       onPress: () => router.push('/marketplace'),
+    },
+    {
+      icon: Ruler, color: C.purple, title: 'Warehouse space',
+      sub: 'Rent square footage — transparent per-sqft pricing, volume & term discounts',
+      onPress: () => router.push('/spaces' as never),
     },
     {
       icon: Receipt, color: C.yellow, title: 'My billing',
