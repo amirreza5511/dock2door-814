@@ -29,7 +29,7 @@ export const BUSINESS_ROLES: UserRole[] = [
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
-export const INDIVIDUAL_ROLES: UserRole[] = ['Worker', 'Driver', 'GateStaff', 'SalesAgent'];
+export const INDIVIDUAL_ROLES: UserRole[] = ['Worker', 'Driver', 'GateStaff', 'SalesAgent', 'Guest'];
 
 /**
  * Who can work together. Symmetric in intent (if A works with B, B works with A),
@@ -80,6 +80,7 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   DrayageCompany: 'Drayage Company',
   FreightForwarder: 'Freight Forwarder',
   CustomsBroker: 'Customs Broker',
+  Guest: 'Guest',
   EquipmentRentalCompany: 'Equipment / Crane Rental',
   MobileRepairProvider: 'Mobile Repair & Services',
   CargoInsurer: 'Cargo Insurer',
@@ -101,6 +102,7 @@ export const ROLE_BLURB: Partial<Record<UserRole, string>> = {
   FreightForwarder: 'Post container drayage orders to move import/export freight.',
   DrayageCompany: 'Run container drayage — pull, deliver and return containers.',
   CustomsBroker: 'Receive clearance requests & documents, quote and clear shipments through customs.',
+  Guest: 'Use any Dock2Door service pay-as-you-go — prepaid, with a guest surcharge, no business account needed.',
 };
 
 /** Maps every business role to its `company_type` value. */

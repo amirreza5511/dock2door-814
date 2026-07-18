@@ -18,11 +18,14 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   "WarehouseProvider",
   "ServiceProvider",
   "Employer",
+  "EmploymentAgency",
   "TruckingCompany",
   "GateStaff",
   "Shipper",
   "DrayageCompany",
   "FreightForwarder",
+  "CustomsBroker",
+  "Guest",
   "EquipmentRentalCompany",
   "MobileRepairProvider",
   "CargoInsurer",
@@ -36,6 +39,7 @@ export function canAccessMarketplace(role: UserRole | string | null | undefined)
 export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Worker: "labour",
   Employer: "labour",
+  EmploymentAgency: "labour",
   Customer: "logistics",
   WarehouseProvider: "logistics",
   ServiceProvider: "logistics",
@@ -45,6 +49,7 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   Shipper: "freight",
   DrayageCompany: "drayage",
   FreightForwarder: "drayage",
+  CustomsBroker: "drayage",
   EquipmentRentalCompany: "marketplace",
   MobileRepairProvider: "marketplace",
   CargoInsurer: "marketplace",
@@ -57,10 +62,12 @@ export const BUSINESS_ROLES: UserRole[] = [
   "WarehouseProvider",
   "ServiceProvider",
   "Employer",
+  "EmploymentAgency",
   "TruckingCompany",
   "Shipper",
   "FreightForwarder",
   "DrayageCompany",
+  "CustomsBroker",
   "EquipmentRentalCompany",
   "MobileRepairProvider",
   "CargoInsurer",
@@ -68,19 +75,21 @@ export const BUSINESS_ROLES: UserRole[] = [
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
-export const INDIVIDUAL_ROLES: UserRole[] = ["Worker", "Driver", "GateStaff", "SalesAgent"];
+export const INDIVIDUAL_ROLES: UserRole[] = ["Worker", "Driver", "GateStaff", "SalesAgent", "Guest"];
 
 /** Who can work together — powers the Partners directory. */
 export const WORKS_WITH: Partial<Record<UserRole, UserRole[]>> = {
-  Employer: ["Worker", "Customer", "WarehouseProvider", "ServiceProvider"],
-  Customer: ["WarehouseProvider", "ServiceProvider", "Shipper", "FreightForwarder", "Employer", "TruckingCompany"],
+  Employer: ["Worker", "Customer", "WarehouseProvider", "ServiceProvider", "EmploymentAgency"],
+  EmploymentAgency: ["Worker", "Employer", "WarehouseProvider", "ServiceProvider"],
+  Customer: ["WarehouseProvider", "ServiceProvider", "Shipper", "FreightForwarder", "Employer", "TruckingCompany", "CustomsBroker"],
   WarehouseProvider: ["Customer", "ServiceProvider", "TruckingCompany", "Employer"],
   ServiceProvider: ["Customer", "WarehouseProvider"],
-  Shipper: ["TruckingCompany", "Customer", "FreightForwarder"],
+  Shipper: ["TruckingCompany", "Customer", "FreightForwarder", "CustomsBroker"],
   TruckingCompany: ["Shipper", "Customer", "WarehouseProvider", "DrayageCompany"],
-  FreightForwarder: ["DrayageCompany", "Customer", "Shipper"],
-  DrayageCompany: ["FreightForwarder", "TruckingCompany", "Customer"],
-  Worker: ["Employer"],
+  FreightForwarder: ["DrayageCompany", "Customer", "Shipper", "CustomsBroker"],
+  DrayageCompany: ["FreightForwarder", "TruckingCompany", "Customer", "CustomsBroker"],
+  CustomsBroker: ["FreightForwarder", "DrayageCompany", "Customer", "Shipper"],
+  Worker: ["Employer", "EmploymentAgency"],
 };
 
 /** Which extra roles a business may add to itself. */
@@ -92,7 +101,8 @@ export const ADDABLE_ROLES: Partial<Record<UserRole, UserRole[]>> = {
   TruckingCompany: ["Customer", "Shipper", "DrayageCompany"],
   Shipper: ["Customer", "FreightForwarder"],
   DrayageCompany: ["Customer", "TruckingCompany", "FreightForwarder"],
-  FreightForwarder: ["Customer", "DrayageCompany"],
+  FreightForwarder: ["Customer", "DrayageCompany", "CustomsBroker"],
+  CustomsBroker: ["Customer", "FreightForwarder"],
 };
 
 export const ROLE_LABEL: Record<UserRole, string> = {
@@ -112,6 +122,9 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   CargoInsurer: "Cargo Insurer",
   MarketplaceBuyer: "Marketplace Buyer",
   SalesAgent: "Sales Agent",
+  EmploymentAgency: "Employment Agency",
+  CustomsBroker: "Customs Broker",
+  Guest: "Guest",
   Admin: "Admin",
   SuperAdmin: "Super Admin",
 };
@@ -129,6 +142,9 @@ export const ROLE_BLURB: Partial<Record<UserRole, string>> = {
   MobileRepairProvider: "Dispatch technicians and work crews on-site.",
   CargoInsurer: "Insure freight and shipments by cargo value.",
   MarketplaceBuyer: "Rent gear, book repairs and insure cargo.",
+  EmploymentAgency: "Bring your own workers and clients — book shifts, coordinate and invoice through Dock2Door.",
+  CustomsBroker: "Receive clearance requests & documents, quote and clear shipments through customs.",
+  Guest: "Use any Dock2Door service pay-as-you-go — prepaid, with a guest surcharge.",
 };
 
 export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
@@ -144,6 +160,8 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   MobileRepairProvider: "MobileRepairProvider",
   CargoInsurer: "CargoInsurer",
   MarketplaceBuyer: "MarketplaceBuyer",
+  EmploymentAgency: "EmploymentAgency",
+  CustomsBroker: "CustomsBroker",
 };
 
 /** Tailwind-ish colour tokens per world, for partner-card accents. */

@@ -17,6 +17,9 @@ export const ROLE_HOME: Record<UserRole, string> = {
   CargoInsurer: "/cargo-insurer",
   MarketplaceBuyer: "/marketplace-buyer",
   SalesAgent: "/sales-agent",
+  EmploymentAgency: "/agency",
+  CustomsBroker: "/customs-broker",
+  Guest: "/guest",
   Admin: "/admin",
   SuperAdmin: "/super-admin",
 };
@@ -39,6 +42,9 @@ const SEGMENT_ROLES: Record<string, UserRole[]> = {
   "cargo-insurer": ["CargoInsurer"],
   "marketplace-buyer": ["MarketplaceBuyer"],
   "sales-agent": ["SalesAgent"],
+  agency: ["EmploymentAgency"],
+  "customs-broker": ["CustomsBroker"],
+  guest: ["Guest"],
   admin: ["Admin", "SuperAdmin"],
   "super-admin": ["SuperAdmin"],
 };

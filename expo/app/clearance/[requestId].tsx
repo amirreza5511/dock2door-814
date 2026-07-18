@@ -60,6 +60,7 @@ const DOC_TINT: Record<string, string> = {
   Requested: C.yellow, Uploaded: C.blue, Accepted: C.green, Rejected: C.red,
 };
 
+/** Customer-side clearance request detail — shared across all requester roles. */
 export default function ClearanceDetail() {
   const insets = useSafeAreaInsets();
   const router = useRouter();

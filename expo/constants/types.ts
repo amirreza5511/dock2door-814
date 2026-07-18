@@ -1,4 +1,4 @@
-export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'EquipmentRentalCompany' | 'MobileRepairProvider' | 'CargoInsurer' | 'MarketplaceBuyer' | 'SalesAgent' | 'EmploymentAgency' | 'CustomsBroker' | 'Admin' | 'SuperAdmin';
+export type UserRole = 'Customer' | 'WarehouseProvider' | 'ServiceProvider' | 'Employer' | 'Worker' | 'TruckingCompany' | 'Driver' | 'GateStaff' | 'Shipper' | 'DrayageCompany' | 'FreightForwarder' | 'EquipmentRentalCompany' | 'MobileRepairProvider' | 'CargoInsurer' | 'MarketplaceBuyer' | 'SalesAgent' | 'EmploymentAgency' | 'CustomsBroker' | 'Guest' | 'Admin' | 'SuperAdmin';
 
 /** Sales-agent CRM verticals an agent can onboard accounts for. */
 export type SalesVertical =

@@ -88,6 +88,7 @@ export const MARKETPLACE_ROLES: UserRole[] = [
   'DrayageCompany',
   'FreightForwarder',
   'CustomsBroker',
+  'Guest',
   ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
@@ -116,6 +117,7 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   DrayageCompany: '/drayage-company',
   FreightForwarder: '/freight-forwarder',
   CustomsBroker: '/customs-broker',
+  Guest: '/guest',
   EquipmentRentalCompany: '/rental-company',
   MobileRepairProvider: '/repair-provider',
   CargoInsurer: '/cargo-insurer',
@@ -171,6 +173,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   'drayage-company': ['DrayageCompany'],
   'freight-forwarder': ['FreightForwarder'],
   'customs-broker': ['CustomsBroker'],
+  guest: ['Guest'],
   'rental-company': ['EquipmentRentalCompany'],
   'repair-provider': ['MobileRepairProvider'],
   'cargo-insurer': ['CargoInsurer'],

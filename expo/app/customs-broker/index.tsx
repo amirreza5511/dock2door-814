@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Inbox, FileCheck2, Receipt, LogOut, Landmark, MessagesSquare, FileUp, BadgeDollarSign } from 'lucide-react-native';
+import { Inbox, FileCheck2, Receipt, LogOut, Landmark, MessagesSquare, FileUp, BadgeDollarSign, Building2 } from 'lucide-react-native';
 import Card from '@/components/ui/Card';
 import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
@@ -83,6 +83,13 @@ export default function BrokerDashboard() {
             <Text style={styles.actionLabel}>Billing</Text>
             <Text style={styles.actionSub}>Fees & payouts</Text>
           </TouchableOpacity>
+          {user?.companyId ? (
+            <TouchableOpacity style={styles.actionCard} onPress={() => router.push(`/company/${user.companyId}`)}>
+              <Building2 size={20} color={C.blue} />
+              <Text style={styles.actionLabel}>Company & team</Text>
+              <Text style={styles.actionSub}>Profile, staff & roles</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Active clearances</Text>

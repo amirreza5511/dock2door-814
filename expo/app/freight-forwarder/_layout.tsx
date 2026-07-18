@@ -8,8 +8,6 @@ export default function FreightForwarderLayout() {
       <Stack.Screen name="[orderId]" />
       <Stack.Screen name="rates" />
       <Stack.Screen name="invoicing" />
-      <Stack.Screen name="clearance" />
-      <Stack.Screen name="clearance-detail" />
     </Stack>
   );
 }

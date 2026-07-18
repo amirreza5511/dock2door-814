@@ -50,6 +50,7 @@ import {
   Handshake,
   Store,
   SlidersHorizontal,
+  Landmark,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
@@ -266,6 +267,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/shipper", label: "Dashboard", icon: Send },
         { href: "/shipper/post-load", label: "Post a delivery", icon: Plus },
         { href: "/shipper/loads", label: "My deliveries", icon: ClipboardList },
+        { href: "/clearance", label: "Customs clearance", icon: Landmark },
       ],
     });
   }
@@ -287,6 +289,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/drayage-company/dead-runs", label: "Dead runs", icon: Activity },
         { href: "/drayage-company/reports", label: "Reports & KPIs", icon: BarChart3 },
         { href: "/drayage-company/invoicing", label: "Invoicing", icon: DollarSign },
+        { href: "/clearance", label: "Customs clearance", icon: Landmark },
       ],
     });
   }
@@ -298,6 +301,42 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/freight-forwarder", label: "Container orders", icon: Ship },
         { href: "/freight-forwarder/rates", label: "Forwarding rates", icon: DollarSign },
         { href: "/freight-forwarder/invoicing", label: "Invoicing", icon: DollarSign },
+        { href: "/clearance", label: "Customs clearance", icon: Landmark },
+      ],
+    });
+  }
+
+  if (role === "EmploymentAgency") {
+    sections.push({
+      label: "Agency",
+      items: [
+        { href: "/agency", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/agency/workers", label: "My workers", icon: Users },
+        { href: "/agency/clients", label: "My clients", icon: Building2 },
+        { href: "/agency/shifts", label: "Open shifts", icon: ClipboardList },
+        { href: "/agency/billing", label: "Billing", icon: CreditCard },
+      ],
+    });
+  }
+
+  if (role === "CustomsBroker") {
+    sections.push({
+      label: "Customs brokerage",
+      items: [
+        { href: "/customs-broker", label: "Dashboard", icon: LayoutDashboard },
+        { href: "/customs-broker/requests", label: "Clearance requests", icon: ClipboardList },
+        { href: "/customs-broker/billing", label: "Billing", icon: CreditCard },
+      ],
+    });
+  }
+
+  if (role === "Guest") {
+    sections.push({
+      label: "Guest services",
+      items: [
+        { href: "/guest", label: "Services", icon: LayoutDashboard },
+        { href: "/clearance", label: "Customs clearance", icon: Landmark },
+        { href: "/guest/billing", label: "Billing & prepay", icon: CreditCard },
       ],
     });
   }
@@ -323,6 +362,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Services & orders",
       items: [
         { href: "/customer/services", label: "Services", icon: Briefcase },
+        { href: "/clearance", label: "Customs clearance", icon: Landmark },
         { href: "/customer/orders", label: "Orders", icon: ClipboardList },
         { href: "/customer/invoices", label: "Invoices", icon: DollarSign },
         { href: "/customer/billing", label: "Billing", icon: CreditCard },

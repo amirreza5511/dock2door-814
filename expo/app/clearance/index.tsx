@@ -31,7 +31,11 @@ const STATUS_TINT: Record<string, string> = {
   DocsRequired: C.yellow, Cleared: C.green, Rejected: C.red, Cancelled: C.textMuted,
 };
 
-export default function FreightForwarderClearance() {
+/**
+ * Shared customer-side clearance screen — reachable by every business role and
+ * guests. Lists the company's clearance requests and lets them submit new ones.
+ */
+export default function ClearanceRequests() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
@@ -119,7 +123,7 @@ export default function FreightForwarderClearance() {
             return (
               <TouchableOpacity
                 key={r.id}
-                onPress={() => router.push({ pathname: '/freight-forwarder/clearance-detail', params: { requestId: r.id } })}
+                onPress={() => router.push({ pathname: '/clearance/[requestId]', params: { requestId: r.id } })}
               >
                 <Card style={styles.reqCard}>
                   <View style={styles.reqTop}>

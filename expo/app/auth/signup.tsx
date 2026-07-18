@@ -59,7 +59,13 @@ const SALES_ROLE: RoleOption = {
   desc: 'Onboard warehouses, drivers, employers & more — earn commission from Dock2Door',
 };
 
-const NO_COMPANY_ROLES: UserRole[] = ['Worker', 'Driver', 'SalesAgent', 'SuperAdmin'];
+/** Standalone pay-as-you-go role: order any service with prepayment + guest surcharge. */
+const GUEST_ROLE: RoleOption = {
+  id: 'Guest', role: 'Guest', label: 'Guest',
+  desc: 'No business account — order drayage, customs clearance, rentals & more. Prepaid, with a small guest surcharge',
+};
+
+const NO_COMPANY_ROLES: UserRole[] = ['Worker', 'Driver', 'SalesAgent', 'SuperAdmin', 'Guest'];
 
 export default function Signup() {
   const router = useRouter();
@@ -77,7 +83,7 @@ export default function Signup() {
   const [agentCode, setAgentCode] = useState(invitedCode);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedRole: UserRole | null = selectedId
-    ? ([...WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]), SALES_ROLE].find((r) => r.id === selectedId)?.role ?? null)
+    ? ([...WORLD_ORDER.flatMap((w) => ROLES_BY_WORLD[w]), SALES_ROLE, GUEST_ROLE].find((r) => r.id === selectedId)?.role ?? null)
     : null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -253,9 +259,9 @@ export default function Signup() {
             ))}
 
             <View style={styles.worldGroup}>
-              <Text style={styles.worldHeading}>Sales & Partnerships</Text>
+              <Text style={styles.worldHeading}>Sales, Partnerships & Guests</Text>
               <View style={styles.rolesGrid}>
-                {[SALES_ROLE].map((r) => {
+                {[SALES_ROLE, GUEST_ROLE].map((r) => {
                   const selected = selectedId === r.id;
                   return (
                     <TouchableOpacity

@@ -4782,6 +4782,31 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // GUEST ACCESS (0156) — prepaid invoices with guest surcharge
+  // =========================================================================
+  'guest.invoices': async (_input, ctx) => {
+    if (!ctx.user.companyId) return [];
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('id,invoice_number,subtotal_amount,tax_amount,total_amount,currency,status,due_date,issued_at,paid_at,requires_prepayment,created_at')
+      .eq('customer_company_id', ctx.user.companyId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load invoices');
+    }
+    return data ?? [];
+  },
+  'guest.payInvoice': async (input: { invoiceId: string }) => {
+    const { error } = await supabase.rpc('guest_pay_invoice', { p_invoice_id: input.invoiceId });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Guest payments are not live yet — apply migration 0156.');
+      throwErr(error, 'Unable to pay invoice');
+    }
+    return { success: true };
+  },
+
+  // =========================================================================
   // COMPANY STAFF
   // =========================================================================
   'company.listMembers': async (input: { companyId: string }) => {
