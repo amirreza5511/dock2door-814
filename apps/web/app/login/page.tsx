@@ -15,7 +15,10 @@ type Role =
   | "EquipmentRentalCompany"
   | "MobileRepairProvider"
   | "CargoInsurer"
-  | "MarketplaceBuyer";
+  | "MarketplaceBuyer"
+  | "EmploymentAgency"
+  | "CustomsBroker"
+  | "Guest";
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "Customer", label: "Customer" },
@@ -27,6 +30,9 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "MobileRepairProvider", label: "Mobile Repair & Services" },
   { value: "CargoInsurer", label: "Cargo Insurer" },
   { value: "MarketplaceBuyer", label: "Marketplace Buyer" },
+  { value: "EmploymentAgency", label: "Employment Agency" },
+  { value: "CustomsBroker", label: "Customs Broker" },
+  { value: "Guest", label: "Guest (pay-per-use)" },
 ];
 
 type FloatCard = {
@@ -194,10 +200,10 @@ function LoginForm() {
           options: { data: { role: selectedRole } },
         });
         if (error) throw error;
-        if (selectedRole !== "Customer") {
-          setInfo("Account created. You'll be prompted to set up your company after signing in.");
-        } else {
+        if (selectedRole === "Customer" || selectedRole === "Guest") {
           setInfo("Account created. Check your inbox if email confirmation is required, then sign in.");
+        } else {
+          setInfo("Account created. You'll be prompted to set up your company after signing in.");
         }
         setMode("signin");
       }
