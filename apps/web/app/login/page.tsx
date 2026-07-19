@@ -4,36 +4,90 @@ import { useState, Suspense, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { REAL_IMAGES } from "@/components/landing/images";
-import { ArrowRight, Boxes, Truck, Warehouse, Ship, Sparkles } from "lucide-react";
+import { ArrowRight, Boxes, Truck, Warehouse, Ship, Sparkles, Check, ShieldCheck, FileText, X } from "lucide-react";
+import { TERMS_AND_CONDITIONS, NDA_AGREEMENT, TERMS_VERSION, NDA_VERSION, type LegalDoc } from "@/lib/legal";
 
 type Role =
   | "Customer"
   | "WarehouseProvider"
   | "ServiceProvider"
   | "Employer"
+  | "Worker"
+  | "EmploymentAgency"
+  | "GateStaff"
+  | "Shipper"
+  | "Driver"
   | "TruckingCompany"
+  | "FreightForwarder"
+  | "DrayageCompany"
+  | "CustomsBroker"
   | "EquipmentRentalCompany"
   | "MobileRepairProvider"
   | "CargoInsurer"
   | "MarketplaceBuyer"
-  | "EmploymentAgency"
-  | "CustomsBroker"
+  | "SalesAgent"
   | "Guest";
 
-const ROLES: { value: Role; label: string }[] = [
-  { value: "Customer", label: "Customer" },
-  { value: "WarehouseProvider", label: "Warehouse Provider" },
-  { value: "ServiceProvider", label: "Service Provider" },
-  { value: "Employer", label: "Employer" },
-  { value: "TruckingCompany", label: "Trucking Company" },
-  { value: "EquipmentRentalCompany", label: "Equipment / Crane Rental" },
-  { value: "MobileRepairProvider", label: "Mobile Repair & Services" },
-  { value: "CargoInsurer", label: "Cargo Insurer" },
-  { value: "MarketplaceBuyer", label: "Marketplace Buyer" },
-  { value: "EmploymentAgency", label: "Employment Agency" },
-  { value: "CustomsBroker", label: "Customs Broker" },
-  { value: "Guest", label: "Guest (pay-per-use)" },
+type RoleOption = { id: string; role: Role; label: string; desc: string };
+
+/** Same worlds + roles as the mobile app signup — keep both in sync. */
+const ROLE_WORLDS: { world: string; roles: RoleOption[] }[] = [
+  {
+    world: "Labour",
+    roles: [
+      { id: "Employer", role: "Employer", label: "Employer", desc: "Post and manage work shifts" },
+      { id: "Worker", role: "Worker", label: "Worker", desc: "Find and apply for shifts" },
+      { id: "EmploymentAgency", role: "EmploymentAgency", label: "Employment Agency", desc: "Bring your own workers & clients — book shifts, coordinate and invoice through Dock2Door" },
+    ],
+  },
+  {
+    world: "Logistics & Warehousing",
+    roles: [
+      { id: "Customer", role: "Customer", label: "Customer", desc: "Book warehouse space & services" },
+      { id: "WarehouseProvider", role: "WarehouseProvider", label: "Warehouse Provider", desc: "List and manage storage space" },
+      { id: "ServiceProvider", role: "ServiceProvider", label: "Service Provider", desc: "Offer industrial services" },
+      { id: "GateStaff", role: "GateStaff", label: "Gate Staff", desc: "Run dock and gate check-ins" },
+    ],
+  },
+  {
+    world: "Freight & Delivery",
+    roles: [
+      { id: "Shipper", role: "Shipper", label: "Shipper", desc: "Post deliveries — parcel to full load" },
+      { id: "Driver", role: "Driver", label: "Owner-Operator", desc: "Own one truck — accept & deliver loads yourself" },
+      { id: "TruckingCompany", role: "TruckingCompany", label: "Fleet / Carrier Company", desc: "Run a fleet — accept loads & dispatch your drivers" },
+    ],
+  },
+  {
+    world: "Container Drayage",
+    roles: [
+      { id: "FreightForwarder", role: "FreightForwarder", label: "Importer / Exporter / Freight Forwarder", desc: "Post import & export container orders and track them live" },
+      { id: "DrayageCompany", role: "DrayageCompany", label: "Drayage Company", desc: "Claim container orders, dispatch drivers & track live" },
+      { id: "DrayageDriver", role: "Driver", label: "Drayage Driver", desc: "Drive container moves — enter your drayage company's fleet code" },
+      { id: "CustomsBroker", role: "CustomsBroker", label: "Customs Broker", desc: "Receive clearance requests & documents, quote and clear shipments" },
+    ],
+  },
+  {
+    world: "Rentals & Services",
+    roles: [
+      { id: "EquipmentRentalCompany", role: "EquipmentRentalCompany", label: "Equipment / Crane Rental Co.", desc: "Rent out forklifts, cranes, hoists & heavy machinery" },
+      { id: "MobileRepairProvider", role: "MobileRepairProvider", label: "Mobile Repair & Services", desc: "Dispatch technicians & work crews on-site" },
+      { id: "CargoInsurer", role: "CargoInsurer", label: "Cargo Insurer", desc: "Insure freight & shipments by cargo value" },
+      { id: "MarketplaceBuyer", role: "MarketplaceBuyer", label: "Marketplace Buyer", desc: "Rent gear, book repairs & insure cargo — no other world needed" },
+    ],
+  },
+  {
+    world: "Sales, Partnerships & Guests",
+    roles: [
+      { id: "SalesAgent", role: "SalesAgent", label: "Sales Agent", desc: "Onboard warehouses, drivers, employers & more — earn commission from Dock2Door" },
+      { id: "Guest", role: "Guest", label: "Guest", desc: "No business account — order drayage, customs clearance, rentals & more. Prepaid, with a small guest surcharge" },
+    ],
+  },
 ];
+
+const ALL_ROLE_OPTIONS: RoleOption[] = ROLE_WORLDS.flatMap((w) => w.roles);
+
+/** Roles that sign up as individuals — no company name needed. */
+const NO_COMPANY_ROLES: Role[] = ["Worker", "Driver", "SalesAgent", "Guest"];
 
 type FloatCard = {
   icon: typeof Truck;
@@ -173,20 +227,44 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/dashboard";
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [selectedRole, setSelectedRole] = useState<Role>("Customer");
+  const [name, setName] = useState<string>("");
+  const [companyName, setCompanyName] = useState<string>("");
+  const [city, setCity] = useState<string>("");
+  const [fleetCode, setFleetCode] = useState<string>("");
+  const [agentCode, setAgentCode] = useState<string>("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [acceptedTerms, setAcceptedTerms] = useState<boolean>(false);
+  const [acceptedNda, setAcceptedNda] = useState<boolean>(false);
+  const [ndaName, setNdaName] = useState<string>("");
+  const [viewingDoc, setViewingDoc] = useState<LegalDoc | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  const selectedOption = selectedId ? ALL_ROLE_OPTIONS.find((r) => r.id === selectedId) ?? null : null;
+  const selectedRole: Role | null = selectedOption?.role ?? null;
+  const needsCompany = selectedRole != null && !NO_COMPANY_ROLES.includes(selectedRole);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setError(null);
     setInfo(null);
     const supabase = getBrowserSupabase();
+
+    if (mode === "signup") {
+      if (!name.trim()) { setError("Name is required"); return; }
+      if (!password || password.length < 6) { setError("Password must be at least 6 characters"); return; }
+      if (!selectedRole) { setError("Please select your role"); return; }
+      if (needsCompany && !companyName.trim()) { setError("Company name is required for this role"); return; }
+      if (!acceptedTerms) { setError("Please accept the Terms & Conditions to continue"); return; }
+      if (!acceptedNda) { setError("You must agree to the Non-Disclosure Agreement"); return; }
+      if (!ndaName.trim()) { setError("Type your full legal name to sign the NDA"); return; }
+    }
+
+    setBusy(true);
     try {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -194,17 +272,34 @@ function LoginForm() {
         router.replace(next);
         router.refresh();
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim().toLowerCase(),
           password,
-          options: { data: { role: selectedRole } },
+          options: {
+            emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/login` : undefined,
+            data: {
+              name: name.trim(),
+              role: selectedRole,
+              company_name: needsCompany ? companyName.trim() : "",
+              city: city.trim(),
+              fleet_code: fleetCode.trim().toUpperCase(),
+              agent_code: agentCode.trim().toUpperCase(),
+              accepted_terms: "true",
+              terms_version: TERMS_VERSION,
+              accepted_nda: "true",
+              nda_version: NDA_VERSION,
+              nda_signed_name: ndaName.trim(),
+              signup_platform: "web",
+            },
+          },
         });
         if (error) throw error;
-        if (selectedRole === "Customer" || selectedRole === "Guest") {
-          setInfo("Account created. Check your inbox if email confirmation is required, then sign in.");
-        } else {
-          setInfo("Account created. You'll be prompted to set up your company after signing in.");
+        if (data.session) {
+          router.replace(next);
+          router.refresh();
+          return;
         }
+        setInfo(`Account created. We sent a confirmation link to ${email.trim()} — click it, then sign in here.`);
         setMode("signin");
       }
     } catch (err) {
@@ -245,6 +340,21 @@ function LoginForm() {
           </p>
 
           <form className="mt-7 space-y-4" onSubmit={submit}>
+            {mode === "signup" && (
+              <div>
+                <label htmlFor="name" className="text-xs font-medium uppercase tracking-wider text-white/50">Full Name</label>
+                <input
+                  id="name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Jane Smith"
+                  className={fieldClass}
+                />
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="text-xs font-medium uppercase tracking-wider text-white/50">Email</label>
               <input
@@ -272,26 +382,172 @@ function LoginForm() {
               />
             </div>
 
+            {mode === "signup" && needsCompany && (
+              <>
+                <div>
+                  <label htmlFor="companyName" className="text-xs font-medium uppercase tracking-wider text-white/50">Company Name</label>
+                  <input
+                    id="companyName"
+                    type="text"
+                    autoComplete="organization"
+                    value={companyName}
+                    onChange={(e) => setCompanyName(e.target.value)}
+                    placeholder="Dock2Door Logistics Ltd."
+                    className={fieldClass}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="city" className="text-xs font-medium uppercase tracking-wider text-white/50">City</label>
+                  <input
+                    id="city"
+                    type="text"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="e.g. Chicago"
+                    className={fieldClass}
+                  />
+                </div>
+              </>
+            )}
+
+            {mode === "signup" && selectedRole === "Driver" && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+                <label htmlFor="fleetCode" className="text-xs font-medium uppercase tracking-wider text-white/50">Fleet code (optional)</label>
+                <input
+                  id="fleetCode"
+                  type="text"
+                  value={fleetCode}
+                  onChange={(e) => setFleetCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. AB7K2P"
+                  className={fieldClass}
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+                  Joining a fleet or carrier company? Enter the code your dispatcher gave you and you'll show up in their fleet automatically. Leave blank if you're an independent owner-operator.
+                </p>
+              </div>
+            )}
+
+            {mode === "signup" && selectedRole != null && selectedRole !== "SalesAgent" && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+                <label htmlFor="agentCode" className="text-xs font-medium uppercase tracking-wider text-white/50">Referral code (optional)</label>
+                <input
+                  id="agentCode"
+                  type="text"
+                  value={agentCode}
+                  onChange={(e) => setAgentCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. AG7K2PQ"
+                  className={fieldClass}
+                />
+                <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+                  Were you referred by a Dock2Door sales agent? Enter their code so they get credit for bringing you on board.
+                </p>
+              </div>
+            )}
+
             {mode === "signup" && (
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-white/50">Account type</label>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {ROLES.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() => setSelectedRole(r.value)}
-                      className={[
-                        "rounded-full border px-3 py-1.5 text-xs font-medium transition",
-                        selectedRole === r.value
-                          ? "border-[#2de2c7] bg-[#2de2c7]/15 text-[#7ff0dd]"
-                          : "border-white/12 bg-white/[0.03] text-white/55 hover:border-white/25 hover:text-white",
-                      ].join(" ")}
-                    >
-                      {r.label}
-                    </button>
+                <label className="text-xs font-medium uppercase tracking-wider text-white/50">Your Role</label>
+                <div className="mt-2 space-y-4">
+                  {ROLE_WORLDS.map((group) => (
+                    <div key={group.world}>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-[#2de2c7]">{group.world}</p>
+                      <div className="space-y-2">
+                        {group.roles.map((r) => {
+                          const selected = selectedId === r.id;
+                          return (
+                            <button
+                              key={r.id}
+                              type="button"
+                              onClick={() => setSelectedId(r.id)}
+                              className={[
+                                "relative w-full rounded-xl border p-3.5 text-left transition",
+                                selected
+                                  ? "border-[#2de2c7] bg-[#2de2c7]/10"
+                                  : "border-white/12 bg-white/[0.03] hover:border-white/25",
+                              ].join(" ")}
+                            >
+                              {selected && (
+                                <span className="absolute right-3 top-3 grid h-5 w-5 place-items-center rounded-full bg-[#2de2c7]">
+                                  <Check size={12} className="text-[#04121a]" />
+                                </span>
+                              )}
+                              <span className={["block pr-8 text-sm font-semibold", selected ? "text-[#7ff0dd]" : "text-white"].join(" ")}>{r.label}</span>
+                              <span className="mt-0.5 block text-xs text-white/50">{r.desc}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {mode === "signup" && selectedRole != null && (
+              <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
+                <div className="space-y-2.5 border-b border-white/10 pb-3">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={15} className="text-[#2de2c7]" />
+                    <span className="text-sm font-semibold text-white">Non-Disclosure Agreement</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-white/40">
+                    Everyone on Dock2Door may access confidential business, customer and shipment data, so you must read and sign our NDA before you start.
+                  </p>
+                  <button type="button" className="flex items-start gap-2.5 text-left" onClick={() => setAcceptedNda((v) => !v)}>
+                    <span className={["mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition", acceptedNda ? "border-[#2de2c7] bg-[#2de2c7]" : "border-white/25 bg-transparent"].join(" ")}>
+                      {acceptedNda && <Check size={13} className="text-[#04121a]" />}
+                    </span>
+                    <span className="text-xs leading-relaxed text-white/70">
+                      I have read and agree to the{" "}
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        className="cursor-pointer font-semibold text-[#7ff0dd] underline"
+                        onClick={(e) => { e.stopPropagation(); setViewingDoc(NDA_AGREEMENT); }}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setViewingDoc(NDA_AGREEMENT); } }}
+                      >
+                        Non-Disclosure Agreement
+                      </span>.
+                    </span>
+                  </button>
+                  {acceptedNda && (
+                    <div>
+                      <label htmlFor="ndaName" className="text-xs font-medium uppercase tracking-wider text-white/50">Type your full legal name to sign</label>
+                      <input
+                        id="ndaName"
+                        type="text"
+                        value={ndaName}
+                        onChange={(e) => setNdaName(e.target.value)}
+                        placeholder="e.g. Jane A. Smith"
+                        className={fieldClass}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <button type="button" className="flex items-start gap-2.5 text-left" onClick={() => setAcceptedTerms((v) => !v)}>
+                  <span className={["mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-md border transition", acceptedTerms ? "border-[#2de2c7] bg-[#2de2c7]" : "border-white/25 bg-transparent"].join(" ")}>
+                    {acceptedTerms && <Check size={13} className="text-[#04121a]" />}
+                  </span>
+                  <span className="text-xs leading-relaxed text-white/70">
+                    I agree to the{" "}
+                    <span
+                      role="link"
+                      tabIndex={0}
+                      className="cursor-pointer font-semibold text-[#7ff0dd] underline"
+                      onClick={(e) => { e.stopPropagation(); setViewingDoc(TERMS_AND_CONDITIONS); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); setViewingDoc(TERMS_AND_CONDITIONS); } }}
+                    >
+                      Terms &amp; Conditions
+                    </span>{" "}
+                    and Privacy Policy.
+                  </span>
+                </button>
+
+                <button type="button" className="flex items-center gap-1.5 text-[11px] text-white/40 transition hover:text-white/70" onClick={() => setViewingDoc(TERMS_AND_CONDITIONS)}>
+                  <FileText size={12} />
+                  Read the full documents
+                </button>
               </div>
             )}
 
@@ -300,10 +556,10 @@ function LoginForm() {
 
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || (mode === "signup" && (!selectedRole || !acceptedTerms || !acceptedNda || !ndaName.trim()))}
               className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#2de2c7] to-[#4fd6c0] font-display text-sm font-semibold text-[#04121a] shadow-[0_10px_40px_-8px_rgba(45,226,199,0.7)] transition hover:shadow-[0_14px_50px_-6px_rgba(45,226,199,0.9)] disabled:opacity-60"
             >
-              {busy ? "Working…" : mode === "signin" ? "Sign in" : "Sign up"}
+              {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create Account"}
               {!busy && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
             </button>
 
@@ -317,6 +573,48 @@ function LoginForm() {
           </form>
         </div>
       </div>
+
+      {viewingDoc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => setViewingDoc(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={viewingDoc.title}
+        >
+          <div
+            className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#0a1420] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="font-display text-base font-bold text-white">{viewingDoc.title}</p>
+                <p className="text-[11px] text-white/40">Version {viewingDoc.version}</p>
+              </div>
+              <button
+                type="button"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-white/60 transition hover:text-white"
+                onClick={() => setViewingDoc(null)}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="overflow-y-auto whitespace-pre-wrap px-5 py-4 text-[13px] leading-relaxed text-white/70">
+              {viewingDoc.body}
+            </div>
+            <div className="border-t border-white/10 px-5 py-3">
+              <button
+                type="button"
+                className="h-10 w-full rounded-xl bg-white/10 text-sm font-semibold text-white transition hover:bg-white/15"
+                onClick={() => setViewingDoc(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
