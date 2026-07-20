@@ -1,0 +1,25 @@
+#!/bin/bash
+. tmp/qa/api.sh
+WRK=$(login test_worker@rorkqa.com); EMP=$(login test_employer@rorkqa.com); CUST=$(login test_customer@rorkqa.com)
+WRK_ID="36aaf593-0e32-45e9-9ce3-8034d9c427c8"
+EMP_CO="2b742e61-e493-4c6a-bcfb-09fe823d7f1a"
+echo "── read isolation ──"
+echo "1. CUST reads other notifications (expect []): $(rest "$CUST" GET "notifications?user_id=eq.$WRK_ID&select=title&limit=3")"
+echo "2. CUST reads worker_private_info (expect []): $(rest "$CUST" GET "worker_private_info?select=*&limit=3" | head -c 150)"
+echo "3. CUST reads others payment_methods (expect []): $(rest "$CUST" GET "payment_methods?select=id&limit=3" | head -c 100)"
+echo "4. WRK reads all support_tickets (expect only own): $(rest "$WRK" GET "support_tickets?select=subject&limit=5" | head -c 200)"
+echo "── write isolation ──"
+echo "5. CUST updates employer shift (expect 0 rows/err): $(rest "$CUST" PATCH "shift_posts?employer_company_id=eq.$EMP_CO&select=id" '{"title":"HACKED"}' | head -c 150)"
+echo "6. CUST updates other profile (expect 0/err): $(rest "$CUST" PATCH "profiles?id=eq.$WRK_ID&select=id" '{"name":"HACKED"}' | head -c 150)"
+echo "7. WRK escalates own role (expect err/0): $(rest "$WRK" PATCH "profiles?id=eq.$WRK_ID&select=role" '{"role":"SuperAdmin"}' | head -c 150)"
+echo "8. CUST updates others company (expect 0/err): $(rest "$CUST" PATCH "companies?id=eq.$EMP_CO&select=id" '{"name":"HACKED CO"}' | head -c 150)"
+echo "── admin RPC gating ──"
+echo "9. WRK calls admin_set_company_approval (expect 42501): $(rpc "$WRK" admin_set_company_approval "{\"p_company_id\":\"$EMP_CO\",\"p_status\":\"Suspended\",\"p_reason\":\"qa\"}" | head -c 150)"
+echo "10. WRK calls admin_grant_role (expect err): $(rpc "$WRK" admin_grant_role "{\"p_user_id\":\"$WRK_ID\",\"p_role\":\"admin\"}" | head -c 150)"
+echo "11. CUST accepts others applicant (expect err): $(rpc "$CUST" employer_accept_applicant '{"p_application_id":"7e52929f-5653-4982-a3f2-6fab8c807666","p_rate":99}' | head -c 150)"
+echo "── anon access ──"
+echo "12. ANON reads profiles (expect [] or err): $(curl -s "$BASE/rest/v1/profiles?select=email&limit=3" -H "apikey: $ANON" | head -c 150)"
+echo "13. ANON reads shift_posts (expect [] or err): $(curl -s "$BASE/rest/v1/shift_posts?select=id&limit=3" -H "apikey: $ANON" | head -c 150)"
+# verify nothing got hacked
+echo "14. VERIFY title intact: $(rest "$EMP" GET "shift_posts?id=eq.1a2cad2a-94ed-42b2-bdf1-cb8274b32b6b&select=title")"
+echo "15. VERIFY worker name intact: $(rest "$WRK" GET "profiles?id=eq.$WRK_ID&select=name,role")"
