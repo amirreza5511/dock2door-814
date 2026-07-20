@@ -2954,6 +2954,54 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { ran: !!r.ran, created: Number(r.created ?? 0), notReady: false };
   },
 
+  // -------------------------------------------------------------------------
+  // AI AGENT (0158) — provider directory, intake forwarding, support tickets
+  // -------------------------------------------------------------------------
+
+  'ai.providers': async (input: { types?: string[] } | undefined) => {
+    const { data, error } = await supabase.rpc('ai_list_provider_companies', { p_types: input?.types ?? null });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load providers');
+    }
+    return (data ?? []) as unknown[];
+  },
+
+  'ai.forwardIntake': async (input: { targetCompanyId: string; subject: string; body: string }) => {
+    const { data, error } = await supabase.rpc('ai_forward_intake', {
+      p_target_company_id: input.targetCompanyId,
+      p_subject: input.subject,
+      p_body: input.body,
+    });
+    if (error) throwErr(error, 'Unable to send the request to the provider');
+    return { threadId: data as string };
+  },
+
+  'tickets.create': async (input: { subject: string; summary?: string }) => {
+    const { data, error } = await supabase.rpc('create_support_ticket', {
+      p_subject: input.subject,
+      p_summary: input.summary ?? '',
+    });
+    if (error) throwErr(error, 'Unable to create a support ticket');
+    const r = (data ?? {}) as { ticketId?: string; threadId?: string };
+    return { ticketId: r.ticketId ?? '', threadId: r.threadId ?? '' };
+  },
+
+  'tickets.list': async (input: { scope?: 'mine' | 'all' } | undefined) => {
+    const { data, error } = await supabase.rpc('list_support_tickets', { p_scope: input?.scope ?? 'mine' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load tickets');
+    }
+    return (data ?? []) as unknown[];
+  },
+
+  'tickets.setStatus': async (input: { id: string; status: 'open' | 'in_progress' | 'resolved' }) => {
+    const { error } = await supabase.rpc('set_support_ticket_status', { p_id: input.id, p_status: input.status });
+    if (error) throwErr(error, 'Unable to update the ticket');
+    return { success: true };
+  },
+
   // =========================================================================
   // WORKSPACE CUSTOMIZATIONS — companies tailor their own pages, admins approve
   // =========================================================================

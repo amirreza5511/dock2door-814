@@ -9,13 +9,15 @@ import * as Haptics from 'expo-haptics';
 import {
   Send, Sparkles, ChevronLeft, ShieldCheck, AlertTriangle, Lightbulb, Info,
   OctagonAlert, Radar, Check, X, Play, Brain, Trash2, Repeat2, TrendingDown,
-  DollarSign, Plus,
+  DollarSign, Plus, Mic, Square,
 } from 'lucide-react-native';
+import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
-import { askAssistant, type AiMessage } from '@/lib/ai';
+import { askAssistant, transcribeAudio, type AiMessage } from '@/lib/ai';
 import {
-  buildCopilotSystemPrompt, parseCopilotReply, COPILOT_SUGGESTIONS,
+  buildCopilotSystemPrompt, parseCopilotReply, copilotSuggestions,
   type CopilotAction,
 } from '@/lib/copilot';
 import { trpc } from '@/lib/trpc';
@@ -99,9 +101,19 @@ export default function CopilotScreen() {
   const setCharges = trpc.drayage.setCharges.useMutation();
   const linkStreetTurn = trpc.drayage.linkStreetTurn.useMutation();
   const submitCustomization = trpc.customization.submit.useMutation();
+  const createShift = trpc.shifts.create.useMutation();
+  const acceptApplicant = trpc.shifts.acceptApplicant.useMutation();
+  const applyShift = trpc.shifts.apply.useMutation();
+  const dispatchLoad = trpc.loads.dispatch.useMutation();
+  const createDrayageOrder = trpc.drayage.createOrder.useMutation();
+  const forwardIntake = trpc.ai.forwardIntake.useMutation();
+  const createTicket = trpc.tickets.create.useMutation();
 
   const context = contextQuery.data as Record<string, unknown> | null | undefined;
   const isCompany = !!(context && typeof context === 'object' && 'orders' in context);
+  const roleStr = typeof context?.role === 'string' ? (context.role as string) : '';
+  const companyTypeStr = typeof context?.companyType === 'string' ? (context.companyType as string) : '';
+  const suggestions = useMemo(() => copilotSuggestions(roleStr, companyTypeStr), [roleStr, companyTypeStr]);
   const memories = useMemo(
     () => ((memoriesQuery.data ?? []) as { id: string; content: string }[]),
     [memoriesQuery.data],
@@ -199,6 +211,65 @@ export default function CopilotScreen() {
       } else if (action.type === 'link_street_turn') {
         if (!p.providerOrderId || !p.receiverOrderId) throw new Error('The proposal is missing order ids.');
         await linkStreetTurn.mutateAsync({ providerOrderId: String(p.providerOrderId), receiverOrderId: String(p.receiverOrderId) });
+      } else if (action.type === 'create_shift') {
+        if (!p.title || !p.date || !p.startTime || !p.endTime) throw new Error('The proposal is missing shift details.');
+        await createShift.mutateAsync({
+          title: String(p.title),
+          category: p.category ? String(p.category) : 'General',
+          date: String(p.date),
+          startTime: String(p.startTime),
+          endTime: String(p.endTime),
+          workersNeeded: p.workersNeeded ? Number(p.workersNeeded) : 1,
+          hourlyRate: p.hourlyRate != null ? Number(p.hourlyRate) : null,
+          locationCity: p.locationCity ? String(p.locationCity) : '',
+          requirements: p.requirements ? String(p.requirements) : '',
+          notes: p.notes ? String(p.notes) : '',
+        });
+      } else if (action.type === 'accept_applicant') {
+        if (!p.applicationId) throw new Error('The proposal is missing the application id.');
+        await acceptApplicant.mutateAsync({
+          applicationId: String(p.applicationId),
+          rate: p.rate != null ? Number(p.rate) : undefined,
+        });
+      } else if (action.type === 'apply_shift') {
+        if (!p.shiftId) throw new Error('The proposal is missing the shift id.');
+        await applyShift.mutateAsync({ shiftId: String(p.shiftId) });
+      } else if (action.type === 'dispatch_load') {
+        if (!p.loadId || !p.driverUserId) throw new Error('The proposal is missing the load or driver id.');
+        await dispatchLoad.mutateAsync({ id: String(p.loadId), driverUserId: String(p.driverUserId) });
+      } else if (action.type === 'create_drayage_order') {
+        if (!p.direction || !p.containerNumber) throw new Error('The proposal is missing the direction or container number.');
+        await createDrayageOrder.mutateAsync({
+          direction: String(p.direction),
+          containerNumber: String(p.containerNumber),
+          containerSize: p.containerSize ? String(p.containerSize) : '40ft',
+          commodity: p.commodity ? String(p.commodity) : '',
+          weightKg: p.weightKg != null ? Number(p.weightKg) : 0,
+          pickupAddress: p.pickupAddress ? String(p.pickupAddress) : '',
+          pickupCity: p.pickupCity ? String(p.pickupCity) : '',
+          deliveryAddress: p.deliveryAddress ? String(p.deliveryAddress) : '',
+          deliveryCity: p.deliveryCity ? String(p.deliveryCity) : '',
+          notes: p.notes ? String(p.notes) : '',
+          targetDrayageCompanyId: p.targetDrayageCompanyId ? String(p.targetDrayageCompanyId) : null,
+        });
+      } else if (action.type === 'forward_intake') {
+        if (!p.targetCompanyId || !p.body) throw new Error('The proposal is missing the target company or the summary.');
+        const fw = await forwardIntake.mutateAsync({
+          targetCompanyId: String(p.targetCompanyId),
+          subject: p.subject ? String(p.subject) : action.label,
+          body: String(p.body),
+        });
+        if (fw?.threadId) {
+          setTimeout(() => router.push(`/messages/${fw.threadId}` as never), 600);
+        }
+      } else if (action.type === 'escalate_human') {
+        const tk = await createTicket.mutateAsync({
+          subject: p.subject ? String(p.subject) : action.label,
+          summary: p.summary ? String(p.summary) : '',
+        });
+        if (tk?.threadId) {
+          setTimeout(() => router.push(`/messages/${tk.threadId}` as never), 600);
+        }
       } else if (action.type === 'run_watchdog') {
         await runWatchdog.mutateAsync(undefined);
       } else if (action.type === 'request_customization') {
@@ -229,7 +300,51 @@ export default function CopilotScreen() {
     } finally {
       setRunningKey(null);
     }
-  }, [runningKey, doneKeys, dispatchMove, assignEquipment, setCharges, linkStreetTurn, runWatchdog, submitCustomization, appendChat, utils, scrollDown]);
+  }, [runningKey, doneKeys, dispatchMove, assignEquipment, setCharges, linkStreetTurn, runWatchdog, submitCustomization, createShift, acceptApplicant, applyShift, dispatchLoad, createDrayageOrder, forwardIntake, createTicket, router, appendChat, utils, scrollDown]);
+
+  // ── Voice input: record → transcribe → drop into the composer ──
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [recording, setRecording] = useState<boolean>(false);
+  const [transcribing, setTranscribing] = useState<boolean>(false);
+
+  const toggleMic = useCallback(async () => {
+    if (transcribing || sending) return;
+    if (!recording) {
+      try {
+        const perm = await AudioModule.requestRecordingPermissionsAsync();
+        if (!perm.granted) {
+          Alert.alert('Microphone', 'Microphone access is needed for voice input. You can enable it in Settings.');
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await recorder.prepareToRecordAsync();
+        recorder.record();
+        setRecording(true);
+        if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (e) {
+        Alert.alert('Voice input failed', e instanceof Error ? e.message : 'Unable to start recording.');
+      }
+      return;
+    }
+    setRecording(false);
+    setTranscribing(true);
+    try {
+      await recorder.stop();
+      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      const uri = recorder.uri;
+      if (!uri) throw new Error('No recording captured.');
+      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+      const text = await transcribeAudio(base64, 'audio/m4a');
+      if (text) {
+        setInput((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+        if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {
+      Alert.alert('Voice input failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setTranscribing(false);
+    }
+  }, [recording, transcribing, sending, recorder]);
 
   const confirmClear = useCallback(() => {
     Alert.alert('Clear conversation?', 'The chat history will be deleted. Memories stay.', [
@@ -283,7 +398,7 @@ export default function CopilotScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>AI Copilot</Text>
             <Text style={styles.headerSub} numberOfLines={1}>
-              {companyName ? `Watching ${companyName}` : 'Your operations co-pilot'}
+              {companyName ? `Watching ${companyName}` : 'Your personal AI operator'}
             </Text>
           </View>
         </View>
@@ -327,12 +442,12 @@ export default function CopilotScreen() {
             {empty ? (
               <View style={styles.emptyWrap}>
                 <View style={styles.emptyIcon}><Sparkles size={28} color={C.accent} /></View>
-                <Text style={styles.emptyTitle}>Your operation, on autopilot</Text>
+                <Text style={styles.emptyTitle}>Your own AI brain</Text>
                 <Text style={styles.emptySub}>
-                  I see your live orders, moves, equipment, deadlines and dead runs. Ask me to dispatch, pair street turns, or find money — you approve every action with one tap.
+                  I see your live data and I can actually do things — book workers, dispatch drivers, coordinate containers, reach providers, or bring in a human. You approve every action with one tap. Speak or type in any language.
                 </Text>
                 <View style={styles.suggestions}>
-                  {COPILOT_SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <TouchableOpacity key={s} style={styles.suggestionChip} onPress={() => void send(s)}>
                       <Text style={styles.suggestionText}>{s}</Text>
                     </TouchableOpacity>
@@ -396,11 +511,25 @@ export default function CopilotScreen() {
           </ScrollView>
 
           <View style={[styles.composer, { paddingBottom: insets.bottom + 10 }]}>
+            <TouchableOpacity
+              onPress={() => void toggleMic()}
+              disabled={transcribing || sending}
+              style={[styles.micBtn, recording && styles.micBtnRecording]}
+              testID="copilot-mic"
+            >
+              {transcribing ? (
+                <ActivityIndicator size="small" color={C.accent} />
+              ) : recording ? (
+                <Square size={16} color={C.white} fill={C.white} />
+              ) : (
+                <Mic size={18} color={C.accent} />
+              )}
+            </TouchableOpacity>
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="Ask, dispatch, or say “remember…”"
-              placeholderTextColor={C.textMuted}
+              placeholder={recording ? 'Listening… tap ■ to stop' : 'Ask, act, or say “remember…”'}
+              placeholderTextColor={recording ? C.red : C.textMuted}
               style={styles.input}
               multiline
               editable={!sending}
@@ -661,6 +790,8 @@ const styles = StyleSheet.create({
   input: { flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, color: C.text, fontSize: 14 },
   sendBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { backgroundColor: C.border },
+  micBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '40', alignItems: 'center', justifyContent: 'center' },
+  micBtnRecording: { backgroundColor: C.red, borderColor: C.red },
 
   alertTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   filterRow: { flexDirection: 'row', gap: 8 },

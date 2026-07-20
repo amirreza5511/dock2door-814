@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles, Radar, Lightbulb, ShieldCheck, AlertTriangle, Info, OctagonAlert,
-  Check, X, Play, Brain, Trash2, Repeat2, TrendingDown, DollarSign, Plus, Send,
+  Check, X, Play, Brain, Trash2, Repeat2, TrendingDown, DollarSign, Plus, Send, Mic, Square,
 } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
@@ -13,10 +14,31 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { askAssistant, type AiMessage } from "@/lib/ai";
 import {
-  buildCopilotSystemPrompt, parseCopilotReply, COPILOT_SUGGESTIONS,
+  buildCopilotSystemPrompt, parseCopilotReply, copilotSuggestions,
   type CopilotAction,
 } from "@/lib/copilot";
 import { cn } from "@/lib/utils";
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+function getSpeechRecognition(): SpeechRecognitionLike | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognitionLike;
+    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+  };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  return Ctor ? new Ctor() : null;
+}
 
 type TabKey = "chat" | "alerts" | "insights";
 
@@ -86,6 +108,7 @@ function sanitizeActions(raw: unknown): CopilotAction[] {
 export default function CopilotPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const router = useRouter();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const [tab, setTab] = useState<TabKey>("chat");
@@ -258,6 +281,9 @@ export default function CopilotPage() {
 
   const context = contextQ.data;
   const isCompany = !!(context && typeof context === "object" && "orders" in context);
+  const roleStr = typeof (context as { role?: unknown } | null | undefined)?.role === "string" ? String((context as { role?: string }).role) : "";
+  const companyTypeStr = typeof (context as { companyType?: unknown } | null | undefined)?.companyType === "string" ? String((context as { companyType?: string }).companyType) : "";
+  const suggestions = useMemo(() => copilotSuggestions(roleStr, companyTypeStr), [roleStr, companyTypeStr]);
   const memories = useMemo(() => memoriesQ.data ?? [], [memoriesQ.data]);
   const companyName = (context as { companyName?: string } | null | undefined)?.companyName ?? "";
   const dead = (context as { deadRuns7d?: { empty_miles?: number; deadhead_miles?: number; dead_cost?: number; savings_cost?: number } } | null | undefined)?.deadRuns7d;
@@ -356,6 +382,102 @@ export default function CopilotPage() {
       } else if (action.type === "link_street_turn") {
         if (!p.providerOrderId || !p.receiverOrderId) throw new Error("The proposal is missing order ids.");
         await linkStreetTurn.mutateAsync({ providerOrderId: String(p.providerOrderId), receiverOrderId: String(p.receiverOrderId) });
+      } else if (action.type === "create_shift") {
+        if (!p.title || !p.date || !p.startTime || !p.endTime) throw new Error("The proposal is missing shift details.");
+        const { data: u } = await supabase.auth.getUser();
+        if (!u.user) throw new Error("Not signed in");
+        const { data: prof } = await supabase.from("profiles").select("company_id").eq("id", u.user.id).maybeSingle();
+        const companyId = (prof as { company_id?: string | null } | null)?.company_id;
+        if (!companyId) throw new Error("Company context required to post a shift.");
+        const category = p.category ? String(p.category) : "General";
+        const { error } = await supabase.from("shift_posts").insert({
+          employer_company_id: companyId,
+          title: String(p.title),
+          category,
+          skills: [category],
+          location_address: "",
+          location_city: p.locationCity ? String(p.locationCity) : "",
+          date: String(p.date),
+          start_time: String(p.startTime),
+          end_time: String(p.endTime),
+          hourly_rate: p.hourlyRate != null ? Number(p.hourlyRate) : null,
+          minimum_hours: 1,
+          workers_needed: p.workersNeeded ? Number(p.workersNeeded) : 1,
+          requirements: p.requirements ? String(p.requirements) : "",
+          notes: p.notes ? String(p.notes) : "",
+          status: "Posted",
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "accept_applicant") {
+        if (!p.applicationId) throw new Error("The proposal is missing the application id.");
+        const { error } = await supabase.rpc("employer_accept_applicant", {
+          p_application_id: String(p.applicationId),
+          p_rate: p.rate != null ? Number(p.rate) : null,
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "apply_shift") {
+        if (!p.shiftId) throw new Error("The proposal is missing the shift id.");
+        const { error } = await supabase.rpc("worker_apply_shift", { p_shift_id: String(p.shiftId) });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "dispatch_load") {
+        if (!p.loadId || !p.driverUserId) throw new Error("The proposal is missing the load or driver id.");
+        const { error } = await supabase.rpc("dispatch_load", {
+          p_load_id: String(p.loadId),
+          p_driver_user_id: String(p.driverUserId),
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "create_drayage_order") {
+        if (!p.direction || !p.containerNumber) throw new Error("The proposal is missing the direction or container number.");
+        const { error } = await supabase.rpc("create_drayage_order", {
+          p_direction: String(p.direction),
+          p_container_number: String(p.containerNumber),
+          p_container_size: p.containerSize ? String(p.containerSize) : "40ft",
+          p_container_type: "",
+          p_bol_number: "",
+          p_booking_number: "",
+          p_commodity: p.commodity ? String(p.commodity) : "",
+          p_weight_kg: p.weightKg != null ? Number(p.weightKg) : 0,
+          p_is_hazmat: false,
+          p_is_overweight: false,
+          p_is_oversized: false,
+          p_origin_terminal_id: null,
+          p_destination_terminal_id: null,
+          p_warehouse_company_id: null,
+          p_pickup_address: p.pickupAddress ? String(p.pickupAddress) : "",
+          p_pickup_city: p.pickupCity ? String(p.pickupCity) : "",
+          p_pickup_lat: 0,
+          p_pickup_lng: 0,
+          p_delivery_address: p.deliveryAddress ? String(p.deliveryAddress) : "",
+          p_delivery_city: p.deliveryCity ? String(p.deliveryCity) : "",
+          p_delivery_lat: 0,
+          p_delivery_lng: 0,
+          p_port_reservation_date: null,
+          p_port_reservation_time: "",
+          p_is_prepull: false,
+          p_prepull_pickup_date: null,
+          p_prepull_yard_terminal_id: null,
+          p_notes: p.notes ? String(p.notes) : "",
+          p_target_drayage_company_id: p.targetDrayageCompanyId ? String(p.targetDrayageCompanyId) : null,
+          p_handling_mode: "LiveUnload",
+          p_pickup_back_date: null,
+        });
+        if (error) throw new Error(error.message);
+      } else if (action.type === "forward_intake") {
+        if (!p.targetCompanyId || !p.body) throw new Error("The proposal is missing the target company or the summary.");
+        const { error } = await supabase.rpc("ai_forward_intake", {
+          p_target_company_id: String(p.targetCompanyId),
+          p_subject: p.subject ? String(p.subject) : action.label,
+          p_body: String(p.body),
+        });
+        if (error) throw new Error(error.message);
+        setTimeout(() => router.push("/messages"), 800);
+      } else if (action.type === "escalate_human") {
+        const { error } = await supabase.rpc("create_support_ticket", {
+          p_subject: p.subject ? String(p.subject) : action.label,
+          p_summary: p.summary ? String(p.summary) : "",
+        });
+        if (error) throw new Error(error.message);
+        setTimeout(() => router.push("/messages"), 800);
       } else if (action.type === "run_watchdog") {
         await runWatchdog.mutateAsync();
       } else if (action.type === "request_customization") {
@@ -383,7 +505,37 @@ export default function CopilotPage() {
     } finally {
       setRunningKey(null);
     }
-  }, [runningKey, doneKeys, supabase, linkStreetTurn, runWatchdog, appendChat, qc]);
+  }, [runningKey, doneKeys, supabase, linkStreetTurn, runWatchdog, appendChat, qc, router]);
+
+  // ── Voice input via the browser's speech recognition ──
+  const [recording, setRecording] = useState<boolean>(false);
+  const recogRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const toggleMic = useCallback(() => {
+    if (recording) {
+      recogRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+    const recog = getSpeechRecognition();
+    if (!recog) {
+      setActionError("Voice input is not supported in this browser — try Chrome or Edge.");
+      return;
+    }
+    recogRef.current = recog;
+    recog.lang = navigator.language || "en-US";
+    recog.interimResults = false;
+    recog.continuous = false;
+    recog.onresult = (event) => {
+      const transcript = Array.from({ length: event.results.length }, (_, i) => event.results[i]?.[0]?.transcript ?? "").join(" ").trim();
+      if (transcript) setInput((prev) => (prev.trim() ? `${prev.trim()} ${transcript}` : transcript));
+    };
+    recog.onend = () => setRecording(false);
+    recog.onerror = () => setRecording(false);
+    setActionError("");
+    setRecording(true);
+    recog.start();
+  }, [recording]);
 
   const generateIdeas = useCallback(async () => {
     if (ideasLoading) return;
@@ -416,7 +568,7 @@ export default function CopilotPage() {
           <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
             <Sparkles className="h-3.5 w-3.5" /> AI Copilot
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">{companyName ? `Watching ${companyName}` : "Your operations co-pilot"}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{companyName ? `Watching ${companyName}` : "Your personal AI operator"}</h1>
         </div>
         {tab === "chat" && !empty ? (
           <Button variant="outline" size="sm" onClick={() => clearChat.mutate()} disabled={clearChat.isPending}>
@@ -448,12 +600,12 @@ export default function CopilotPage() {
                 <div className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/15">
                   <Sparkles className="h-7 w-7 text-primary" />
                 </div>
-                <p className="text-lg font-semibold">Your operation, on autopilot</p>
+                <p className="text-lg font-semibold">Your own AI brain</p>
                 <p className="max-w-md text-sm text-muted-foreground">
-                  I see your live orders, moves, equipment, deadlines and dead runs. Ask me to dispatch, pair street turns, or find money — you approve every action with one click.
+                  I see your live data and I can actually do things — book workers, dispatch drivers, coordinate containers, reach providers, or bring in a human. You approve every action with one click. Speak or type in any language.
                 </p>
                 <div className="mt-2 grid w-full max-w-md gap-2">
-                  {COPILOT_SUGGESTIONS.map((s) => (
+                  {suggestions.map((s) => (
                     <button key={s} className="rounded-lg border border-border bg-card px-4 py-3 text-left text-sm transition hover:bg-accent" onClick={() => void send(s)}>
                       {s}
                     </button>
@@ -513,10 +665,19 @@ export default function CopilotPage() {
             className="flex gap-2"
             onSubmit={(e) => { e.preventDefault(); void send(input); }}
           >
+            <Button
+              type="button"
+              variant={recording ? "destructive" : "outline"}
+              onClick={toggleMic}
+              disabled={sending}
+              title={recording ? "Stop listening" : "Voice input"}
+            >
+              {recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </Button>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder='Ask, dispatch, or say "remember…"'
+              placeholder={recording ? "Listening…" : 'Ask, act, or say "remember…"'}
               disabled={sending}
               className="flex-1"
             />

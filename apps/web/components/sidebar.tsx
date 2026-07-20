@@ -178,6 +178,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/super-admin/billing", label: "Billing oversight", icon: CreditCard },
         { href: "/super-admin/finance", label: "Payments & finance", icon: Wallet },
         { href: "/super-admin/support", label: "Support inbox", icon: LifeBuoy },
+        { href: "/super-admin/tickets", label: "Support tickets", icon: LifeBuoy },
         { href: "/super-admin/customizations", label: "Customization requests", icon: SlidersHorizontal },
       ],
     });

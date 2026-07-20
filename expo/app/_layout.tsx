@@ -15,6 +15,7 @@ import { CurrentWorldProvider } from '@/providers/CurrentWorldProvider';
 import { CustomizationProvider } from '@/providers/CustomizationProvider';
 import { registerPushTokenAsync } from '@/lib/push';
 import AdBanner from '@/components/AdBanner';
+import AiFab from '@/components/AiFab';
 import LegalGate from '@/components/LegalGate';
 
 void SplashScreen.preventAutoHideAsync();
@@ -205,6 +206,7 @@ export default function RootLayout() {
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
                 <StatusBar style="light" />
                 <RootLayoutNav />
+                <AiFab />
                 <AdBanner />
                 <BootstrapController />
                 <AuthGuard />

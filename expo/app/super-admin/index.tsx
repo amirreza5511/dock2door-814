@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Award, Building2, ClipboardCheck, Database, LogOut, ShieldCheck, SlidersHorizontal, Sparkles,
   Users, FileText, Clock, ChevronRight, Bell, AlertCircle, LifeBuoy, HelpCircle, Megaphone, Activity,
-  Wallet, TrendingUp,
+  Wallet, TrendingUp, Ticket,
 } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Card from '@/components/ui/Card';
@@ -181,6 +181,16 @@ export default function SuperAdminOverviewScreen() {
                 testID="super-admin-copilot-btn"
               >
                 <Sparkles size={18} color={C.purple} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/super-admin/tickets' as never)}
+                style={styles.logoutBtn}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Support Tickets"
+                testID="super-admin-tickets-btn"
+              >
+                <Ticket size={18} color={C.yellow} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => router.push('/help' as never)}

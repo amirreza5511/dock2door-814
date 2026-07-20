@@ -43,3 +43,36 @@ export async function askAssistant(messages: AiMessage[]): Promise<string> {
   }
   return completion;
 }
+
+interface TranscriptionResponse {
+  text?: string;
+}
+
+/**
+ * Transcribe recorded audio (base64) to text via the Rork AI Gateway proxy.
+ * Used by the copilot's voice input.
+ */
+export async function transcribeAudio(base64Audio: string, mediaType: string): Promise<string> {
+  const toolkitUrl = process.env.EXPO_PUBLIC_TOOLKIT_URL ?? 'https://toolkit.rork.com';
+  const secretKey = process.env.EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY ?? '';
+  let res: Response;
+  try {
+    res = await fetch(`${toolkitUrl}/v2/vercel/v4/ai/transcription-model`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+        'ai-model-id': 'openai/gpt-4o-mini-transcribe',
+        'ai-gateway-protocol-version': '0.0.1',
+      },
+      body: JSON.stringify({ audio: base64Audio, mediaType }),
+    });
+  } catch {
+    throw new Error('Could not reach the voice service. Check your connection and try again.');
+  }
+  if (!res.ok) {
+    throw new Error('Voice transcription is unavailable right now. Please type your message.');
+  }
+  const data = (await res.json()) as TranscriptionResponse;
+  return (data.text ?? '').trim();
+}

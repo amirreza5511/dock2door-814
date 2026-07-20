@@ -3,6 +3,7 @@ import { getCurrentSessionContext } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { AutoWatchdog } from "@/components/auto-watchdog";
+import { AiFab } from "@/components/ai-fab";
 import type { UserRole } from "@/lib/types";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-y-auto p-6">{children}</main>
       </div>
       <AutoWatchdog />
+      <AiFab />
     </div>
   );
 }
