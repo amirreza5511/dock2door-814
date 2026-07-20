@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { KeyboardAvoidingView, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -172,10 +172,25 @@ function BootstrapController() {
   const authBootstrap = useAuthStore((state) => state.bootstrap);
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const userId = useAuthStore((state) => state.user?.id ?? null);
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     void authBootstrap();
   }, [authBootstrap]);
+
+  // Wipe ALL cached server data whenever the signed-in user changes (login,
+  // logout, or account switch) so one account never sees another account's
+  // cached queries (chat history, context, lists, ...).
+  useEffect(() => {
+    if (prevUserIdRef.current === undefined) {
+      prevUserIdRef.current = userId;
+      return;
+    }
+    if (prevUserIdRef.current !== userId) {
+      prevUserIdRef.current = userId;
+      queryClient.clear();
+    }
+  }, [userId]);
 
   // Register this device for push notifications once a user is signed in, so the
   // backend can deliver shift invitations/matches/messages even when the app is closed.

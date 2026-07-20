@@ -21,6 +21,7 @@ import {
   type CopilotAction,
 } from '@/lib/copilot';
 import { trpc } from '@/lib/trpc';
+import { useAuthStore } from '@/store/auth';
 
 type TabKey = 'chat' | 'alerts' | 'insights';
 
@@ -118,6 +119,20 @@ export default function CopilotScreen() {
     () => ((memoriesQuery.data ?? []) as { id: string; content: string }[]),
     [memoriesQuery.data],
   );
+
+  // Reset local chat state whenever the signed-in user changes so a new
+  // account never sees the previous account's conversation.
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  const chatUserRef = useRef<string | null>(userId);
+  useEffect(() => {
+    if (chatUserRef.current !== userId) {
+      chatUserRef.current = userId;
+      setMessages(null);
+      setDoneKeys(new Set());
+      setIdeas('');
+      void utils.ai.chatHistory.invalidate();
+    }
+  }, [userId, utils]);
 
   // Hydrate chat from persisted history once.
   useEffect(() => {

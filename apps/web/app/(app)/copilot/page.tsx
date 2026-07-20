@@ -123,8 +123,21 @@ export default function CopilotPage() {
   const [ideasLoading, setIdeasLoading] = useState<boolean>(false);
   const [alertFilter, setAlertFilter] = useState<"open" | "all">("open");
 
+  // Current user id — used to scope all cached copilot queries so switching
+  // accounts in the same tab never shows another user's cached chat/data.
+  const uidQ = useQuery({
+    queryKey: ["auth", "uid"],
+    staleTime: 0,
+    queryFn: async (): Promise<string | null> => {
+      const { data } = await supabase.auth.getUser();
+      return data.user?.id ?? null;
+    },
+  });
+  const uid = uidQ.data ?? null;
+
   const contextQ = useQuery({
-    queryKey: ["ai", "context"],
+    queryKey: ["ai", "context", uid],
+    enabled: !!uid,
     refetchInterval: 60000,
     queryFn: async (): Promise<Record<string, unknown> | null> => {
       const { data, error } = await supabase.rpc("ai_copilot_context");
@@ -137,7 +150,8 @@ export default function CopilotPage() {
   });
 
   const historyQ = useQuery({
-    queryKey: ["ai", "chatHistory"],
+    queryKey: ["ai", "chatHistory", uid],
+    enabled: !!uid,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -156,7 +170,8 @@ export default function CopilotPage() {
   });
 
   const memoriesQ = useQuery({
-    queryKey: ["ai", "memories"],
+    queryKey: ["ai", "memories", uid],
+    enabled: !!uid,
     queryFn: async (): Promise<MemoryRow[]> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -175,7 +190,8 @@ export default function CopilotPage() {
   });
 
   const eventsQ = useQuery({
-    queryKey: ["ai", "events"],
+    queryKey: ["ai", "events", uid],
+    enabled: !!uid,
     refetchInterval: 30000,
     queryFn: async (): Promise<AiEvent[]> => {
       const { data, error } = await supabase
@@ -192,7 +208,8 @@ export default function CopilotPage() {
   });
 
   const streetTurnsQ = useQuery({
-    queryKey: ["ai", "streetTurns"],
+    queryKey: ["ai", "streetTurns", uid],
+    enabled: !!uid,
     queryFn: async (): Promise<StreetTurnSuggestion[]> => {
       const { data, error } = await supabase.rpc("drayage_street_turn_suggestions");
       if (error) {
@@ -287,6 +304,21 @@ export default function CopilotPage() {
   const memories = useMemo(() => memoriesQ.data ?? [], [memoriesQ.data]);
   const companyName = (context as { companyName?: string } | null | undefined)?.companyName ?? "";
   const dead = (context as { deadRuns7d?: { empty_miles?: number; deadhead_miles?: number; dead_cost?: number; savings_cost?: number } } | null | undefined)?.deadRuns7d;
+
+  // Reset local chat state whenever the signed-in user changes so a new
+  // account never sees the previous account's conversation.
+  const chatUserRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (chatUserRef.current === undefined) {
+      chatUserRef.current = uid;
+      return;
+    }
+    if (chatUserRef.current !== uid) {
+      chatUserRef.current = uid;
+      setMessages(null);
+      setDoneKeys(new Set());
+    }
+  }, [uid]);
 
   // Hydrate chat from persisted history once.
   useEffect(() => {
