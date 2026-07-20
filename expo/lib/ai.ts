@@ -3,6 +3,8 @@
  * Used by the in-app AI assistant chat.
  */
 
+import { supabase } from '@/lib/supabase';
+
 export type AiRole = 'system' | 'user' | 'assistant';
 
 export interface AiMessage {
@@ -27,6 +29,23 @@ function toolkitBase(): string {
 
 function toolkitKey(): string {
   return process.env.EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY ?? '';
+}
+
+async function askViaEdgeFunction(messages: AiMessage[]): Promise<string | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('ai-chat', {
+      body: { messages },
+    });
+    if (error) {
+      console.log('[ai] edge chat failed', error.message);
+      return null;
+    }
+    const completion = (data as { completion?: string } | null)?.completion?.trim();
+    return completion && completion.length > 0 ? completion : null;
+  } catch (e) {
+    console.log('[ai] edge chat error', e instanceof Error ? e.message : 'unknown');
+    return null;
+  }
 }
 
 async function askViaGateway(messages: AiMessage[]): Promise<string | null> {
@@ -74,19 +93,20 @@ async function askViaLegacy(messages: AiMessage[]): Promise<string | null> {
 
 /**
  * Send a conversation to the AI and return the assistant's reply.
- * Tries the AI Gateway (Claude Sonnet 5) first, then falls back to the
- * legacy toolkit endpoint, then retries the gateway once more.
- * Throws a user-friendly error only when every attempt fails.
+ * Primary path is the Supabase Edge Function proxy (`ai-chat`), which works
+ * everywhere — including the browser preview where direct toolkit calls are
+ * blocked. Falls back to the AI Gateway (Claude Sonnet 5) and the legacy
+ * toolkit endpoint. Throws a user-friendly error only when every attempt fails.
  */
 export async function askAssistant(messages: AiMessage[]): Promise<string> {
+  const viaEdge = await askViaEdgeFunction(messages);
+  if (viaEdge) return viaEdge;
+
   const viaGateway = await askViaGateway(messages);
   if (viaGateway) return viaGateway;
 
   const viaLegacy = await askViaLegacy(messages);
   if (viaLegacy) return viaLegacy;
-
-  const retry = await askViaGateway(messages);
-  if (retry) return retry;
 
   throw new Error('Could not reach the assistant. Check your connection and try again.');
 }

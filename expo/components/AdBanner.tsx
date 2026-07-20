@@ -48,8 +48,9 @@ const TABBED_ROOTS = new Set<string>([
   'trucking-company', 'driver', 'gate-staff', 'customer', 'admin', 'super-admin',
 ]);
 
-// Segments where an ad banner should never appear (auth, landing, full-screen flows).
-const HIDDEN_ROOTS = new Set<string>(['', 'auth', 'onboarding', '+not-found']);
+// Segments where an ad banner should never appear (auth, landing, full-screen
+// flows, and chat surfaces where the banner would cover the composer).
+const HIDDEN_ROOTS = new Set<string>(['', 'auth', 'onboarding', '+not-found', 'copilot', 'assistant', 'messages']);
 
 const ROTATE_MS = 8000;
 
