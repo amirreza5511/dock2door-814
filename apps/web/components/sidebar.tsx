@@ -52,6 +52,7 @@ import {
   Store,
   SlidersHorizontal,
   Landmark,
+  BookOpen,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
@@ -98,9 +99,11 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     label: "Platform",
     items: [
       { href: "/copilot", label: "AI Copilot", icon: Sparkles },
+      { href: "/assistant", label: "AI Assistant", icon: MessageSquare },
       { href: "/messages", label: "Messages", icon: MessageSquare },
       { href: "/notifications", label: "Notifications", icon: Bell },
       { href: "/reviews", label: "Reviews", icon: Star },
+      { href: "/help", label: "Help Center", icon: BookOpen },
     ],
   });
 
@@ -111,6 +114,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/partners", label: "Partners", icon: Handshake },
         { href: "/company/add-role", label: "Add a role", icon: Layers },
+        { href: "/advertise", label: "Advertise", icon: Megaphone },
         { href: "/customize", label: "Customize workspace", icon: SlidersHorizontal },
       ],
     });
@@ -191,9 +195,11 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/warehouse/staff", label: "Staff", icon: Users },
         { href: "/warehouse/stations", label: "Stations", icon: Wrench },
         { href: "/warehouse/carriers", label: "Carriers", icon: Truck },
+        { href: "/warehouse/hub-freight", label: "Network hub", icon: Boxes },
         { href: "/warehouse/rates", label: "Rates & zones", icon: DollarSign },
         { href: "/warehouse/invoicing", label: "Invoicing", icon: FileText },
         { href: "/warehouse/billing", label: "Billing & payouts", icon: CreditCard },
+        { href: "/warehouse/stripe-connect", label: "Payouts (Stripe)", icon: Wallet },
       ],
     });
     sections.push({
@@ -253,6 +259,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       items: [
         { href: "/driver", label: "My trips", icon: Truck },
         { href: "/driver/loads", label: "Load marketplace", icon: Package },
+        { href: "/driver/open-jobs", label: "Open jobs board", icon: Warehouse },
         { href: "/driver/my-loads", label: "All trips", icon: ClipboardList },
         { href: "/driver/drayage", label: "Drayage work orders", icon: Container },
         { href: "/driver/pod", label: "Proof of delivery", icon: FileText },
@@ -338,6 +345,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Guest services",
       items: [
         { href: "/guest", label: "Services", icon: LayoutDashboard },
+        { href: "/guest/orders", label: "Container orders", icon: Container },
         { href: "/clearance", label: "Customs clearance", icon: Landmark },
         { href: "/spaces", label: "Warehouse space", icon: Ruler },
         { href: "/guest/billing", label: "Billing & prepay", icon: CreditCard },

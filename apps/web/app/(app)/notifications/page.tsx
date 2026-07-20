@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { Settings } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,11 +103,20 @@ export default function NotificationsPage() {
             {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount !== 1 ? "s" : ""}` : "All caught up"}
           </p>
         </div>
-        {unreadCount > 0 && (
-          <Button variant="secondary" disabled={markAllRead.isPending} onClick={() => markAllRead.mutate()}>
-            Mark all read
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {unreadCount > 0 && (
+            <Button variant="secondary" disabled={markAllRead.isPending} onClick={() => markAllRead.mutate()}>
+              Mark all read
+            </Button>
+          )}
+          <Link
+            href="/notifications/preferences"
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-card transition-colors hover:bg-accent"
+            title="Notification preferences"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
 
       <div className="flex gap-2">

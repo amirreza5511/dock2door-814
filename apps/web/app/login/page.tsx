@@ -229,7 +229,7 @@ function LoginForm() {
   const next = params.get("next") || "/dashboard";
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [name, setName] = useState<string>("");
   const [companyName, setCompanyName] = useState<string>("");
   const [city, setCity] = useState<string>("");
@@ -266,7 +266,15 @@ function LoginForm() {
 
     setBusy(true);
     try {
-      if (mode === "signin") {
+      if (mode === "forgot") {
+        if (!email.trim()) { setError("Enter your email first"); return; }
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+          redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth/update-password` : undefined,
+        });
+        if (error) throw error;
+        setInfo(`Password reset link sent to ${email.trim()} — open it to set a new password.`);
+        setMode("signin");
+      } else if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         router.replace(next);
@@ -331,12 +339,14 @@ function LoginForm() {
           </div>
 
           <h1 className="font-display text-2xl font-bold tracking-tight text-white">
-            {mode === "signin" ? "Welcome back" : "Create your account"}
+            {mode === "signin" ? "Welcome back" : mode === "forgot" ? "Reset your password" : "Create your account"}
           </h1>
           <p className="mt-1.5 text-sm text-white/50">
             {mode === "signin"
               ? "Sign in to the Dock2Door operations console."
-              : "Join the Dock2Door logistics network."}
+              : mode === "forgot"
+                ? "Enter your email and we'll send you a reset link."
+                : "Join the Dock2Door logistics network."}
           </p>
 
           <form className="mt-7 space-y-4" onSubmit={submit}>
@@ -368,19 +378,30 @@ function LoginForm() {
                 className={fieldClass}
               />
             </div>
-            <div>
-              <label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-white/50">Password</label>
-              <input
-                id="password"
-                type="password"
-                autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={fieldClass}
-              />
-            </div>
+            {mode !== "forgot" && (
+              <div>
+                <label htmlFor="password" className="text-xs font-medium uppercase tracking-wider text-white/50">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={fieldClass}
+                />
+                {mode === "signin" && (
+                  <button
+                    type="button"
+                    className="mt-1.5 text-xs text-white/40 transition hover:text-white/80"
+                    onClick={() => { setMode("forgot"); setError(null); setInfo(null); }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
+            )}
 
             {mode === "signup" && needsCompany && (
               <>
@@ -559,7 +580,7 @@ function LoginForm() {
               disabled={busy || (mode === "signup" && (!selectedRole || !acceptedTerms || !acceptedNda || !ndaName.trim()))}
               className="group inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#2de2c7] to-[#4fd6c0] font-display text-sm font-semibold text-[#04121a] shadow-[0_10px_40px_-8px_rgba(45,226,199,0.7)] transition hover:shadow-[0_14px_50px_-6px_rgba(45,226,199,0.9)] disabled:opacity-60"
             >
-              {busy ? "Working…" : mode === "signin" ? "Sign in" : "Create Account"}
+              {busy ? "Working…" : mode === "signin" ? "Sign in" : mode === "forgot" ? "Send reset link" : "Create Account"}
               {!busy && <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />}
             </button>
 
@@ -568,7 +589,7 @@ function LoginForm() {
               className="block w-full text-center text-xs text-white/50 transition hover:text-white"
               onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); setInfo(null); }}
             >
-              {mode === "signin" ? "No account? Sign up" : "Already have an account? Sign in"}
+              {mode === "signin" ? "No account? Sign up" : mode === "forgot" ? "Back to sign in" : "Already have an account? Sign in"}
             </button>
           </form>
         </div>

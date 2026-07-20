@@ -43,6 +43,30 @@ export function Dialog({ open: openProp, onOpenChange, children }: DialogProps) 
   );
 }
 
+export interface DialogTriggerProps {
+  /** When true, clones the child element and attaches the open handler to it. */
+  asChild?: boolean;
+  children: React.ReactNode;
+}
+
+export function DialogTrigger({ asChild, children }: DialogTriggerProps) {
+  const { onOpenChange } = useDialogContext();
+  if (asChild && React.isValidElement(children)) {
+    const child = children as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>;
+    return React.cloneElement(child, {
+      onClick: (e: React.MouseEvent) => {
+        child.props.onClick?.(e);
+        onOpenChange(true);
+      },
+    });
+  }
+  return (
+    <button type="button" onClick={() => onOpenChange(true)}>
+      {children}
+    </button>
+  );
+}
+
 export interface DialogContentProps
   extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
