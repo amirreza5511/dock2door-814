@@ -31,20 +31,71 @@ export const EXPLORE_USER_ID = 'explore-user';
 /** Bootstrap fixtures for the Labour world (employer / worker / agency dashboards). */
 export const SAMPLE_BOOTSTRAP = {
   companies: [
-    { id: EXPLORE_COMPANY_ID, name: 'Preview Logistics Co.', type: 'Employer', address: '', city: 'Vancouver', status: 'Approved', created_at: hoursFromNow(-800) },
-    { id: 'ex-co-2', name: 'Harbour Freight Ltd.', type: 'Employer', address: '', city: 'Burnaby', status: 'Approved', created_at: hoursFromNow(-900) },
+    { id: EXPLORE_COMPANY_ID, name: 'Preview Logistics Co.', type: 'Employer', address: '120 Industrial Ave', city: 'Vancouver', status: 'Approved', created_at: hoursFromNow(-800) },
+    { id: 'ex-co-2', name: 'Harbour Freight Ltd.', type: 'Employer', address: '20 Port Rd', city: 'Burnaby', status: 'Approved', created_at: hoursFromNow(-900) },
+    { id: 'ex-co-3', name: 'Fraser Valley Staffing', type: 'Agency', address: '77 Sumas Way', city: 'Abbotsford', status: 'Approved', created_at: hoursFromNow(-1200) },
+    { id: 'ex-co-4', name: 'Annacis Island Distribution', type: 'WarehouseProvider', address: '9200 River Rd', city: 'Delta', status: 'Approved', created_at: hoursFromNow(-1500) },
   ],
   shift_posts: [
     { id: 'ex-sp-1', employer_company_id: EXPLORE_COMPANY_ID, title: 'Warehouse Loader', category: 'general_labour', location_address: '120 Industrial Ave', location_city: 'Vancouver', date: dateStr(0), start_time: '08:00', end_time: '16:00', hourly_rate: 24, minimum_hours: 4, workers_needed: 3, status: 'Posted', is_ongoing: false, created_at: hoursFromNow(-20) },
     { id: 'ex-sp-2', employer_company_id: EXPLORE_COMPANY_ID, title: 'Forklift Operator', category: 'forklift', location_address: '55 Dock Rd', location_city: 'Richmond', date: dateStr(1), start_time: '07:00', end_time: '15:00', hourly_rate: 31, minimum_hours: 6, workers_needed: 2, status: 'Posted', is_ongoing: false, created_at: hoursFromNow(-10) },
     { id: 'ex-sp-3', employer_company_id: EXPLORE_COMPANY_ID, title: 'Order Picker (evening)', category: 'general_labour', location_address: '900 Cargo Way', location_city: 'Surrey', date: dateStr(2), start_time: '16:00', end_time: '23:00', hourly_rate: 26, minimum_hours: 5, workers_needed: 4, status: 'Posted', is_ongoing: false, created_at: hoursFromNow(-5) },
     { id: 'ex-sp-4', employer_company_id: 'ex-co-2', title: 'Dock Hand', category: 'general_labour', location_address: '20 Port Rd', location_city: 'Burnaby', date: dateStr(1), start_time: '09:00', end_time: '17:00', hourly_rate: 25, minimum_hours: 4, workers_needed: 2, status: 'Posted', is_ongoing: false, created_at: hoursFromNow(-8) },
+    { id: 'ex-sp-5', employer_company_id: 'ex-co-2', title: 'Reach Truck Operator', category: 'forklift', location_address: '18 Glenlyon Pkwy', location_city: 'Burnaby', date: dateStr(3), start_time: '06:00', end_time: '14:00', hourly_rate: 33, minimum_hours: 8, workers_needed: 1, status: 'Filled', is_ongoing: false, created_at: hoursFromNow(-52) },
+    { id: 'ex-sp-6', employer_company_id: EXPLORE_COMPANY_ID, title: 'Inventory Counter (weekend)', category: 'general_labour', location_address: '120 Industrial Ave', location_city: 'Vancouver', date: dateStr(4), start_time: '09:00', end_time: '17:00', hourly_rate: 23, minimum_hours: 6, workers_needed: 6, status: 'Posted', is_ongoing: false, created_at: hoursFromNow(-3) },
+    { id: 'ex-sp-7', employer_company_id: 'ex-co-4', title: 'Shipping/Receiving Clerk', category: 'general_labour', location_address: '9200 River Rd', location_city: 'Delta', date: dateStr(2), start_time: '08:00', end_time: '16:30', hourly_rate: 28, minimum_hours: 8, workers_needed: 2, status: 'Posted', is_ongoing: true, created_at: hoursFromNow(-14) },
   ],
   worker_profiles: [
     { id: 'ex-wp-1', user_id: 'ex-w-1', display_name: 'Marcus Lee', skills: ['forklift', 'general_labour'], coverage_cities: ['Vancouver', 'Burnaby'], hourly_expectation: 26, verified: true, status: 'Active', bio: 'Certified forklift operator, 5 yrs.', created_at: hoursFromNow(-500) },
     { id: 'ex-wp-2', user_id: 'ex-w-2', display_name: 'Priya Sharma', skills: ['general_labour', 'picker'], coverage_cities: ['Richmond', 'Surrey'], hourly_expectation: 24, verified: true, status: 'Active', bio: 'Fast, reliable order picker.', created_at: hoursFromNow(-450) },
+    { id: 'ex-wp-3', user_id: 'ex-w-3', display_name: 'Dan Kowalski', skills: ['forklift', 'reach_truck', 'general_labour'], coverage_cities: ['Delta', 'Surrey', 'Langley'], hourly_expectation: 30, verified: true, status: 'Active', bio: 'Reach & counterbalance certified, night shifts.', created_at: hoursFromNow(-380) },
+    { id: 'ex-wp-4', user_id: 'ex-w-4', display_name: 'Aisha Rahman', skills: ['general_labour', 'picker', 'packer'], coverage_cities: ['Vancouver', 'Richmond'], hourly_expectation: 23, verified: false, status: 'Active', bio: 'Available weekends and evenings.', created_at: hoursFromNow(-120) },
+    { id: 'ex-wp-5', user_id: 'ex-w-5', display_name: 'Tomas Silva', skills: ['general_labour', 'loader'], coverage_cities: ['Burnaby', 'Coquitlam'], hourly_expectation: 25, verified: true, status: 'Active', bio: 'Heavy loading, WHMIS certified.', created_at: hoursFromNow(-260) },
+  ],
+  worker_certifications: [
+    { id: 'ex-wc-1', worker_user_id: 'ex-w-1', type: 'Forklift', expiry_date: dateStr(280), status: 'Approved', created_at: hoursFromNow(-480) },
+    { id: 'ex-wc-2', worker_user_id: 'ex-w-1', type: 'WHMIS', expiry_date: dateStr(120), status: 'Approved', created_at: hoursFromNow(-480) },
+    { id: 'ex-wc-3', worker_user_id: 'ex-w-3', type: 'Forklift', expiry_date: dateStr(60), status: 'Approved', created_at: hoursFromNow(-360) },
+    { id: 'ex-wc-4', worker_user_id: 'ex-w-4', type: 'WHMIS', expiry_date: dateStr(-10), status: 'Pending', created_at: hoursFromNow(-90) },
   ],
 } as const;
+
+/** Warehouse bookings — customer & warehouse provider dashboards. */
+export const SAMPLE_WAREHOUSE_BOOKINGS = [
+  { id: 'ex-wb-1', reference_number: 'WH-20481', listing_id: 'ex-wl-1', customer_company_id: EXPLORE_COMPANY_ID, pallets_requested: 40, start_date: dateStr(-5), end_date: dateStr(25), handling_required: true, proposed_price: 1280, final_price: 1280, status: 'Active', payment_status: 'Paid', transport_mode: 'delivery', cargo_description: 'Retail furniture, palletized', declared_pieces: 40, declared_weight_kg: 8200, created_at: hoursFromNow(-140) },
+  { id: 'ex-wb-2', reference_number: 'WH-20502', listing_id: 'ex-wl-2', customer_company_id: EXPLORE_COMPANY_ID, pallets_requested: 18, start_date: dateStr(2), end_date: dateStr(32), handling_required: true, proposed_price: 1044, counter_offer_price: 980, status: 'Requested', payment_status: 'Pending', transport_mode: 'unspecified', cargo_description: 'Frozen seafood', declared_pieces: 18, declared_weight_kg: 5400, created_at: hoursFromNow(-18) },
+  { id: 'ex-wb-3', reference_number: 'WH-20460', listing_id: 'ex-wl-3', customer_company_id: 'ex-co-2', pallets_requested: 60, start_date: dateStr(-30), end_date: dateStr(-2), handling_required: false, proposed_price: 2700, final_price: 2700, status: 'Completed', payment_status: 'Paid', transport_mode: 'pickup', cargo_description: 'Chilled beverages', declared_pieces: 60, declared_weight_kg: 14000, created_at: hoursFromNow(-760) },
+] as const;
+
+/** Service listings — services marketplace (rental / repair / insurance / customs). */
+export const SAMPLE_SERVICE_LISTINGS = [
+  { id: 'ex-sl-1', company_id: 'ex-co-2', service_type: 'rental', category: 'equipment_rental', title: 'Operated Crane — 20t', description: 'Operated mobile crane for lifts, by the day or half day.', coverage_area: ['Surrey', 'Langley', 'Delta'], hourly_rate: 220, daily_rate: 1500, minimum_hours: 4, status: 'Published', negotiable: true, created_at: hoursFromNow(-300) },
+  { id: 'ex-sl-2', company_id: EXPLORE_COMPANY_ID, service_type: 'repair', category: 'mobile_repair', title: 'Mobile Reefer & Trailer Repair', description: 'On-site reefer, trailer and forklift repair technicians, 24/7.', coverage_area: ['Vancouver', 'Burnaby', 'Richmond'], hourly_rate: 145, minimum_hours: 2, status: 'Published', negotiable: false, created_at: hoursFromNow(-220) },
+  { id: 'ex-sl-3', company_id: 'ex-co-4', service_type: 'insurance', category: 'cargo_insurance', title: 'Per-Shipment Cargo Cover', description: 'Freight cargo insurance, per-shipment or annual.', coverage_area: ['Vancouver', 'Toronto', 'Calgary'], hourly_rate: 0, cargo_rate_percent: 0.9, min_premium: 85, minimum_hours: 1, status: 'Published', negotiable: true, created_at: hoursFromNow(-160) },
+  { id: 'ex-sl-4', company_id: 'ex-co-4', service_type: 'service', category: 'customs_brokerage', title: 'Customs Clearance (Import/Export)', description: 'PARS/PAPS, HS classification, duty & tax remittance.', coverage_area: ['Delta', 'Vancouver'], hourly_rate: 120, per_job_rate: 175, minimum_hours: 1, status: 'Published', negotiable: false, created_at: hoursFromNow(-90) },
+] as const;
+
+/** Service jobs / bookings — provider & customer marketplace views. */
+export const SAMPLE_SERVICE_JOBS = [
+  { id: 'ex-sj-1', service_id: 'ex-sl-1', customer_company_id: EXPLORE_COMPANY_ID, provider_company_id: 'ex-co-2', location_address: '900 Cargo Way', location_city: 'Surrey', date_time_start: daysFromNow(1, 8), duration_hours: 4, total_price: 880, status: 'Confirmed', payment_status: 'Held', quote_status: 'accepted', quoted_amount: 880, created_at: hoursFromNow(-26) },
+  { id: 'ex-sj-2', service_id: 'ex-sl-2', customer_company_id: 'ex-co-2', provider_company_id: EXPLORE_COMPANY_ID, location_address: '20 Port Rd', location_city: 'Burnaby', date_time_start: hoursFromNow(3), duration_hours: 3, total_price: 435, status: 'Requested', payment_status: 'Pending', quote_status: 'sent', quoted_amount: 435, created_at: hoursFromNow(-4) },
+  { id: 'ex-sj-3', service_id: 'ex-sl-4', customer_company_id: EXPLORE_COMPANY_ID, provider_company_id: 'ex-co-4', location_address: '9200 River Rd', location_city: 'Delta', date_time_start: hoursFromNow(-40), duration_hours: 1, total_price: 175, status: 'Completed', payment_status: 'Paid', customer_confirmed: true, quote_status: 'accepted', quoted_amount: 175, created_at: hoursFromNow(-96) },
+] as const;
+
+/** Payments / earnings — finance widgets across dashboards. */
+export const SAMPLE_PAYMENTS = [
+  { id: 'ex-pay-1', reference_type: 'load', reference_id: 'ex-load-3', gross_amount: 310, commission_amount: 31, net_amount: 279, status: 'Paid', created_at: hoursFromNow(-28) },
+  { id: 'ex-pay-2', reference_type: 'warehouse_booking', reference_id: 'ex-wb-1', gross_amount: 1280, commission_amount: 128, net_amount: 1152, status: 'Paid', created_at: hoursFromNow(-138) },
+  { id: 'ex-pay-3', reference_type: 'service_job', reference_id: 'ex-sj-3', gross_amount: 175, commission_amount: 17.5, net_amount: 157.5, status: 'Paid', created_at: hoursFromNow(-94) },
+  { id: 'ex-pay-4', reference_type: 'load', reference_id: 'ex-load-1', gross_amount: 240, commission_amount: 24, net_amount: 216, status: 'Pending', created_at: hoursFromNow(-5) },
+] as const;
+
+/** Messages — inbox previews shown in explore mode. */
+export const SAMPLE_MESSAGES = [
+  { id: 'ex-msg-1', reference_type: 'load', reference_id: 'ex-load-2', sender_user_id: 'ex-dr-1', text: 'On my way to pickup, ETA 20 min.', created_at: hoursFromNow(-1) },
+  { id: 'ex-msg-2', reference_type: 'warehouse_booking', reference_id: 'ex-wb-2', sender_user_id: 'ex-co-2', text: 'Can you do $980 for the 30 days?', created_at: hoursFromNow(-2) },
+  { id: 'ex-msg-3', reference_type: 'service_job', reference_id: 'ex-sj-2', sender_user_id: EXPLORE_USER_ID, text: 'Technician confirmed for 3pm.', created_at: hoursFromNow(-3) },
+] as const;
 
 /** Container orders — trpc.drayage.customerOrders (freight forwarder / customer drayage) */
 export const SAMPLE_CONTAINER_ORDERS = [

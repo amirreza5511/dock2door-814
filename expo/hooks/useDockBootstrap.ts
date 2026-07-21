@@ -2,7 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useExploreStore } from '@/store/explore';
-import { SAMPLE_BOOTSTRAP, SAMPLE_WAREHOUSE_LISTINGS } from '@/lib/exploreSamples';
+import {
+  SAMPLE_BOOTSTRAP,
+  SAMPLE_WAREHOUSE_LISTINGS,
+  SAMPLE_WAREHOUSE_BOOKINGS,
+  SAMPLE_SERVICE_LISTINGS,
+  SAMPLE_SERVICE_JOBS,
+  SAMPLE_PAYMENTS,
+  SAMPLE_MESSAGES,
+} from '@/lib/exploreSamples';
 import type {
   Company,
   Dispute,
@@ -356,7 +364,13 @@ const SAMPLE_DATA: BootstrapData = {
   companies: SAMPLE_BOOTSTRAP.companies.map((r) => mapCompany(r as Row)),
   shiftPosts: SAMPLE_BOOTSTRAP.shift_posts.map((r) => mapShiftPost(r as Row)),
   workerProfiles: SAMPLE_BOOTSTRAP.worker_profiles.map((r) => mapWorkerProfile(r as Row)),
+  workerCertifications: SAMPLE_BOOTSTRAP.worker_certifications.map((r) => mapWorkerCert(r as Row)),
   warehouseListings: SAMPLE_WAREHOUSE_LISTINGS.map((r) => mapWarehouseListing(r as Row)),
+  warehouseBookings: SAMPLE_WAREHOUSE_BOOKINGS.map((r) => mapWarehouseBooking(r as Row)),
+  serviceListings: SAMPLE_SERVICE_LISTINGS.map((r) => mapServiceListing(r as Row)),
+  serviceJobs: SAMPLE_SERVICE_JOBS.map((r) => mapServiceJob(r as Row)),
+  payments: SAMPLE_PAYMENTS.map((r) => mapPayment(r as Row)),
+  messages: SAMPLE_MESSAGES.map((r) => mapMessage(r as Row)),
 };
 
 export function useDockBootstrapData() {
