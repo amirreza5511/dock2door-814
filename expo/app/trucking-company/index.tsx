@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { BarChart3, CalendarClock, Coins, CreditCard, Fuel, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Sparkles, Truck, Users, Store } from 'lucide-react-native';
+import { BarChart3, CalendarClock, Coins, CreditCard, Fuel, HelpCircle, LogOut, MapPinned, MessagesSquare, PackagePlus, Radar, Receipt, Sparkles, Truck, Users, Store, Globe } from 'lucide-react-native';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
 import Card from '@/components/ui/Card';
@@ -113,6 +113,11 @@ export default function TruckingCompanyDashboard() {
             <Store size={20} color={C.purple} />
             <Text style={styles.actionTitle}>Marketplace</Text>
             <Text style={styles.actionText}>Rent equipment, mobile repair & services.</Text>
+          </Card>
+          <Card onPress={() => router.push('/global-freight' as never)} style={styles.actionCard}>
+            <Globe size={20} color={C.blue} />
+            <Text style={styles.actionTitle}>Global Freight</Text>
+            <Text style={styles.actionText}>Quote container pickup / drayage legs.</Text>
           </Card>
         </View>
 

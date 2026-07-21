@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Anchor, Boxes, Check, ChevronDown, HardHat, Send, Store } from 'lucide-react-native';
+import { Anchor, Boxes, Check, ChevronDown, Globe, HardHat, Send, Store } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { useCurrentWorld } from '@/providers/CurrentWorldProvider';
 import { useAuthStore } from '@/store/auth';
@@ -13,6 +13,7 @@ const WORLD_META: Record<Domain, { icon: typeof HardHat; color: string; bg: stri
   freight: { icon: Send, color: C.green, bg: C.greenDim },
   drayage: { icon: Anchor, color: C.blue, bg: C.blueDim },
   marketplace: { icon: Store, color: C.yellow, bg: C.yellowDim },
+  globalfreight: { icon: Globe, color: C.blue, bg: C.blueDim },
 };
 
 /**

@@ -49,9 +49,15 @@ const ROLES_BY_WORLD: Record<Domain, RoleOption[]> = {
     { id: 'CargoInsurer', role: 'CargoInsurer', label: 'Cargo Insurer', desc: 'Insure freight & shipments by cargo value' },
     { id: 'MarketplaceBuyer', role: 'MarketplaceBuyer', label: 'Marketplace Buyer', desc: 'Rent gear, book repairs & insure cargo — no other world needed' },
   ],
+  // Global Freight (Domain 6) — international shipping & freight exchange.
+  globalfreight: [
+    { id: 'ImporterExporter', role: 'ImporterExporter', label: 'Importer / Exporter', desc: 'Post a single freight quote request — air, ocean, truck, FCL or LCL — and receive competing quotes' },
+    { id: 'GlobalFreightForwarder', role: 'GlobalFreightForwarder', label: 'Global Freight Forwarder', desc: 'Quote worldwide freight requests across every mode' },
+    { id: 'Carrier', role: 'Carrier', label: 'Carrier / Shipping Line', desc: 'Airline or shipping line quoting freight capacity directly' },
+  ],
 };
 
-const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage', 'marketplace'];
+const WORLD_ORDER: Domain[] = ['labour', 'logistics', 'freight', 'drayage', 'marketplace', 'globalfreight'];
 
 /** Standalone cross-vertical role: sales agents onboard accounts and earn commission. */
 const SALES_ROLE: RoleOption = {

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, SlidersHorizontal, Sparkles, TrendingDown, Truck, Users, Zap } from 'lucide-react-native';
+import { Anchor, BarChart3, CalendarClock, Coins, DollarSign, Fuel, HelpCircle, Layers, LogOut, MapPin, Package, Plus, Receipt, Ship, SlidersHorizontal, Sparkles, TrendingDown, Truck, Users, Zap, Globe } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import { useAutoWatchdog } from '@/hooks/useAutoWatchdog';
 import { useCustomization } from '@/providers/CustomizationProvider';
@@ -41,6 +41,7 @@ export default function DrayageCompanyDashboard() {
       { key: 'shipping-lines', moduleKey: 'shipping-lines', icon: Ship, color: C.accent, title: 'Shipping lines', text: 'Manage steamship lines for orders', route: '/drayage-company/shipping-lines' },
       { key: 'equipment-report', moduleKey: 'equipment-report', icon: Layers, color: C.blue, title: term('Equipment & charges'), text: 'Rental cost & per diem exposure', route: '/drayage-company/equipment-report' },
       { key: 'dead-runs', moduleKey: 'dead-runs', icon: TrendingDown, color: C.red, title: 'Dead runs', text: 'Empty miles, cost & street-turn savings', route: '/drayage-company/dead-runs' },
+      { key: 'global-freight', icon: Globe, color: C.blue, title: 'Global Freight', text: 'Quote container pickup legs on freight requests', route: '/global-freight' },
     ];
     const visible = all.filter((a) => !a.moduleKey || !isHidden(a.moduleKey));
     return orderSections(visible, (a) => a.moduleKey ?? a.key);

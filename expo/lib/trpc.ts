@@ -5004,6 +5004,176 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // GLOBAL FREIGHT (0167/0168) — Domain 6 worldwide freight quote exchange
+  // =========================================================================
+  'freight.create': async (input: {
+    title: string; originCountry?: string; originCity?: string; originPort?: string;
+    destCountry?: string; destCity?: string; destPort?: string;
+    freightMode?: string; weight?: number; weightUnit?: 'kg' | 'lb';
+    volume?: number; volumeUnit?: 'cbm' | 'cft';
+    length?: number; width?: number; height?: number; dimUnit?: 'cm' | 'in'; pieces?: number;
+    commodity?: string; declaredValue?: number; currency?: string; hsCode?: string; notes?: string;
+    readyDate?: string; deliveryMethod?: string; pickupAddress?: string; pickupCity?: string;
+    needsContainerPickup?: boolean;
+  }) => {
+    const { data, error } = await supabase.rpc('freight_create_quote', {
+      p_title: input.title,
+      p_origin_country: input.originCountry ?? '',
+      p_origin_city: input.originCity ?? '',
+      p_origin_port: input.originPort ?? '',
+      p_dest_country: input.destCountry ?? '',
+      p_dest_city: input.destCity ?? '',
+      p_dest_port: input.destPort ?? '',
+      p_freight_mode: input.freightMode ?? 'ocean',
+      p_weight: input.weight ?? 0,
+      p_weight_unit: input.weightUnit ?? 'kg',
+      p_volume: input.volume ?? 0,
+      p_volume_unit: input.volumeUnit ?? 'cbm',
+      p_length: input.length ?? 0,
+      p_width: input.width ?? 0,
+      p_height: input.height ?? 0,
+      p_dim_unit: input.dimUnit ?? 'cm',
+      p_pieces: input.pieces ?? 1,
+      p_commodity: input.commodity ?? '',
+      p_declared_value: input.declaredValue ?? 0,
+      p_currency: input.currency ?? 'USD',
+      p_hs_code: input.hsCode ?? '',
+      p_notes: input.notes ?? '',
+      p_ready_date: input.readyDate ?? null,
+      p_delivery_method: input.deliveryMethod ?? 'port_delivery',
+      p_pickup_address: input.pickupAddress ?? '',
+      p_pickup_city: input.pickupCity ?? '',
+      p_needs_container_pickup: input.needsContainerPickup ?? false,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Global Freight is not live yet — apply migrations 0167 & 0168.');
+      throwErr(error, 'Unable to post freight request');
+    }
+    return { id: data as string };
+  },
+  'freight.mine': async () => {
+    const { data, error } = await supabase.rpc('freight_list_mine');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load freight requests');
+    }
+    return data ?? [];
+  },
+  'freight.get': async (input: { quoteId: string }) => {
+    const { data, error } = await supabase.rpc('freight_get_quote', { p_quote_id: input.quoteId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load request');
+    }
+    return (Array.isArray(data) ? data[0] : data) ?? null;
+  },
+  'freight.addDocument': async (input: { quoteId: string; filePath: string; fileName?: string; docType?: string }) => {
+    const { data, error } = await supabase.rpc('freight_add_document', {
+      p_quote_id: input.quoteId,
+      p_file_path: input.filePath,
+      p_file_name: input.fileName ?? '',
+      p_doc_type: input.docType ?? 'other',
+    });
+    if (error) throwErr(error, 'Unable to attach document');
+    return { id: data as string };
+  },
+  'freight.documents': async (input: { quoteId: string }) => {
+    const { data, error } = await supabase.rpc('freight_list_documents', { p_quote_id: input.quoteId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load documents');
+    }
+    return data ?? [];
+  },
+  // Admin approval queue (0169)
+  'freight.adminList': async (input: { scope?: 'pending' | 'all' } | undefined) => {
+    const { data, error } = await supabase.rpc('freight_admin_list', { p_scope: input?.scope ?? 'pending' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load freight review queue');
+    }
+    return data ?? [];
+  },
+  'freight.approve': async (input: { quoteId: string }) => {
+    const { error } = await supabase.rpc('freight_approve_quote', { p_quote_id: input.quoteId });
+    if (error) throwErr(error, 'Unable to approve request');
+    return { success: true };
+  },
+  'freight.reject': async (input: { quoteId: string; reason?: string }) => {
+    const { error } = await supabase.rpc('freight_reject_quote', { p_quote_id: input.quoteId, p_reason: input.reason ?? '' });
+    if (error) throwErr(error, 'Unable to reject request');
+    return { success: true };
+  },
+  // Provider board + offers (0170)
+  'freight.board': async (input: { scope?: 'open' | 'mine' } | undefined) => {
+    const { data, error } = await supabase.rpc('freight_provider_board', { p_scope: input?.scope ?? 'open' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load freight board');
+    }
+    return data ?? [];
+  },
+  'freight.offers': async (input: { quoteId: string }) => {
+    const { data, error } = await supabase.rpc('freight_list_offers', { p_quote_id: input.quoteId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load offers');
+    }
+    return data ?? [];
+  },
+  'freight.submitOffer': async (input: {
+    quoteId: string; amount: number; currency?: string; transitDays?: number; validUntil?: string; note?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('freight_submit_offer', {
+      p_quote_id: input.quoteId,
+      p_amount: input.amount,
+      p_currency: input.currency ?? 'USD',
+      p_transit_days: input.transitDays ?? 0,
+      p_valid_until: input.validUntil ?? null,
+      p_note: input.note ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Global Freight is not live yet — apply migration 0170.');
+      throwErr(error, 'Unable to submit offer');
+    }
+    return { id: data as string };
+  },
+  'freight.withdrawOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('freight_withdraw_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to withdraw offer');
+    return { success: true };
+  },
+  // Accept + cancel + chat (0171)
+  'freight.acceptOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('freight_accept_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to accept offer');
+    return { success: true };
+  },
+  'freight.cancel': async (input: { quoteId: string }) => {
+    const { error } = await supabase.rpc('freight_cancel_quote', { p_quote_id: input.quoteId });
+    if (error) throwErr(error, 'Unable to cancel request');
+    return { success: true };
+  },
+  'freight.messages': async (input: { quoteId: string }) => {
+    const { data, error } = await supabase
+      .from('freight_quote_messages').select('*').eq('quote_id', input.quoteId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load messages');
+    }
+    return data ?? [];
+  },
+  'freight.sendMessage': async (input: { quoteId: string; body: string }) => {
+    const { error } = await supabase.rpc('freight_send_message', { p_quote_id: input.quoteId, p_body: input.body });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Global Freight is not live yet — apply migration 0171.');
+      throwErr(error, 'Unable to send message');
+    }
+    return { success: true };
+  },
+
+  // =========================================================================
   // AIR CARGO BOARD (0163) — personal & commercial air freight, bid + AI estimate
   // =========================================================================
   'air.create': async (input: {

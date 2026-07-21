@@ -9,14 +9,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen, Anchor,
-  Store, Forklift, Hammer, Construction, UsersRound,
+  Store, Forklift, Hammer, Construction, UsersRound, Globe, Ship, Plane,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
 const { width } = Dimensions.get('window');
 
 type WorldDef = {
-  key: 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace';
+  key: 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace' | 'globalfreight';
   badge: string;
   color: string;
   bg: string;
@@ -97,6 +97,21 @@ const WORLDS: WorldDef[] = [
       { icon: Construction, label: 'Crane Service', sub: 'Crane + operator comes & does the lift' },
       { icon: Hammer, label: 'Mobile Repair & Services', sub: 'On-site techs & labour crews' },
       { icon: ShieldCheck, label: 'Cargo Insurance', sub: 'Insure freight & shipments' },
+    ],
+  },
+  {
+    key: 'globalfreight',
+    badge: 'Domain 6',
+    color: C.blue,
+    bg: C.blueDim,
+    icon: Globe,
+    title: 'Global Freight',
+    desc: 'International shipping & freight exchange. Post one freight quote request — air, ocean, truck, FCL or LCL — and receive competing quotes from forwarders, carriers and truckers worldwide.',
+    bullets: [
+      { icon: Boxes, label: 'Importers / Exporters', sub: 'One request, competing quotes' },
+      { icon: Plane, label: 'Global Freight Forwarders', sub: 'Quote every mode worldwide' },
+      { icon: Ship, label: 'Carriers / Shipping Lines', sub: 'Quote capacity directly' },
+      { icon: Truck, label: 'Truckers & Drayage', sub: 'Quote the container pickup leg' },
     ],
   },
 ];

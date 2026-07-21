@@ -26,6 +26,9 @@ export const BUSINESS_ROLES: UserRole[] = [
   'FreightForwarder',
   'DrayageCompany',
   'CustomsBroker',
+  'ImporterExporter',
+  'GlobalFreightForwarder',
+  'Carrier',
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
@@ -86,6 +89,9 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   CargoInsurer: 'Cargo Insurer',
   MarketplaceBuyer: 'Marketplace Buyer',
   SalesAgent: 'Sales Agent',
+  ImporterExporter: 'Importer / Exporter',
+  GlobalFreightForwarder: 'Global Freight Forwarder',
+  Carrier: 'Carrier / Shipping Line',
   Admin: 'Admin',
   SuperAdmin: 'Super Admin',
 };
@@ -117,6 +123,9 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   FreightForwarder: 'FreightForwarder',
   DrayageCompany: 'DrayageCompany',
   CustomsBroker: 'CustomsBroker',
+  ImporterExporter: 'ImporterExporter',
+  GlobalFreightForwarder: 'GlobalFreightForwarder',
+  Carrier: 'Carrier',
 };
 
 export function isBusinessRole(role: UserRole | string | null | undefined): boolean {

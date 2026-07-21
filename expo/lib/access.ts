@@ -4,7 +4,7 @@ import type { CompanyType, User, UserRole } from '@/constants/types';
 export const ENABLE_DOMAINS = true;
 
 /** The product worlds plus the shared admin layer. */
-export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace';
+export type Domain = 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace' | 'globalfreight';
 
 /** Roles belonging to the Labour world. */
 export const LABOUR_ROLES: UserRole[] = ['Worker', 'Employer', 'EmploymentAgency'];
@@ -22,6 +22,9 @@ export const FREIGHT_ROLES: UserRole[] = ['Shipper', 'Driver', 'TruckingCompany'
 
 /** Roles belonging to the Container Drayage world. */
 export const DRAYAGE_ROLES: UserRole[] = ['FreightForwarder', 'DrayageCompany', 'CustomsBroker'];
+
+/** Roles belonging to the Global Freight world (international shipping exchange). */
+export const GLOBAL_FREIGHT_ROLES: UserRole[] = ['ImporterExporter', 'GlobalFreightForwarder', 'Carrier'];
 
 /**
  * Roles that live natively in the Rentals & Services world (Domain 5). These are
@@ -60,6 +63,9 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   MobileRepairProvider: 'marketplace',
   CargoInsurer: 'marketplace',
   MarketplaceBuyer: 'marketplace',
+  ImporterExporter: 'globalfreight',
+  GlobalFreightForwarder: 'globalfreight',
+  Carrier: 'globalfreight',
 };
 
 /** Human-friendly labels for each world. */
@@ -69,6 +75,7 @@ export const DOMAIN_LABELS: Record<Domain, string> = {
   freight: 'Freight & Delivery',
   drayage: 'Container Drayage',
   marketplace: 'Rentals & Services',
+  globalfreight: 'Global Freight',
 };
 
 /**
@@ -95,6 +102,7 @@ export const MARKETPLACE_ROLES: UserRole[] = [
 /** Home route for each world. Used by the world switcher to navigate on select. */
 export const DOMAIN_HOME_ROUTES: Partial<Record<Domain, string>> = {
   marketplace: '/marketplace',
+  globalfreight: '/global-freight',
 };
 
 /** True when a role can access the shared Marketplace world. */
@@ -122,6 +130,9 @@ export const ROLE_HOME_ROUTES: Record<UserRole, string> = {
   MobileRepairProvider: '/repair-provider',
   CargoInsurer: '/cargo-insurer',
   MarketplaceBuyer: '/marketplace-buyer',
+  ImporterExporter: '/global-freight',
+  GlobalFreightForwarder: '/global-freight',
+  Carrier: '/global-freight',
   Admin: '/admin',
   SuperAdmin: '/super-admin',
 };
@@ -138,6 +149,9 @@ export const COMPANY_REQUIRED_ROLES: UserRole[] = [
   'DrayageCompany',
   'FreightForwarder',
   'CustomsBroker',
+  'ImporterExporter',
+  'GlobalFreightForwarder',
+  'Carrier',
   ...MARKETPLACE_DOMAIN_ROLES,
 ];
 
@@ -157,6 +171,9 @@ export const COMPANY_TYPE_BY_ROLE: Partial<Record<UserRole, CompanyType>> = {
   MobileRepairProvider: 'MobileRepairProvider',
   CargoInsurer: 'CargoInsurer',
   MarketplaceBuyer: 'MarketplaceBuyer',
+  ImporterExporter: 'ImporterExporter',
+  GlobalFreightForwarder: 'GlobalFreightForwarder',
+  Carrier: 'Carrier',
 };
 
 const ROUTE_PREFIXES: Record<string, UserRole[]> = {
@@ -179,6 +196,7 @@ const ROUTE_PREFIXES: Record<string, UserRole[]> = {
   'cargo-insurer': ['CargoInsurer'],
   'marketplace-buyer': ['MarketplaceBuyer'],
   'sales-agent': ['SalesAgent'],
+  'global-freight': ['ImporterExporter', 'GlobalFreightForwarder', 'Carrier', 'Customer', 'FreightForwarder', 'TruckingCompany', 'DrayageCompany', 'Admin', 'SuperAdmin'],
   admin: ['Admin', 'SuperAdmin'],
   'super-admin': ['SuperAdmin'],
   fulfillment: ['WarehouseProvider', 'Customer', 'Admin', 'SuperAdmin'],
@@ -231,7 +249,7 @@ export function visibleDomains(user: User | null): Domain[] {
     return [];
   }
   if (isAdminRole(user.role) || user.isPlatformAdmin) {
-    return ['labour', 'logistics', 'freight', 'drayage', 'marketplace'];
+    return ['labour', 'logistics', 'freight', 'drayage', 'marketplace', 'globalfreight'];
   }
   const domain = DOMAIN_BY_ROLE[user.role];
   const worlds: Domain[] = domain ? [domain] : [];

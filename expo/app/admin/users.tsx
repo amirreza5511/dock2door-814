@@ -32,6 +32,9 @@ const ROLE_COLORS: Record<UserRole, string> = {
   SalesAgent: C.orange,
   EmploymentAgency: C.purple,
   CustomsBroker: C.blue,
+  ImporterExporter: C.blue,
+  GlobalFreightForwarder: C.blue,
+  Carrier: C.blue,
   Guest: C.orange,
 };
 
