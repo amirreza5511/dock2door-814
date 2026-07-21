@@ -12,15 +12,21 @@ import {
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import WorldPicker, { type PickerOption } from '@/components/WorldPicker';
 import C from '@/constants/colors';
 import { trpc, type OceanLeg } from '@/lib/trpc';
+import { usePreferences } from '@/store/preferences';
+import { COUNTRIES, SEAPORTS, CURRENCY_CODES, weightUnitFor } from '@/constants/world';
+
+const COUNTRY_OPTIONS: PickerOption[] = COUNTRIES.map((c) => ({ value: c.name, label: c.name, sublabel: c.code, glyph: c.flag, keywords: c.code }));
+const PORT_OPTIONS: PickerOption[] = SEAPORTS.map((p) => ({ value: p.name, label: p.name, sublabel: `${p.code} · ${p.country}`, keywords: `${p.code} ${p.country}` }));
 
 const LEG_ICON: Record<OceanLeg['leg_type'], React.ComponentType<{ size?: number; color?: string }>> = {
   OriginPort: Anchor, OceanTransit: Ship, DestPort: Anchor, Warehouse, FinalMile: Truck,
 };
 
 const CONTAINER_SIZES = ['20ft', '40ft', '40ft HC', 'LCL'] as const;
-const CURRENCIES = ['CAD', 'USD', 'EUR', 'AED', 'CNY', 'GBP'] as const;
+const CURRENCIES = CURRENCY_CODES;
 
 type OceanRequest = {
   id: string; title: string; origin_country: string; origin_port: string;
@@ -59,16 +65,18 @@ export default function CustomerOceanScreen() {
   const [containerSize, setContainerSize] = useState<string>('40ft');
   const [cargoType, setCargoType] = useState<string>('');
   const [weight, setWeight] = useState<string>('');
-  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>('kg');
-  const [currency, setCurrency] = useState<string>('CAD');
+  const prefCurrency = usePreferences((s) => s.currency);
+  const prefUnits = usePreferences((s) => s.unitSystem);
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>(weightUnitFor(prefUnits));
+  const [currency, setCurrency] = useState<string>(prefCurrency);
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   const resetForm = useCallback(() => {
     setTitle(''); setOriginCountry(''); setOriginPort(''); setDestCountry('');
     setDestPort(''); setContainerSize('40ft'); setCargoType(''); setWeight('');
-    setWeightUnit('kg'); setCurrency('CAD'); setNotes('');
-  }, []);
+    setWeightUnit(weightUnitFor(prefUnits)); setCurrency(prefCurrency); setNotes('');
+  }, [prefUnits, prefCurrency]);
 
   const handlePost = useCallback(async () => {
     if (!title.trim()) { Alert.alert('Missing title', 'Give your shipment a short title.'); return; }
@@ -158,12 +166,12 @@ export default function CustomerOceanScreen() {
           <ScrollView contentContainerStyle={{ padding: 20, gap: 12, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
             <Input label="Shipment title *" value={title} onChangeText={setTitle} placeholder="Furniture Vancouver → Dubai" />
             <View style={styles.row2}>
-              <View style={{ flex: 1 }}><Input label="Origin country" value={originCountry} onChangeText={setOriginCountry} placeholder="Canada" /></View>
-              <View style={{ flex: 1 }}><Input label="Origin port" value={originPort} onChangeText={setOriginPort} placeholder="Vancouver" /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Origin country" value={originCountry} options={COUNTRY_OPTIONS} placeholder="Canada" onSelect={setOriginCountry} /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Origin port" value={originPort} options={PORT_OPTIONS} placeholder="Vancouver" onSelect={setOriginPort} /></View>
             </View>
             <View style={styles.row2}>
-              <View style={{ flex: 1 }}><Input label="Dest. country" value={destCountry} onChangeText={setDestCountry} placeholder="UAE" /></View>
-              <View style={{ flex: 1 }}><Input label="Dest. port" value={destPort} onChangeText={setDestPort} placeholder="Jebel Ali" /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Dest. country" value={destCountry} options={COUNTRY_OPTIONS} placeholder="UAE" onSelect={setDestCountry} /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Dest. port" value={destPort} options={PORT_OPTIONS} placeholder="Jebel Ali" onSelect={setDestPort} /></View>
             </View>
             <Text style={styles.fieldLabel}>Container size</Text>
             <View style={styles.chipRow}>

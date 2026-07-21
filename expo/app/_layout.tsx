@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store/auth';
+import { usePreferences } from '@/store/preferences';
 import { canAccessSegment, DOMAIN_BY_ROLE, ENABLE_DOMAINS, getRoleRoute, visibleDomains } from '@/lib/access';
 import { trpc, trpcClient } from '@/lib/trpc';
 import C from '@/constants/colors';
@@ -172,11 +173,13 @@ function BootstrapController() {
   const authBootstrap = useAuthStore((state) => state.bootstrap);
   const isHydrated = useAuthStore((state) => state.isHydrated);
   const userId = useAuthStore((state) => state.user?.id ?? null);
+  const hydratePreferences = usePreferences((state) => state.hydrate);
   const prevUserIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     void authBootstrap();
-  }, [authBootstrap]);
+    void hydratePreferences();
+  }, [authBootstrap, hydratePreferences]);
 
   // Wipe ALL cached server data whenever the signed-in user changes (login,
   // logout, or account switch) so one account never sees another account's

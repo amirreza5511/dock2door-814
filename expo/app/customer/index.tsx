@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Sparkles, Store, Plane, PackageCheck } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Sparkles, Store, Plane, PackageCheck, Settings } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -62,6 +62,9 @@ export default function CustomerDashboard() {
         </View>
         <View style={styles.headerActions}>
           <WorldSwitcher />
+          <TouchableOpacity onPress={() => router.push('/settings' as never)} style={styles.logoutBtn} testID="settings-btn">
+            <Settings size={18} color={C.textMuted} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.push('/customer/team' as never)} style={styles.logoutBtn} testID="team-btn">
             <Users size={18} color={C.textMuted} />
           </TouchableOpacity>

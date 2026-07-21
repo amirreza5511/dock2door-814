@@ -13,12 +13,17 @@ import {
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import WorldPicker, { type PickerOption } from '@/components/WorldPicker';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { askAssistant } from '@/lib/ai';
+import { usePreferences } from '@/store/preferences';
+import { AIRPORTS, CURRENCY_CODES, weightUnitFor, dimUnitFor } from '@/constants/world';
 
-const CURRENCIES = ['CAD', 'USD', 'EUR', 'AED', 'CNY', 'GBP'] as const;
+const CURRENCIES = CURRENCY_CODES;
+const CITY_OPTIONS: PickerOption[] = AIRPORTS.map((a) => ({ value: a.city, label: a.city, sublabel: a.country, keywords: `${a.code} ${a.name}` }));
+const AIRPORT_OPTIONS: PickerOption[] = AIRPORTS.map((a) => ({ value: a.code, label: `${a.code} — ${a.name}`, sublabel: `${a.city}, ${a.country}`, keywords: `${a.city} ${a.name}` }));
 
 type AirRequest = {
   id: string; title: string; shipment_kind: string;
@@ -88,23 +93,25 @@ export default function CustomerAirScreen() {
   const [len, setLen] = useState<string>('');
   const [wid, setWid] = useState<string>('');
   const [hei, setHei] = useState<string>('');
-  const [dimUnit, setDimUnit] = useState<'cm' | 'in'>('cm');
+  const prefCurrency = usePreferences((s) => s.currency);
+  const prefUnits = usePreferences((s) => s.unitSystem);
+  const [dimUnit, setDimUnit] = useState<'cm' | 'in'>(dimUnitFor(prefUnits));
   const [weight, setWeight] = useState<string>('');
-  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>('kg');
+  const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>(weightUnitFor(prefUnits));
   const [pieces, setPieces] = useState<string>('1');
   const [commodity, setCommodity] = useState<string>('');
   const [declaredValue, setDeclaredValue] = useState<string>('');
   const [hsCode, setHsCode] = useState<string>('');
-  const [currency, setCurrency] = useState<string>('CAD');
+  const [currency, setCurrency] = useState<string>(prefCurrency);
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
   const resetForm = useCallback(() => {
     setKind('personal'); setTitle(''); setOriginCity(''); setOriginAirport('');
     setDestCity(''); setDestAirport(''); setCargoType(''); setPhotos([]);
-    setLen(''); setWid(''); setHei(''); setDimUnit('cm'); setWeight(''); setWeightUnit('kg');
-    setPieces('1'); setCommodity(''); setDeclaredValue(''); setHsCode(''); setCurrency('CAD'); setNotes('');
-  }, []);
+    setLen(''); setWid(''); setHei(''); setDimUnit(dimUnitFor(prefUnits)); setWeight(''); setWeightUnit(weightUnitFor(prefUnits));
+    setPieces('1'); setCommodity(''); setDeclaredValue(''); setHsCode(''); setCurrency(prefCurrency); setNotes('');
+  }, [prefUnits, prefCurrency]);
 
   const pickPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -275,12 +282,12 @@ Shipment: ${p.title} (${p.kind}); ${p.cargoType || 'general cargo'}; route ${p.o
             </View>
 
             <View style={styles.row2}>
-              <View style={{ flex: 1 }}><Input label="Origin city" value={originCity} onChangeText={setOriginCity} placeholder="Vancouver" /></View>
-              <View style={{ flex: 1 }}><Input label="Origin airport" value={originAirport} onChangeText={setOriginAirport} autoCapitalize="characters" placeholder="YVR" /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Origin city" value={originCity} options={CITY_OPTIONS} placeholder="Vancouver" onSelect={setOriginCity} /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Origin airport" value={originAirport} options={AIRPORT_OPTIONS} placeholder="YVR" onSelect={setOriginAirport} /></View>
             </View>
             <View style={styles.row2}>
-              <View style={{ flex: 1 }}><Input label="Dest. city" value={destCity} onChangeText={setDestCity} placeholder="Tehran" /></View>
-              <View style={{ flex: 1 }}><Input label="Dest. airport" value={destAirport} onChangeText={setDestAirport} autoCapitalize="characters" placeholder="IKA" /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Dest. city" value={destCity} options={CITY_OPTIONS} placeholder="Tehran" onSelect={setDestCity} /></View>
+              <View style={{ flex: 1 }}><WorldPicker label="Dest. airport" value={destAirport} options={AIRPORT_OPTIONS} placeholder="IKA" onSelect={setDestAirport} /></View>
             </View>
             <Input label="Cargo type" value={cargoType} onChangeText={setCargoType} placeholder="Electronics, clothing…" />
 
