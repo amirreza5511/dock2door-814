@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, Linking } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, ChevronRight, Package, RotateCcw, PackageSearch, Plus } from 'lucide-react-native';
+import { ChevronLeft, ChevronRight, Package, RotateCcw, PackageSearch, Plus, Navigation } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
+import { trackingUrl } from '@/constants/couriers';
 import { trpc } from '@/lib/trpc';
 import { useExploreStore } from '@/store/explore';
 
@@ -113,6 +114,10 @@ function ParcelRow({ parcel, isReturn, onPress }: { parcel: Parcel; isReturn?: b
   const title = isReturn
     ? (parcel.notes.split('·')[1]?.trim() || 'Return')
     : parcel.to_name || 'Shipment';
+  const openTracking = () => {
+    if (!parcel.tracking_number) return;
+    void Linking.openURL(trackingUrl(parcel.tracking_number)).catch(() => {});
+  };
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
       <View style={[styles.cardIcon, { backgroundColor: isReturn ? C.blueDim : C.accentDim }]}>
@@ -128,6 +133,9 @@ function ParcelRow({ parcel, isReturn, onPress }: { parcel: Parcel; isReturn?: b
           <Text style={[styles.statusText, { color }]}>{parcel.status}</Text>
         </View>
       </View>
+      <TouchableOpacity onPress={openTracking} hitSlop={8} style={styles.trackBtn}>
+        <Navigation size={16} color={C.accent} />
+      </TouchableOpacity>
       <ChevronRight size={16} color={C.textMuted} />
     </TouchableOpacity>
   );
@@ -161,6 +169,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   cardSub: { fontSize: 12, color: C.textMuted, marginTop: 2 },
   cardPrice: { fontSize: 14, fontWeight: '800' as const, color: C.text },
+  trackBtn: { width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: C.accentDim },
   statusPill: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
   statusText: { fontSize: 11, fontWeight: '700' as const },
   empty: { alignItems: 'center', paddingTop: 60, gap: 10 },

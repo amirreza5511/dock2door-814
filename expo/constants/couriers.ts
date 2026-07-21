@@ -96,6 +96,17 @@ export function deriveCourierQuotes(
   }).sort((a, b) => a.price - b.price);
 }
 
+/**
+ * EasyPost branded (WeSupply) tracking page. A tracking number is appended to
+ * this base to open a customer-facing "where is my parcel" page.
+ */
+export const EASYPOST_TRACK_BASE = 'https://easypost684806151557.labs.wesupply.xyz/track/';
+
+/** Build a customer-facing tracking page URL for a tracking number. */
+export function trackingUrl(trackingNumber: string): string {
+  return `${EASYPOST_TRACK_BASE}${encodeURIComponent(trackingNumber.trim())}`;
+}
+
 /** Static FX from CAD (matches the placeholder rating in migration 0164). */
 export const FX_FROM_CAD: Record<string, number> = {
   CAD: 1, USD: 0.73, EUR: 0.68, GBP: 0.58, AED: 2.68, CNY: 5.25,

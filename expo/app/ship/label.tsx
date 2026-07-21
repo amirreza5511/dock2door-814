@@ -1,14 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator, Linking } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import * as Print from 'expo-print';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Copy, Printer, PackageSearch, CheckCircle2, MapPin } from 'lucide-react-native';
+import { ChevronLeft, Copy, Printer, PackageSearch, CheckCircle2, MapPin, Navigation } from 'lucide-react-native';
 import C from '@/constants/colors';
 import Button from '@/components/ui/Button';
 import TrackingCode from '@/components/TrackingCode';
+import { trackingUrl } from '@/constants/couriers';
 import { trpc } from '@/lib/trpc';
 
 interface Parcel {
@@ -42,6 +43,16 @@ export default function ShipLabel() {
     if (!parcel) return;
     await Clipboard.setStringAsync(parcel.tracking_number);
     if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const openTracking = async () => {
+    if (!parcel?.tracking_number) return;
+    const url = trackingUrl(parcel.tracking_number);
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // linking unavailable
+    }
   };
 
   const printLabel = async () => {
@@ -123,6 +134,7 @@ export default function ShipLabel() {
 
             <View style={{ gap: 10, marginTop: 20 }}>
               <Button label="Print / save label" onPress={printLabel} fullWidth icon={<Printer size={16} color={C.white} />} />
+              <Button label="Track parcel" onPress={openTracking} variant="secondary" fullWidth icon={<Navigation size={16} color={C.text} />} />
               <Button label="View all my shipments" onPress={() => router.replace('/ship/mine' as never)} variant="secondary" fullWidth icon={<PackageSearch size={16} color={C.text} />} />
             </View>
           </>
