@@ -20,6 +20,17 @@ import {
 type ServiceLevel = 'regular' | 'expedited' | 'xpresspost' | 'priority';
 type Fulfillment = 'dropoff' | 'pickup_carrier' | 'pickup_network';
 
+interface LiveRate {
+  carrier: 'SHIPPO' | 'EASYPOST';
+  provider: string;
+  service_level: string;
+  service_name: string;
+  amount: number;
+  currency: string;
+  est_delivery_days?: number;
+  carrier_rate_id: string;
+}
+
 export default function ShipQuote() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -37,16 +48,26 @@ export default function ShipQuote() {
   // Quotes
   const [quotes, setQuotes] = useState<CourierQuote[] | null>(null);
   const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [liveRates, setLiveRates] = useState<LiveRate[] | null>(null);
+  const [selectedLiveId, setSelectedLiveId] = useState<string | null>(null);
+
+  // Sender (needed for live rate shopping)
+  const [fromCity, setFromCity] = useState<string>('');
+  const [fromPostal, setFromPostal] = useState<string>('');
+  const [fromCountry, setFromCountry] = useState<string>('CA');
 
   // Recipient + fulfillment
   const [toName, setToName] = useState<string>('');
   const [toLine1, setToLine1] = useState<string>('');
   const [toCity, setToCity] = useState<string>('');
   const [toPostal, setToPostal] = useState<string>('');
+  const [toCountry, setToCountry] = useState<string>('CA');
   const [fulfillment, setFulfillment] = useState<Fulfillment>('dropoff');
 
   const quoteMut = trpc.parcel.quote.useMutation();
   const createMut = trpc.parcel.create.useMutation();
+  const liveRateMut = trpc.parcel.rateShopLive.useMutation();
+  const buyLabelMut = trpc.parcel.buyLabel.useMutation();
   const carriersQuery = trpc.carriers.list.useQuery(undefined, { retry: false });
 
   const activeCodes = useMemo(() => {
@@ -73,6 +94,7 @@ export default function ShipQuote() {
 
   const getQuotes = async () => {
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // 1) Placeholder estimate — always available as a baseline / fallback.
     try {
       const res = await quoteMut.mutateAsync({
         length: Number(length) || 0,
@@ -91,7 +113,33 @@ export default function ShipQuote() {
     } catch {
       setQuotes([]);
     }
+    // 2) Live rates from Shippo / EasyPost when we have both postal codes.
+    if (fromPostal.trim() && toPostal.trim()) {
+      try {
+        const live = await liveRateMut.mutateAsync({
+          from: { city: fromCity.trim(), zip: fromPostal.trim(), country: fromCountry.trim() || 'CA' },
+          to: { city: toCity.trim(), zip: toPostal.trim(), country: toCountry.trim() || 'CA' },
+          parcel: {
+            length_cm: Number(length) || 10,
+            width_cm: Number(width) || 10,
+            height_cm: Number(height) || 10,
+            weight_kg: Number(weight) || 0.5,
+          },
+        });
+        const rates = (live?.rates ?? []) as LiveRate[];
+        setLiveRates(rates);
+        setSelectedLiveId(rates[0]?.carrier_rate_id ?? null);
+      } catch {
+        setLiveRates(null);
+      }
+    } else {
+      setLiveRates(null);
+      setSelectedLiveId(null);
+    }
   };
+
+  const selectedLive = liveRates?.find((r) => r.carrier_rate_id === selectedLiveId) ?? null;
+  const hasLive = Boolean(liveRates && liveRates.length > 0);
 
   const fastest = useMemo(() => {
     if (!quotes || quotes.length === 0) return null;
@@ -100,22 +148,68 @@ export default function ShipQuote() {
 
   const selected = quotes?.find((q) => q.courier.code === selectedCode) ?? null;
 
-  const canCreate = Boolean(selected && toName.trim() && toCity.trim());
+  const canCreate = hasLive
+    ? Boolean(selectedLive && toName.trim() && toCity.trim())
+    : Boolean(selected && toName.trim() && toCity.trim());
+
+  const fulfilLabel =
+    fulfillment === 'dropoff' ? 'Drop-off at counter'
+    : fulfillment === 'pickup_carrier' ? 'Carrier pickup requested'
+    : 'Network pickup requested';
 
   const createLabel = async () => {
-    if (!selected) return;
     if (!guard('Create a shipping label')) return; // gated in explore mode
     if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const fulfilLabel =
-      fulfillment === 'dropoff' ? 'Drop-off at counter'
-      : fulfillment === 'pickup_carrier' ? 'Carrier pickup requested'
-      : 'Network pickup requested';
+
+    // ── Live path: create the row, then buy a real label from the carrier ──
+    if (hasLive && selectedLive) {
+      try {
+        const res = await createMut.mutateAsync({
+          fromCity: fromCity.trim(), fromPostal: fromPostal.trim(), fromCountry: fromCountry.trim() || 'CA',
+          toName: toName.trim(),
+          toLine1: toLine1.trim(),
+          toCity: toCity.trim(),
+          toPostal: toPostal.trim(),
+          toCountry: toCountry.trim() || 'CA',
+          length: Number(length) || 0,
+          width: Number(width) || 0,
+          height: Number(height) || 0,
+          dimUnit: 'cm',
+          weight: Number(weight) || 0,
+          weightUnit: 'kg',
+          service,
+          currency: selectedLive.currency,
+          notes: `Courier: ${selectedLive.service_name} · ${fulfilLabel}`,
+        });
+        const id = (res as { id?: string } | null)?.id;
+        if (!id) return;
+        try {
+          await buyLabelMut.mutateAsync({
+            parcelShipmentId: id,
+            carrier: selectedLive.carrier,
+            carrierRateId: selectedLive.carrier_rate_id,
+            amount: selectedLive.amount,
+            currency: selectedLive.currency,
+          });
+        } catch {
+          // Purchase failed — the row still exists as a draft; open it anyway.
+        }
+        router.replace(`/ship/label?id=${id}` as never);
+      } catch {
+        // create surfaces its own error; keep the user on the form.
+      }
+      return;
+    }
+
+    // ── Estimate path: placeholder label ──
+    if (!selected) return;
     try {
       const res = await createMut.mutateAsync({
         toName: toName.trim(),
         toLine1: toLine1.trim(),
         toCity: toCity.trim(),
         toPostal: toPostal.trim(),
+        toCountry: toCountry.trim() || 'CA',
         length: Number(length) || 0,
         width: Number(width) || 0,
         height: Number(height) || 0,

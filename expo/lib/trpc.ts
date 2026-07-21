@@ -5405,6 +5405,39 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     if (error) throwErr(error, 'Unable to update parcel');
     return { success: true };
   },
+  'parcel.rateShopLive': async (input: {
+    from: { name?: string; street1?: string; city?: string; state?: string; zip?: string; country?: string };
+    to: { name?: string; street1?: string; city?: string; state?: string; zip?: string; country?: string };
+    parcel: { length_cm: number; width_cm: number; height_cm: number; weight_kg: number };
+    carriers?: string[];
+  }) => {
+    const { data, error } = await supabase.functions.invoke('parcel-rate-shop', {
+      body: { from: input.from, to: input.to, parcel: input.parcel, carriers: input.carriers ?? [] },
+    });
+    if (error) throwErr(error, 'Unable to get live rates');
+    return data as {
+      rates: { carrier: 'SHIPPO' | 'EASYPOST'; provider: string; service_level: string; service_name: string; amount: number; currency: string; est_delivery_days?: number; carrier_rate_id: string }[];
+      errors: { carrier: string; error: string }[];
+      attempted: number;
+    };
+  },
+  'parcel.buyLabel': async (input: {
+    parcelShipmentId: string; carrier: 'SHIPPO' | 'EASYPOST'; carrierRateId: string; amount?: number; currency?: string;
+  }) => {
+    const { data, error } = await supabase.functions.invoke('parcel-buy-label', {
+      body: {
+        parcel_shipment_id: input.parcelShipmentId,
+        carrier: input.carrier,
+        carrier_rate_id: input.carrierRateId,
+        amount: input.amount,
+        currency: input.currency,
+      },
+    });
+    if (error) throwErr(error, 'Unable to buy label');
+    return data as {
+      parcel_shipment_id: string; carrier: string; tracking_code: string; label_url: string; label_format: string; amount: number; currency: string;
+    };
+  },
 
   // =========================================================================
   // GUEST ACCESS (0156) — prepaid invoices with guest surcharge

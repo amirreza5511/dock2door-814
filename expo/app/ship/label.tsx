@@ -28,6 +28,8 @@ interface Parcel {
   weight_unit: string;
   notes: string;
   is_placeholder: boolean;
+  label_url: string;
+  carrier_code: string;
 }
 
 export default function ShipLabel() {
@@ -43,6 +45,15 @@ export default function ShipLabel() {
     if (!parcel) return;
     await Clipboard.setStringAsync(parcel.tracking_number);
     if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  const openLabelPdf = async () => {
+    if (!parcel?.label_url) return;
+    try {
+      await Linking.openURL(parcel.label_url);
+    } catch {
+      // linking unavailable
+    }
   };
 
   const openTracking = async () => {
@@ -133,7 +144,11 @@ export default function ShipLabel() {
             ) : null}
 
             <View style={{ gap: 10, marginTop: 20 }}>
-              <Button label="Print / save label" onPress={printLabel} fullWidth icon={<Printer size={16} color={C.white} />} />
+              {parcel.label_url ? (
+                <Button label="Open label PDF" onPress={openLabelPdf} fullWidth icon={<Printer size={16} color={C.white} />} />
+              ) : (
+                <Button label="Print / save label" onPress={printLabel} fullWidth icon={<Printer size={16} color={C.white} />} />
+              )}
               <Button label="Track parcel" onPress={openTracking} variant="secondary" fullWidth icon={<Navigation size={16} color={C.text} />} />
               <Button label="View all my shipments" onPress={() => router.replace('/ship/mine' as never)} variant="secondary" fullWidth icon={<PackageSearch size={16} color={C.text} />} />
             </View>
