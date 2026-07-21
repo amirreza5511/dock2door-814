@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Globe, LogOut, Ship, Plane, Truck, Boxes, Plus, Package, ChevronRight } from 'lucide-react-native';
+import { Globe, LogOut, Ship, Plane, Truck, Boxes, Plus, Package, ChevronRight, MapPin, ArrowRight } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
@@ -109,6 +109,15 @@ export default function GlobalFreightHub() {
           <View style={styles.modeChip}><Boxes size={16} color={C.blue} /><Text style={styles.modeChipText}>FCL / LCL</Text></View>
         </View>
 
+        <TouchableOpacity style={styles.hubBanner} activeOpacity={0.85} onPress={() => router.push('/global-freight/hubs' as never)} testID="open-canada-hubs">
+          <View style={styles.hubBannerIcon}><MapPin size={20} color={C.accent} /></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.hubBannerTitle}>Canada hub network</Text>
+            <Text style={styles.hubBannerDesc}>Route ocean, air, truck & LCL/FCL into a destination city hub for final-mile.</Text>
+          </View>
+          <ArrowRight size={18} color={C.textMuted} />
+        </TouchableOpacity>
+
         {isCustomer ? (
           <>
             <TouchableOpacity style={styles.cta} activeOpacity={0.85} onPress={() => setWizardOpen(true)} testID="get-freight-quote">
@@ -188,6 +197,10 @@ const styles = StyleSheet.create({
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   modeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   modeChipText: { fontSize: 14, fontWeight: '600' as const, color: C.text },
+  hubBanner: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '55' },
+  hubBannerIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg },
+  hubBannerTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  hubBannerDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2, lineHeight: 16 },
   cta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.blue, paddingVertical: 16, borderRadius: 14 },
   ctaText: { fontSize: 16, fontWeight: '800' as const, color: C.white },
   listHeading: { fontSize: 16, fontWeight: '800' as const, color: C.text, marginTop: 4 },
