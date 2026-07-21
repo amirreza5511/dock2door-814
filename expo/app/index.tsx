@@ -10,6 +10,7 @@ import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, Boxes, Truck, PackageOpen, Anchor,
   Store, Forklift, Hammer, Construction, UsersRound, ChevronRight, Compass, Building2,
+  Package, RotateCcw, Printer,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { DOMAINS } from '@/constants/domains';
@@ -164,6 +165,43 @@ export default function Landing() {
               </View>
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Ship & Return */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>SHIP & RETURN</Text>
+          <Text style={styles.sectionTitle}>A post office{'\n'}in your pocket.</Text>
+          <TouchableOpacity
+            style={styles.shipCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/ship' as never)}
+            testID="home-ship"
+          >
+            <LinearGradient colors={['#12253D', '#0D1E35']} style={styles.shipGrad}>
+              <View style={styles.shipHeaderRow}>
+                <View style={styles.shipIconWrap}>
+                  <Package size={24} color={C.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shipTitle}>Send a parcel or start a return</Text>
+                  <Text style={styles.shipDesc}>Compare every courier, print a label, drop off or book a pickup.</Text>
+                </View>
+                <ChevronRight size={20} color={C.textMuted} />
+              </View>
+              <View style={styles.shipBullets}>
+                {[
+                  { icon: Printer, label: 'Get a price & label' },
+                  { icon: RotateCcw, label: 'Amazon / Temu returns' },
+                  { icon: Truck, label: 'Drop-off or pickup' },
+                ].map((b) => (
+                  <View key={b.label} style={styles.shipBullet}>
+                    <b.icon size={14} color={C.accent} />
+                    <Text style={styles.shipBulletText}>{b.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
 
         {/* Roles */}
@@ -361,6 +399,15 @@ const styles = StyleSheet.create({
   },
   roleTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   roleDesc: { fontSize: 12, color: C.textSecondary },
+  shipCard: { borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: C.borderLight },
+  shipGrad: { padding: 18 },
+  shipHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  shipIconWrap: { width: 52, height: 52, borderRadius: 14, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  shipTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, letterSpacing: -0.3 },
+  shipDesc: { fontSize: 12, color: C.textSecondary, marginTop: 3, lineHeight: 17 },
+  shipBullets: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 16 },
+  shipBullet: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  shipBulletText: { fontSize: 12, fontWeight: '600' as const, color: C.text },
   directoryCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 16 },
   directoryIcon: { width: 46, height: 46, borderRadius: 13, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
   directoryTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },

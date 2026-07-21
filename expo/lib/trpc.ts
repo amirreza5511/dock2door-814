@@ -6096,6 +6096,10 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       { code: 'UPS', name: 'UPS', implemented: true, mode: 'direct', requires: ['client_id', 'client_secret', 'account_number'] },
       { code: 'DHL', name: 'DHL Express', implemented: true, mode: 'direct', requires: ['username', 'password', 'account_number'] },
       { code: 'FEDEX', name: 'FedEx', implemented: true, mode: 'direct', requires: ['client_id', 'client_secret', 'account_number'] },
+      { code: 'ARAMEX', name: 'Aramex', implemented: false, mode: 'direct', requires: ['account_number', 'account_pin', 'username', 'password'] },
+      { code: 'PUROLATOR', name: 'Purolator', implemented: false, mode: 'direct', requires: ['api_key', 'account_number'] },
+      { code: 'USPS', name: 'USPS', implemented: false, mode: 'direct', requires: ['api_key'] },
+      { code: 'GLS', name: 'GLS', implemented: false, mode: 'direct', requires: ['api_key'] },
     ];
   },
 

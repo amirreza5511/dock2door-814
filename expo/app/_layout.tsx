@@ -26,7 +26,7 @@ import { useExploreStore } from '@/store/explore';
 void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const PUBLIC_SEGMENTS = ['', 'auth', '+not-found', 'explore', 'directory'];
+const PUBLIC_SEGMENTS = ['', 'auth', '+not-found', 'explore', 'directory', 'ship'];
 
 type ReactCreateElement = typeof React.createElement;
 type ReactRuntimeWithGuard = typeof React & { __dock2doorTextNodeGuard?: boolean };
