@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ChevronLeft, ChevronRight, Package, RotateCcw, PackageSearch,
-  Settings2, Truck, Store, Printer, MapPin,
+  Settings2, Truck, Store, Printer, MapPin, Navigation, History, Calculator,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { COURIERS } from '@/constants/couriers';
@@ -19,7 +19,11 @@ const FEATURES = [
 const ACTIONS = [
   { key: 'send', title: 'Send a parcel', desc: 'Price it, print a label, ship it', icon: Package, color: C.accent, route: '/ship/quote' },
   { key: 'return', title: 'Start a return', desc: 'Amazon · Temu · any store', icon: RotateCcw, color: C.blue, route: '/ship/return' },
+  { key: 'track', title: 'Track a parcel', desc: 'See live status on a timeline', icon: Navigation, color: C.yellow, route: '/ship/track' },
   { key: 'mine', title: 'My shipments & returns', desc: 'Track, re-print labels, update status', icon: PackageSearch, color: C.green, route: '/ship/mine' },
+  { key: 'history', title: 'Quote history', desc: 'Revisit prices you compared before', icon: History, color: C.blue, route: '/ship/history' },
+  { key: 'addresses', title: 'Saved addresses', desc: 'Reuse sender & recipient details', icon: MapPin, color: C.accent, route: '/ship/addresses' },
+  { key: 'calculator', title: 'Parcel calculator', desc: 'Volumetric & billable weight', icon: Calculator, color: C.purple, route: '/ship/calculator' },
   { key: 'couriers', title: 'Manage couriers', desc: 'Connect carrier accounts & keys', icon: Settings2, color: C.purple, route: '/ship/couriers' },
 ] as const;
 

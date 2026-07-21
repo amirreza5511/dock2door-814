@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import Button from '@/components/ui/Button';
 import { trpc } from '@/lib/trpc';
 import { useActionGuard } from '@/store/explore';
 import { usePreferences } from '@/store/preferences';
+import { useShipStore } from '@/store/shipStore';
 import {
   PRESET_BOXES, SERVICE_LEVELS, deriveCourierQuotes, FX_FROM_CAD,
   type CourierQuote,
@@ -36,6 +37,9 @@ export default function ShipQuote() {
   const router = useRouter();
   const guard = useActionGuard();
   const currency = usePreferences((s) => s.currency);
+  const hydrateShip = useShipStore((s) => s.hydrate);
+  const addHistory = useShipStore((s) => s.addHistory);
+  const savedAddresses = useShipStore((s) => s.addresses);
 
   // Parcel
   const [preset, setPreset] = useState<string>('small');
@@ -80,6 +84,21 @@ export default function ShipQuote() {
   const fx = FX_FROM_CAD[currency] ?? 1;
   const curSymbol = currency;
 
+  useEffect(() => {
+    void hydrateShip();
+  }, [hydrateShip]);
+
+  // Prefill sender from the default saved address (once, if the field is empty).
+  useEffect(() => {
+    const def = savedAddresses.find((a) => a.isDefault) ?? savedAddresses[0];
+    if (def && !fromPostal && !fromCity) {
+      setFromCity(def.city);
+      setFromPostal(def.postal);
+      setFromCountry(def.country || 'CA');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedAddresses]);
+
   const applyPreset = (key: string) => {
     const box = PRESET_BOXES.find((b) => b.key === key);
     if (!box) return;
@@ -94,6 +113,7 @@ export default function ShipQuote() {
 
   const getQuotes = async () => {
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    let estimateBest: { courier: string; price: number } | null = null;
     // 1) Placeholder estimate — always available as a baseline / fallback.
     try {
       const res = await quoteMut.mutateAsync({
@@ -110,10 +130,12 @@ export default function ShipQuote() {
       const derived = deriveCourierQuotes(baseCad, activeCodes, fx, currency);
       setQuotes(derived);
       setSelectedCode(derived[0]?.courier.code ?? null);
+      if (derived[0]) estimateBest = { courier: derived[0].courier.name, price: derived[0].price };
     } catch {
       setQuotes([]);
     }
     // 2) Live rates from Shippo / EasyPost when we have both postal codes.
+    let liveBest: { courier: string; price: number; currency: string } | null = null;
     if (fromPostal.trim() && toPostal.trim()) {
       try {
         const live = await liveRateMut.mutateAsync({
@@ -129,12 +151,31 @@ export default function ShipQuote() {
         const rates = (live?.rates ?? []) as LiveRate[];
         setLiveRates(rates);
         setSelectedLiveId(rates[0]?.carrier_rate_id ?? null);
+        if (rates[0]) liveBest = { courier: rates[0].service_name, price: rates[0].amount, currency: rates[0].currency };
       } catch {
         setLiveRates(null);
       }
     } else {
       setLiveRates(null);
       setSelectedLiveId(null);
+    }
+    // 3) Record the best price in local history so the user can revisit it.
+    const best = liveBest ?? (estimateBest ? { ...estimateBest, currency } : null);
+    if (best) {
+      addHistory({
+        length: Number(length) || 0,
+        width: Number(width) || 0,
+        height: Number(height) || 0,
+        weight: Number(weight) || 0,
+        service,
+        fromPostal: fromPostal.trim(),
+        toPostal: toPostal.trim(),
+        toCity: toCity.trim(),
+        bestCourier: best.courier,
+        bestPrice: best.price,
+        currency: best.currency,
+        isLive: Boolean(liveBest),
+      });
     }
   };
 
