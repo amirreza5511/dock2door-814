@@ -7,12 +7,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import {
   Ship, Plus, X, ChevronLeft, MapPin, Package, Anchor, MessageCircle, Send, Check,
+  Truck, Warehouse, CircleDot, Route,
 } from 'lucide-react-native';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import C from '@/constants/colors';
-import { trpc } from '@/lib/trpc';
+import { trpc, type OceanLeg } from '@/lib/trpc';
+
+const LEG_ICON: Record<OceanLeg['leg_type'], React.ComponentType<{ size?: number; color?: string }>> = {
+  OriginPort: Anchor, OceanTransit: Ship, DestPort: Anchor, Warehouse, FinalMile: Truck,
+};
 
 const CONTAINER_SIZES = ['20ft', '40ft', '40ft HC', 'LCL'] as const;
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'AED', 'CNY', 'GBP'] as const;
@@ -222,9 +227,44 @@ function OceanDetailModal({ requestId, onClose }: { requestId: string; onClose: 
   const sendMutation = trpc.ocean.sendMessage.useMutation({
     onSuccess: async () => { await utils.ocean.messages.invalidate({ requestId }); },
   });
+  const legsQuery = trpc.ocean.legs.useQuery({ requestId });
+  const legs = (legsQuery.data ?? []) as OceanLeg[];
+  const setupMutation = trpc.ocean.setupFinalMile.useMutation({
+    onSuccess: async () => { await utils.ocean.legs.invalidate({ requestId }); },
+  });
+  const advanceMutation = trpc.ocean.advanceLeg.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.ocean.legs.invalidate({ requestId }), utils.ocean.get.invalidate({ requestId }), utils.ocean.mine.invalidate()]);
+    },
+  });
 
   const [msg, setMsg] = useState<string>('');
+  const [fmAddress, setFmAddress] = useState<string>('');
+  const [fmCity, setFmCity] = useState<string>('');
+  const [fmContact, setFmContact] = useState<string>('');
+  const [fmPhone, setFmPhone] = useState<string>('');
   const isBooked = req?.status && req.status !== 'Open';
+  const isLcl = req?.container_size === 'LCL';
+
+  const handleSetupFinalMile = useCallback(async () => {
+    try {
+      await setupMutation.mutateAsync({
+        requestId, needsFinalMile: true,
+        finalMileAddress: fmAddress.trim(), finalMileCity: fmCity.trim(),
+        finalMileContact: fmContact.trim(), finalMilePhone: fmPhone.trim(),
+      });
+    } catch (e) { Alert.alert('Failed', e instanceof Error ? e.message : 'Unable to set up delivery.'); }
+  }, [requestId, fmAddress, fmCity, fmContact, fmPhone, setupMutation]);
+
+  const handleAdvance = useCallback((leg: OceanLeg) => {
+    Alert.alert('Complete leg', `Mark "${leg.title}" as done?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Complete', onPress: async () => {
+        try { await advanceMutation.mutateAsync({ legId: leg.id }); }
+        catch (e) { Alert.alert('Failed', e instanceof Error ? e.message : 'Unable to update leg.'); }
+      } },
+    ]);
+  }, [advanceMutation]);
 
   const handleAccept = useCallback((offerId: string, name: string) => {
     Alert.alert('Accept offer', `Book ${name} for this shipment? All other offers will be declined.`, [
@@ -298,6 +338,50 @@ function OceanDetailModal({ requestId, onClose }: { requestId: string; onClose: 
 
           {isBooked && (
             <>
+              <Text style={styles.sectionTitle}><Route size={15} color={C.text} /> Delivery & tracking</Text>
+              {legs.length === 0 ? (
+                <View style={styles.detailCard}>
+                  <Text style={styles.emptySub}>
+                    {isLcl
+                      ? 'This is a shared (LCL) container. Set up a local warehouse deconsolidation + final-mile delivery to see live leg tracking.'
+                      : 'Add a final-mile local delivery to track every leg from port to your door.'}
+                  </Text>
+                  <Input label="Delivery address" value={fmAddress} onChangeText={setFmAddress} placeholder="123 Main St" containerStyle={{ marginBottom: 0 }} />
+                  <View style={styles.row2}>
+                    <View style={{ flex: 1 }}><Input label="City" value={fmCity} onChangeText={setFmCity} placeholder="Burnaby" containerStyle={{ marginBottom: 0 }} /></View>
+                    <View style={{ flex: 1 }}><Input label="Contact" value={fmContact} onChangeText={setFmContact} placeholder="Name" containerStyle={{ marginBottom: 0 }} /></View>
+                  </View>
+                  <Input label="Phone" value={fmPhone} onChangeText={setFmPhone} placeholder="604-555-0100" keyboardType="phone-pad" containerStyle={{ marginBottom: 0 }} />
+                  <Button label="Set up delivery & tracking" size="sm" onPress={handleSetupFinalMile} loading={setupMutation.isPending} fullWidth />
+                </View>
+              ) : (
+                <View style={styles.timeline}>
+                  {legs.map((leg, idx) => {
+                    const Icon = LEG_ICON[leg.leg_type] ?? CircleDot;
+                    const done = leg.status === 'Done';
+                    const active = leg.status === 'Active';
+                    const tint = done ? C.green : active ? C.accent : C.textMuted;
+                    return (
+                      <View key={leg.id} style={styles.legRow}>
+                        <View style={styles.legRail}>
+                          <View style={[styles.legDot, { borderColor: tint, backgroundColor: done ? C.green : 'transparent' }]}>
+                            <Icon size={13} color={done ? C.bg : tint} />
+                          </View>
+                          {idx < legs.length - 1 && <View style={[styles.legLine, { backgroundColor: done ? C.green : C.border }]} />}
+                        </View>
+                        <View style={styles.legBody}>
+                          <Text style={[styles.legTitle, done && { color: C.textSecondary }]}>{leg.title}</Text>
+                          <Text style={[styles.legStatus, { color: tint }]}>{done ? 'Done' : active ? 'In progress' : 'Pending'}</Text>
+                          {active && (
+                            <Button label="Mark complete" size="sm" variant="secondary" onPress={() => handleAdvance(leg)} loading={advanceMutation.isPending} />
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
               <Text style={styles.sectionTitle}><MessageCircle size={15} color={C.text} /> Chat</Text>
               {messages.length === 0 ? (
                 <Text style={styles.emptySub}>No messages yet. Say hello to coordinate documents.</Text>
@@ -379,4 +463,12 @@ const styles = StyleSheet.create({
   msgBody: { fontSize: 14, color: C.text, lineHeight: 20 },
   chatBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bgSecondary },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  timeline: { gap: 0 },
+  legRow: { flexDirection: 'row', gap: 12 },
+  legRail: { alignItems: 'center', width: 30 },
+  legDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  legLine: { width: 2, flex: 1, minHeight: 20, marginVertical: 2 },
+  legBody: { flex: 1, paddingBottom: 18, gap: 4 },
+  legTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  legStatus: { fontSize: 12, fontWeight: '600' as const },
 });

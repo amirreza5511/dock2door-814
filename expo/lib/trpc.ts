@@ -26,6 +26,17 @@ import { supabase } from '@/lib/supabase';
 
 type AnyRecord = Record<string, unknown>;
 
+export type OceanLeg = {
+  id: string;
+  seq: number;
+  leg_type: 'OriginPort' | 'OceanTransit' | 'DestPort' | 'Warehouse' | 'FinalMile';
+  title: string;
+  status: 'Pending' | 'Active' | 'Done';
+  started_at: string | null;
+  completed_at: string | null;
+  notes: string;
+};
+
 type Ctx = {
   user: {
     id: string;
@@ -4953,6 +4964,43 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     const { error } = await supabase.rpc('ocean_withdraw_offer', { p_offer_id: input.offerId });
     if (error) throwErr(error, 'Unable to withdraw offer');
     return { success: true };
+  },
+
+  // ── Ocean final-mile / LCL-FCL legs (0165) ───────────────────────────────
+  'ocean.setupFinalMile': async (input: {
+    requestId: string; needsFinalMile?: boolean; destWarehouseId?: string | null;
+    finalMileAddress?: string; finalMileCity?: string; finalMileContact?: string; finalMilePhone?: string;
+  }) => {
+    const { error } = await supabase.rpc('ocean_setup_final_mile', {
+      p_request_id: input.requestId,
+      p_needs_final_mile: input.needsFinalMile ?? true,
+      p_dest_warehouse_id: input.destWarehouseId ?? null,
+      p_final_mile_address: input.finalMileAddress ?? '',
+      p_final_mile_city: input.finalMileCity ?? '',
+      p_final_mile_contact: input.finalMileContact ?? '',
+      p_final_mile_phone: input.finalMilePhone ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Final-mile routing is not live yet — apply migration 0165.');
+      throwErr(error, 'Unable to set up final-mile delivery');
+    }
+    return { success: true };
+  },
+  'ocean.advanceLeg': async (input: { legId: string; notes?: string }) => {
+    const { error } = await supabase.rpc('ocean_advance_leg', { p_leg_id: input.legId, p_notes: input.notes ?? '' });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Final-mile routing is not live yet — apply migration 0165.');
+      throwErr(error, 'Unable to update leg');
+    }
+    return { success: true };
+  },
+  'ocean.legs': async (input: { requestId: string }) => {
+    const { data, error } = await supabase.rpc('ocean_list_legs', { p_request_id: input.requestId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [] as OceanLeg[];
+      throwErr(error, 'Unable to load shipment legs');
+    }
+    return (data ?? []) as OceanLeg[];
   },
 
   // =========================================================================

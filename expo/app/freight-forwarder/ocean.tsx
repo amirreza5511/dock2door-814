@@ -7,12 +7,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import {
   Ship, X, ChevronLeft, MapPin, Package, Anchor, Send, MessageCircle,
+  Truck, Warehouse, CircleDot, Route,
 } from 'lucide-react-native';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import C from '@/constants/colors';
-import { trpc } from '@/lib/trpc';
+import { trpc, type OceanLeg } from '@/lib/trpc';
+
+const LEG_ICON: Record<OceanLeg['leg_type'], React.ComponentType<{ size?: number; color?: string }>> = {
+  OriginPort: Anchor, OceanTransit: Ship, DestPort: Anchor, Warehouse, FinalMile: Truck,
+};
 
 const CURRENCIES = ['CAD', 'USD', 'EUR', 'AED', 'CNY', 'GBP'] as const;
 
@@ -201,7 +206,24 @@ function ForwarderChatModal({ requestId, onClose }: { requestId: string; onClose
   const sendMutation = trpc.ocean.sendMessage.useMutation({
     onSuccess: async () => { await utils.ocean.messages.invalidate({ requestId }); },
   });
+  const legsQuery = trpc.ocean.legs.useQuery({ requestId });
+  const legs = (legsQuery.data ?? []) as OceanLeg[];
+  const advanceMutation = trpc.ocean.advanceLeg.useMutation({
+    onSuccess: async () => {
+      await Promise.all([utils.ocean.legs.invalidate({ requestId }), utils.ocean.board.invalidate({ scope: 'mine' })]);
+    },
+  });
   const [msg, setMsg] = useState<string>('');
+
+  const handleAdvance = useCallback((leg: OceanLeg) => {
+    Alert.alert('Complete leg', `Mark "${leg.title}" as done?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Complete', onPress: async () => {
+        try { await advanceMutation.mutateAsync({ legId: leg.id }); }
+        catch (e) { Alert.alert('Failed', e instanceof Error ? e.message : 'Unable to update leg.'); }
+      } },
+    ]);
+  }, [advanceMutation]);
 
   const handleSend = useCallback(async () => {
     if (!msg.trim()) return;
@@ -219,6 +241,36 @@ function ForwarderChatModal({ requestId, onClose }: { requestId: string; onClose
           <TouchableOpacity onPress={onClose}><X size={24} color={C.text} /></TouchableOpacity>
         </View>
         <ScrollView contentContainerStyle={{ padding: 20, gap: 10 }} showsVerticalScrollIndicator={false}>
+          {legs.length > 0 && (
+            <View style={{ gap: 8, marginBottom: 6 }}>
+              <Text style={styles.sectionTitle}><Route size={15} color={C.text} /> Delivery legs</Text>
+              <View>
+                {legs.map((leg, idx) => {
+                  const Icon = LEG_ICON[leg.leg_type] ?? CircleDot;
+                  const done = leg.status === 'Done';
+                  const active = leg.status === 'Active';
+                  const tint = done ? C.green : active ? C.accent : C.textMuted;
+                  return (
+                    <View key={leg.id} style={styles.legRow}>
+                      <View style={styles.legRail}>
+                        <View style={[styles.legDot, { borderColor: tint, backgroundColor: done ? C.green : 'transparent' }]}>
+                          <Icon size={13} color={done ? C.bg : tint} />
+                        </View>
+                        {idx < legs.length - 1 && <View style={[styles.legLine, { backgroundColor: done ? C.green : C.border }]} />}
+                      </View>
+                      <View style={styles.legBody}>
+                        <Text style={[styles.legTitle, done && { color: C.textSecondary }]}>{leg.title}</Text>
+                        <Text style={[styles.legStatus, { color: tint }]}>{done ? 'Done' : active ? 'In progress' : 'Pending'}</Text>
+                        {active && (
+                          <Button label="Mark complete" size="sm" variant="secondary" onPress={() => handleAdvance(leg)} loading={advanceMutation.isPending} />
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          )}
           {messages.length === 0 ? (
             <Text style={styles.emptySub}>No messages yet.</Text>
           ) : messages.map((m) => (
@@ -285,4 +337,12 @@ const styles = StyleSheet.create({
   msgBody: { fontSize: 14, color: C.text, lineHeight: 20 },
   chatBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bgSecondary },
   sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  sectionTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  legRow: { flexDirection: 'row', gap: 12 },
+  legRail: { alignItems: 'center', width: 30 },
+  legDot: { width: 30, height: 30, borderRadius: 15, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  legLine: { width: 2, flex: 1, minHeight: 20, marginVertical: 2 },
+  legBody: { flex: 1, paddingBottom: 18, gap: 4 },
+  legTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  legStatus: { fontSize: 12, fontWeight: '600' as const },
 });
