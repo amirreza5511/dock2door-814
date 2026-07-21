@@ -111,6 +111,102 @@ export async function askAssistant(messages: AiMessage[]): Promise<string> {
   throw new Error('Could not reach the assistant. Check your connection and try again.');
 }
 
+const VISION_MODEL = 'anthropic/claude-sonnet-5';
+
+/** AI's best-guess parcel measurement, all in metric, from a single photo. */
+export interface PhotoParcelEstimate {
+  itemName: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
+  weightKg: number;
+  confidence: 'low' | 'medium' | 'high';
+  note: string;
+}
+
+function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = fenced ? fenced[1] : text;
+  const start = body.indexOf('{');
+  const end = body.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) return body.trim();
+  return body.slice(start, end + 1).trim();
+}
+
+function clampNum(v: unknown, fallback: number): number {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/**
+ * Ask a vision model to estimate a parcel's dimensions and weight from a photo.
+ * `dataUrl` is a full data URI (e.g. `data:image/jpeg;base64,...`). Returns a
+ * best-guess estimate the user can then fine-tune. Throws a friendly error if
+ * the model can't be reached or returns nothing usable.
+ */
+export async function estimatePackageFromPhoto(dataUrl: string): Promise<PhotoParcelEstimate> {
+  const prompt =
+    'You are a shipping expert. Look at the package/box/item in this photo and estimate its ' +
+    'shipping dimensions and weight. Use any visible reference objects (hands, coins, standard ' +
+    'box sizes, furniture) for scale. Reply with ONLY a JSON object, no prose, with keys: ' +
+    'itemName (short string), lengthCm (number), widthCm (number), heightCm (number), ' +
+    'weightKg (number), confidence ("low"|"medium"|"high"), note (one short sentence with your ' +
+    'reasoning or a tip). All measurements in centimeters and kilograms.';
+
+  const body = {
+    model: VISION_MODEL,
+    max_tokens: 512,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      },
+    ],
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${toolkitBase()}/v2/vercel/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${toolkitKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new Error('Could not reach the AI. Check your connection and try again.');
+  }
+  if (!res.ok) {
+    console.log('[ai] photo estimate failed', res.status);
+    throw new Error('The AI could not read this photo. Try a clearer, well-lit shot.');
+  }
+  const data = (await res.json()) as ChatCompletionResponse;
+  const content = data.choices?.[0]?.message?.content?.trim() ?? '';
+  if (!content) throw new Error('The AI did not return an estimate. Please try another photo.');
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(extractJson(content)) as Record<string, unknown>;
+  } catch {
+    throw new Error('Could not understand the AI estimate. Please try again.');
+  }
+
+  const conf = String(parsed.confidence ?? 'medium').toLowerCase();
+  return {
+    itemName: String(parsed.itemName ?? 'Package').slice(0, 60),
+    lengthCm: Math.round(clampNum(parsed.lengthCm, 20)),
+    widthCm: Math.round(clampNum(parsed.widthCm, 15)),
+    heightCm: Math.round(clampNum(parsed.heightCm, 10)),
+    weightKg: Math.round(clampNum(parsed.weightKg, 1) * 100) / 100,
+    confidence: conf === 'low' || conf === 'high' ? conf : 'medium',
+    note: String(parsed.note ?? '').slice(0, 200),
+  };
+}
+
 interface TranscriptionResponse {
   text?: string;
 }
