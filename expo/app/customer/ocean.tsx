@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, Alert, RefreshControl, ActivityIndicator, KeyboardAvoidingView, Platform,
@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import {
   Ship, Plus, X, ChevronLeft, MapPin, Package, Anchor, MessageCircle, Send, Check,
-  Truck, Warehouse, CircleDot, Route,
+  Truck, Warehouse, CircleDot, Route, Star,
 } from 'lucide-react-native';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Button from '@/components/ui/Button';
@@ -17,6 +17,12 @@ import C from '@/constants/colors';
 import { trpc, type OceanLeg } from '@/lib/trpc';
 import { usePreferences } from '@/store/preferences';
 import { COUNTRIES, SEAPORTS, CURRENCY_CODES, weightUnitFor } from '@/constants/world';
+import { hubsForMode, isHubLiveMember, type LiveHubCity } from '@/constants/canadaHubs';
+
+function isCanadaName(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return n === 'canada' || n === 'ca' || n === 'can';
+}
 
 const COUNTRY_OPTIONS: PickerOption[] = COUNTRIES.map((c) => ({ value: c.name, label: c.name, sublabel: c.code, glyph: c.flag, keywords: c.code }));
 const PORT_OPTIONS: PickerOption[] = SEAPORTS.map((p) => ({ value: p.name, label: p.name, sublabel: `${p.code} · ${p.country}`, keywords: `${p.code} ${p.country}` }));
@@ -34,6 +40,7 @@ type OceanRequest = {
   weight: number; weight_unit: string; ready_date: string | null; incoterms: string;
   currency: string; notes: string; status: string; awarded_amount: number;
   awarded_name: string; offer_count: number; created_at: string;
+  dest_hub_id?: string; dest_hub_city?: string; dest_hub_is_member?: boolean;
 };
 
 type OceanOffer = {
@@ -70,12 +77,19 @@ export default function CustomerOceanScreen() {
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lb'>(weightUnitFor(prefUnits));
   const [currency, setCurrency] = useState<string>(prefCurrency);
   const [notes, setNotes] = useState<string>('');
+  const [destHubId, setDestHubId] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const liveCities = useMemo<LiveHubCity[]>(() => (networkHubsQuery.data ?? []) as LiveHubCity[], [networkHubsQuery.data]);
+  const destIsCanada = isCanadaName(destCountry);
+  const eligibleHubs = useMemo(() => (destIsCanada ? hubsForMode(containerSize === 'LCL' ? 'lcl' : 'fcl', liveCities) : []), [destIsCanada, containerSize, liveCities]);
+  const selectedHub = useMemo(() => eligibleHubs.find((h) => h.id === destHubId) ?? null, [eligibleHubs, destHubId]);
 
   const resetForm = useCallback(() => {
     setTitle(''); setOriginCountry(''); setOriginPort(''); setDestCountry('');
     setDestPort(''); setContainerSize('40ft'); setCargoType(''); setWeight('');
-    setWeightUnit(weightUnitFor(prefUnits)); setCurrency(prefCurrency); setNotes('');
+    setWeightUnit(weightUnitFor(prefUnits)); setCurrency(prefCurrency); setNotes(''); setDestHubId('');
   }, [prefUnits, prefCurrency]);
 
   const handlePost = useCallback(async () => {
@@ -85,6 +99,9 @@ export default function CustomerOceanScreen() {
       await createMutation.mutateAsync({
         title: title.trim(), originCountry, originPort, destCountry, destPort,
         containerSize, cargoType, weight: Number(weight) || 0, weightUnit, currency, notes,
+        destHubId: selectedHub?.id ?? '',
+        destHubCity: selectedHub?.city ?? '',
+        destHubIsMember: selectedHub ? isHubLiveMember(selectedHub, liveCities) : false,
       });
       setPostModal(false);
       resetForm();
@@ -94,7 +111,7 @@ export default function CustomerOceanScreen() {
     } finally {
       setSubmitting(false);
     }
-  }, [title, originCountry, originPort, destCountry, destPort, containerSize, cargoType, weight, weightUnit, currency, notes, createMutation, resetForm]);
+  }, [title, originCountry, originPort, destCountry, destPort, containerSize, cargoType, weight, weightUnit, currency, notes, selectedHub, liveCities, createMutation, resetForm]);
 
   return (
     <View style={styles.root}>
@@ -144,6 +161,12 @@ export default function CustomerOceanScreen() {
                 {r.origin_port || r.origin_country || '—'} → {r.dest_port || r.dest_country || '—'}
               </Text>
             </View>
+            {r.dest_hub_city ? (
+              <View style={styles.hubTag}>
+                <Warehouse size={12} color={C.accent} />
+                <Text style={styles.hubTagText} numberOfLines={1}>Hub: {r.dest_hub_city}{r.dest_hub_is_member ? ' · Partner' : ''}</Text>
+              </View>
+            ) : null}
             <View style={styles.cardFooter}>
               {r.status === 'Open' ? (
                 <Text style={styles.offerCount}>{r.offer_count} offer{r.offer_count === 1 ? '' : 's'}</Text>
@@ -203,6 +226,26 @@ export default function CustomerOceanScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            {destIsCanada && eligibleHubs.length > 0 ? (
+              <View style={styles.hubBlock}>
+                <Text style={styles.fieldLabel}>Canada destination hub</Text>
+                <Text style={styles.hubHint}>Route into a city hub for deconsolidation & final-mile. Partner hubs first.</Text>
+                {eligibleHubs.map((h) => {
+                  const on = destHubId === h.id;
+                  const member = isHubLiveMember(h, liveCities);
+                  return (
+                    <TouchableOpacity key={h.id} onPress={() => setDestHubId(on ? '' : h.id)} style={[styles.hubOption, on && styles.hubOptionOn]} activeOpacity={0.85}>
+                      <View style={styles.hubOptionIcon}>{member ? <Star size={15} color={C.accent} fill={C.accent} /> : <Warehouse size={15} color={C.textSecondary} />}</View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.hubOptionCity}>{h.city}{member ? '  · Partner' : ''}</Text>
+                        <Text style={styles.hubOptionSub} numberOfLines={1}>{h.province}</Text>
+                      </View>
+                      {on ? <Check size={16} color={C.accent} /> : null}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : null}
             <Input label="Notes" value={notes} onChangeText={setNotes} multiline numberOfLines={3} placeholder="Ready date, special requirements…" />
             <Button label="Post request" onPress={handlePost} loading={submitting} fullWidth size="lg" />
           </ScrollView>
@@ -436,6 +479,15 @@ const styles = StyleSheet.create({
   offerCount: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
   awarded: { fontSize: 13, fontWeight: '700' as const, color: C.green },
   cargoText: { fontSize: 12, color: C.textMuted },
+  hubTag: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '44' },
+  hubTagText: { fontSize: 12, fontWeight: '600' as const, color: C.accent, flexShrink: 1 },
+  hubBlock: { gap: 8 },
+  hubHint: { fontSize: 12, color: C.textMuted, lineHeight: 16, marginTop: -4 },
+  hubOption: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  hubOptionOn: { borderColor: C.accent, backgroundColor: C.accentDim },
+  hubOptionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bgSecondary },
+  hubOptionCity: { fontSize: 14, fontWeight: '700' as const, color: C.text },
+  hubOptionSub: { fontSize: 12, color: C.textSecondary, marginTop: 1 },
   emptyState: { alignItems: 'center', paddingVertical: 60, gap: 12 },
   emptyText: { fontSize: 17, fontWeight: '700' as const, color: C.text },
   emptySub: { fontSize: 13, color: C.textSecondary, textAlign: 'center', paddingHorizontal: 30, lineHeight: 19 },

@@ -4847,6 +4847,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     title: string; originCountry?: string; originPort?: string; destCountry?: string;
     destPort?: string; containerSize?: string; cargoType?: string; weight?: number;
     weightUnit?: 'kg' | 'lb'; readyDate?: string; incoterms?: string; currency?: string; notes?: string;
+    destHubId?: string; destHubCity?: string; destHubIsMember?: boolean;
   }) => {
     const { data, error } = await supabase.rpc('ocean_create_request', {
       p_title: input.title,
@@ -4862,6 +4863,9 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_incoterms: input.incoterms ?? '',
       p_currency: input.currency ?? 'CAD',
       p_notes: input.notes ?? '',
+      p_dest_hub_id: input.destHubId ?? '',
+      p_dest_hub_city: input.destHubCity ?? '',
+      p_dest_hub_is_member: input.destHubIsMember ?? false,
     });
     if (error) {
       if (isMissingFunction(error)) throw new Error('Ocean booking is not live yet — apply migration 0162.');

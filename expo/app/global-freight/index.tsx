@@ -29,6 +29,7 @@ type FreightRequest = {
   ground_awarded_amount: number; ground_awarded_name: string;
   offer_count: number; ground_offer_count: number; doc_count: number;
   created_at: string;
+  dest_hub_id?: string; dest_hub_city?: string; dest_hub_is_member?: boolean;
 };
 
 const TONE_COLOR: Record<'warning' | 'info' | 'success' | 'danger' | 'neutral', string> = {
@@ -150,6 +151,14 @@ export default function GlobalFreightHub() {
                     <Text style={styles.reqMetaDot}>·</Text>
                     <Text style={styles.reqMeta}>{r.pieces} pcs</Text>
                   </View>
+                  {r.dest_hub_city ? (
+                    <View style={styles.hubTag}>
+                      <MapPin size={12} color={C.accent} />
+                      <Text style={styles.hubTagText} numberOfLines={1}>
+                        Hub: {r.dest_hub_city}{r.dest_hub_is_member ? ' · Partner' : ''}
+                      </Text>
+                    </View>
+                  ) : null}
                   <View style={styles.reqFooter}>
                     <Text style={styles.reqOffers}>
                       {r.status === 'Accepted' && r.awarded_amount > 0
@@ -214,6 +223,8 @@ const styles = StyleSheet.create({
   reqMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   reqMeta: { fontSize: 13, color: C.textSecondary },
   reqMetaDot: { fontSize: 13, color: C.textMuted },
+  hubTag: { flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '44' },
+  hubTagText: { fontSize: 12, fontWeight: '600' as const, color: C.accent, flexShrink: 1 },
   reqFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
   reqOffers: { fontSize: 13, fontWeight: '600' as const, color: C.blue },
   pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },

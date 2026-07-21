@@ -134,6 +134,7 @@ export default function FreightRequestDetail() {
               <Row label="Mode" value={FREIGHT_MODE_LABEL[q.freight_mode as FreightMode]} />
               <Row label="From" value={`${q.origin_city || q.origin_country}${q.origin_port ? ` (${q.origin_port})` : ''}`} />
               <Row label="To" value={`${q.dest_city || q.dest_country}${q.dest_port ? ` (${q.dest_port})` : ''}`} />
+              {q.dest_hub_city ? <Row label="Destination hub" value={`${q.dest_hub_city}${q.dest_hub_is_member ? ' · Partner' : ''}`} /> : null}
               <Row label="Weight" value={`${q.weight} ${q.weight_unit}${q.volume ? ` · ${q.volume} CBM` : ''}`} />
               <Row label="Pieces" value={String(q.pieces)} />
               {q.commodity ? <Row label="Commodity" value={q.commodity} /> : null}
