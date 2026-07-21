@@ -42,6 +42,10 @@ export const PROMO_VIDEO_URL: string | null =
 export const PROMO_VIDEO_URL_2: string | null =
   'https://r2-pub.rork.com/generated-video/vaj7ce20dtfjwaoecptg3/2d74c88c-087f-4e2d-acf7-e7a80cc002f6.mp4';
 
+/** Third brand clip (AI-generated) — parcel / ship & return theme. */
+export const PROMO_VIDEO_URL_3: string | null =
+  'https://r2-pub.rork.com/generated-video/vaj7ce20dtfjwaoecptg3/3a4b9897-09a4-40f6-8838-0cb938e307d2.mp4';
+
 /** Background music played over the whole intro (muted video + this track). */
 export const PROMO_MUSIC_URL: string | null =
   'https://r2-pub.rork.com/generated-audio/vaj7ce20dtfjwaoecptg3/7a3bceb0-a687-42ad-9b0c-5df5c90355c7.mp3';
@@ -57,9 +61,12 @@ export const PROMO_SUBLINE = 'Trucks · Warehousing · Freight · Cargo · Couri
  */
 export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
   ? [
-      { kind: 'video', url: PROMO_VIDEO_URL, maxMs: 16000, tagline: !PROMO_VIDEO_URL_2 },
+      { kind: 'video', url: PROMO_VIDEO_URL, maxMs: 16000, tagline: !PROMO_VIDEO_URL_2 && !PROMO_VIDEO_URL_3 },
       ...(PROMO_VIDEO_URL_2
-        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_2, maxMs: 16000, tagline: true }]
+        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_2, maxMs: 16000, tagline: !PROMO_VIDEO_URL_3 }]
+        : []),
+      ...(PROMO_VIDEO_URL_3
+        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_3, maxMs: 16000, tagline: true }]
         : []),
       {
         kind: 'ad',
