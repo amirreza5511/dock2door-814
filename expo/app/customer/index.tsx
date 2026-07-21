@@ -154,7 +154,13 @@ export default function CustomerDashboard() {
               <Text style={styles.actionTitle}>AI Copilot</Text>
               <Text style={styles.actionDesc}>Track orders & get answers by chat</Text>
             </TouchableOpacity>
-            <View style={[styles.actionCard, { opacity: 0 }]} pointerEvents="none" />
+            <TouchableOpacity onPress={() => router.push('/customer/ocean' as any)} style={[styles.actionCard, { borderColor: C.blue + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.blueDim }]}>
+                <Ship size={24} color={C.blue} />
+              </View>
+              <Text style={styles.actionTitle}>Ocean Booking</Text>
+              <Text style={styles.actionDesc}>Post containers, forwarders bid</Text>
+            </TouchableOpacity>
           </View>
         </View>
 

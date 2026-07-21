@@ -4830,6 +4830,132 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // OCEAN BOOKING BOARD (0162) — worldwide container shipping, bid model
+  // =========================================================================
+  'ocean.create': async (input: {
+    title: string; originCountry?: string; originPort?: string; destCountry?: string;
+    destPort?: string; containerSize?: string; cargoType?: string; weight?: number;
+    weightUnit?: 'kg' | 'lb'; readyDate?: string; incoterms?: string; currency?: string; notes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('ocean_create_request', {
+      p_title: input.title,
+      p_origin_country: input.originCountry ?? '',
+      p_origin_port: input.originPort ?? '',
+      p_dest_country: input.destCountry ?? '',
+      p_dest_port: input.destPort ?? '',
+      p_container_size: input.containerSize ?? '40ft',
+      p_cargo_type: input.cargoType ?? '',
+      p_weight: input.weight ?? 0,
+      p_weight_unit: input.weightUnit ?? 'kg',
+      p_ready_date: input.readyDate ?? null,
+      p_incoterms: input.incoterms ?? '',
+      p_currency: input.currency ?? 'CAD',
+      p_notes: input.notes ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Ocean booking is not live yet — apply migration 0162.');
+      throwErr(error, 'Unable to post ocean request');
+    }
+    return { id: data as string };
+  },
+  'ocean.mine': async () => {
+    const { data, error } = await supabase.rpc('ocean_list_mine');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load ocean requests');
+    }
+    return data ?? [];
+  },
+  'ocean.get': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('ocean_requests').select('*').eq('id', input.requestId).maybeSingle();
+    if (error) {
+      if (isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load request');
+    }
+    return data ?? null;
+  },
+  'ocean.offers': async (input: { requestId: string }) => {
+    const { data, error } = await supabase.rpc('ocean_list_offers', { p_request_id: input.requestId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load offers');
+    }
+    return data ?? [];
+  },
+  'ocean.acceptOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('ocean_accept_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to accept offer');
+    return { success: true };
+  },
+  'ocean.cancel': async (input: { requestId: string }) => {
+    const { error } = await supabase.rpc('ocean_cancel_request', { p_request_id: input.requestId });
+    if (error) throwErr(error, 'Unable to cancel request');
+    return { success: true };
+  },
+  'ocean.setStatus': async (input: { requestId: string; status: 'InTransit' | 'Completed' }) => {
+    const { error } = await supabase.rpc('ocean_set_status', {
+      p_request_id: input.requestId,
+      p_status: input.status,
+    });
+    if (error) throwErr(error, 'Unable to update status');
+    return { success: true };
+  },
+  'ocean.messages': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('ocean_messages').select('*').eq('request_id', input.requestId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load messages');
+    }
+    return data ?? [];
+  },
+  'ocean.sendMessage': async (input: { requestId: string; body: string }) => {
+    const { error } = await supabase.rpc('ocean_send_message', {
+      p_request_id: input.requestId,
+      p_body: input.body,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Ocean booking is not live yet — apply migration 0162.');
+      throwErr(error, 'Unable to send message');
+    }
+    return { success: true };
+  },
+  // Forwarder side
+  'ocean.board': async (input: { scope?: 'open' | 'mine' } | undefined) => {
+    const { data, error } = await supabase.rpc('ocean_forwarder_board', { p_scope: input?.scope ?? 'open' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load board');
+    }
+    return data ?? [];
+  },
+  'ocean.submitOffer': async (input: {
+    requestId: string; amount: number; currency?: string; transitDays?: number;
+    sailingDate?: string; note?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('ocean_submit_offer', {
+      p_request_id: input.requestId,
+      p_amount: input.amount,
+      p_currency: input.currency ?? 'CAD',
+      p_transit_days: input.transitDays ?? 0,
+      p_sailing_date: input.sailingDate ?? null,
+      p_note: input.note ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Ocean booking is not live yet — apply migration 0162.');
+      throwErr(error, 'Unable to submit offer');
+    }
+    return { id: data as string };
+  },
+  'ocean.withdrawOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('ocean_withdraw_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to withdraw offer');
+    return { success: true };
+  },
+
+  // =========================================================================
   // GUEST ACCESS (0156) — prepaid invoices with guest surcharge
   // =========================================================================
   'guest.invoices': async (_input, ctx) => {
