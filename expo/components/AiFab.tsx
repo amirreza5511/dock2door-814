@@ -32,8 +32,9 @@ export default function AiFab() {
     return () => loop.stop();
   }, [pulse]);
 
-  if (!user) return null;
-  if (pathname === '/' || HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
+  if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
+  // Guests get the informational Help assistant; hide it on the very first landing
+  // paint is unnecessary — show it everywhere except auth screens.
 
   return (
     <Animated.View
@@ -49,7 +50,7 @@ export default function AiFab() {
         testID="ai-fab"
         onPress={() => {
           if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          router.push('/copilot' as never);
+          router.push((user ? '/copilot' : '/help/chat') as never);
         }}
       >
         <Sparkles size={22} color={C.white} />

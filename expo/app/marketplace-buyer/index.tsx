@@ -15,6 +15,8 @@ import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import { SERVICE_TYPES, serviceTypeLabel, type ServiceType } from '@/constants/serviceMarketplace';
+import { useExploreStore } from '@/store/explore';
+import { EXPLORE_COMPANY_ID } from '@/lib/exploreSamples';
 
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
@@ -42,15 +44,17 @@ export default function MarketplaceBuyerHome() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const bootstrapQuery = useDockBootstrapData();
   const { serviceJobs, companies } = bootstrapQuery.data;
+  const activeCompanyId = isExploring ? EXPLORE_COMPANY_ID : user?.companyId;
 
-  const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
+  const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
   const myRequests = useMemo(
     () => serviceJobs
-      .filter((j) => j.customerCompanyId === user?.companyId)
+      .filter((j) => j.customerCompanyId === activeCompanyId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [serviceJobs, user],
+    [serviceJobs, activeCompanyId],
   );
   const activeCount = useMemo(
     () => myRequests.filter((j) => j.status !== 'Completed' && j.status !== 'Cancelled').length,

@@ -14,6 +14,8 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import SupportMenu from '@/components/SupportMenu';
 import { trpc } from '@/lib/trpc';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_CONTAINER_ORDERS } from '@/lib/exploreSamples';
 
 const CONTAINER_SIZES = ['20ft', '40ft', '40HC', '45HC', '53ft'];
 const CONTAINER_TYPES = ['Standard', 'Reefer', 'Flatrack', 'Tank', 'Open Top', 'High Cube'];
@@ -40,8 +42,9 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const utils = trpc.useUtils();
-  const ordersQuery = trpc.drayage.customerOrders.useQuery(undefined, { refetchInterval: 30000 });
+  const ordersQuery = trpc.drayage.customerOrders.useQuery(undefined, { refetchInterval: 30000, enabled: !isExploring });
   const createMutation = trpc.drayage.createOrder.useMutation({
     onSuccess: async () => {
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -146,7 +149,7 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
     }
   };
 
-  const orders = useMemo(() => (ordersQuery.data ?? []) as any[], [ordersQuery.data]);
+  const orders = useMemo(() => (isExploring ? (SAMPLE_CONTAINER_ORDERS as unknown as any[]) : ((ordersQuery.data ?? []) as any[])), [ordersQuery.data, isExploring]);
 
   const stats = useMemo(() => {
     const active = orders.filter((o) => !['Delivered', 'Cancelled'].includes(o.status));
@@ -247,9 +250,9 @@ export default function ContainerOrdersScreen({ detailPath, showBack = true, sub
         <View style={styles.sectionRow}>
           <Text style={styles.sectionTitle}>Your Container Orders</Text>
         </View>
-        {ordersQuery.isLoading ? (
+        {!isExploring && ordersQuery.isLoading ? (
           <ScreenFeedback state="loading" title="Loading orders" />
-        ) : ordersQuery.isError ? (
+        ) : !isExploring && ordersQuery.isError ? (
           <ScreenFeedback state="error" title="Unable to load orders" onRetry={() => void ordersQuery.refetch()} />
         ) : orders.length === 0 ? (
           <EmptyState icon={Ship} title="No container orders yet" description="Post your first import or export container order to get drayage companies bidding." />

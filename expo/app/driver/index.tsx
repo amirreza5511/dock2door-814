@@ -16,6 +16,8 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import SupportMenu from '@/components/SupportMenu';
 import { trpc } from '@/lib/trpc';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_DRIVER_JOBS } from '@/lib/exploreSamples';
 
 type JobRow = {
   id: string; status: string; appointment_type: string; scheduled_start: string; scheduled_end?: string;
@@ -41,6 +43,7 @@ export default function DriverHomeScreen() {
   const router = useRouter();
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
+  const isExploring = useExploreStore((s) => s.isExploring);
 
   const complianceQuery = useQuery({
     queryKey: ['carrier-docs', 'count', user?.id],
@@ -66,7 +69,7 @@ export default function DriverHomeScreen() {
   const approvedRequired = complianceQuery.data ?? 0;
   const compliant = approvedRequired >= REQUIRED_CARRIER_DOC_COUNT;
   const utils = trpc.useUtils();
-  const jobsQuery = trpc.operations.driverJobs.useQuery(undefined, { refetchInterval: 20000, refetchOnWindowFocus: true });
+  const jobsQuery = trpc.operations.driverJobs.useQuery(undefined, { refetchInterval: 20000, refetchOnWindowFocus: true, enabled: !isExploring });
   const statusMutation = trpc.operations.checkInAppointment.useMutation({
     onSuccess: async () => { await utils.operations.driverJobs.invalidate(); },
   });
@@ -120,7 +123,10 @@ export default function DriverHomeScreen() {
 
   React.useEffect(() => () => stopShareLocation(), [stopShareLocation]);
 
-  const jobs = useMemo<JobRow[]>(() => (jobsQuery.data ?? []) as JobRow[], [jobsQuery.data]);
+  const jobs = useMemo<JobRow[]>(
+    () => (isExploring ? (SAMPLE_DRIVER_JOBS as unknown as JobRow[]) : ((jobsQuery.data ?? []) as JobRow[])),
+    [jobsQuery.data, isExploring],
+  );
 
   const partitioned = useMemo(() => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -182,8 +188,8 @@ export default function DriverHomeScreen() {
     }
   };
 
-  if (jobsQuery.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading today's jobs" /></View>;
-  if (jobsQuery.isError) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load jobs" onRetry={() => void jobsQuery.refetch()} /></View>;
+  if (!isExploring && jobsQuery.isLoading) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading today's jobs" /></View>;
+  if (!isExploring && jobsQuery.isError) return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load jobs" onRetry={() => void jobsQuery.refetch()} /></View>;
 
   const renderCard = (job: JobRow, primary: boolean) => {
     const next = NEXT_ACTION[job.status];

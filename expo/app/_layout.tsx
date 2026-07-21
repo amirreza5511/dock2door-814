@@ -18,11 +18,15 @@ import { registerPushTokenAsync } from '@/lib/push';
 import AdBanner from '@/components/AdBanner';
 import AiFab from '@/components/AiFab';
 import LegalGate from '@/components/LegalGate';
+import ExploreBanner from '@/components/ExploreBanner';
+import ActionGate from '@/components/ActionGate';
+import IntroVideo from '@/components/IntroVideo';
+import { useExploreStore } from '@/store/explore';
 
 void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const PUBLIC_SEGMENTS = ['', 'auth', '+not-found'];
+const PUBLIC_SEGMENTS = ['', 'auth', '+not-found', 'explore', 'directory'];
 
 type ReactCreateElement = typeof React.createElement;
 type ReactRuntimeWithGuard = typeof React & { __dock2doorTextNodeGuard?: boolean };
@@ -95,6 +99,7 @@ const SHARED_SEGMENTS = ['messages', 'notifications', 'reviews', 'onboarding', '
 
 function AuthGuard() {
   const { user, isHydrated } = useAuthStore();
+  const isExploring = useExploreStore((s) => s.isExploring);
   const segments = useSegments();
   const pathname = usePathname();
   const router = useRouter();
@@ -111,7 +116,10 @@ function AuthGuard() {
     let destination: string | null = null;
 
     if (!user) {
-      if (!isPublic && pathname !== '/') {
+      // Explore mode lets a guest browse real role dashboards with sample data.
+      // Guests may also open the Help center + AI assistant (informational, non-sensitive).
+      const guestAllowed = isPublic || root === 'help';
+      if (!guestAllowed && pathname !== '/' && !isExploring) {
         destination = '/';
       }
     } else if (isPublic) {
@@ -127,7 +135,7 @@ function AuthGuard() {
     requestAnimationFrame(() => {
       router.replace(destination as never);
     });
-  }, [isHydrated, isNavigationReady, pathname, router, segments, user]);
+  }, [isHydrated, isNavigationReady, pathname, router, segments, user, isExploring]);
 
   return null;
 }
@@ -226,6 +234,9 @@ export default function RootLayout() {
                 <RootLayoutNav />
                 <AiFab />
                 <AdBanner />
+                <ExploreBanner />
+                <ActionGate />
+                <IntroVideo />
                 <BootstrapController />
                 <AuthGuard />
                 <LegalGate />

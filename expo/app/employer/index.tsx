@@ -18,6 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { trpc } from '@/lib/trpc';
 import WorldSwitcher from '@/components/WorldSwitcher';
 import SupportMenu from '@/components/SupportMenu';
+import { useExploreStore } from '@/store/explore';
+import { EXPLORE_COMPANY_ID } from '@/lib/exploreSamples';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,19 +89,21 @@ export default function EmployerDashboard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const utils = trpc.useUtils();
 
   const bootstrapQuery = useDockBootstrapData();
   const { shiftPosts, companies, workerProfiles } = bootstrapQuery.data;
+  const activeCompanyId = isExploring ? EXPLORE_COMPANY_ID : user?.companyId;
 
   const myShifts = useMemo(
     () => shiftPosts
-      .filter((s) => s.employerCompanyId === user?.companyId)
+      .filter((s) => s.employerCompanyId === activeCompanyId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [shiftPosts, user],
+    [shiftPosts, activeCompanyId],
   );
   const myShiftIds = useMemo(() => myShifts.map((s) => s.id), [myShifts]);
-  const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
+  const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
 
   // ── Assignments ──────────────────────────────────────────────────────────
   const assignsQ = useQuery({
@@ -385,7 +389,7 @@ export default function EmployerDashboard() {
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.greeting}>Employer Portal</Text>
-          <Text style={styles.name}>{user?.name}</Text>
+          <Text style={styles.name}>{user?.name ?? 'Preview Employer'}</Text>
           {company && (
             <View style={styles.companyRow}>
               <Building2 size={12} color={company.status === 'Approved' ? C.accent : C.yellow} />

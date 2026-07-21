@@ -14,6 +14,8 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_DRAYAGE_DASHBOARD } from '@/lib/exploreSamples';
 
 const DIRECTION_LABEL: Record<string, string> = { Import: 'Import', Export: 'Export' };
 const DIRECTION_COLOR: Record<string, string> = { Import: C.blue, Export: C.green };
@@ -23,7 +25,9 @@ export default function DrayageCompanyDashboard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 30000 });
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const dashboardQuery = trpc.drayage.dashboard.useQuery(undefined, { refetchInterval: 30000, enabled: !isExploring });
+  const dashboardData = isExploring ? SAMPLE_DRAYAGE_DASHBOARD : dashboardQuery.data;
   useAutoWatchdog();
   const { isHidden, term, orderSections } = useCustomization();
 
@@ -54,10 +58,10 @@ export default function DrayageCompanyDashboard() {
   }, [actions]);
 
   const stats = useMemo(() => {
-    const open = dashboardQuery.data?.openOrders ?? [];
-    const my = dashboardQuery.data?.myOrders ?? [];
-    const active = dashboardQuery.data?.activeMoves ?? [];
-    const drivers = dashboardQuery.data?.drivers ?? [];
+    const open = dashboardData?.openOrders ?? [];
+    const my = dashboardData?.myOrders ?? [];
+    const active = dashboardData?.activeMoves ?? [];
+    const drivers = dashboardData?.drivers ?? [];
     return {
       openCount: open.length,
       activeCount: my.filter((o: any) => ['Assigned', 'Dispatched', 'EnRoute', 'PickedUp', 'InTransit'].includes(o.status)).length,
@@ -76,22 +80,22 @@ export default function DrayageCompanyDashboard() {
     return all.filter((s) => !isHidden(s.moduleKey));
   }, [stats, isHidden]);
 
-  if (dashboardQuery.isLoading) {
+  if (!isExploring && dashboardQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading drayage ops" /></View>;
   }
-  if (dashboardQuery.isError) {
+  if (!isExploring && dashboardQuery.isError) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load drayage dashboard" onRetry={() => void dashboardQuery.refetch()} /></View>;
   }
 
-  const openOrders = (dashboardQuery.data?.openOrders ?? []) as any[];
-  const myOrders = (dashboardQuery.data?.myOrders ?? []) as any[];
+  const openOrders = (dashboardData?.openOrders ?? []) as any[];
+  const myOrders = (dashboardData?.myOrders ?? []) as any[];
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.eyebrow}>Drayage Company</Text>
-          <Text style={styles.title}>{user?.name}</Text>
+          <Text style={styles.title}>{user?.name ?? 'Preview Drayage Co.'}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />

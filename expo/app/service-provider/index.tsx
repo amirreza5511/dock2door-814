@@ -12,17 +12,21 @@ import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
 import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import { useExploreStore } from '@/store/explore';
+import { EXPLORE_COMPANY_ID } from '@/lib/exploreSamples';
 
 export default function ServiceProviderDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const bootstrapQuery = useDockBootstrapData();
   const { serviceListings, serviceJobs, companies, payments } = bootstrapQuery.data;
+  const activeCompanyId = isExploring ? EXPLORE_COMPANY_ID : user?.companyId;
 
-  const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
-  const myListings = useMemo(() => serviceListings.filter((l) => l.companyId === user?.companyId), [serviceListings, user]);
+  const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
+  const myListings = useMemo(() => serviceListings.filter((l) => l.companyId === activeCompanyId), [serviceListings, activeCompanyId]);
   const myListingIds = useMemo(() => myListings.map((l) => l.id), [myListings]);
   const myJobs = useMemo(() => serviceJobs.filter((j) => myListingIds.includes(j.serviceId)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [serviceJobs, myListingIds]);
 

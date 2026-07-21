@@ -13,17 +13,20 @@ import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import { useActiveCompany } from '@/providers/ActiveCompanyProvider';
 import CompanySwitcher from '@/components/ui/CompanySwitcher';
 import SupportMenu from '@/components/SupportMenu';
+import { useExploreStore } from '@/store/explore';
+import { EXPLORE_COMPANY_ID } from '@/lib/exploreSamples';
 
 export default function WarehouseProviderDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const bootstrapQuery = useDockBootstrapData();
   const { activeCompany } = useActiveCompany();
   const { warehouseListings, warehouseBookings, companies, payments } = bootstrapQuery.data;
 
-  const activeCompanyId = activeCompany?.companyId ?? user?.companyId ?? null;
+  const activeCompanyId = isExploring ? EXPLORE_COMPANY_ID : (activeCompany?.companyId ?? user?.companyId ?? null);
   const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
   const myListings = useMemo(() => warehouseListings.filter((l) => l.companyId === activeCompanyId), [warehouseListings, activeCompanyId]);
   const myListingIds = useMemo(() => myListings.map((l) => l.id), [myListings]);

@@ -14,6 +14,8 @@ import { formatMoney } from '@/constants/world';
 import FreightQuoteWizard from '@/components/FreightQuoteWizard';
 import FreightProviderBoard from '@/components/FreightProviderBoard';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_FREIGHT_QUOTES } from '@/lib/exploreSamples';
 
 type FreightRequest = {
   id: string; reference_code: string; title: string; freight_mode: FreightMode;
@@ -50,14 +52,16 @@ export default function GlobalFreightHub() {
   const logout = useAuthStore((s) => s.logout);
   const utils = trpc.useUtils();
 
-  const kind = useMemo(() => freightRoleKind(user?.role), [user?.role]);
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const exploreRole = useExploreStore((s) => s.exploreRole);
+  const kind = useMemo(() => freightRoleKind((isExploring ? exploreRole : user?.role) ?? undefined), [user?.role, isExploring, exploreRole]);
   const isCustomer = kind === 'customer';
   const isProvider = kind === 'freight' || kind === 'ground';
 
   const [wizardOpen, setWizardOpen] = useState<boolean>(false);
 
-  const mineQuery = trpc.freight.mine.useQuery(undefined, { enabled: isCustomer });
-  const requests = (mineQuery.data ?? []) as FreightRequest[];
+  const mineQuery = trpc.freight.mine.useQuery(undefined, { enabled: isCustomer && !isExploring });
+  const requests = (isExploring ? (SAMPLE_FREIGHT_QUOTES as unknown as FreightRequest[]) : ((mineQuery.data ?? []) as FreightRequest[]));
 
   const handleSubmitted = useCallback(() => {
     setWizardOpen(false);
@@ -113,7 +117,7 @@ export default function GlobalFreightHub() {
             </TouchableOpacity>
 
             <Text style={styles.listHeading}>My requests</Text>
-            {mineQuery.isLoading ? (
+            {!isExploring && mineQuery.isLoading ? (
               <ScreenFeedback state="loading" title="Loading your requests" />
             ) : requests.length === 0 ? (
               <View style={styles.emptyCard}>

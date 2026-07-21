@@ -13,18 +13,22 @@ import { useDockBootstrapData } from '@/hooks/useDockBootstrap';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
 import WorldSwitcher from '@/components/WorldSwitcher';
 import SupportMenu from '@/components/SupportMenu';
+import { useExploreStore } from '@/store/explore';
+import { EXPLORE_COMPANY_ID } from '@/lib/exploreSamples';
 
 export default function CustomerDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
   const bootstrapQuery = useDockBootstrapData();
   const { warehouseBookings, serviceJobs, companies } = bootstrapQuery.data;
+  const activeCompanyId = isExploring ? EXPLORE_COMPANY_ID : user?.companyId;
 
-  const company = useMemo(() => companies.find((c) => c.id === user?.companyId), [companies, user]);
-  const myBookings = useMemo(() => warehouseBookings.filter((b) => b.customerCompanyId === user?.companyId), [warehouseBookings, user]);
-  const myJobs = useMemo(() => serviceJobs.filter((j) => j.customerCompanyId === user?.companyId), [serviceJobs, user]);
+  const company = useMemo(() => companies.find((c) => c.id === activeCompanyId), [companies, activeCompanyId]);
+  const myBookings = useMemo(() => warehouseBookings.filter((b) => b.customerCompanyId === activeCompanyId), [warehouseBookings, activeCompanyId]);
+  const myJobs = useMemo(() => serviceJobs.filter((j) => j.customerCompanyId === activeCompanyId), [serviceJobs, activeCompanyId]);
 
   const stats = useMemo(() => ({
     activeBookings: myBookings.filter((b) => ['Confirmed', 'InProgress'].includes(b.status)).length,
@@ -57,7 +61,7 @@ export default function CustomerDashboard() {
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
         <View>
           <Text style={styles.greeting}>Good morning 👋</Text>
-          <Text style={styles.name}>{user?.name}</Text>
+          <Text style={styles.name}>{user?.name ?? 'Preview Customer'}</Text>
           {company && <Text style={styles.company}>{company.name}</Text>}
         </View>
         <View style={styles.headerActions}>

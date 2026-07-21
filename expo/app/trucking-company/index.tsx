@@ -13,18 +13,22 @@ import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
 import ResponsiveContainer from '@/components/ui/ResponsiveContainer';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_TRUCKING_DASHBOARD } from '@/lib/exploreSamples';
 
 export default function TruckingCompanyDashboard() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const dashboardQuery = trpc.operations.truckingDashboard.useQuery();
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const dashboardQuery = trpc.operations.truckingDashboard.useQuery(undefined, { enabled: !isExploring });
+  const dashboardData = isExploring ? SAMPLE_TRUCKING_DASHBOARD : dashboardQuery.data;
 
   const stats = useMemo(() => {
-    const appointments = dashboardQuery.data?.appointments ?? [];
-    const drivers = dashboardQuery.data?.drivers ?? [];
-    const trucks = dashboardQuery.data?.trucks ?? [];
+    const appointments = dashboardData?.appointments ?? [];
+    const drivers = dashboardData?.drivers ?? [];
+    const trucks = dashboardData?.trucks ?? [];
 
     return {
       appointmentsToday: appointments.filter((item: any) => String(item.scheduled_start).slice(0, 10) === new Date().toISOString().slice(0, 10)).length,
@@ -32,25 +36,25 @@ export default function TruckingCompanyDashboard() {
       fleetUnits: trucks.length,
       loadingNow: appointments.filter((item: any) => ['AtDoor', 'Loading', 'Unloading'].includes(String(item.status))).length,
     };
-  }, [dashboardQuery.data]);
+  }, [dashboardData]);
 
-  if (dashboardQuery.isLoading) {
+  if (!isExploring && dashboardQuery.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading fleet ops" /></View>;
   }
 
-  if (dashboardQuery.isError) {
+  if (!isExploring && dashboardQuery.isError) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load trucking dashboard" onRetry={() => void dashboardQuery.refetch()} /></View>;
   }
 
-  const appointments = dashboardQuery.data?.appointments ?? [];
-  const drivers = dashboardQuery.data?.drivers ?? [];
+  const appointments = dashboardData?.appointments ?? [];
+  const drivers = dashboardData?.drivers ?? [];
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}> 
         <View>
           <Text style={styles.eyebrow}>Trucking Company</Text>
-          <Text style={styles.title}>{user?.name}</Text>
+          <Text style={styles.title}>{user?.name ?? 'Preview Fleet Co.'}</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <CompanySwitcher />

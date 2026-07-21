@@ -8,113 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
-  MapPin, TrendingUp, Clock, Star, HardHat, Boxes, Truck, PackageOpen, Anchor,
-  Store, Forklift, Hammer, Construction, UsersRound, Globe, Ship, Plane,
+  MapPin, TrendingUp, Clock, Star, Boxes, Truck, PackageOpen, Anchor,
+  Store, Forklift, Hammer, Construction, UsersRound, ChevronRight, Compass, Building2,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
+import { DOMAINS } from '@/constants/domains';
 
 const { width } = Dimensions.get('window');
-
-type WorldDef = {
-  key: 'labour' | 'logistics' | 'freight' | 'drayage' | 'marketplace' | 'globalfreight';
-  badge: string;
-  color: string;
-  bg: string;
-  icon: typeof HardHat;
-  title: string;
-  desc: string;
-  bullets: { icon: typeof Users; label: string; sub: string }[];
-};
-
-const WORLDS: WorldDef[] = [
-  {
-    key: 'labour',
-    badge: 'Domain 1',
-    color: C.purple,
-    bg: C.purpleDim,
-    icon: HardHat,
-    title: 'Labour',
-    desc: 'Connect the people who need work with the businesses who need crews.',
-    bullets: [
-      { icon: Clock, label: 'Employers', sub: 'Post & fill shifts fast' },
-      { icon: Users, label: 'Workers', sub: 'Find shifts that fit you' },
-      { icon: UsersRound, label: 'Employment Agencies', sub: 'Your workers & clients, our platform' },
-    ],
-  },
-  {
-    key: 'logistics',
-    badge: 'Domain 2',
-    color: C.accent,
-    bg: C.accentDim,
-    icon: Boxes,
-    title: 'Logistics & Warehousing',
-    desc: 'Warehouse space, industrial services, trucking and fulfillment in one place.',
-    bullets: [
-      { icon: Warehouse, label: 'Warehouse Space', sub: 'Dry · Chill · Frozen' },
-      { icon: Wrench, label: 'Industrial Services', sub: 'On-demand crews' },
-      { icon: Truck, label: 'Trucking & Fulfillment', sub: 'Move and ship goods' },
-    ],
-  },
-  {
-    key: 'freight',
-    badge: 'Domain 3',
-    color: C.green,
-    bg: C.greenDim,
-    icon: PackageOpen,
-    title: 'Freight & Delivery',
-    desc: 'Uber for trucks — post any delivery, from a single box to a full load. Owner-operators and fleet carriers grab and dispatch them.',
-    bullets: [
-      { icon: PackageOpen, label: 'Shippers', sub: 'Post loads — parcel to full truck' },
-      { icon: Truck, label: 'Owner-Operators', sub: 'Bring your truck, accept loads' },
-      { icon: Truck, label: 'Fleet / Carrier Companies', sub: 'Accept loads & dispatch drivers' },
-    ],
-  },
-  {
-    key: 'drayage',
-    badge: 'Domain 4',
-    color: C.blue,
-    bg: C.blueDim,
-    icon: Anchor,
-    title: 'Container Drayage',
-    desc: 'Post import/export container orders. Drayage companies claim them, dispatch drivers, enter port reservations, and track containers live on a map.',
-    bullets: [
-      { icon: Anchor, label: 'Freight Forwarders', sub: 'Post import/export container orders' },
-      { icon: Truck, label: 'Drayage Companies', sub: 'Claim orders, dispatch & track live' },
-      { icon: Users, label: 'Drivers', sub: 'Receive work orders & advance moves' },
-      { icon: ShieldCheck, label: 'Customs Brokers', sub: 'Docs, quotes & clearance on-platform' },
-    ],
-  },
-  {
-    key: 'marketplace',
-    badge: 'Domain 5',
-    color: C.yellow,
-    bg: C.yellowDim,
-    icon: Store,
-    title: 'Rentals & Services',
-    desc: 'A shared marketplace for every business: rent equipment you operate, hire an operated crane service, book mobile repair techs, hire services, and insure your cargo. Request a quote, get an official price, and place the order.',
-    bullets: [
-      { icon: Forklift, label: 'Equipment Rental', sub: 'Forklifts, lifts & gear you operate' },
-      { icon: Construction, label: 'Crane Service', sub: 'Crane + operator comes & does the lift' },
-      { icon: Hammer, label: 'Mobile Repair & Services', sub: 'On-site techs & labour crews' },
-      { icon: ShieldCheck, label: 'Cargo Insurance', sub: 'Insure freight & shipments' },
-    ],
-  },
-  {
-    key: 'globalfreight',
-    badge: 'Domain 6',
-    color: C.blue,
-    bg: C.blueDim,
-    icon: Globe,
-    title: 'Global Freight',
-    desc: 'International shipping & freight exchange. Post one freight quote request — air, ocean, truck, FCL or LCL — and receive competing quotes from forwarders, carriers and truckers worldwide.',
-    bullets: [
-      { icon: Boxes, label: 'Importers / Exporters', sub: 'One request, competing quotes' },
-      { icon: Plane, label: 'Global Freight Forwarders', sub: 'Quote every mode worldwide' },
-      { icon: Ship, label: 'Carriers / Shipping Lines', sub: 'Quote capacity directly' },
-      { icon: Truck, label: 'Truckers & Drayage', sub: 'Quote the container pickup leg' },
-    ],
-  },
-];
 
 const STATS = [
   { label: 'Pallet Spaces', value: '1,150+' },
@@ -122,6 +22,8 @@ const STATS = [
   { label: 'Service Partners', value: '18' },
   { label: 'Avg. Fill Time', value: '< 2h' },
 ];
+
+const WORLDS = DOMAINS;
 
 export default function Landing() {
   const router = useRouter();
@@ -221,11 +123,17 @@ export default function Landing() {
 
         {/* Two worlds */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>TWO WORLDS, ONE PLATFORM</Text>
-          <Text style={styles.sectionTitle}>Pick the world{'\n'}you work in.</Text>
+          <Text style={styles.sectionLabel}>SIX WORLDS, ONE PLATFORM</Text>
+          <Text style={styles.sectionTitle}>Explore any world{'\n'}— no account needed.</Text>
 
           {WORLDS.map((w) => (
-            <View key={w.key} style={[styles.worldCard, { borderColor: w.color }]}>
+            <TouchableOpacity
+              key={w.key}
+              style={[styles.worldCard, { borderColor: w.color }]}
+              activeOpacity={0.85}
+              onPress={() => router.push(`/explore/${w.key}` as never)}
+              testID={`domain-card-${w.key}`}
+            >
               <View style={styles.worldHeaderRow}>
                 <View style={[styles.worldIconWrap, { backgroundColor: w.bg }]}>
                   <w.icon size={24} color={w.color} />
@@ -234,6 +142,7 @@ export default function Landing() {
                   <Text style={[styles.worldBadge, { color: w.color }]}>{w.badge}</Text>
                   <Text style={styles.worldTitle}>{w.title}</Text>
                 </View>
+                <ChevronRight size={20} color={C.textMuted} />
               </View>
               <Text style={styles.worldDesc}>{w.desc}</Text>
               <View style={styles.worldBullets}>
@@ -249,7 +158,11 @@ export default function Landing() {
                   </View>
                 ))}
               </View>
-            </View>
+              <View style={[styles.exploreRow, { backgroundColor: w.bg }]}>
+                <Compass size={15} color={w.color} />
+                <Text style={[styles.exploreRowText, { color: w.color }]}>Explore {w.title} — no account needed</Text>
+              </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -286,6 +199,23 @@ export default function Landing() {
               </View>
             ))}
           </View>
+        </View>
+
+        {/* Directory */}
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.directoryCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/directory' as never)}
+            testID="home-directory"
+          >
+            <View style={styles.directoryIcon}><Building2 size={22} color={C.accent} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.directoryTitle}>Browse the directory</Text>
+              <Text style={styles.directoryDesc}>Companies & open work — no account needed</Text>
+            </View>
+            <ArrowRight size={18} color={C.textMuted} />
+          </TouchableOpacity>
         </View>
 
         {/* CTA bottom */}
@@ -417,6 +347,11 @@ const styles = StyleSheet.create({
   worldBulletIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   worldBulletLabel: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   worldBulletSub: { fontSize: 12, color: C.textSecondary },
+  exploreRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginTop: 14, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+  },
+  exploreRowText: { fontSize: 13, fontWeight: '700' as const },
   rolesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   roleCard: {
     width: (width - 48 - 10) / 2,
@@ -426,6 +361,10 @@ const styles = StyleSheet.create({
   },
   roleTitle: { fontSize: 14, fontWeight: '700' as const, color: C.text },
   roleDesc: { fontSize: 12, color: C.textSecondary },
+  directoryCard: { flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 16 },
+  directoryIcon: { width: 46, height: 46, borderRadius: 13, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  directoryTitle: { fontSize: 16, fontWeight: '800' as const, color: C.text },
+  directoryDesc: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
   bottomCta: { marginHorizontal: 24, marginBottom: 24, borderRadius: 20, overflow: 'hidden' },
   bottomCtaGrad: { padding: 28, borderRadius: 20, borderWidth: 1, borderColor: C.border },
   trendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 14 },

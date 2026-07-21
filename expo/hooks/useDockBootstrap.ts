@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_BOOTSTRAP, SAMPLE_WAREHOUSE_LISTINGS } from '@/lib/exploreSamples';
 import type {
   Company,
   Dispute,
@@ -348,7 +350,17 @@ async function fetchBootstrap(): Promise<BootstrapData> {
   };
 }
 
+/** Sample bootstrap used in Explore mode so Labour dashboards look alive. */
+const SAMPLE_DATA: BootstrapData = {
+  ...EMPTY_DATA,
+  companies: SAMPLE_BOOTSTRAP.companies.map((r) => mapCompany(r as Row)),
+  shiftPosts: SAMPLE_BOOTSTRAP.shift_posts.map((r) => mapShiftPost(r as Row)),
+  workerProfiles: SAMPLE_BOOTSTRAP.worker_profiles.map((r) => mapWorkerProfile(r as Row)),
+  warehouseListings: SAMPLE_WAREHOUSE_LISTINGS.map((r) => mapWarehouseListing(r as Row)),
+};
+
 export function useDockBootstrapData() {
+  const isExploring = useExploreStore((s) => s.isExploring);
   const query = useQuery({
     queryKey: ['dock', 'bootstrap'],
     queryFn: fetchBootstrap,
@@ -357,12 +369,17 @@ export function useDockBootstrapData() {
     // an employer accepting, clock-in/out) surface without leaving the screen.
     refetchInterval: 20_000,
     refetchOnMount: true,
+    enabled: !isExploring,
   });
 
-  const data = useMemo<BootstrapData>(() => query.data ?? EMPTY_DATA, [query.data]);
+  const data = useMemo<BootstrapData>(
+    () => (isExploring ? SAMPLE_DATA : (query.data ?? EMPTY_DATA)),
+    [query.data, isExploring],
+  );
 
   return {
     ...query,
+    isLoading: isExploring ? false : query.isLoading,
     data,
   };
 }

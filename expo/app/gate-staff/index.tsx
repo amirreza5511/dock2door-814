@@ -11,6 +11,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
+import { useExploreStore } from '@/store/explore';
 
 /** Map appointment status → gate_event kind understood by gate_record_event RPC (migration 0014). */
 const STATUS_TO_KIND: Record<string, string> = {
@@ -58,6 +59,7 @@ export default function GatePanelScreen() {
   const router = useRouter();
   const utils = trpc.useUtils();
   const logout = useAuthStore((s) => s.logout);
+  const isExploring = useExploreStore((s) => s.isExploring);
 
   // Search state — was previously an undeclared variable causing a runtime error.
   const [search, setSearch] = useState<string>('');
@@ -67,10 +69,12 @@ export default function GatePanelScreen() {
   // Each warehouse is its own gate. The panel is scoped to a single selected warehouse;
   // appointments from other warehouses never appear here.
   const [listingId, setListingId] = useState<string | null>(null);
-  const warehousesQuery = trpc.operations.gateWarehouses.useQuery();
+  const warehousesQuery = trpc.operations.gateWarehouses.useQuery(undefined, { enabled: !isExploring });
   const warehouses = useMemo(
-    () => (warehousesQuery.data ?? []) as { id: string; name: string }[],
-    [warehousesQuery.data],
+    () => (isExploring
+      ? ([{ id: 'ex-gate-wh', name: 'Metro Fulfilment Hub — Gate' }] as { id: string; name: string }[])
+      : ((warehousesQuery.data ?? []) as { id: string; name: string }[])),
+    [warehousesQuery.data, isExploring],
   );
 
   // Auto-select the only warehouse so single-site companies skip the picker.
@@ -80,7 +84,7 @@ export default function GatePanelScreen() {
 
   const panelQuery = trpc.operations.gatePanel.useQuery(
     { listingId },
-    { enabled: Boolean(listingId) },
+    { enabled: Boolean(listingId) && !isExploring },
   );
 
   /**
@@ -179,7 +183,7 @@ export default function GatePanelScreen() {
     ]);
   };
 
-  if (warehousesQuery.isLoading) {
+  if (!isExploring && warehousesQuery.isLoading) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback state="loading" title="Loading warehouses" />
@@ -187,7 +191,7 @@ export default function GatePanelScreen() {
     );
   }
 
-  if (listingId && panelQuery.isLoading) {
+  if (!isExploring && listingId && panelQuery.isLoading) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback state="loading" title="Loading gate panel" />
@@ -195,7 +199,7 @@ export default function GatePanelScreen() {
     );
   }
 
-  if (listingId && panelQuery.isError) {
+  if (!isExploring && listingId && panelQuery.isError) {
     return (
       <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}>
         <ScreenFeedback state="error" title="Unable to load gate panel" onRetry={() => void panelQuery.refetch()} />

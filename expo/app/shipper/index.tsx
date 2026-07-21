@@ -13,6 +13,8 @@ import SupportMenu from '@/components/SupportMenu';
 import C from '@/constants/colors';
 import { CARGO_LABEL, CargoType, VEHICLE_LABEL, VehicleType } from '@/constants/loads';
 import { trpc } from '@/lib/trpc';
+import { useExploreStore } from '@/store/explore';
+import { SAMPLE_SHIPPER_LOADS } from '@/lib/exploreSamples';
 
 type LoadRow = {
   id: string; vehicle_type: string; cargo_type: string; pallets: number; status: string;
@@ -33,11 +35,15 @@ export default function ShipperDashboard() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const query = trpc.loads.listPosted.useQuery(undefined, { refetchInterval: 20000 });
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const query = trpc.loads.listPosted.useQuery(undefined, { refetchInterval: 20000, enabled: !isExploring });
 
   const [filter, setFilter] = useState<StatFilter>('all');
 
-  const loads = useMemo<LoadRow[]>(() => (query.data ?? []) as LoadRow[], [query.data]);
+  const loads = useMemo<LoadRow[]>(
+    () => (isExploring ? (SAMPLE_SHIPPER_LOADS as unknown as LoadRow[]) : ((query.data ?? []) as LoadRow[])),
+    [query.data, isExploring],
+  );
   const stats = useMemo(() => ({
     open: loads.filter((l) => l.status === 'Open').length,
     inTransit: loads.filter((l) => ['Accepted', 'EnRoute', 'Arrived'].includes(l.status)).length,
@@ -61,10 +67,10 @@ export default function ShipperDashboard() {
     return list.slice(0, 8);
   }, [loads, filter]);
 
-  if (query.isLoading) {
+  if (!isExploring && query.isLoading) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="loading" title="Loading your deliveries" /></View>;
   }
-  if (query.isError) {
+  if (!isExploring && query.isError) {
     return <View style={[styles.root, styles.centered, { backgroundColor: C.bg }]}><ScreenFeedback state="error" title="Unable to load deliveries" onRetry={() => void query.refetch()} /></View>;
   }
 
@@ -82,7 +88,7 @@ export default function ShipperDashboard() {
           <View style={styles.brandIcon}><Send size={18} color={C.blue} /></View>
           <View style={styles.brandTextWrap}>
             <Text style={styles.greeting} numberOfLines={1}>Freight & Delivery</Text>
-            <Text style={styles.name} numberOfLines={1}>{user?.name}</Text>
+            <Text style={styles.name} numberOfLines={1}>{user?.name ?? 'Preview Shipper'}</Text>
           </View>
         </View>
         <View style={styles.headerActions}>
