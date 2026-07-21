@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import React, { useEffect, useRef } from 'react';
-import { KeyboardAvoidingView, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { KeyboardAvoidingView, PanResponder, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -21,7 +21,48 @@ import LegalGate from '@/components/LegalGate';
 import ExploreBanner from '@/components/ExploreBanner';
 import ActionGate from '@/components/ActionGate';
 import IntroVideo from '@/components/IntroVideo';
+import { usePromo } from '@/store/promo';
 import { useExploreStore } from '@/store/explore';
+
+/** After this much inactivity, replay the promo as an ad "attract loop". */
+const IDLE_ATTRACT_MS = 90000;
+
+/**
+ * Wraps the app content and replays the promo/ad reel whenever the user goes
+ * idle. Touches are detected via a non-capturing PanResponder so they still
+ * pass through to the UI underneath.
+ */
+function IdleAttract({ children }: { children: React.ReactNode }) {
+  const play = usePromo((s) => s.play);
+  const active = usePromo((s) => s.active);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const reset = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      if (!usePromo.getState().active) play();
+    }, IDLE_ATTRACT_MS);
+  }, [play]);
+
+  useEffect(() => {
+    reset();
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [reset]);
+
+  // Restart the countdown once an attract play finishes.
+  useEffect(() => {
+    if (!active) reset();
+  }, [active, reset]);
+
+  const responder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponderCapture: () => { reset(); return false; },
+      onMoveShouldSetPanResponderCapture: () => { reset(); return false; },
+    }),
+  ).current;
+
+  return <View style={{ flex: 1 }} {...responder.panHandlers}>{children}</View>;
+}
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -231,7 +272,9 @@ export default function RootLayout() {
             <SafeAreaProvider>
               <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
                 <StatusBar style="light" />
-                <RootLayoutNav />
+                <IdleAttract>
+                  <RootLayoutNav />
+                </IdleAttract>
                 <AiFab />
                 <AdBanner />
                 <ExploreBanner />

@@ -5,6 +5,7 @@ import { useRouter, Stack } from 'expo-router';
 import { ArrowLeft, Check, Ruler, Globe, Coins, PlayCircle } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { usePreferences } from '@/store/preferences';
+import { usePromo } from '@/store/promo';
 import { CURRENCIES, type UnitSystem } from '@/constants/world';
 
 const UNIT_OPTIONS: { id: UnitSystem; label: string; detail: string }[] = [
@@ -19,7 +20,7 @@ export default function SettingsScreen() {
   const unitSystem = usePreferences((s) => s.unitSystem);
   const setCurrency = usePreferences((s) => s.setCurrency);
   const setUnitSystem = usePreferences((s) => s.setUnitSystem);
-  const replayIntro = usePreferences((s) => s.replayIntro);
+  const playPromo = usePromo((s) => s.play);
 
   return (
     <View style={styles.root}>
@@ -60,7 +61,7 @@ export default function SettingsScreen() {
             <PlayCircle size={16} color={C.text} />
             <Text style={styles.sectionTitle}>About</Text>
           </View>
-          <TouchableOpacity style={styles.row} onPress={() => { replayIntro(); router.replace('/' as never); }} activeOpacity={0.8} testID="replay-intro">
+          <TouchableOpacity style={styles.row} onPress={() => { playPromo(); }} activeOpacity={0.8} testID="replay-intro">
             <View style={styles.symbolWrap}><PlayCircle size={18} color={C.accent} /></View>
             <View style={{ flex: 1 }}>
               <Text style={styles.rowLabel}>Watch intro video</Text>

@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { usePreferences } from '@/store/preferences';
+import { usePromo } from '@/store/promo';
 import {
   PROMO_SCENES,
   PROMO_TAGLINE,
@@ -25,8 +26,9 @@ import {
 export default function IntroVideo() {
   const insets = useSafeAreaInsets();
   const hydrated = usePreferences((s) => s.hydrated);
-  const introSeen = usePreferences((s) => s.introSeen);
-  const markIntroSeen = usePreferences((s) => s.markIntroSeen);
+  const playToken = usePromo((s) => s.playToken);
+  const play = usePromo((s) => s.play);
+  const setActive = usePromo((s) => s.setActive);
 
   const [visible, setVisible] = useState<boolean>(false);
   const [index, setIndex] = useState<number>(0);
@@ -47,15 +49,26 @@ export default function IntroVideo() {
     p.loop = false;
   });
 
-  // Decide whether to show once preferences hydrate. No scenes → skip silently.
+  // Auto-play once on every launch (the intro doubles as an ad surface).
+  const launchedRef = useRef<boolean>(false);
   useEffect(() => {
-    if (!hydrated) return;
-    if (!introSeen && PROMO_SCENES.length > 0) {
-      loadedUrlRef.current = firstVideo?.url ?? null;
-      setVisible(true);
-      Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    }
-  }, [hydrated, introSeen, fade, firstVideo]);
+    if (!hydrated || launchedRef.current) return;
+    launchedRef.current = true;
+    if (PROMO_SCENES.length > 0) play();
+  }, [hydrated, play]);
+
+  // (Re)show whenever a play is requested — launch, idle attract, or replay.
+  useEffect(() => {
+    if (playToken === 0 || PROMO_SCENES.length === 0) return;
+    dismissedRef.current = false;
+    indexRef.current = 0;
+    setIndex(0);
+    loadedUrlRef.current = firstVideo?.url ?? null;
+    setVisible(true);
+    setActive(true);
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+  }, [playToken, fade, firstVideo, setActive]);
 
   const dismiss = useCallback(() => {
     if (dismissedRef.current) return;
@@ -64,10 +77,10 @@ export default function IntroVideo() {
     if (hardTimer.current) clearTimeout(hardTimer.current);
     Animated.timing(fade, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => {
       setVisible(false);
-      markIntroSeen();
+      setActive(false);
       try { player.pause(); } catch {}
     });
-  }, [fade, markIntroSeen, player]);
+  }, [fade, setActive, player]);
 
   const goNext = useCallback(() => {
     const next = indexRef.current + 1;
