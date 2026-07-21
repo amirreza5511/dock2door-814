@@ -38,6 +38,14 @@ export type PromoScene = PromoVideoScene | PromoAdScene;
 export const PROMO_VIDEO_URL: string | null =
   'https://r2-pub.rork.com/generated-video/vaj7ce20dtfjwaoecptg3/9eb04496-dc11-4432-b884-df1d5d158e79.mp4';
 
+/** Second brand clip (AI-generated) — chained after the first to lengthen the intro. */
+export const PROMO_VIDEO_URL_2: string | null =
+  'https://r2-pub.rork.com/generated-video/vaj7ce20dtfjwaoecptg3/2d74c88c-087f-4e2d-acf7-e7a80cc002f6.mp4';
+
+/** Background music played over the whole intro (muted video + this track). */
+export const PROMO_MUSIC_URL: string | null =
+  'https://r2-pub.rork.com/generated-audio/vaj7ce20dtfjwaoecptg3/7a3bceb0-a687-42ad-9b0c-5df5c90355c7.mp3';
+
 /** Tagline overlaid near the end of the brand clip. */
 export const PROMO_TAGLINE = 'All you need';
 export const PROMO_SUBLINE = 'Trucks · Warehousing · Freight · Cargo · Couriers';
@@ -49,7 +57,10 @@ export const PROMO_SUBLINE = 'Trucks · Warehousing · Freight · Cargo · Couri
  */
 export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
   ? [
-      { kind: 'video', url: PROMO_VIDEO_URL, maxMs: 16000, tagline: true },
+      { kind: 'video', url: PROMO_VIDEO_URL, maxMs: 16000, tagline: !PROMO_VIDEO_URL_2 },
+      ...(PROMO_VIDEO_URL_2
+        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_2, maxMs: 16000, tagline: true }]
+        : []),
       {
         kind: 'ad',
         durationMs: 5500,

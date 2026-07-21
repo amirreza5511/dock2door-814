@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAudioPlayer } from 'expo-audio';
 import { useEventListener } from 'expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +13,7 @@ import {
   PROMO_SCENES,
   PROMO_TAGLINE,
   PROMO_SUBLINE,
+  PROMO_MUSIC_URL,
   type PromoScene,
 } from '@/constants/promo';
 
@@ -49,6 +51,9 @@ export default function IntroVideo() {
     p.loop = false;
   });
 
+  // Background music over the whole intro (video stays muted).
+  const music = useAudioPlayer(PROMO_MUSIC_URL ?? undefined);
+
   // Auto-play once on every launch (the intro doubles as an ad surface).
   const launchedRef = useRef<boolean>(false);
   useEffect(() => {
@@ -68,7 +73,10 @@ export default function IntroVideo() {
     setActive(true);
     fade.setValue(0);
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-  }, [playToken, fade, firstVideo, setActive]);
+    if (PROMO_MUSIC_URL) {
+      try { music.seekTo(0); music.volume = 0.7; music.loop = true; music.play(); } catch {}
+    }
+  }, [playToken, fade, firstVideo, setActive, music]);
 
   const dismiss = useCallback(() => {
     if (dismissedRef.current) return;
@@ -79,8 +87,9 @@ export default function IntroVideo() {
       setVisible(false);
       setActive(false);
       try { player.pause(); } catch {}
+      try { music.pause(); } catch {}
     });
-  }, [fade, setActive, player]);
+  }, [fade, setActive, player, music]);
 
   const goNext = useCallback(() => {
     const next = indexRef.current + 1;
