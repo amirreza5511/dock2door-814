@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
-import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench, ShieldCheck, Construction } from 'lucide-react-native';
+import { ArrowLeft, Plus, Tag, MapPin, DollarSign, Forklift, Hammer, Wrench, ShieldCheck, Construction, Truck, Trash2, TowerControl } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
 import C from '@/constants/colors';
@@ -16,6 +16,9 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
+  flat_deck: Truck,
+  junk_removal: Trash2,
+  tow_truck: TowerControl,
 };
 
 const TYPE_COLOR: Record<ServiceType, string> = {
@@ -24,6 +27,9 @@ const TYPE_COLOR: Record<ServiceType, string> = {
   crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
+  flat_deck: C.green,
+  junk_removal: C.red,
+  tow_truck: C.yellow,
 };
 
 function priceLabel(l: ServiceListing): string {

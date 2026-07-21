@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
   Search, MapPin, X, Wrench, Hammer, Forklift, ShieldCheck, Construction, DollarSign,
-  ArrowLeft, Plus, Store, Building2, ChevronRight,
+  ArrowLeft, Plus, Store, Building2, ChevronRight, Truck, Trash2, TowerControl,
 } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import Button from '@/components/ui/Button';
@@ -47,6 +47,9 @@ const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   crane_service: Construction,
   mobile_repair: Hammer,
   cargo_insurance: ShieldCheck,
+  flat_deck: Truck,
+  junk_removal: Trash2,
+  tow_truck: TowerControl,
 };
 
 const TYPE_COLOR: Record<ServiceType, string> = {
@@ -55,6 +58,9 @@ const TYPE_COLOR: Record<ServiceType, string> = {
   crane_service: C.orange,
   mobile_repair: C.purple,
   cargo_insurance: C.yellow,
+  flat_deck: C.green,
+  junk_removal: C.red,
+  tow_truck: C.yellow,
 };
 
 function priceLabel(l: MarketListing): string {
