@@ -5015,6 +5015,7 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     commodity?: string; declaredValue?: number; currency?: string; hsCode?: string; notes?: string;
     readyDate?: string; deliveryMethod?: string; pickupAddress?: string; pickupCity?: string;
     needsContainerPickup?: boolean;
+    destHubId?: string; destHubCity?: string; destHubIsMember?: boolean;
   }) => {
     const { data, error } = await supabase.rpc('freight_create_quote', {
       p_title: input.title,
@@ -5044,12 +5045,24 @@ const PROCEDURES: Record<string, ProcedureFn> = {
       p_pickup_address: input.pickupAddress ?? '',
       p_pickup_city: input.pickupCity ?? '',
       p_needs_container_pickup: input.needsContainerPickup ?? false,
+      p_dest_hub_id: input.destHubId ?? '',
+      p_dest_hub_city: input.destHubCity ?? '',
+      p_dest_hub_is_member: input.destHubIsMember ?? false,
     });
     if (error) {
       if (isMissingFunction(error)) throw new Error('Global Freight is not live yet — apply migrations 0167 & 0168.');
       throwErr(error, 'Unable to post freight request');
     }
     return { id: data as string };
+  },
+  // Live Canadian network-hub cities (member hubs derived from real warehouses).
+  'freight.networkHubs': async () => {
+    const { data, error } = await supabase.rpc('freight_network_hub_cities');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [] as { city: string; hub_count: number }[];
+      throwErr(error, 'Unable to load network hubs');
+    }
+    return (data ?? []) as { city: string; hub_count: number }[];
   },
   'freight.mine': async () => {
     const { data, error } = await supabase.rpc('freight_list_mine');

@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import {
   X, ChevronLeft, ChevronRight, Check, MapPin, Plane, Ship, Truck, Boxes,
-  Scale, Package, FileText, Upload, Trash2, Send,
+  Scale, Package, FileText, Upload, Trash2, Send, Warehouse, Star,
 } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -24,6 +24,13 @@ import {
   DELIVERY_METHODS, type DeliveryMethod,
   FREIGHT_DOC_TYPES, type FreightDocType,
 } from '@/constants/globalFreight';
+import { hubsForMode, isHubLiveMember, type LiveHubCity } from '@/constants/canadaHubs';
+
+/** Match a destination country string to Canada (name or code). */
+function isCanada(country: string): boolean {
+  const c = country.trim().toLowerCase();
+  return c === 'canada' || c === 'ca' || c === 'can';
+}
 
 const COUNTRY_OPTIONS: PickerOption[] = COUNTRIES.map((c) => ({ value: c.name, label: c.name, sublabel: c.code, glyph: c.flag, keywords: c.code }));
 const SEAPORT_OPTIONS: PickerOption[] = SEAPORTS.map((p) => ({ value: p.name, label: p.name, sublabel: `${p.code} · ${p.country}`, keywords: `${p.code} ${p.country}` }));
@@ -65,6 +72,8 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
   const prefUnits = usePreferences((s) => s.unitSystem);
   const createMutation = trpc.freight.create.useMutation();
   const addDocMutation = trpc.freight.addDocument.useMutation();
+  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const liveCities = useMemo<LiveHubCity[]>(() => (networkHubsQuery.data ?? []) as LiveHubCity[], [networkHubsQuery.data]);
 
   const [step, setStep] = useState<number>(0);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -98,8 +107,14 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
   const [pickupAddress, setPickupAddress] = useState<string>('');
   const [pickupCity, setPickupCity] = useState<string>('');
   const [needsContainerPickup, setNeedsContainerPickup] = useState<boolean>(false);
+  // Destination Canada city hub (deconsolidation + final-mile).
+  const [destHubId, setDestHubId] = useState<string>('');
   // Step 6 — documents
   const [docs, setDocs] = useState<LocalDoc[]>([]);
+
+  const destIsCanada = isCanada(destCountry);
+  const eligibleHubs = useMemo(() => hubsForMode(mode, liveCities), [mode, liveCities]);
+  const selectedHub = eligibleHubs.find((h) => h.id === destHubId) ?? null;
 
   const usesPort = mode === 'air' || mode === 'ocean' || mode === 'fcl' || mode === 'lcl';
   const portOptions = mode === 'air' ? AIRPORT_OPTIONS : SEAPORT_OPTIONS;
@@ -114,6 +129,7 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
     setLen(''); setWid(''); setHei(''); setDimUnit(dimUnitFor(prefUnits)); setPieces('1');
     setCommodity(''); setDeclaredValue(''); setCurrency(prefCurrency); setHsCode(''); setNotes('');
     setDeliveryMethod('port_delivery'); setPickupAddress(''); setPickupCity(''); setNeedsContainerPickup(false);
+    setDestHubId('');
     setDocs([]);
   }, [prefCurrency, prefUnits]);
 
@@ -169,6 +185,9 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
         commodity, declaredValue: Number(declaredValue) || 0, currency, hsCode, notes,
         deliveryMethod, pickupAddress, pickupCity,
         needsContainerPickup: needsContainerPickup || deliveryMethod === 'door_pickup',
+        destHubId: selectedHub?.id ?? '',
+        destHubCity: selectedHub?.city ?? '',
+        destHubIsMember: selectedHub ? isHubLiveMember(selectedHub, liveCities) : false,
       });
       const quoteId = res.id;
 
@@ -194,7 +213,7 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
     originCountry, originCity, originPort, destCountry, destCity, destPort, usesPort,
     mode, weight, weightUnit, volume, len, wid, hei, dimUnit, pieces,
     commodity, declaredValue, currency, hsCode, notes, deliveryMethod, pickupAddress, pickupCity,
-    needsContainerPickup, docs, createMutation, addDocMutation, reset, onSubmitted,
+    needsContainerPickup, selectedHub, liveCities, docs, createMutation, addDocMutation, reset, onSubmitted,
   ]);
 
   const goNext = useCallback(() => {
@@ -343,6 +362,38 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
                     <Text style={styles.optionSub}>Trucking & drayage companies can quote this leg separately</Text>
                   </View>
                 </TouchableOpacity>
+
+                {destIsCanada && eligibleHubs.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}><Warehouse size={16} color={C.accent} /> Canada destination hub</Text>
+                    <Text style={styles.helpText}>Where should it land for deconsolidation & final-mile? Partner hubs are prioritised.</Text>
+                    {eligibleHubs.map((h) => {
+                      const selected = destHubId === h.id;
+                      const member = isHubLiveMember(h, liveCities);
+                      return (
+                        <TouchableOpacity key={h.id} activeOpacity={0.8} onPress={() => setDestHubId(selected ? '' : h.id)}
+                          style={[styles.optionCard, selected && styles.optionCardActive]}>
+                          <View style={[styles.optionIcon, selected && styles.optionIconActive]}>
+                            <Warehouse size={18} color={selected ? C.white : C.accent} />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.hubRow}>
+                              <Text style={styles.optionTitle}>{h.city}, {h.province}</Text>
+                              {member ? (
+                                <View style={styles.memberPill}>
+                                  <Star size={10} color={C.accent} fill={C.accent} />
+                                  <Text style={styles.memberText}>Partner</Text>
+                                </View>
+                              ) : null}
+                            </View>
+                            <Text style={styles.optionSub} numberOfLines={2}>{h.blurb}</Text>
+                          </View>
+                          {selected ? <Check size={20} color={C.blue} /> : null}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                )}
               </View>
             )}
 
@@ -382,6 +433,7 @@ export default function FreightQuoteWizard({ visible, onClose, onSubmitted }: Pr
                 {declaredValue ? <ReviewRow label="Declared value" value={`${declaredValue} ${currency}`} /> : null}
                 <ReviewRow label="Delivery" value={DELIVERY_METHODS.find((d) => d.value === deliveryMethod)?.label ?? ''} />
                 {(needsContainerPickup || deliveryMethod === 'door_pickup') ? <ReviewRow label="Ground leg" value="Container pickup / drayage requested" /> : null}
+                {selectedHub ? <ReviewRow label="Canada hub" value={`${selectedHub.city}, ${selectedHub.province}${isHubLiveMember(selectedHub, liveCities) ? ' · Partner' : ''}`} /> : null}
                 <ReviewRow label="Documents" value={`${docs.length} attached`} />
                 <View style={styles.reviewNotice}>
                   <Text style={styles.reviewNoticeText}>
@@ -442,6 +494,9 @@ const styles = StyleSheet.create({
   optionIconActive: { backgroundColor: C.blue },
   optionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text },
   optionSub: { fontSize: 12, color: C.textSecondary, marginTop: 2 },
+  hubRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  memberPill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: C.accent + '22', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  memberText: { fontSize: 10, fontWeight: '800' as const, color: C.accent },
   unitToggle: { flexDirection: 'row', gap: 6, backgroundColor: C.card, borderRadius: 10, padding: 4, borderWidth: 1, borderColor: C.border },
   unitBtn: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 },
   unitBtnActive: { backgroundColor: C.blue },

@@ -7,7 +7,8 @@ import {
   Star, ArrowRight, Warehouse, CircleDot, Info,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
-import { CANADA_HUBS, sortedCanadaHubs, type CanadaHub } from '@/constants/canadaHubs';
+import { trpc } from '@/lib/trpc';
+import { sortedCanadaHubs, isHubLiveMember, liveHubCount, type LiveHubCity } from '@/constants/canadaHubs';
 import type { FreightMode } from '@/constants/globalFreight';
 
 interface ModeDef {
@@ -29,13 +30,16 @@ export default function CanadaHubsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const hubs = useMemo(() => sortedCanadaHubs(), []);
-  const [selectedId, setSelectedId] = useState<string>(hubs[0]?.id ?? '');
+  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const liveCities = useMemo<LiveHubCity[]>(() => (networkHubsQuery.data ?? []) as LiveHubCity[], [networkHubsQuery.data]);
+
+  const hubs = useMemo(() => sortedCanadaHubs(liveCities), [liveCities]);
+  const [selectedId, setSelectedId] = useState<string>('');
   const [mode, setMode] = useState<FreightMode>('lcl');
 
   const selected = hubs.find((h) => h.id === selectedId) ?? hubs[0];
   const modeSupported = selected?.modes.includes(mode) ?? false;
-  const memberCount = CANADA_HUBS.filter((h) => h.isMember).length;
+  const memberCount = hubs.filter((h) => isHubLiveMember(h, liveCities)).length;
 
   const goQuote = () => router.push('/global-freight' as never);
 
@@ -59,7 +63,7 @@ export default function CanadaHubsScreen() {
           <Text style={styles.heroTitle}>Land it anywhere in Canada</Text>
           <Text style={styles.heroDesc}>
             Ocean, air, truck and LCL/FCL freight all route into a destination city hub for
-            deconsolidation and final-mile delivery. {memberCount} partner hubs are live in our network.
+            deconsolidation and final-mile delivery. {memberCount} partner hub{memberCount === 1 ? '' : 's'} live in our network.
           </Text>
         </View>
 
@@ -87,8 +91,10 @@ export default function CanadaHubsScreen() {
         <Text style={[styles.sectionLabel, { marginTop: 22 }]}>DESTINATION HUB</Text>
         <View style={styles.hubList}>
           {hubs.map((h) => {
-            const on = selectedId === h.id;
+            const on = selected?.id === h.id;
             const supports = h.modes.includes(mode);
+            const member = isHubLiveMember(h, liveCities);
+            const count = liveHubCount(h, liveCities);
             return (
               <TouchableOpacity
                 key={h.id}
@@ -103,10 +109,10 @@ export default function CanadaHubsScreen() {
                   <View style={styles.hubTitleRow}>
                     <Text style={styles.hubCity}>{h.city}</Text>
                     <Text style={styles.hubProv}>{h.province}</Text>
-                    {h.isMember ? (
+                    {member ? (
                       <View style={styles.memberPill}>
                         <Star size={10} color={C.accent} fill={C.accent} />
-                        <Text style={styles.memberText}>Partner</Text>
+                        <Text style={styles.memberText}>Partner{count > 0 ? ` · ${count}` : ''}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -151,7 +157,7 @@ export default function CanadaHubsScreen() {
               icon={Warehouse}
               color={C.accent}
               title={`${selected.city} hub`}
-              sub={selected.isMember ? 'Partner hub · deconsolidation & customs handoff' : 'Coverage hub · deconsolidation'}
+              sub={isHubLiveMember(selected, liveCities) ? 'Partner hub · deconsolidation & customs handoff' : 'Coverage hub · deconsolidation'}
               highlight
             />
             <RouteConnector />
