@@ -4956,6 +4956,150 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // AIR CARGO BOARD (0163) — personal & commercial air freight, bid + AI estimate
+  // =========================================================================
+  'air.create': async (input: {
+    title: string; shipmentKind?: 'personal' | 'commercial';
+    originCountry?: string; originCity?: string; originAirport?: string;
+    destCountry?: string; destCity?: string; destAirport?: string;
+    cargoType?: string; photos?: string[];
+    lengthCm?: number; widthCm?: number; heightCm?: number; dimUnit?: 'cm' | 'in';
+    weight?: number; weightUnit?: 'kg' | 'lb'; pieces?: number; readyDate?: string;
+    commodity?: string; declaredValue?: number; hsCode?: string; currency?: string; notes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('air_create_request', {
+      p_title: input.title,
+      p_shipment_kind: input.shipmentKind ?? 'personal',
+      p_origin_country: input.originCountry ?? '',
+      p_origin_city: input.originCity ?? '',
+      p_origin_airport: input.originAirport ?? '',
+      p_dest_country: input.destCountry ?? '',
+      p_dest_city: input.destCity ?? '',
+      p_dest_airport: input.destAirport ?? '',
+      p_cargo_type: input.cargoType ?? '',
+      p_photos: input.photos ?? [],
+      p_length_cm: input.lengthCm ?? 0,
+      p_width_cm: input.widthCm ?? 0,
+      p_height_cm: input.heightCm ?? 0,
+      p_dim_unit: input.dimUnit ?? 'cm',
+      p_weight: input.weight ?? 0,
+      p_weight_unit: input.weightUnit ?? 'kg',
+      p_pieces: input.pieces ?? 1,
+      p_ready_date: input.readyDate ?? null,
+      p_commodity: input.commodity ?? '',
+      p_declared_value: input.declaredValue ?? 0,
+      p_hs_code: input.hsCode ?? '',
+      p_currency: input.currency ?? 'CAD',
+      p_notes: input.notes ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Air cargo is not live yet — apply migration 0163.');
+      throwErr(error, 'Unable to post air request');
+    }
+    return { id: data as string };
+  },
+  'air.setEstimate': async (input: {
+    requestId: string; low: number; high: number; currency?: string; note?: string;
+  }) => {
+    const { error } = await supabase.rpc('air_set_estimate', {
+      p_request_id: input.requestId,
+      p_low: input.low,
+      p_high: input.high,
+      p_currency: input.currency ?? 'CAD',
+      p_note: input.note ?? '',
+    });
+    if (error) throwErr(error, 'Unable to save estimate');
+    return { success: true };
+  },
+  'air.mine': async () => {
+    const { data, error } = await supabase.rpc('air_list_mine');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load air requests');
+    }
+    return data ?? [];
+  },
+  'air.offers': async (input: { requestId: string }) => {
+    const { data, error } = await supabase.rpc('air_list_offers', { p_request_id: input.requestId });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load offers');
+    }
+    return data ?? [];
+  },
+  'air.acceptOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('air_accept_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to accept offer');
+    return { success: true };
+  },
+  'air.cancel': async (input: { requestId: string }) => {
+    const { error } = await supabase.rpc('air_cancel_request', { p_request_id: input.requestId });
+    if (error) throwErr(error, 'Unable to cancel request');
+    return { success: true };
+  },
+  'air.setStatus': async (input: { requestId: string; status: 'InTransit' | 'Completed' }) => {
+    const { error } = await supabase.rpc('air_set_status', {
+      p_request_id: input.requestId,
+      p_status: input.status,
+    });
+    if (error) throwErr(error, 'Unable to update status');
+    return { success: true };
+  },
+  'air.messages': async (input: { requestId: string }) => {
+    const { data, error } = await supabase
+      .from('air_messages').select('*').eq('request_id', input.requestId)
+      .order('created_at', { ascending: true });
+    if (error) {
+      if (isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load messages');
+    }
+    return data ?? [];
+  },
+  'air.sendMessage': async (input: { requestId: string; body: string }) => {
+    const { error } = await supabase.rpc('air_send_message', {
+      p_request_id: input.requestId,
+      p_body: input.body,
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Air cargo is not live yet — apply migration 0163.');
+      throwErr(error, 'Unable to send message');
+    }
+    return { success: true };
+  },
+  // Forwarder side
+  'air.board': async (input: { scope?: 'open' | 'mine' } | undefined) => {
+    const { data, error } = await supabase.rpc('air_forwarder_board', { p_scope: input?.scope ?? 'open' });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load board');
+    }
+    return data ?? [];
+  },
+  'air.submitOffer': async (input: {
+    requestId: string; amount: number; currency?: string; transitDays?: number;
+    departureDate?: string; note?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('air_submit_offer', {
+      p_request_id: input.requestId,
+      p_amount: input.amount,
+      p_currency: input.currency ?? 'CAD',
+      p_transit_days: input.transitDays ?? 0,
+      p_departure_date: input.departureDate ?? null,
+      p_note: input.note ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Air cargo is not live yet — apply migration 0163.');
+      throwErr(error, 'Unable to submit offer');
+    }
+    return { id: data as string };
+  },
+  'air.withdrawOffer': async (input: { offerId: string }) => {
+    const { error } = await supabase.rpc('air_withdraw_offer', { p_offer_id: input.offerId });
+    if (error) throwErr(error, 'Unable to withdraw offer');
+    return { success: true };
+  },
+
+  // =========================================================================
   // GUEST ACCESS (0156) — prepaid invoices with guest surcharge
   // =========================================================================
   'guest.invoices': async (_input, ctx) => {

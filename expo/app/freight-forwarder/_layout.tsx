@@ -9,6 +9,7 @@ export default function FreightForwarderLayout() {
       <Stack.Screen name="rates" />
       <Stack.Screen name="invoicing" />
       <Stack.Screen name="ocean" />
+      <Stack.Screen name="air" />
     </Stack>
   );
 }
