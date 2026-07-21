@@ -17,6 +17,8 @@ export type PromoVideoScene = {
   maxMs?: number;
   /** Show the brand tagline overlay for the final stretch of this clip. */
   tagline?: boolean;
+  /** Short caption/subtitle shown at the bottom while this clip plays. */
+  caption?: string;
 };
 
 /** A full-screen promo / ad card shown between clips. */
@@ -61,12 +63,30 @@ export const PROMO_SUBLINE = 'Trucks · Warehousing · Freight · Cargo · Couri
  */
 export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
   ? [
-      { kind: 'video', url: PROMO_VIDEO_URL, maxMs: 16000, tagline: !PROMO_VIDEO_URL_2 && !PROMO_VIDEO_URL_3 },
+      {
+        kind: 'video',
+        url: PROMO_VIDEO_URL,
+        maxMs: 16000,
+        tagline: !PROMO_VIDEO_URL_2 && !PROMO_VIDEO_URL_3,
+        caption: 'Trucks · Warehousing · Freight',
+      },
       ...(PROMO_VIDEO_URL_2
-        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_2, maxMs: 16000, tagline: !PROMO_VIDEO_URL_3 }]
+        ? [{
+            kind: 'video' as const,
+            url: PROMO_VIDEO_URL_2,
+            maxMs: 16000,
+            tagline: !PROMO_VIDEO_URL_3,
+            caption: 'One network — port, road & air',
+          }]
         : []),
       ...(PROMO_VIDEO_URL_3
-        ? [{ kind: 'video' as const, url: PROMO_VIDEO_URL_3, maxMs: 16000, tagline: true }]
+        ? [{
+            kind: 'video' as const,
+            url: PROMO_VIDEO_URL_3,
+            maxMs: 16000,
+            tagline: true,
+            caption: 'Ship & Return — parcels to your door',
+          }]
         : []),
       {
         kind: 'ad',

@@ -8,6 +8,7 @@ import { Modules } from "@/components/landing/modules";
 import { Gallery } from "@/components/landing/gallery";
 import { News } from "@/components/landing/news";
 import { Spotlight } from "@/components/landing/spotlight";
+import { IntroReel } from "@/components/landing/intro-reel";
 import { CtaFooter } from "@/components/landing/cta-footer";
 
 export default function LandingPage() {
@@ -40,6 +41,7 @@ export default function LandingPage() {
         <Gallery />
         <News />
         <Spotlight />
+        <IntroReel />
         <CtaFooter />
       </div>
     </main>

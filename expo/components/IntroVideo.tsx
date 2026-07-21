@@ -190,6 +190,11 @@ export default function IntroVideo() {
 
       {/* Bottom scrim + tagline for the brand clip */}
       {scene?.kind === 'video' ? <View style={styles.scrim} pointerEvents="none" /> : null}
+      {scene?.kind === 'video' && scene.caption && !showTagline ? (
+        <View style={[styles.captionWrap, { paddingBottom: insets.bottom + 40 }]} pointerEvents="none">
+          <Text style={styles.caption}>{scene.caption}</Text>
+        </View>
+      ) : null}
       {showTagline && scene?.kind === 'video' ? (
         <Animated.View
           style={[styles.taglineWrap, { opacity: taglineFade, paddingBottom: insets.bottom + 72 }]}
@@ -230,6 +235,8 @@ export default function IntroVideo() {
 const styles = StyleSheet.create({
   root: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 200, backgroundColor: C.black },
   scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 260, backgroundColor: '#00000055' },
+  captionWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingHorizontal: 24 },
+  caption: { fontSize: 20, fontWeight: '800' as const, color: C.white, letterSpacing: -0.4, textAlign: 'center' as const, textShadowColor: '#000000AA', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   taglineWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingHorizontal: 24 },
   logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   logoDot: { width: 10, height: 10, borderRadius: 3, backgroundColor: C.accent },
