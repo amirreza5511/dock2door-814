@@ -56,6 +56,12 @@ import {
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
+
+/** Roles that can see the Global Freight world (Domain 6). */
+const GLOBAL_FREIGHT_ROLES: UserRole[] = [
+  "ImporterExporter", "GlobalFreightForwarder", "Carrier",
+  "Customer", "FreightForwarder", "TruckingCompany", "DrayageCompany",
+];
 import { useCustomization } from "@/lib/hooks/use-customization";
 import { cn } from "@/lib/utils";
 
@@ -130,6 +136,19 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/marketplace/create", label: "Post a listing", icon: Plus },
         { href: "/marketplace/my-listings", label: "My listings", icon: Tag },
         { href: "/marketplace/requests", label: "Requests", icon: ClipboardList },
+      ],
+    });
+  }
+
+  // Global Freight is a standalone sixth world (international shipping exchange).
+  if ((role && GLOBAL_FREIGHT_ROLES.includes(role)) || isAdmin || role === "Admin" || role === "SuperAdmin") {
+    sections.push({
+      label: "Global Freight",
+      items: [
+        { href: "/global-freight", label: "Freight exchange", icon: Globe },
+        ...(isAdmin || role === "Admin" || role === "SuperAdmin"
+          ? [{ href: "/admin/freight-review", label: "Freight review", icon: ClipboardCheck }]
+          : []),
       ],
     });
   }

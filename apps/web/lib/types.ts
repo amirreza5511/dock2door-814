@@ -17,6 +17,9 @@ export type UserRole =
   | "SalesAgent"
   | "EmploymentAgency"
   | "CustomsBroker"
+  | "ImporterExporter"
+  | "GlobalFreightForwarder"
+  | "Carrier"
   | "Guest"
   | "Admin"
   | "SuperAdmin";
@@ -32,7 +35,10 @@ export type CompanyType =
   | "CargoInsurer"
   | "MarketplaceBuyer"
   | "EmploymentAgency"
-  | "CustomsBroker";
+  | "CustomsBroker"
+  | "ImporterExporter"
+  | "GlobalFreightForwarder"
+  | "Carrier";
 
 export interface Profile {
   id: string;

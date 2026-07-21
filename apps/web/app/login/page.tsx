@@ -25,6 +25,9 @@ type Role =
   | "MobileRepairProvider"
   | "CargoInsurer"
   | "MarketplaceBuyer"
+  | "ImporterExporter"
+  | "GlobalFreightForwarder"
+  | "Carrier"
   | "SalesAgent"
   | "Guest";
 
@@ -73,6 +76,14 @@ const ROLE_WORLDS: { world: string; roles: RoleOption[] }[] = [
       { id: "MobileRepairProvider", role: "MobileRepairProvider", label: "Mobile Repair & Services", desc: "Dispatch technicians & work crews on-site" },
       { id: "CargoInsurer", role: "CargoInsurer", label: "Cargo Insurer", desc: "Insure freight & shipments by cargo value" },
       { id: "MarketplaceBuyer", role: "MarketplaceBuyer", label: "Marketplace Buyer", desc: "Rent gear, book repairs & insure cargo — no other world needed" },
+    ],
+  },
+  {
+    world: "Global Freight",
+    roles: [
+      { id: "ImporterExporter", role: "ImporterExporter", label: "Importer / Exporter", desc: "Post a single freight quote request — air, ocean, truck, FCL or LCL — and receive competing quotes" },
+      { id: "GlobalFreightForwarder", role: "GlobalFreightForwarder", label: "Global Freight Forwarder", desc: "Quote worldwide freight requests across every mode" },
+      { id: "Carrier", role: "Carrier", label: "Carrier / Shipping Line", desc: "Airline or shipping line quoting freight capacity directly" },
     ],
   },
   {

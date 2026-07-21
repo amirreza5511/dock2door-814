@@ -6,7 +6,7 @@ import type { UserRole } from "@/lib/types";
  * (`supabase/migrations/0129_role_relationships.sql`). Keep all three in sync.
  */
 
-export type Domain = "labour" | "logistics" | "freight" | "drayage" | "marketplace";
+export type Domain = "labour" | "logistics" | "freight" | "drayage" | "marketplace" | "globalfreight";
 
 /**
  * Roles that can enter the shared Marketplace world (rent equipment, book mobile
@@ -54,6 +54,9 @@ export const DOMAIN_BY_ROLE: Partial<Record<UserRole, Domain>> = {
   MobileRepairProvider: "marketplace",
   CargoInsurer: "marketplace",
   MarketplaceBuyer: "marketplace",
+  ImporterExporter: "globalfreight",
+  GlobalFreightForwarder: "globalfreight",
+  Carrier: "globalfreight",
 };
 
 /** Roles that represent a company. They can add compatible roles and use Partners. */
@@ -72,6 +75,9 @@ export const BUSINESS_ROLES: UserRole[] = [
   "MobileRepairProvider",
   "CargoInsurer",
   "MarketplaceBuyer",
+  "ImporterExporter",
+  "GlobalFreightForwarder",
+  "Carrier",
 ];
 
 /** Individual accounts — single-purpose. They never add roles or browse unrelated areas. */
@@ -124,6 +130,9 @@ export const ROLE_LABEL: Record<UserRole, string> = {
   SalesAgent: "Sales Agent",
   EmploymentAgency: "Employment Agency",
   CustomsBroker: "Customs Broker",
+  ImporterExporter: "Importer / Exporter",
+  GlobalFreightForwarder: "Global Freight Forwarder",
+  Carrier: "Carrier / Shipping Line",
   Guest: "Guest",
   Admin: "Admin",
   SuperAdmin: "Super Admin",
@@ -162,6 +171,9 @@ export const COMPANY_TYPE_FOR_ROLE: Partial<Record<UserRole, string>> = {
   MarketplaceBuyer: "MarketplaceBuyer",
   EmploymentAgency: "EmploymentAgency",
   CustomsBroker: "CustomsBroker",
+  ImporterExporter: "ImporterExporter",
+  GlobalFreightForwarder: "GlobalFreightForwarder",
+  Carrier: "Carrier",
 };
 
 /** Tailwind-ish colour tokens per world, for partner-card accents. */
@@ -171,6 +183,7 @@ export const DOMAIN_COLORS: Record<Domain, { text: string; bg: string; border: s
   freight: { text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" },
   drayage: { text: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200" },
   marketplace: { text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" },
+  globalfreight: { text: "text-blue-700", bg: "bg-blue-50", border: "border-blue-200" },
 };
 
 export function isBusinessRole(role: UserRole | string | null | undefined): boolean {
