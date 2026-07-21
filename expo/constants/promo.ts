@@ -32,6 +32,8 @@ export type PromoAdScene = {
   colors: readonly [string, string];
   /** Small "Ad" / "Sponsored" tag in the corner (optional). */
   sponsored?: boolean;
+  /** Advertiser website shown as a call-to-action on the ad card (optional). */
+  website?: string;
 };
 
 export type PromoScene = PromoVideoScene | PromoAdScene;
@@ -98,12 +100,43 @@ export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
       },
       {
         kind: 'ad',
+        durationMs: 5500,
+        badge: 'Sponsor',
+        title: 'Pars Freight Ways',
+        subtitle: 'Over 1M sq ft of food-grade warehousing, a fleet of 120 trucks, freight forwarding & drayage across Canada.',
+        colors: ['#10243A', '#08111E'],
+        sponsored: true,
+        website: 'parsfreight.ca',
+      },
+      {
+        kind: 'ad',
+        durationMs: 5500,
+        badge: 'Sponsor',
+        title: 'CIFFA',
+        subtitle: 'Canadian International Freight Forwarders Association — 300+ member firms, training, certification & industry advocacy.',
+        colors: ['#0B2A2E', '#08111E'],
+        sponsored: true,
+        website: 'ciffa.com',
+      },
+      {
+        kind: 'ad',
+        durationMs: 5500,
+        badge: 'Sponsor',
+        title: 'Paige Logistics',
+        subtitle: 'Award-winning Canadian 3PL — freight forwarding, trucking, intermodal & warehousing across Canada and the USA.',
+        colors: ['#1A2436', '#08111E'],
+        sponsored: true,
+        website: 'paigelogistics.com',
+      },
+      {
+        kind: 'ad',
         durationMs: 5000,
         badge: 'Your space',
-        title: 'Promote here',
-        subtitle: 'This slot is reserved for featured partners and promotions.',
+        title: 'Your ad could be here',
+        subtitle: 'Reach thousands of shippers, carriers & forwarders. Feature your company in the Dock2Door intro.',
         colors: ['#12253D', '#08111E'],
         sponsored: true,
+        website: 'Contact us to advertise',
       },
       {
         kind: 'ad',

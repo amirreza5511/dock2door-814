@@ -182,6 +182,12 @@ export default function IntroVideo() {
               ) : null}
               <Text style={styles.adTitle}>{scene.title}</Text>
               <Text style={styles.adSubtitle}>{scene.subtitle}</Text>
+              {scene.website ? (
+                <View style={styles.adCtaRow}>
+                  <View style={styles.adCtaDot} />
+                  <Text style={styles.adCtaText}>{scene.website}</Text>
+                </View>
+              ) : null}
             </View>
             {scene.sponsored ? <Text style={[styles.sponsoredTag, { top: insets.top + 16 }]}>Ad</Text> : null}
           </LinearGradient>
@@ -250,6 +256,9 @@ const styles = StyleSheet.create({
   adTitle: { fontSize: 44, fontWeight: '900' as const, color: C.white, letterSpacing: -1.2, marginBottom: 14 },
   adSubtitle: { fontSize: 17, fontWeight: '500' as const, color: '#FFFFFFCC', lineHeight: 25 },
   sponsoredTag: { position: 'absolute', left: 20, color: '#FFFFFF88', fontSize: 11, fontWeight: '700' as const, letterSpacing: 1 },
+  adCtaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22 },
+  adCtaDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.accent },
+  adCtaText: { fontSize: 16, fontWeight: '800' as const, color: C.accent, letterSpacing: -0.2 },
 
   progressRow: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', gap: 5 },
   progressTrack: { flex: 1, height: 3, borderRadius: 2, backgroundColor: '#FFFFFF33', overflow: 'hidden' },
