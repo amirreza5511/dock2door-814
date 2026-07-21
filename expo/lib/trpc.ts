@@ -5100,6 +5100,95 @@ const PROCEDURES: Record<string, ProcedureFn> = {
   },
 
   // =========================================================================
+  // PARCEL COUNTER (0164) — post-office style parcel shipping + label/barcode
+  // =========================================================================
+  'parcel.quote': async (input: {
+    length?: number; width?: number; height?: number; dimUnit?: 'cm' | 'in';
+    weight: number; weightUnit?: 'kg' | 'lb';
+    service?: 'regular' | 'expedited' | 'xpresspost' | 'priority'; currency?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('parcel_quote', {
+      p_length: input.length ?? 0,
+      p_width: input.width ?? 0,
+      p_height: input.height ?? 0,
+      p_dim_unit: input.dimUnit ?? 'cm',
+      p_weight: input.weight,
+      p_weight_unit: input.weightUnit ?? 'kg',
+      p_service: input.service ?? 'regular',
+      p_currency: input.currency ?? 'CAD',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Parcel counter is not live yet — apply migration 0164.');
+      throwErr(error, 'Unable to get quote');
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return row ?? null;
+  },
+  'parcel.create': async (input: {
+    fromName?: string; fromLine1?: string; fromCity?: string; fromRegion?: string; fromPostal?: string; fromCountry?: string;
+    toName: string; toLine1?: string; toCity: string; toRegion?: string; toPostal?: string; toCountry?: string;
+    length?: number; width?: number; height?: number; dimUnit?: 'cm' | 'in';
+    weight: number; weightUnit?: 'kg' | 'lb';
+    service?: 'regular' | 'expedited' | 'xpresspost' | 'priority'; currency?: string; notes?: string;
+  }) => {
+    const { data, error } = await supabase.rpc('parcel_create', {
+      p_from_name: input.fromName ?? '',
+      p_from_line1: input.fromLine1 ?? '',
+      p_from_city: input.fromCity ?? '',
+      p_from_region: input.fromRegion ?? '',
+      p_from_postal: input.fromPostal ?? '',
+      p_from_country: input.fromCountry ?? 'CA',
+      p_to_name: input.toName,
+      p_to_line1: input.toLine1 ?? '',
+      p_to_city: input.toCity,
+      p_to_region: input.toRegion ?? '',
+      p_to_postal: input.toPostal ?? '',
+      p_to_country: input.toCountry ?? 'CA',
+      p_length: input.length ?? 0,
+      p_width: input.width ?? 0,
+      p_height: input.height ?? 0,
+      p_dim_unit: input.dimUnit ?? 'cm',
+      p_weight: input.weight,
+      p_weight_unit: input.weightUnit ?? 'kg',
+      p_service: input.service ?? 'regular',
+      p_currency: input.currency ?? 'CAD',
+      p_notes: input.notes ?? '',
+    });
+    if (error) {
+      if (isMissingFunction(error)) throw new Error('Parcel counter is not live yet — apply migration 0164.');
+      throwErr(error, 'Unable to create parcel');
+    }
+    const id = data as string;
+    const { data: row } = await supabase.rpc('parcel_get', { p_id: id });
+    const parcel = Array.isArray(row) ? row[0] : row;
+    return { id, parcel: parcel ?? null };
+  },
+  'parcel.mine': async () => {
+    const { data, error } = await supabase.rpc('parcel_list_mine');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load parcels');
+    }
+    return data ?? [];
+  },
+  'parcel.get': async (input: { id: string }) => {
+    const { data, error } = await supabase.rpc('parcel_get', { p_id: input.id });
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return null;
+      throwErr(error, 'Unable to load parcel');
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return row ?? null;
+  },
+  'parcel.setStatus': async (input: {
+    id: string; status: 'DroppedOff' | 'InTransit' | 'Delivered' | 'Cancelled';
+  }) => {
+    const { error } = await supabase.rpc('parcel_set_status', { p_id: input.id, p_status: input.status });
+    if (error) throwErr(error, 'Unable to update parcel');
+    return { success: true };
+  },
+
+  // =========================================================================
   // GUEST ACCESS (0156) — prepaid invoices with guest surcharge
   // =========================================================================
   'guest.invoices': async (_input, ctx) => {

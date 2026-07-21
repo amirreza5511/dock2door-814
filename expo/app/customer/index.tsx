@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Sparkles, Store } from 'lucide-react-native';
+import { Warehouse, Wrench, TrendingUp, Clock, CheckCircle, AlertCircle, LogOut, Truck, HelpCircle, Users, Ship, Sparkles, Store, Plane, PackageCheck } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import StatusBadge from '@/components/ui/StatusBadge';
 import Card from '@/components/ui/Card';
@@ -160,6 +160,22 @@ export default function CustomerDashboard() {
               </View>
               <Text style={styles.actionTitle}>Ocean Booking</Text>
               <Text style={styles.actionDesc}>Post containers, forwarders bid</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.actionsRow, { marginTop: 10 }]}>
+            <TouchableOpacity onPress={() => router.push('/customer/air' as any)} style={[styles.actionCard, { borderColor: C.purple + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.purpleDim }]}>
+                <Plane size={24} color={C.purple} />
+              </View>
+              <Text style={styles.actionTitle}>Air Cargo</Text>
+              <Text style={styles.actionDesc}>Photos + instant AI estimate, forwarders bid</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/customer/parcel' as any)} style={[styles.actionCard, { borderColor: C.green + '50' }]} activeOpacity={0.8}>
+              <View style={[styles.actionIcon, { backgroundColor: C.greenDim }]}>
+                <PackageCheck size={24} color={C.green} />
+              </View>
+              <Text style={styles.actionTitle}>Parcel Counter</Text>
+              <Text style={styles.actionDesc}>Size, price & print a barcode label</Text>
             </TouchableOpacity>
           </View>
         </View>

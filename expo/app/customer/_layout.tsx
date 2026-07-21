@@ -32,6 +32,8 @@ export default function CustomerLayout() {
       <Tabs.Screen name="billing" options={{ title: 'Billing', tabBarIcon: ({ color }) => <Receipt size={22} color={color} /> }} />
       <Tabs.Screen name="services" options={{ href: null }} />
       <Tabs.Screen name="ocean" options={{ href: null }} />
+      <Tabs.Screen name="air" options={{ href: null }} />
+      <Tabs.Screen name="parcel" options={{ href: null }} />
       <Tabs.Screen name="team" options={{ href: null }} />
     </Tabs>
   );
