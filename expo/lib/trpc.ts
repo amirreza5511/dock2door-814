@@ -7006,6 +7006,32 @@ function maybeLogAiError(key: string, err: unknown): void {
   }
 }
 
+/**
+ * Procedures that must work for guests / explore mode (no session). They fall
+ * back to a guest ctx instead of throwing "Not authenticated". Real actions
+ * (creating a label, paying) stay gated in the UI via useActionGuard.
+ */
+const PUBLIC_PROCEDURES: ReadonlySet<string> = new Set<string>([
+  'parcel.quote',
+  'parcel.rateShopLive',
+  'carriers.list',
+]);
+
+const GUEST_CTX: Ctx = {
+  user: { id: '', role: 'Guest', companyId: null, name: '', email: '' },
+};
+
+async function resolveCtx(key: string): Promise<Ctx> {
+  if (PUBLIC_PROCEDURES.has(key)) {
+    try {
+      return await requireCtx();
+    } catch {
+      return GUEST_CTX;
+    }
+  }
+  return requireCtx();
+}
+
 function callProcedure(ns: string, proc: string, input: unknown): Promise<unknown> {
   const key = procKey(ns, proc);
   const fn = PROCEDURES[key];
@@ -7013,7 +7039,7 @@ function callProcedure(ns: string, proc: string, input: unknown): Promise<unknow
     console.error('[trpc-shim] unknown procedure:', key);
     return Promise.reject(new Error(`Unknown procedure: ${key}`));
   }
-  return requireCtx()
+  return resolveCtx(key)
     .then((ctx) => fn(input, ctx))
     .catch((err: unknown) => {
       // Always log the real error so it's visible in Metro / Rork console,
