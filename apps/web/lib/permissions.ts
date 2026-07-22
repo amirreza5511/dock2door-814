@@ -48,6 +48,8 @@ const SEGMENT_ROLES: Record<string, UserRole[]> = {
   agency: ["EmploymentAgency"],
   "customs-broker": ["CustomsBroker"],
   "global-freight": ["ImporterExporter", "GlobalFreightForwarder", "Carrier", "Customer", "FreightForwarder", "TruckingCompany", "DrayageCompany", "Admin", "SuperAdmin"],
+  // LTL & FTL Quotes (ground freight world) — open to everyone except drivers.
+  "ground-freight": ["ImporterExporter", "GlobalFreightForwarder", "Carrier", "Customer", "FreightForwarder", "TruckingCompany", "DrayageCompany", "WarehouseProvider", "ServiceProvider", "Shipper", "MarketplaceBuyer", "Employer", "SalesAgent", "EmploymentAgency", "CustomsBroker", "CargoInsurer", "EquipmentRentalCompany", "MobileRepairProvider", "Guest", "Admin", "SuperAdmin"],
   guest: ["Guest"],
   admin: ["Admin", "SuperAdmin"],
   "super-admin": ["SuperAdmin"],

@@ -62,6 +62,15 @@ const GLOBAL_FREIGHT_ROLES: UserRole[] = [
   "ImporterExporter", "GlobalFreightForwarder", "Carrier",
   "Customer", "FreightForwarder", "TruckingCompany", "DrayageCompany",
 ];
+
+/** LTL & FTL Quotes (ground freight world) — everyone can post or quote EXCEPT drivers. */
+const GROUND_FREIGHT_ROLES: UserRole[] = [
+  "ImporterExporter", "GlobalFreightForwarder", "Carrier", "Customer",
+  "FreightForwarder", "TruckingCompany", "DrayageCompany", "WarehouseProvider",
+  "ServiceProvider", "Shipper", "MarketplaceBuyer", "Employer", "SalesAgent",
+  "EmploymentAgency", "CustomsBroker", "CargoInsurer", "EquipmentRentalCompany",
+  "MobileRepairProvider", "Guest",
+];
 import { useCustomization } from "@/lib/hooks/use-customization";
 import { cn } from "@/lib/utils";
 
@@ -149,6 +158,16 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         ...(isAdmin || role === "Admin" || role === "SuperAdmin"
           ? [{ href: "/admin/freight-review", label: "Freight review", icon: ClipboardCheck }]
           : []),
+      ],
+    });
+  }
+
+  // LTL & FTL Quotes is a standalone truck-load world (everyone quotes except drivers).
+  if ((role && GROUND_FREIGHT_ROLES.includes(role)) || isAdmin || role === "Admin" || role === "SuperAdmin") {
+    sections.push({
+      label: "LTL & FTL Quotes",
+      items: [
+        { href: "/ground-freight", label: "Truck loads", icon: Truck },
       ],
     });
   }
