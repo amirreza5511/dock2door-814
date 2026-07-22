@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer } from 'expo-audio';
+import { Image } from 'expo-image';
 import { useEventListener } from 'expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -173,7 +174,18 @@ export default function IntroVideo() {
             allowsPictureInPicture={false}
           />
         ) : (
-          <LinearGradient colors={[scene.colors[0], scene.colors[1]]} style={StyleSheet.absoluteFill}>
+          <View style={StyleSheet.absoluteFill}>
+            {scene.image ? (
+              <Image source={{ uri: scene.image }} style={StyleSheet.absoluteFill} contentFit="cover" />
+            ) : null}
+            <LinearGradient
+              colors={
+                scene.image
+                  ? ['#00000022', scene.colors[0] + 'CC', scene.colors[1]]
+                  : [scene.colors[0], scene.colors[1]]
+              }
+              style={StyleSheet.absoluteFill}
+            />
             <View style={styles.adContent}>
               {scene.badge ? (
                 <View style={styles.adBadge}>
@@ -190,7 +202,7 @@ export default function IntroVideo() {
               ) : null}
             </View>
             {scene.sponsored ? <Text style={[styles.sponsoredTag, { top: insets.top + 16 }]}>Ad</Text> : null}
-          </LinearGradient>
+          </View>
         )}
       </Pressable>
 

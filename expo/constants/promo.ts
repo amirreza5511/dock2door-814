@@ -34,6 +34,8 @@ export type PromoAdScene = {
   sponsored?: boolean;
   /** Advertiser website shown as a call-to-action on the ad card (optional). */
   website?: string;
+  /** Full-bleed background image behind the gradient (optional). */
+  image?: string;
 };
 
 export type PromoScene = PromoVideoScene | PromoAdScene;
@@ -107,6 +109,7 @@ export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
         colors: ['#10243A', '#08111E'],
         sponsored: true,
         website: 'parsfreight.ca',
+        image: 'https://r2-pub.rork.com/projects/vaj7ce20dtfjwaoecptg3/assets/e48c412f-fbc6-46ed-bc47-9130ed7ea54e.png',
       },
       {
         kind: 'ad',
@@ -117,6 +120,7 @@ export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
         colors: ['#0B2A2E', '#08111E'],
         sponsored: true,
         website: 'ciffa.com',
+        image: 'https://r2-pub.rork.com/projects/vaj7ce20dtfjwaoecptg3/assets/fc5fefad-769d-4a67-ac10-6e3ac481bec3.png',
       },
       {
         kind: 'ad',
@@ -127,6 +131,7 @@ export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
         colors: ['#1A2436', '#08111E'],
         sponsored: true,
         website: 'paigelogistics.com',
+        image: 'https://r2-pub.rork.com/projects/vaj7ce20dtfjwaoecptg3/assets/8b246f20-b2bb-49ea-9a5a-cf473737c79a.png',
       },
       {
         kind: 'ad',
@@ -137,6 +142,7 @@ export const PROMO_SCENES: readonly PromoScene[] = PROMO_VIDEO_URL
         colors: ['#12253D', '#08111E'],
         sponsored: true,
         website: 'Contact us to advertise',
+        image: 'https://r2-pub.rork.com/projects/vaj7ce20dtfjwaoecptg3/assets/6f1b2020-ac77-46e8-b6f4-fbbba35ea9fe.png',
       },
       {
         kind: 'ad',
