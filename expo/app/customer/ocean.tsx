@@ -18,7 +18,8 @@ import { trpc, type OceanLeg } from '@/lib/trpc';
 import { usePreferences } from '@/store/preferences';
 import { COUNTRIES, SEAPORTS, CURRENCY_CODES, weightUnitFor } from '@/constants/world';
 import { hubsForMode, isHubLiveMember, type LiveHubCity } from '@/constants/canadaHubs';
-import { useExploreStore } from '@/store/explore';
+import { useExploreStore, useActionGuard } from '@/store/explore';
+import { SAMPLE_OCEAN_REQUESTS } from '@/lib/exploreSamples';
 
 function isCanadaName(name: string): boolean {
   const n = name.trim().toLowerCase();
@@ -56,8 +57,9 @@ export default function CustomerOceanScreen() {
   const router = useRouter();
   const utils = trpc.useUtils();
   const isExploring = useExploreStore((s) => s.isExploring);
+  const guard = useActionGuard();
   const mineQuery = trpc.ocean.mine.useQuery(undefined, { enabled: !isExploring });
-  const requests = (mineQuery.data ?? []) as OceanRequest[];
+  const requests = (isExploring ? (SAMPLE_OCEAN_REQUESTS as unknown as OceanRequest[]) : ((mineQuery.data ?? []) as OceanRequest[]));
 
   const [postModal, setPostModal] = useState<boolean>(false);
   const [detailId, setDetailId] = useState<string | null>(null);

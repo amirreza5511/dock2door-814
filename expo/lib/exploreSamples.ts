@@ -181,6 +181,29 @@ export const SAMPLE_GROUND_LOADS = [
   },
 ] as const;
 
+/**
+ * Ocean container requests (Ocean Booking) — trpc.ocean.mine shape. Used to
+ * populate the ocean screen in Explore mode so guests see a realistic board.
+ */
+export const SAMPLE_OCEAN_REQUESTS = [
+  {
+    id: 'ex-oc-1', title: 'Furniture — Vancouver → Jebel Ali',
+    origin_country: 'Canada', origin_port: 'Vancouver', dest_country: 'UAE', dest_port: 'Jebel Ali',
+    container_size: '40ft', cargo_type: 'Furniture', weight: 8200, weight_unit: 'kg',
+    ready_date: null, incoterms: 'FOB', currency: 'CAD', notes: '', status: 'Open',
+    awarded_amount: 0, awarded_name: '', offer_count: 4, created_at: hoursFromNow(-30),
+    dest_hub_city: '', dest_hub_is_member: false,
+  },
+  {
+    id: 'ex-oc-2', title: 'Machinery — Shanghai → Toronto',
+    origin_country: 'China', origin_port: 'Shanghai', dest_country: 'Canada', dest_port: 'Toronto',
+    container_size: 'LCL', cargo_type: 'Machinery parts', weight: 1400, weight_unit: 'kg',
+    ready_date: null, incoterms: 'CIF', currency: 'CAD', notes: '', status: 'Accepted',
+    awarded_amount: 3180, awarded_name: 'PacificLine Forwarding', offer_count: 6, created_at: hoursFromNow(-72),
+    dest_hub_city: 'Toronto', dest_hub_is_member: true,
+  },
+] as const;
+
 /** Customer dashboard — warehouse & service bookings browse */
 export const SAMPLE_WAREHOUSE_LISTINGS = [
   { id: 'ex-wl-1', company_id: 'ex-co-2', name: 'Annacis Island Distribution', city: 'Delta', warehouse_type: 'Dry', available_pallet_capacity: 420, storage_rate_per_pallet: 3.2, status: 'Published' },
