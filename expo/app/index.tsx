@@ -10,7 +10,7 @@ import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, Boxes, Truck, PackageOpen, Anchor,
   Store, Forklift, Hammer, Construction, UsersRound, ChevronRight, Compass, Building2,
-  Package, RotateCcw, Printer,
+  Package, RotateCcw, Printer, Globe, Ship, Plane,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { DOMAINS } from '@/constants/domains';
@@ -196,6 +196,43 @@ export default function Landing() {
                 ].map((b) => (
                   <View key={b.label} style={styles.shipBullet}>
                     <b.icon size={14} color={C.accent} />
+                    <Text style={styles.shipBulletText}>{b.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* International Freight */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>INTERNATIONAL FREIGHT</Text>
+          <Text style={styles.sectionTitle}>Ocean, air &{'\n'}freight quotes.</Text>
+          <TouchableOpacity
+            style={styles.shipCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/international' as never)}
+            testID="home-international"
+          >
+            <LinearGradient colors={['#0B2A3D', '#0A1F2E']} style={styles.shipGrad}>
+              <View style={styles.shipHeaderRow}>
+                <View style={[styles.shipIconWrap, { backgroundColor: C.blueDim }]}>
+                  <Globe size={24} color={C.blue} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shipTitle}>Ship a container or air cargo worldwide</Text>
+                  <Text style={styles.shipDesc}>Post one request — FCL, LCL or air — and get competing quotes from forwarders.</Text>
+                </View>
+                <ChevronRight size={20} color={C.textMuted} />
+              </View>
+              <View style={styles.shipBullets}>
+                {[
+                  { icon: Ship, label: 'Ocean FCL / LCL' },
+                  { icon: Plane, label: 'Air cargo' },
+                  { icon: MapPin, label: 'Canada hubs' },
+                ].map((b) => (
+                  <View key={b.label} style={styles.shipBullet}>
+                    <b.icon size={14} color={C.blue} />
                     <Text style={styles.shipBulletText}>{b.label}</Text>
                   </View>
                 ))}
