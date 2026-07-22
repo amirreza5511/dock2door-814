@@ -156,6 +156,31 @@ export const SAMPLE_FREIGHT_QUOTES = [
   },
 ] as const;
 
+/**
+ * Ground freight loads (LTL & FTL Quotes world) — trpc.freight.mine filtered to
+ * truck/fcl/lcl modes. Shape mirrors the FreightRequest row the ground hub renders.
+ */
+export const SAMPLE_GROUND_LOADS = [
+  {
+    id: 'ex-gl-1', reference_code: 'FRT-30188', title: 'FTL — Toronto → Montreal',
+    freight_mode: 'fcl' as const, origin_city: 'Toronto', origin_country: 'Canada',
+    dest_city: 'Montreal', dest_country: 'Canada', weight: 12000, weight_unit: 'kg',
+    pieces: 24, currency: 'CAD', status: 'Quoted' as const, offer_count: 5, awarded_amount: 0,
+  },
+  {
+    id: 'ex-gl-2', reference_code: 'FRT-30204', title: 'LTL — Vancouver → Calgary',
+    freight_mode: 'truck' as const, origin_city: 'Vancouver', origin_country: 'Canada',
+    dest_city: 'Calgary', dest_country: 'Canada', weight: 1800, weight_unit: 'kg',
+    pieces: 3, currency: 'CAD', status: 'Open' as const, offer_count: 2, awarded_amount: 0,
+  },
+  {
+    id: 'ex-gl-3', reference_code: 'FRT-30150', title: 'LCL — Seattle → Surrey (+ final-mile)',
+    freight_mode: 'lcl' as const, origin_city: 'Seattle', origin_country: 'USA',
+    dest_city: 'Surrey', dest_country: 'Canada', weight: 900, weight_unit: 'kg',
+    pieces: 6, currency: 'CAD', status: 'Accepted' as const, offer_count: 7, awarded_amount: 1240,
+  },
+] as const;
+
 /** Customer dashboard — warehouse & service bookings browse */
 export const SAMPLE_WAREHOUSE_LISTINGS = [
   { id: 'ex-wl-1', company_id: 'ex-co-2', name: 'Annacis Island Distribution', city: 'Delta', warehouse_type: 'Dry', available_pallet_capacity: 420, storage_rate_per_pallet: 3.2, status: 'Published' },

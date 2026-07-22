@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,8 @@ import {
   MapPin, Package, Truck, ArrowRight, Home, Layers,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
+import { useAuthStore } from '@/store/auth';
+import { useExploreStore } from '@/store/explore';
 
 type Scope = 'worldwide' | 'local';
 
@@ -47,6 +49,21 @@ export default function InternationalHub() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [scope, setScope] = useState<Scope>('worldwide');
+  const user = useAuthStore((s) => s.user);
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const startExplore = useExploreStore((s) => s.startExplore);
+
+  /**
+   * Open a quick-access destination. Public routes (/ship, /global-freight) work for
+   * anyone; the customer freight screens need a session, so a signed-out visitor is
+   * dropped into Explore mode (sample data) instead of being bounced home.
+   */
+  const openTile = useCallback((route: string) => {
+    if (!user && !isExploring && route.startsWith('/customer')) {
+      startExplore('ImporterExporter', 'globalfreight');
+    }
+    router.push(route as never);
+  }, [user, isExploring, startExplore, router]);
 
   const tiles = useMemo<QuickTile[]>(
     () => QUICK.filter((t) => t.scope === 'both' || t.scope === scope),
@@ -121,7 +138,7 @@ export default function InternationalHub() {
                 key={t.key}
                 style={styles.quickTile}
                 activeOpacity={0.85}
-                onPress={() => router.push(t.route as never)}
+                onPress={() => openTile(t.route)}
                 testID={`intl-quick-${t.key}`}
               >
                 <View style={[styles.quickIcon, { backgroundColor: `${t.color}22` }]}>

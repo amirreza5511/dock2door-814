@@ -18,8 +18,8 @@ import {
 } from '@/constants/groundFreight';
 import { formatMoney } from '@/constants/world';
 import { useAuthStore } from '@/store/auth';
-import { useExploreStore } from '@/store/explore';
-import { SAMPLE_FREIGHT_QUOTES } from '@/lib/exploreSamples';
+import { useExploreStore, useActionGuard } from '@/store/explore';
+import { SAMPLE_GROUND_LOADS } from '@/lib/exploreSamples';
 import GroundLoadWizard from '@/components/GroundLoadWizard';
 import FreightProviderBoard from '@/components/FreightProviderBoard';
 import ScreenFeedback from '@/components/ui/ScreenFeedback';
@@ -53,6 +53,7 @@ export default function GroundFreightHub() {
 
   const isExploring = useExploreStore((s) => s.isExploring);
   const exploreRole = useExploreStore((s) => s.exploreRole);
+  const guard = useActionGuard();
   const kind = useMemo(
     () => freightRoleKind((isExploring ? exploreRole : user?.role) ?? undefined),
     [user?.role, isExploring, exploreRole],
@@ -66,7 +67,7 @@ export default function GroundFreightHub() {
   const [showBoard, setShowBoard] = useState<boolean>(false);
 
   const mineQuery = trpc.freight.mine.useQuery(undefined, { enabled: isCustomer && !isExploring });
-  const allMine = (isExploring ? (SAMPLE_FREIGHT_QUOTES as unknown as FreightRequest[]) : ((mineQuery.data ?? []) as FreightRequest[]));
+  const allMine = (isExploring ? (SAMPLE_GROUND_LOADS as unknown as FreightRequest[]) : ((mineQuery.data ?? []) as FreightRequest[]));
   const requests = useMemo(
     () => allMine.filter((r) => GROUND_FREIGHT_MODES.includes(r.freight_mode)),
     [allMine],
@@ -77,7 +78,10 @@ export default function GroundFreightHub() {
     void utils.freight.mine.invalidate();
   }, [utils]);
 
-  const openWizard = useCallback(() => setWizardOpen(true), []);
+  const openWizard = useCallback(() => {
+    if (!guard('Post a load & get quotes')) return;
+    setWizardOpen(true);
+  }, [guard]);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
