@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { ChevronLeft, Search, Building2, Star, MapPin, BadgeCheck, Briefcase, ArrowRight, PackageOpen } from 'lucide-react-native';
 import C from '@/constants/colors';
-import { DOMAIN_LABELS, type Domain } from '@/lib/access';
+import { type Domain } from '@/lib/access';
 import {
   SAMPLE_DIRECTORY_COMPANIES, SAMPLE_DIRECTORY_JOBS, SAMPLE_DIRECTORY_LOADS,
   type DirectoryCompany, type DirectoryJob,
@@ -23,9 +23,50 @@ const DOMAIN_COLOR: Record<Domain, string> = {
 };
 
 type Tab = 'companies' | 'jobs' | 'loads';
-type Filter = Domain | 'all';
 
-const FILTERS: Filter[] = ['all', 'labour', 'logistics', 'freight', 'drayage', 'marketplace', 'globalfreight'];
+interface Category {
+  key: string;
+  label: string;
+  keywords: string[];
+}
+
+/** Filter categories — worlds plus finer freight sub-types. Matched by domain or keywords. */
+const CATEGORIES: Category[] = [
+  { key: 'all', label: 'All', keywords: [] },
+  { key: 'labour', label: 'Labour', keywords: ['forklift', 'picker', 'loader', 'staffing', 'shift', 'reach truck', 'dock', 'warehouse loader'] },
+  { key: 'logistics', label: 'Warehousing', keywords: ['warehouse', 'storage', '3pl', 'fulfillment', 'cross-dock', 'pallet'] },
+  { key: 'freight', label: 'Freight & Delivery', keywords: ['freight', 'fleet', 'carrier', 'delivery', 'trucking', 'reefer'] },
+  { key: 'ltl', label: 'LTL', keywords: ['ltl', 'less-than-truckload'] },
+  { key: 'ftl', label: 'FTL', keywords: ['ftl', 'truckload', 'dry van'] },
+  { key: 'finalmile', label: 'Final-mile', keywords: ['final-mile', 'final mile', 'last mile', 'last-mile', 'courier', 'parcel'] },
+  { key: 'ocean', label: 'Ocean FCL/LCL', keywords: ['ocean', 'fcl', 'lcl', 'sea'] },
+  { key: 'air', label: 'Air', keywords: ['air'] },
+  { key: 'drayage', label: 'Drayage', keywords: ['drayage', 'port', 'rail', 'container'] },
+  { key: 'customs', label: 'Customs', keywords: ['customs', 'clearance', 'pars', 'paps', 'broker'] },
+  { key: 'globalfreight', label: 'Global Freight', keywords: ['forwarding', 'forwarder', 'worldwide', 'global'] },
+  { key: 'marketplace', label: 'Rentals & Services', keywords: ['rental', 'crane', 'repair', 'insurance', 'equipment', 'lift', 'service'] },
+];
+
+function wordMatch(text: string, keyword: string): boolean {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(text);
+}
+
+function matchesCategory(text: string, domain: Domain, catKey: string): boolean {
+  if (catKey === 'all') return true;
+  if (domain === catKey) return true;
+  const cat = CATEGORIES.find((c) => c.key === catKey);
+  if (!cat) return true;
+  return cat.keywords.some((kw) => wordMatch(text, kw));
+}
+
+function companyText(c: DirectoryCompany): string {
+  return `${c.roleLabel} ${c.blurb} ${c.name} ${c.domain}`.toLowerCase();
+}
+
+function jobText(j: DirectoryJob): string {
+  return `${j.tag} ${j.title} ${j.company} ${j.domain}`.toLowerCase();
+}
 
 /** Public company & jobs directory — browsable by everyone, even without an account. */
 export default function DirectoryScreen() {
@@ -36,12 +77,27 @@ export default function DirectoryScreen() {
 
   const [tab, setTab] = useState<Tab>('companies');
   const [search, setSearch] = useState<string>('');
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<string>('all');
+
+  // Only show filter chips that actually have content in the active tab — never an empty result.
+  const availableCats = useMemo<Category[]>(() => {
+    if (tab === 'companies') {
+      return CATEGORIES.filter((cat) => cat.key === 'all'
+        || SAMPLE_DIRECTORY_COMPANIES.some((c) => matchesCategory(companyText(c), c.domain, cat.key)));
+    }
+    const list = tab === 'jobs' ? SAMPLE_DIRECTORY_JOBS : SAMPLE_DIRECTORY_LOADS;
+    return CATEGORIES.filter((cat) => cat.key === 'all'
+      || list.some((j) => matchesCategory(jobText(j), j.domain, cat.key)));
+  }, [tab]);
+
+  useEffect(() => {
+    if (!availableCats.some((c) => c.key === filter)) setFilter('all');
+  }, [availableCats, filter]);
 
   const companies = useMemo<DirectoryCompany[]>(() => {
     const q = search.trim().toLowerCase();
     return SAMPLE_DIRECTORY_COMPANIES.filter((c) => {
-      if (filter !== 'all' && c.domain !== filter) return false;
+      if (!matchesCategory(companyText(c), c.domain, filter)) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || c.city.toLowerCase().includes(q) || c.roleLabel.toLowerCase().includes(q);
     });
@@ -50,7 +106,7 @@ export default function DirectoryScreen() {
   const filterList = (list: DirectoryJob[]): DirectoryJob[] => {
     const q = search.trim().toLowerCase();
     return list.filter((j) => {
-      if (filter !== 'all' && j.domain !== filter) return false;
+      if (!matchesCategory(jobText(j), j.domain, filter)) return false;
       if (!q) return true;
       return j.title.toLowerCase().includes(q) || j.city.toLowerCase().includes(q) || j.company.toLowerCase().includes(q);
     });
@@ -118,24 +174,19 @@ export default function DirectoryScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.filterRow}
-        style={styles.filterScroll}
-      >
-        {FILTERS.map((f) => (
+      <View style={styles.filterRow}>
+        {availableCats.map((f) => (
           <TouchableOpacity
-            key={f}
-            style={[styles.chip, filter === f && styles.chipActive]}
-            onPress={() => setFilter(f)}
+            key={f.key}
+            style={[styles.chip, filter === f.key && styles.chipActive]}
+            onPress={() => setFilter(f.key)}
           >
-            <Text style={[styles.chipText, filter === f && styles.chipTextActive]}>
-              {f === 'all' ? 'All' : DOMAIN_LABELS[f]}
+            <Text style={[styles.chipText, filter === f.key && styles.chipTextActive]}>
+              {f.label}
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -225,8 +276,7 @@ const styles = StyleSheet.create({
   tabActive: { borderColor: C.accent, backgroundColor: C.accentDim },
   tabText: { fontSize: 13, fontWeight: '700' as const, color: C.textSecondary },
   tabTextActive: { color: C.accent },
-  filterScroll: { maxHeight: 52 },
-  filterRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.card },
   chipActive: { borderColor: C.accent, backgroundColor: C.accentDim },
   chipText: { fontSize: 12, fontWeight: '600' as const, color: C.textSecondary },
