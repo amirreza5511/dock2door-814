@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platfo
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { ChevronLeft, Search, Building2, Star, MapPin, BadgeCheck, Briefcase, ArrowRight } from 'lucide-react-native';
+import { ChevronLeft, Search, Building2, Star, MapPin, BadgeCheck, Briefcase, ArrowRight, PackageOpen } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { DOMAIN_LABELS, type Domain } from '@/lib/access';
 import {
-  SAMPLE_DIRECTORY_COMPANIES, SAMPLE_DIRECTORY_JOBS,
+  SAMPLE_DIRECTORY_COMPANIES, SAMPLE_DIRECTORY_JOBS, SAMPLE_DIRECTORY_LOADS,
   type DirectoryCompany, type DirectoryJob,
 } from '@/lib/exploreSamples';
 import { useExploreStore } from '@/store/explore';
@@ -22,7 +22,7 @@ const DOMAIN_COLOR: Record<Domain, string> = {
   globalfreight: C.blue,
 };
 
-type Tab = 'companies' | 'jobs';
+type Tab = 'companies' | 'jobs' | 'loads';
 type Filter = Domain | 'all';
 
 const FILTERS: Filter[] = ['all', 'labour', 'logistics', 'freight', 'drayage', 'marketplace', 'globalfreight'];
@@ -47,14 +47,18 @@ export default function DirectoryScreen() {
     });
   }, [search, filter]);
 
-  const jobs = useMemo<DirectoryJob[]>(() => {
+  const filterList = (list: DirectoryJob[]): DirectoryJob[] => {
     const q = search.trim().toLowerCase();
-    return SAMPLE_DIRECTORY_JOBS.filter((j) => {
+    return list.filter((j) => {
       if (filter !== 'all' && j.domain !== filter) return false;
       if (!q) return true;
       return j.title.toLowerCase().includes(q) || j.city.toLowerCase().includes(q) || j.company.toLowerCase().includes(q);
     });
-  }, [search, filter]);
+  };
+
+  const jobs = useMemo<DirectoryJob[]>(() => filterList(SAMPLE_DIRECTORY_JOBS), [search, filter]);
+  const loads = useMemo<DirectoryJob[]>(() => filterList(SAMPLE_DIRECTORY_LOADS), [search, filter]);
+  const activeList = tab === 'jobs' ? jobs : tab === 'loads' ? loads : [];
 
   const gate = (label: string) => {
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -103,7 +107,14 @@ export default function DirectoryScreen() {
           onPress={() => setTab('jobs')}
         >
           <Briefcase size={15} color={tab === 'jobs' ? C.accent : C.textSecondary} />
-          <Text style={[styles.tabText, tab === 'jobs' && styles.tabTextActive]}>Jobs & loads</Text>
+          <Text style={[styles.tabText, tab === 'jobs' && styles.tabTextActive]}>Jobs</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, tab === 'loads' && styles.tabActive]}
+          onPress={() => setTab('loads')}
+        >
+          <PackageOpen size={15} color={tab === 'loads' ? C.accent : C.textSecondary} />
+          <Text style={[styles.tabText, tab === 'loads' && styles.tabTextActive]}>Loads</Text>
         </TouchableOpacity>
       </View>
 
@@ -166,8 +177,8 @@ export default function DirectoryScreen() {
                 </View>
               </View>
             ))
-          : jobs.map((j) => (
-              <TouchableOpacity key={j.id} style={styles.card} activeOpacity={0.85} onPress={() => gate(`Apply to ${j.title}`)}>
+          : activeList.map((j) => (
+              <TouchableOpacity key={j.id} style={styles.card} activeOpacity={0.85} onPress={() => gate(tab === 'loads' ? `View ${j.title}` : `Apply to ${j.title}`)}>
                 <View style={styles.jobTop}>
                   <View style={[styles.jobTag, { backgroundColor: DOMAIN_COLOR[j.domain] + '18' }]}>
                     <Text style={[styles.jobTagText, { color: DOMAIN_COLOR[j.domain] }]}>{j.tag}</Text>
@@ -183,14 +194,14 @@ export default function DirectoryScreen() {
                 <View style={styles.cardFooter}>
                   <Text style={styles.jobWhen}>{j.when}</Text>
                   <View style={styles.applyRow}>
-                    <Text style={styles.applyText}>View & apply</Text>
+                    <Text style={styles.applyText}>{tab === 'loads' ? 'View & quote' : 'View & apply'}</Text>
                     <ArrowRight size={14} color={C.accent} />
                   </View>
                 </View>
               </TouchableOpacity>
             ))}
 
-        {(tab === 'companies' ? companies.length : jobs.length) === 0 ? (
+        {(tab === 'companies' ? companies.length : activeList.length) === 0 ? (
           <View style={styles.empty}>
             <Search size={36} color={C.textMuted} />
             <Text style={styles.emptyText}>No matches. Try a different search or filter.</Text>

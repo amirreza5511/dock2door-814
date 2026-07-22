@@ -287,15 +287,35 @@ export const SAMPLE_DIRECTORY_COMPANIES: DirectoryCompany[] = [
   { id: 'dir-c8', name: 'Fraser Valley Staffing', domain: 'labour', roleLabel: 'Employment Agency', city: 'Abbotsford, BC', rating: 4.3, reviews: 97, verified: true, blurb: 'Warehouse & general labour crews, same-day placement.' },
   { id: 'dir-c9', name: 'Delta Customs Brokers', domain: 'drayage', roleLabel: 'Customs Broker', city: 'Delta, BC', rating: 4.8, reviews: 52, verified: true, blurb: 'Import/export clearance, HS classification, PARS/PAPS.' },
   { id: 'dir-c10', name: 'Cascade Cargo Insurance', domain: 'marketplace', roleLabel: 'Cargo Insurer', city: 'Vancouver, BC', rating: 4.6, reviews: 38, verified: true, blurb: 'Per-shipment and annual freight cargo cover.' },
+  { id: 'dir-c11', name: 'Pars Freight Ways', domain: 'globalfreight', roleLabel: 'Freight Forwarder', city: 'Toronto, ON', rating: 4.8, reviews: 143, verified: true, blurb: '1M+ sq ft food-grade warehousing, 120-truck fleet, worldwide forwarding.' },
+  { id: 'dir-c12', name: 'Maple Leaf LTL', domain: 'freight', roleLabel: 'Fleet / Carrier', city: 'Calgary, AB', rating: 4.5, reviews: 118, verified: true, blurb: 'Less-than-truckload specialists, daily lanes across Western Canada.' },
+  { id: 'dir-c13', name: 'Last Mile Couriers', domain: 'freight', roleLabel: 'Owner-Operator', city: 'Vancouver, BC', rating: 4.7, reviews: 205, verified: true, blurb: 'Same-day final-mile parcel & pallet delivery to the door.' },
+  { id: 'dir-c14', name: 'Pacific Gateway Warehousing', domain: 'logistics', roleLabel: 'Warehouse Provider', city: 'Surrey, BC', rating: 4.6, reviews: 71, verified: true, blurb: 'Bonded & general storage, fulfillment and cross-dock.' },
+  { id: 'dir-c15', name: 'TransCanada Carriers', domain: 'freight', roleLabel: 'Fleet / Carrier', city: 'Mississauga, ON', rating: 4.4, reviews: 260, verified: true, blurb: 'FTL dry van & reefer, cross-country lanes, EDI tracking.' },
+  { id: 'dir-c16', name: 'Skyline Air Cargo', domain: 'globalfreight', roleLabel: 'Carrier / Airline', city: 'Toronto, ON', rating: 4.5, reviews: 66, verified: true, blurb: 'Consolidated & express air freight, worldwide gateways.' },
+  { id: 'dir-c17', name: 'Harbour Bridge Staffing', domain: 'labour', roleLabel: 'Employment Agency', city: 'Vancouver, BC', rating: 4.2, reviews: 54, verified: false, blurb: 'On-demand forklift, picker and dock crews.' },
+  { id: 'dir-c18', name: 'ProLift Equipment', domain: 'marketplace', roleLabel: 'Equipment Rental', city: 'Delta, BC', rating: 4.6, reviews: 47, verified: true, blurb: 'Forklifts, reach trucks and scissor lifts, delivered.' },
 ];
 
 export const SAMPLE_DIRECTORY_JOBS: DirectoryJob[] = [
   { id: 'dir-j1', title: 'Forklift Operator', domain: 'labour', company: 'Preview Logistics Co.', city: 'Richmond, BC', pay: '$31/hr', when: 'Tomorrow · 7am–3pm', tag: 'Shift' },
   { id: 'dir-j2', title: 'Warehouse Loader', domain: 'labour', company: 'Preview Logistics Co.', city: 'Vancouver, BC', pay: '$24/hr', when: 'Today · 8am–4pm', tag: 'Shift' },
-  { id: 'dir-j3', title: 'FTL: Richmond → Surrey, 10 pallets', domain: 'freight', company: 'Open load', city: 'Richmond, BC', pay: '$520', when: 'Open now', tag: 'Load' },
-  { id: 'dir-j4', title: 'Reefer: Abbotsford → Vancouver', domain: 'freight', company: 'Open load', city: 'Abbotsford, BC', pay: '$890', when: 'Open now', tag: 'Load' },
-  { id: 'dir-j5', title: 'Import 40HQ pickup — Vanterm', domain: 'drayage', company: 'DRY-10461', city: 'Vancouver, BC', pay: 'Quote', when: 'Open now', tag: 'Container' },
-  { id: 'dir-j6', title: 'Ocean FCL: Shanghai → Vancouver', domain: 'globalfreight', company: 'Quote request', city: 'Shanghai, CN', pay: '4 quotes', when: '2 days ago', tag: 'Freight' },
-  { id: 'dir-j7', title: 'Air: Frankfurt → Toronto, 800kg', domain: 'globalfreight', company: 'Quote request', city: 'Frankfurt, DE', pay: '1 quote', when: '6h ago', tag: 'Freight' },
+  { id: 'dir-j9', title: 'Order Picker (evening)', domain: 'labour', company: 'Annacis Island Distribution', city: 'Delta, BC', pay: '$26/hr', when: 'Today · 4pm–11pm', tag: 'Shift' },
+  { id: 'dir-j10', title: 'Reach Truck Operator', domain: 'labour', company: 'Harbour Freight Ltd.', city: 'Burnaby, BC', pay: '$33/hr', when: 'Fri · 6am–2pm', tag: 'Shift' },
   { id: 'dir-j8', title: 'Crane lift — 20t, half day', domain: 'marketplace', company: 'Buyer request', city: 'Surrey, BC', pay: 'Quote', when: 'This week', tag: 'Service' },
+  { id: 'dir-j11', title: 'Mobile reefer repair — on-site', domain: 'marketplace', company: 'Buyer request', city: 'Burnaby, BC', pay: 'Quote', when: 'Today', tag: 'Service' },
+  { id: 'dir-j12', title: 'Customs clearance — import', domain: 'drayage', company: 'Buyer request', city: 'Delta, BC', pay: 'Quote', when: 'This week', tag: 'Service' },
+];
+
+/** Open freight loads shown in the public directory (separate from jobs). */
+export const SAMPLE_DIRECTORY_LOADS: DirectoryJob[] = [
+  { id: 'dir-l3', title: 'FTL: Richmond → Surrey, 10 pallets', domain: 'freight', company: 'Open load', city: 'Richmond, BC', pay: '$520', when: 'Open now', tag: 'FTL' },
+  { id: 'dir-l4', title: 'Reefer: Abbotsford → Vancouver', domain: 'freight', company: 'Open load', city: 'Abbotsford, BC', pay: '$890', when: 'Open now', tag: 'Reefer' },
+  { id: 'dir-l13', title: 'LTL: 3 pallets, Vancouver → Calgary', domain: 'freight', company: 'Open load', city: 'Vancouver, BC', pay: '$430', when: 'Open now', tag: 'LTL' },
+  { id: 'dir-l14', title: 'Final-mile: 12 parcels, Surrey routes', domain: 'freight', company: 'Open load', city: 'Surrey, BC', pay: '$310', when: 'Today', tag: 'Final-mile' },
+  { id: 'dir-l5', title: 'Import 40HQ pickup — Vanterm', domain: 'drayage', company: 'DRY-10461', city: 'Vancouver, BC', pay: 'Quote', when: 'Open now', tag: 'Container' },
+  { id: 'dir-l15', title: 'Export 20ft drop — Deltaport', domain: 'drayage', company: 'DRY-10467', city: 'Delta, BC', pay: 'Quote', when: 'Open now', tag: 'Container' },
+  { id: 'dir-l6', title: 'Ocean FCL: Shanghai → Vancouver', domain: 'globalfreight', company: 'Quote request', city: 'Shanghai, CN', pay: '4 quotes', when: '2 days ago', tag: 'Ocean' },
+  { id: 'dir-l16', title: 'Ocean LCL: Ningbo → Toronto, 6 CBM', domain: 'globalfreight', company: 'Quote request', city: 'Ningbo, CN', pay: '2 quotes', when: '1 day ago', tag: 'LCL' },
+  { id: 'dir-l7', title: 'Air: Frankfurt → Toronto, 800kg', domain: 'globalfreight', company: 'Quote request', city: 'Frankfurt, DE', pay: '1 quote', when: '6h ago', tag: 'Air' },
 ];

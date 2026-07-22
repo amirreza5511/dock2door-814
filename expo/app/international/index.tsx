@@ -1,38 +1,57 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   ChevronLeft, ChevronRight, Globe, Ship, Plane, Boxes, Container,
-  MapPin, Package, Truck, ArrowRight,
+  MapPin, Package, Truck, ArrowRight, Home, Layers,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 
-const FEATURES = [
-  { icon: Boxes, title: 'One request, many quotes', desc: 'Describe your shipment once — air, ocean, truck, FCL or LCL — and receive competing quotes.' },
-  { icon: Ship, title: 'Ocean FCL & LCL', desc: 'Post full containers or shared (LCL) cargo. Forwarders bid, you pick price and transit time.' },
-  { icon: MapPin, title: 'Canada hub network', desc: 'Route ocean, air and truck into a destination city hub for smooth final-mile delivery.' },
-] as const;
+type Scope = 'worldwide' | 'local';
 
-const ACTIONS = [
-  { key: 'ocean', title: 'Ocean booking (FCL / LCL)', desc: '20ft · 40ft · 40ft HC · shared LCL', icon: Ship, color: C.blue, route: '/customer/ocean' },
-  { key: 'air', title: 'Air cargo', desc: 'Photos + instant AI estimate, forwarders bid', icon: Plane, color: C.purple, route: '/customer/air' },
-  { key: 'quote', title: 'Get competing quotes', desc: 'Air, ocean, truck, FCL or LCL — one request', icon: Globe, color: C.green, route: '/global-freight' },
-  { key: 'hubs', title: 'Canada hub network', desc: 'Route freight into a destination city hub', icon: MapPin, color: C.accent, route: '/global-freight/hubs' },
-  { key: 'drayage', title: 'Container drayage', desc: 'Port pickup / delivery of your container', icon: Container, color: C.blue, route: '/customer/drayage' },
+type QuickTile = {
+  key: string;
+  label: string;
+  icon: typeof Ship;
+  color: string;
+  route: string;
+  scope: 'both' | Scope;
+};
+
+const QUICK: QuickTile[] = [
+  { key: 'ocean', label: 'Ocean\nFCL / LCL', icon: Ship, color: C.blue, route: '/customer/ocean', scope: 'worldwide' },
+  { key: 'air', label: 'Air\ncargo', icon: Plane, color: C.purple, route: '/customer/air', scope: 'worldwide' },
+  { key: 'ltl', label: 'LTL / FTL\ntrucking', icon: Truck, color: C.green, route: '/customer/post-load', scope: 'local' },
+  { key: 'finalmile', label: 'Final-mile\ndelivery', icon: Home, color: C.accent, route: '/ship', scope: 'local' },
+  { key: 'drayage', label: 'Container\ndrayage', icon: Container, color: C.blue, route: '/customer/drayage', scope: 'both' },
+  { key: 'quote', label: 'Get\nquotes', icon: Globe, color: C.yellow, route: '/global-freight', scope: 'both' },
+];
+
+const FEATURES = [
+  { icon: Boxes, title: 'One request, many quotes', desc: 'Describe your shipment once — air, ocean, truck, LTL, FTL, FCL or LCL — and get competing quotes.' },
+  { icon: Layers, title: 'LTL to full container', desc: 'From a single pallet (LTL) to full truckloads and full containers — every size is covered.' },
+  { icon: MapPin, title: 'Worldwide & local', desc: 'Ship internationally or move freight domestically, with final-mile delivery to the door.' },
 ] as const;
 
 const MODES = [
   { icon: Plane, label: 'Air' },
   { icon: Ship, label: 'Ocean' },
-  { icon: Truck, label: 'Truck' },
+  { icon: Truck, label: 'LTL / FTL' },
   { icon: Boxes, label: 'FCL / LCL' },
+  { icon: Home, label: 'Final-mile' },
 ] as const;
 
 export default function InternationalHub() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const [scope, setScope] = useState<Scope>('worldwide');
+
+  const tiles = useMemo<QuickTile[]>(
+    () => QUICK.filter((t) => t.scope === 'both' || t.scope === scope),
+    [scope],
+  );
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
@@ -55,12 +74,32 @@ export default function InternationalHub() {
           <View style={styles.iconWrap}>
             <Globe size={32} color={C.blue} />
           </View>
-          <Text style={styles.badge}>INTERNATIONAL FREIGHT · SHIP ANYWHERE</Text>
-          <Text style={styles.title}>Ocean, air &{'\n'}freight quotes.</Text>
+          <Text style={styles.badge}>FREIGHT · WORLDWIDE & LOCAL</Text>
+          <Text style={styles.title}>Ship anything,{'\n'}anywhere.</Text>
           <Text style={styles.desc}>
-            Post one request — full container, shared LCL or air cargo — and receive competing
-            quotes from forwarders and carriers worldwide, then track your booking.
+            Ocean, air, LTL, FTL and full containers — post one request and receive competing
+            quotes from forwarders and carriers, then track it all the way to the door.
           </Text>
+        </View>
+
+        {/* Scope switch */}
+        <View style={styles.scopeRow}>
+          <TouchableOpacity
+            style={[styles.scopeBtn, scope === 'worldwide' && styles.scopeBtnActive]}
+            onPress={() => setScope('worldwide')}
+            testID="intl-scope-worldwide"
+          >
+            <Globe size={15} color={scope === 'worldwide' ? C.white : C.textSecondary} />
+            <Text style={[styles.scopeText, scope === 'worldwide' && styles.scopeTextActive]}>Worldwide</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.scopeBtn, scope === 'local' && styles.scopeBtnActive]}
+            onPress={() => setScope('local')}
+            testID="intl-scope-local"
+          >
+            <MapPin size={15} color={scope === 'local' ? C.white : C.textSecondary} />
+            <Text style={[styles.scopeText, scope === 'local' && styles.scopeTextActive]}>Local / domestic</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Mode chips */}
@@ -71,6 +110,27 @@ export default function InternationalHub() {
               <Text style={styles.modeChipText}>{m.label}</Text>
             </View>
           ))}
+        </View>
+
+        {/* Quick access grid */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>QUICK ACCESS</Text>
+          <View style={styles.quickGrid}>
+            {tiles.map((t) => (
+              <TouchableOpacity
+                key={t.key}
+                style={styles.quickTile}
+                activeOpacity={0.85}
+                onPress={() => router.push(t.route as never)}
+                testID={`intl-quick-${t.key}`}
+              >
+                <View style={[styles.quickIcon, { backgroundColor: `${t.color}22` }]}>
+                  <t.icon size={22} color={t.color} />
+                </View>
+                <Text style={styles.quickLabel}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Primary CTA */}
@@ -87,29 +147,6 @@ export default function InternationalHub() {
               <ChevronRight size={18} color={C.white} />
             </LinearGradient>
           </TouchableOpacity>
-        </View>
-
-        {/* Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>WHAT DO YOU WANT TO SHIP?</Text>
-          {ACTIONS.map((a) => (
-            <TouchableOpacity
-              key={a.key}
-              style={styles.actionCard}
-              activeOpacity={0.85}
-              onPress={() => router.push(a.route as never)}
-              testID={`intl-action-${a.key}`}
-            >
-              <View style={[styles.actionIcon, { backgroundColor: `${a.color}22` }]}>
-                <a.icon size={20} color={a.color} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.actionTitle}>{a.title}</Text>
-                <Text style={styles.actionDesc}>{a.desc}</Text>
-              </View>
-              <ChevronRight size={18} color={C.textMuted} />
-            </TouchableOpacity>
-          ))}
         </View>
 
         {/* How it works */}
@@ -159,22 +196,23 @@ const styles = StyleSheet.create({
   badge: { fontSize: 11, fontWeight: '700' as const, letterSpacing: 0.8, marginBottom: 8, color: C.blue },
   title: { fontSize: 32, fontWeight: '800' as const, color: C.text, letterSpacing: -0.8, marginBottom: 12, lineHeight: 38 },
   desc: { fontSize: 15, color: C.textSecondary, lineHeight: 23 },
-  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 24, marginTop: 18 },
+  scopeRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 24, marginTop: 18 },
+  scopeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingVertical: 12, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  scopeBtnActive: { backgroundColor: C.blue, borderColor: C.blue },
+  scopeText: { fontSize: 13, fontWeight: '700' as const, color: C.textSecondary },
+  scopeTextActive: { color: C.white },
+  modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 24, marginTop: 14 },
   modeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
   modeChipText: { fontSize: 14, fontWeight: '600' as const, color: C.text },
   section: { paddingHorizontal: 24, marginTop: 22 },
   sectionLabel: { fontSize: 11, color: C.blue, fontWeight: '700' as const, letterSpacing: 1.5, marginBottom: 12 },
+  quickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  quickTile: { width: '31.5%', alignItems: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 6, borderRadius: 16, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
+  quickIcon: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  quickLabel: { fontSize: 12, fontWeight: '700' as const, color: C.text, textAlign: 'center', lineHeight: 15 },
   ctaPrimary: { borderRadius: 14, overflow: 'hidden' },
   ctaGrad: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingVertical: 17 },
   ctaText: { flex: 1, color: C.white, fontSize: 16, fontWeight: '800' as const },
-  actionCard: {
-    flexDirection: 'row', gap: 14, alignItems: 'center',
-    backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border,
-    padding: 16, marginBottom: 10,
-  },
-  actionIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  actionTitle: { fontSize: 15, fontWeight: '700' as const, color: C.text, marginBottom: 3 },
-  actionDesc: { fontSize: 12, color: C.textSecondary, lineHeight: 17 },
   featureCard: {
     flexDirection: 'row', gap: 14, alignItems: 'center',
     backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border,
