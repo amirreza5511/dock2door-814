@@ -67,7 +67,7 @@ function IdleAttract({ children }: { children: React.ReactNode }) {
 void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const PUBLIC_SEGMENTS = ['', 'auth', '+not-found', 'explore', 'directory', 'ship'];
+const PUBLIC_SEGMENTS = ['', 'auth', '+not-found', 'explore', 'directory', 'ship', 'international', 'ground-freight', 'global-freight'];
 
 type ReactCreateElement = typeof React.createElement;
 type ReactRuntimeWithGuard = typeof React & { __dock2doorTextNodeGuard?: boolean };
