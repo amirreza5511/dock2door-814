@@ -10,7 +10,7 @@ import {
   Warehouse, Wrench, Users, ShieldCheck, ArrowRight,
   MapPin, TrendingUp, Clock, Star, Boxes, Truck, PackageOpen, Anchor,
   Store, Forklift, Hammer, Construction, UsersRound, ChevronRight, Compass, Building2,
-  Package, RotateCcw, Printer, Globe, Ship, Plane,
+  Package, RotateCcw, Printer, Globe, Ship, Plane, Layers, Home,
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { DOMAINS } from '@/constants/domains';
@@ -233,6 +233,43 @@ export default function Landing() {
                 ].map((b) => (
                   <View key={b.label} style={styles.shipBullet}>
                     <b.icon size={14} color={C.blue} />
+                    <Text style={styles.shipBulletText}>{b.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {/* LTL & FTL Quotes */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>LTL & FTL QUOTES</Text>
+          <Text style={styles.sectionTitle}>Truck loads,{'\n'}competing prices.</Text>
+          <TouchableOpacity
+            style={styles.shipCard}
+            activeOpacity={0.85}
+            onPress={() => router.push('/ground-freight' as never)}
+            testID="home-ground-freight"
+          >
+            <LinearGradient colors={['#0E2A1C', '#0A1F16']} style={styles.shipGrad}>
+              <View style={styles.shipHeaderRow}>
+                <View style={[styles.shipIconWrap, { backgroundColor: C.greenDim }]}>
+                  <Truck size={24} color={C.green} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.shipTitle}>Get a price for any truck load</Text>
+                  <Text style={styles.shipDesc}>Local, across Canada or worldwide — post once and let carriers compete on price.</Text>
+                </View>
+                <ChevronRight size={20} color={C.textMuted} />
+              </View>
+              <View style={styles.shipBullets}>
+                {[
+                  { icon: Layers, label: 'LTL part loads' },
+                  { icon: Truck, label: 'FTL full trucks' },
+                  { icon: Home, label: 'Final-mile' },
+                ].map((b) => (
+                  <View key={b.label} style={styles.shipBullet}>
+                    <b.icon size={14} color={C.green} />
                     <Text style={styles.shipBulletText}>{b.label}</Text>
                   </View>
                 ))}

@@ -27,12 +27,19 @@ type BoardRow = {
 
 /** Provider board used by freight forwarders/carriers (kind='freight') and by
  *  trucking/drayage companies quoting the ground leg (kind='ground'). */
-export default function FreightProviderBoard({ kind }: { kind: 'freight' | 'ground' }) {
+export default function FreightProviderBoard({ kind, modeFilter, title }: {
+  kind: 'freight' | 'ground';
+  /** Optional freight_mode allow-list — limits the board to a subset (e.g. ground/truck loads). */
+  modeFilter?: FreightMode[];
+  /** Optional heading override for the open tab. */
+  title?: string;
+}) {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
   const [scope, setScope] = useState<'open' | 'mine'>('open');
   const boardQuery = trpc.freight.board.useQuery({ scope });
-  const rows = (boardQuery.data ?? []) as BoardRow[];
+  const allRows = (boardQuery.data ?? []) as BoardRow[];
+  const rows = modeFilter ? allRows.filter((r) => modeFilter.includes(r.freight_mode)) : allRows;
   const submitMutation = trpc.freight.submitOffer.useMutation();
 
   const [target, setTarget] = useState<BoardRow | null>(null);
@@ -66,7 +73,7 @@ export default function FreightProviderBoard({ kind }: { kind: 'freight' | 'grou
     }
   }, [target, amount, currency, transit, note, submitMutation, utils]);
 
-  const heading = kind === 'ground' ? 'Container pickup requests' : 'Open freight requests';
+  const heading = title ?? (kind === 'ground' ? 'Container pickup requests' : 'Open freight requests');
 
   return (
     <View style={styles.wrap}>
