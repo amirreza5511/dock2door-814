@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X, Check, Send, Home, Sparkles } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
+import DateField from '@/components/ui/DateField';
 import Button from '@/components/ui/Button';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
@@ -198,7 +199,7 @@ export default function GroundLoadWizard({
             {loadType !== 'ftl' && (
               <Input label="Pallets / pieces" value={pallets} onChangeText={setPallets} keyboardType="numeric" placeholder="1" />
             )}
-            <Input label="Ready date (optional)" value={readyDate} onChangeText={setReadyDate} placeholder="YYYY-MM-DD" />
+            <DateField label="Ready date (optional)" value={readyDate} onChange={setReadyDate} placeholder="Pick a date" minimumDate={new Date()} />
             <Input label="Commodity (optional)" value={commodity} onChangeText={setCommodity} placeholder="What are you shipping?" />
 
             {/* Final-mile */}
