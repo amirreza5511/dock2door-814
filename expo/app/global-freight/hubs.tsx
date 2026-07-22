@@ -10,6 +10,8 @@ import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
 import { sortedCanadaHubs, isHubLiveMember, liveHubCount, type LiveHubCity } from '@/constants/canadaHubs';
 import type { FreightMode } from '@/constants/globalFreight';
+import { useAuthStore } from '@/store/auth';
+import { useExploreStore } from '@/store/explore';
 
 interface ModeDef {
   key: FreightMode;
@@ -30,7 +32,9 @@ export default function CanadaHubsScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const user = useAuthStore((s) => s.user);
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000, enabled: Boolean(user) && !isExploring });
   const liveCities = useMemo<LiveHubCity[]>(() => (networkHubsQuery.data ?? []) as LiveHubCity[], [networkHubsQuery.data]);
 
   const hubs = useMemo(() => sortedCanadaHubs(liveCities), [liveCities]);

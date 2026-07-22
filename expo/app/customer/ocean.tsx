@@ -18,6 +18,7 @@ import { trpc, type OceanLeg } from '@/lib/trpc';
 import { usePreferences } from '@/store/preferences';
 import { COUNTRIES, SEAPORTS, CURRENCY_CODES, weightUnitFor } from '@/constants/world';
 import { hubsForMode, isHubLiveMember, type LiveHubCity } from '@/constants/canadaHubs';
+import { useExploreStore } from '@/store/explore';
 
 function isCanadaName(name: string): boolean {
   const n = name.trim().toLowerCase();
@@ -54,7 +55,8 @@ export default function CustomerOceanScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
-  const mineQuery = trpc.ocean.mine.useQuery(undefined);
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const mineQuery = trpc.ocean.mine.useQuery(undefined, { enabled: !isExploring });
   const requests = (mineQuery.data ?? []) as OceanRequest[];
 
   const [postModal, setPostModal] = useState<boolean>(false);
@@ -80,7 +82,7 @@ export default function CustomerOceanScreen() {
   const [destHubId, setDestHubId] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000 });
+  const networkHubsQuery = trpc.freight.networkHubs.useQuery(undefined, { staleTime: 5 * 60 * 1000, enabled: !isExploring });
   const liveCities = useMemo<LiveHubCity[]>(() => (networkHubsQuery.data ?? []) as LiveHubCity[], [networkHubsQuery.data]);
   const destIsCanada = isCanadaName(destCountry);
   const eligibleHubs = useMemo(() => (destIsCanada ? hubsForMode(containerSize === 'LCL' ? 'lcl' : 'fcl', liveCities) : []), [destIsCanada, containerSize, liveCities]);
