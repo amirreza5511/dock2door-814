@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { money } from "@/lib/hooks/use-loads";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_DRAYAGE_DASHBOARD } from "@/lib/explore-samples";
 
 interface DrayageOrder {
   id: string;
@@ -59,9 +61,15 @@ function useMyQuotes() {
 }
 
 export default function DrayageCompanyPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [tab, setTab] = useState<"open" | "quotes">("open");
   const openQ = useOpenOrders();
   const quotesQ = useMyQuotes();
+  const openOrders = isExploring
+    ? (SAMPLE_DRAYAGE_DASHBOARD.openOrders as unknown as DrayageOrder[])
+    : (openQ.data ?? []);
+  const myQuotes = isExploring ? ([] as DrayageQuote[]) : (quotesQ.data ?? []);
   const qc = useQueryClient();
   const supabase = getBrowserSupabase();
   const [priceById, setPriceById] = useState<Record<string, string>>({});
@@ -83,9 +91,10 @@ export default function DrayageCompanyPage() {
     },
   });
 
-  const quotedOrderIds = useMemo(() => new Set((quotesQ.data ?? []).map((q) => q.order_id)), [quotesQ.data]);
+  const quotedOrderIds = useMemo(() => new Set(myQuotes.map((q) => q.order_id)), [myQuotes]);
 
   const doSubmit = async (orderId: string) => {
+    if (!guard("Submit a drayage quote")) return;
     const price = Number(priceById[orderId]);
     if (!Number.isFinite(price) || price <= 0) { window.alert("Enter a valid price."); return; }
     setBusyId(orderId);
@@ -109,17 +118,17 @@ export default function DrayageCompanyPage() {
 
       <div className="flex gap-2">
         <TabButton active={tab === "open"} onClick={() => setTab("open")}>Open orders</TabButton>
-        <TabButton active={tab === "quotes"} onClick={() => setTab("quotes")}>My quotes ({quotesQ.data?.length ?? 0})</TabButton>
+        <TabButton active={tab === "quotes"} onClick={() => setTab("quotes")}>My quotes ({myQuotes.length})</TabButton>
       </div>
 
       {tab === "open" ? (
-        openQ.isLoading ? (
+        !isExploring && openQ.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : (openQ.data ?? []).length === 0 ? (
+        ) : openOrders.length === 0 ? (
           <Empty icon={<Ship className="h-8 w-8 text-muted-foreground" />} text="No open container orders right now." />
         ) : (
           <div className="grid gap-3">
-            {(openQ.data ?? []).map((o) => {
+            {openOrders.map((o) => {
               const alreadyQuoted = quotedOrderIds.has(o.id);
               return (
                 <Card key={o.id}>
@@ -162,15 +171,15 @@ export default function DrayageCompanyPage() {
             })}
           </div>
         )
-      ) : quotesQ.isLoading ? (
+      ) : !isExploring && quotesQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : (quotesQ.data ?? []).length === 0 ? (
+      ) : myQuotes.length === 0 ? (
         <Empty icon={<Send className="h-8 w-8 text-muted-foreground" />} text="You haven't quoted any orders yet." />
       ) : (
         <Card>
           <CardHeader><CardTitle className="text-base">Your quotes</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {(quotesQ.data ?? []).map((qt) => (
+            {myQuotes.map((qt) => (
               <div key={qt.id} className="flex items-center justify-between rounded-lg border border-white/5 bg-card/60 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium">{money(Number(qt.price))} {qt.currency ?? "CAD"}</p>

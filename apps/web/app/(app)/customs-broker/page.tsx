@@ -7,6 +7,22 @@ import { Inbox, Landmark, FileCheck2, BadgeDollarSign, ArrowRight } from "lucide
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { useExplore } from "@/lib/explore-store";
+
+const brokerDate = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+const SAMPLE_BROKER_OPEN: RequestRow[] = [
+  { id: "ex-br-o1", title: "Import clearance — Electronics (42 cartons)", status: "Open", customer_name: "Preview Logistics Co.", created_at: brokerDate(-6) },
+  { id: "ex-br-o2", title: "Import clearance — Furniture (1×40HQ)", status: "Open", customer_name: "Harbour Freight Ltd.", created_at: brokerDate(-20) },
+];
+const SAMPLE_BROKER_MINE: RequestRow[] = [
+  { id: "ex-br-m1", title: "Import clearance — Apparel", status: "InProgress", customer_name: "Annacis Island Distribution", created_at: brokerDate(-30) },
+  { id: "ex-br-m2", title: "Export clearance — Machinery parts", status: "DocsRequired", customer_name: "Preview Logistics Co.", created_at: brokerDate(-48) },
+  { id: "ex-br-m3", title: "Import clearance — Produce (reefer)", status: "Cleared", customer_name: "Riverside Cold Storage", created_at: brokerDate(-120) },
+  { id: "ex-br-m4", title: "Import clearance — Auto parts", status: "Cleared", customer_name: "Harbour Freight Ltd.", created_at: brokerDate(-200) },
+];
+const SAMPLE_BROKER_BILLING: BillingRow[] = [
+  { id: "ex-br-b1", net_to_broker: 420 }, { id: "ex-br-b2", net_to_broker: 380 }, { id: "ex-br-b3", net_to_broker: 510 },
+];
 
 interface RequestRow {
   id: string;
@@ -26,10 +42,12 @@ interface BillingRow {
 const ACTIVE_STATUSES = ["Quoted", "InProgress", "DocsRequired"];
 
 export default function CustomsBrokerDashboardPage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
 
   const openQ = useQuery({
     queryKey: ["broker", "requests", "open"],
+    enabled: !isExploring,
     refetchInterval: 30000,
     queryFn: async (): Promise<RequestRow[]> => {
       const { data, error } = await supabase.rpc("broker_list_requests", { p_scope: "open" });
@@ -39,6 +57,7 @@ export default function CustomsBrokerDashboardPage() {
   });
   const mineQ = useQuery({
     queryKey: ["broker", "requests", "mine"],
+    enabled: !isExploring,
     queryFn: async (): Promise<RequestRow[]> => {
       const { data, error } = await supabase.rpc("broker_list_requests", { p_scope: "mine" });
       if (error) return [];
@@ -47,6 +66,7 @@ export default function CustomsBrokerDashboardPage() {
   });
   const billingQ = useQuery({
     queryKey: ["broker", "billing"],
+    enabled: !isExploring,
     queryFn: async (): Promise<BillingRow[]> => {
       const { data, error } = await supabase.rpc("broker_list_billing");
       if (error) return [];
@@ -54,11 +74,12 @@ export default function CustomsBrokerDashboardPage() {
     },
   });
 
-  const open = useMemo(() => openQ.data ?? [], [openQ.data]);
-  const mine = useMemo(() => mineQ.data ?? [], [mineQ.data]);
+  const open = useMemo<RequestRow[]>(() => (isExploring ? SAMPLE_BROKER_OPEN : (openQ.data ?? [])), [openQ.data, isExploring]);
+  const mine = useMemo<RequestRow[]>(() => (isExploring ? SAMPLE_BROKER_MINE : (mineQ.data ?? [])), [mineQ.data, isExploring]);
   const active = mine.filter((r) => ACTIVE_STATUSES.includes(r.status));
   const cleared = mine.filter((r) => r.status === "Cleared");
-  const earned = (billingQ.data ?? []).reduce((s, b) => s + Number(b.net_to_broker ?? 0), 0);
+  const billing = isExploring ? SAMPLE_BROKER_BILLING : (billingQ.data ?? []);
+  const earned = billing.reduce((s, b) => s + Number(b.net_to_broker ?? 0), 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

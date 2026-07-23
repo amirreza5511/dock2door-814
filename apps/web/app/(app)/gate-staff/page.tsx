@@ -7,6 +7,14 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const gateDate = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+const SAMPLE_GATE_APPTS: Appointment[] = [
+  { id: "ex-ga-1", reference: "APT-5521", driver_name: "Marcus L.", carrier_name: "Harbour Freight Ltd.", status: "AtGate", scheduled_start: gateDate(0.5), dock_door: "7" },
+  { id: "ex-ga-2", reference: "APT-5524", driver_name: "Priya S.", carrier_name: "PacRim Drayage", status: "Scheduled", scheduled_start: gateDate(2), dock_door: null },
+  { id: "ex-ga-3", reference: "APT-5518", driver_name: "Dan K.", carrier_name: "Maple Leaf LTL", status: "AtDoor", scheduled_start: gateDate(-1), dock_door: "3" },
+];
 
 interface Appointment {
   id: string;
@@ -31,12 +39,15 @@ const EVENT_KINDS: { kind: string; label: string }[] = [
 ];
 
 export default function GateStaffPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ["gate", "appointments"],
+    enabled: !isExploring,
     refetchInterval: 20000,
     queryFn: async (): Promise<Appointment[]> => {
       const { data, error } = await supabase
@@ -65,9 +76,10 @@ export default function GateStaffPage() {
     },
   });
 
-  const rows = useMemo(() => q.data ?? [], [q.data]);
+  const rows = useMemo<Appointment[]>(() => (isExploring ? SAMPLE_GATE_APPTS : (q.data ?? [])), [q.data, isExploring]);
 
   const doRecord = async (appointmentId: string, kind: string) => {
+    if (!guard("Record a gate event")) return;
     setBusy(`${appointmentId}:${kind}`);
     try {
       await record.mutateAsync({ appointmentId, kind });
@@ -86,7 +98,7 @@ export default function GateStaffPage() {
         <p className="mt-1 text-sm text-muted-foreground">Check trucks in and out and move them through the yard.</p>
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
         <Card>

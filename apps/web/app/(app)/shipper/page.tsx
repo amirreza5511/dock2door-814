@@ -7,10 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMyPostedLoads, CARGO_LABEL, VEHICLE_LABEL, money, type LoadRow } from "@/lib/hooks/use-loads";
+import { useExplore } from "@/lib/explore-store";
+import { SAMPLE_SHIPPER_LOADS } from "@/lib/explore-samples";
 
 export default function ShipperDashboardPage() {
+  const { isExploring } = useExplore();
   const q = useMyPostedLoads();
-  const loads = useMemo<LoadRow[]>(() => q.data ?? [], [q.data]);
+  const loads = useMemo<LoadRow[]>(
+    () => (isExploring ? (SAMPLE_SHIPPER_LOADS as unknown as LoadRow[]) : (q.data ?? [])),
+    [q.data, isExploring],
+  );
 
   const stats = useMemo(
     () => ({
@@ -48,7 +54,7 @@ export default function ShipperDashboardPage() {
           <Link href="/shipper/loads" className="text-sm font-medium text-primary hover:underline">Track all</Link>
         </CardHeader>
         <CardContent className="space-y-3">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : recent.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">

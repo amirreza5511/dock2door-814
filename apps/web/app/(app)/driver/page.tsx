@@ -7,13 +7,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMyTrips, useAdvanceLoad, CARGO_LABEL, VEHICLE_LABEL, money, loadStageLabel, LOAD_STATUS_FLOW, type LoadRow } from "@/lib/hooks/use-loads";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_SHIPPER_LOADS } from "@/lib/explore-samples";
 
 export default function DriverDashboardPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const trips = useMyTrips();
   const advance = useAdvanceLoad();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const rows = useMemo<LoadRow[]>(() => trips.data ?? [], [trips.data]);
+  const rows = useMemo<LoadRow[]>(
+    () => (isExploring ? (SAMPLE_SHIPPER_LOADS as unknown as LoadRow[]) : (trips.data ?? [])),
+    [trips.data, isExploring],
+  );
   const active = useMemo(() => rows.filter((l) => ["Accepted", "EnRoute", "Arrived"].includes(l.status)), [rows]);
   const stats = useMemo(
     () => ({
@@ -25,6 +32,7 @@ export default function DriverDashboardPage() {
   );
 
   const doAdvance = async (l: LoadRow) => {
+    if (!guard(`Advance load ${l.id}`)) return;
     const flow = LOAD_STATUS_FLOW[l.status];
     if (!flow) return;
     setBusyId(l.id);
@@ -60,7 +68,7 @@ export default function DriverDashboardPage() {
           <Link href="/driver/my-loads" className="text-sm font-medium text-primary hover:underline">All trips</Link>
         </CardHeader>
         <CardContent className="space-y-3">
-          {trips.isLoading ? (
+          {!isExploring && trips.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : active.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">

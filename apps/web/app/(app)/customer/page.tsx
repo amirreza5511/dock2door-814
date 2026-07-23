@@ -11,6 +11,8 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { useExplore } from "@/lib/explore-store";
+import { SAMPLE_WAREHOUSE_BOOKINGS } from "@/lib/explore-samples";
 
 interface BookingRow {
   id: string;
@@ -47,10 +49,12 @@ const ACTIONS = [
 ];
 
 export default function CustomerHomePage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
 
   const bookingsQ = useQuery({
     queryKey: ["customer", "dashboard", "bookings"],
+    enabled: !isExploring,
     queryFn: async (): Promise<BookingRow[]> => {
       const { data, error } = await supabase
         .from("warehouse_bookings")
@@ -62,7 +66,10 @@ export default function CustomerHomePage() {
     },
   });
 
-  const bookings = useMemo(() => bookingsQ.data ?? [], [bookingsQ.data]);
+  const bookings = useMemo<BookingRow[]>(
+    () => (isExploring ? (SAMPLE_WAREHOUSE_BOOKINGS as unknown as BookingRow[]) : (bookingsQ.data ?? [])),
+    [bookingsQ.data, isExploring],
+  );
 
   const stats = useMemo(() => {
     const active = bookings.filter((b) => ["Confirmed", "InProgress"].includes(b.status)).length;
@@ -115,7 +122,7 @@ export default function CustomerHomePage() {
           <p className="text-base font-semibold">Recent bookings</p>
           <Link href="/customer/bookings" className="text-sm font-medium text-primary hover:underline">See all</Link>
         </div>
-        {bookingsQ.isLoading ? (
+        {!isExploring && bookingsQ.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : recent.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center">

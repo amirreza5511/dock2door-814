@@ -8,6 +8,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_SHIPMENTS: ShipmentRow[] = [
+  { id: "ex-shp-1a2b3c4d", status: "EnRoute", carrier_code: "HARB", service_level: "FTL", tracking_code: "D2D-48210", created_at: new Date(Date.now() - 6 * 3600e3).toISOString() },
+  { id: "ex-shp-5e6f7a8b", status: "Scheduled", carrier_code: "HARB", service_level: "Reefer", tracking_code: "D2D-48244", created_at: new Date(Date.now() - 20 * 3600e3).toISOString() },
+  { id: "ex-shp-9c0d1e2f", status: "Delivered", carrier_code: "MAPL", service_level: "LTL", tracking_code: "D2D-48099", created_at: new Date(Date.now() - 72 * 3600e3).toISOString() },
+];
 
 interface ShipmentRow {
   id: string;
@@ -19,8 +26,10 @@ interface ShipmentRow {
 }
 
 export default function TruckingDispatchPage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
   const q = useQuery({
+    enabled: !isExploring,
     queryKey: ["trucking", "shipments"],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -32,6 +41,8 @@ export default function TruckingDispatchPage() {
       return (data ?? []) as ShipmentRow[];
     },
   });
+
+  const rows = isExploring ? SAMPLE_SHIPMENTS : (q.data ?? []);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -55,12 +66,12 @@ export default function TruckingDispatchPage() {
       <Card>
         <CardHeader>
           <CardTitle>Active shipments</CardTitle>
-          <CardDescription>{q.data?.length ?? 0} shipments</CardDescription>
+          <CardDescription>{rows.length} shipments</CardDescription>
         </CardHeader>
         <CardContent>
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (q.data ?? []).length === 0 ? (
+          ) : rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">No shipments yet.</p>
           ) : (
             <Table>
@@ -74,7 +85,7 @@ export default function TruckingDispatchPage() {
                 </TR>
               </THead>
               <TBody>
-                {(q.data ?? []).map((s) => (
+                {rows.map((s) => (
                   <TR key={s.id}>
                     <TD className="font-mono text-xs">{s.id.slice(0, 8)}</TD>
                     <TD>

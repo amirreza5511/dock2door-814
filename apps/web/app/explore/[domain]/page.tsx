@@ -2,9 +2,11 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import { ChevronLeft, Compass, ArrowRight, Building2, CheckCircle2, UserPlus } from "lucide-react";
-import { DOMAIN_MAP, DOMAIN_ACCENT, type Domain } from "@/lib/explore-catalog";
+import { DOMAIN_MAP, DOMAIN_ACCENT, EXPLORE_ROLE_ROUTE, type Domain } from "@/lib/explore-catalog";
+import { startExploreCookie } from "@/lib/explore-store";
+import type { UserRole } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -12,10 +14,18 @@ const VALID: Domain[] = ["labour", "logistics", "freight", "drayage", "marketpla
 
 export default function DomainIntroPage({ params }: { params: Promise<{ domain: string }> }) {
   const { domain: domainParam } = use(params);
+  const router = useRouter();
   const domainKey = domainParam as Domain;
   if (!VALID.includes(domainKey)) notFound();
   const domain = DOMAIN_MAP[domainKey];
   const accent = DOMAIN_ACCENT[domain.key];
+
+  const exploreAs = (role: string) => {
+    const route = EXPLORE_ROLE_ROUTE[role];
+    if (!route) return;
+    startExploreCookie(role as UserRole, domainKey);
+    router.push(route);
+  };
 
   return (
     <div className="mx-auto min-h-screen max-w-3xl px-4 py-8">
@@ -47,9 +57,9 @@ export default function DomainIntroPage({ params }: { params: Promise<{ domain: 
       </section>
 
       <section className="mb-8">
-        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Roles in this world</h2>
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Explore as</h2>
         <p className="mb-3 text-sm text-muted-foreground">
-          Create a free account to start working in any role — or browse the directory first.
+          Jump into any role’s real dashboard with sample data — no account needed.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {domain.roles.map((r) => (
@@ -62,9 +72,9 @@ export default function DomainIntroPage({ params }: { params: Promise<{ domain: 
                   <p className="font-semibold">{r.label}</p>
                   <p className="text-sm text-muted-foreground">{r.desc}</p>
                 </div>
-                <Link href={`/login?next=/dashboard`}>
-                  <Button size="sm" variant="secondary">Start</Button>
-                </Link>
+                <Button size="sm" variant="secondary" onClick={() => exploreAs(r.role)}>
+                  Explore
+                </Button>
               </CardContent>
             </Card>
           ))}

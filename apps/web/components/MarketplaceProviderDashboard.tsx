@@ -7,6 +7,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Tag, Inbox, Store, ChevronRight, UserCircle, type LucideIcon } from "lucide-react";
 import type { ServiceType } from "@/lib/serviceMarketplace";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const mpDate = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+function sampleProviderData(type: ServiceType) {
+  return {
+    companyId: null as string | null,
+    listings: [
+      { id: "ex-pl-1", title: type === "cargo_insurance" ? "Per-Shipment Cargo Cover" : type === "equipment_rental" ? "Operated Crane — 20t" : "Mobile Reefer & Trailer Repair", service_type: type, subcategory: null, status: "Active", hourly_rate: 145 },
+      { id: "ex-pl-2", title: type === "cargo_insurance" ? "Annual Freight Policy" : type === "equipment_rental" ? "Reach Forklift — daily" : "Forklift Field Service", service_type: type, subcategory: null, status: "Active", hourly_rate: 120 },
+    ],
+    jobs: [
+      { id: "ex-pj-1", status: "Requested", quote_status: "requested", quoted_amount: null, total_price: null, commission_amount: 0, location_city: "Burnaby", date_time_start: mpDate(26), payment_status: "Pending", created_at: mpDate(-4) },
+      { id: "ex-pj-2", status: "Scheduled", quote_status: "accepted", quoted_amount: 880, total_price: 880, commission_amount: 88, location_city: "Surrey", date_time_start: mpDate(48), payment_status: "Held", created_at: mpDate(-26) },
+      { id: "ex-pj-3", status: "Completed", quote_status: "accepted", quoted_amount: 290, total_price: 290, commission_amount: 29, location_city: "Delta", date_time_start: mpDate(-40), payment_status: "Paid", created_at: mpDate(-96) },
+    ] as any[],
+  };
+}
 
 export interface ProviderDashboardConfig {
   kicker: string;
@@ -32,11 +49,14 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
  * marketplace tables and links into the shared marketplace flow.
  */
 export default function MarketplaceProviderDashboard({ config }: { config: ProviderDashboardConfig }) {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const Icon = config.icon;
 
   const dataQ = useQuery({
     queryKey: ["provider-dashboard", config.primaryType],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -70,9 +90,10 @@ export default function MarketplaceProviderDashboard({ config }: { config: Provi
     },
   });
 
-  const listings = dataQ.data?.listings ?? [];
-  const jobs = dataQ.data?.jobs ?? [];
-  const companyId = dataQ.data?.companyId ?? null;
+  const sample = isExploring ? sampleProviderData(config.primaryType) : null;
+  const listings = sample?.listings ?? dataQ.data?.listings ?? [];
+  const jobs = sample?.jobs ?? dataQ.data?.jobs ?? [];
+  const companyId = sample?.companyId ?? dataQ.data?.companyId ?? null;
 
   const stats = {
     active: listings.filter((l: any) => l.status === "Active" || l.status === "Available").length,
@@ -100,12 +121,22 @@ export default function MarketplaceProviderDashboard({ config }: { config: Provi
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Provider dashboard</h1>
           <p className="text-sm text-muted-foreground">{config.tagline}</p>
         </div>
-        <Link
-          href={`/marketplace/create?type=${config.primaryType}`}
-          className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-        >
-          <Plus className="h-4 w-4" /> New listing
-        </Link>
+        {isExploring ? (
+          <button
+            type="button"
+            onClick={() => guard("Create a new listing")}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" /> New listing
+          </button>
+        ) : (
+          <Link
+            href={`/marketplace/create?type=${config.primaryType}`}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" /> New listing
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

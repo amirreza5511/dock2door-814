@@ -10,6 +10,16 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const whDate = (d: number): string => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+const whCreated = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+const SAMPLE_WH_BOOKINGS: BookingRow[] = [
+  { id: "ex-whb-1a2b3c4d", status: "Requested", customer_company_id: "explore-company", warehouse_company_id: "ex-co-2", listing_id: "ex-wl-1", start_date: whDate(2), end_date: whDate(32), proposed_price: 1044, counter_offer_price: null, final_price: null, created_at: whCreated(-18) },
+  { id: "ex-whb-2b3c4d5e", status: "Confirmed", customer_company_id: "explore-company", warehouse_company_id: "ex-co-2", listing_id: "ex-wl-2", start_date: whDate(-5), end_date: whDate(25), proposed_price: 1280, counter_offer_price: null, final_price: 1280, created_at: whCreated(-140) },
+  { id: "ex-whb-3c4d5e6f", status: "InProgress", customer_company_id: "ex-co-3", warehouse_company_id: "ex-co-2", listing_id: "ex-wl-3", start_date: whDate(-12), end_date: whDate(18), proposed_price: 2100, counter_offer_price: null, final_price: 2100, created_at: whCreated(-300) },
+  { id: "ex-whb-4d5e6f70", status: "Completed", customer_company_id: "ex-co-3", warehouse_company_id: "ex-co-2", listing_id: "ex-wl-1", start_date: whDate(-40), end_date: whDate(-2), proposed_price: 2700, counter_offer_price: null, final_price: 2700, created_at: whCreated(-760) },
+];
 
 // ── Real schema columns from warehouse_bookings (0001 + 0004) ──────────────
 // Columns: proposed_price, counter_offer_price, final_price  (NO total_amount)
@@ -58,6 +68,8 @@ type DialogState =
   | null;
 
 export default function WarehouseBookingsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
 
@@ -76,6 +88,7 @@ export default function WarehouseBookingsPage() {
 
   const bookingsQuery = useQuery({
     queryKey: ["warehouse", "bookings"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("warehouse_bookings")
@@ -88,6 +101,8 @@ export default function WarehouseBookingsPage() {
       return (data ?? []) as BookingRow[];
     },
   });
+
+  const bookings = isExploring ? SAMPLE_WH_BOOKINGS : (bookingsQuery.data ?? []);
 
   const transition = useMutation({
     mutationFn: async (input: { id: string; next: string; reason?: string; counterPrice?: number }) => {
@@ -113,6 +128,7 @@ export default function WarehouseBookingsPage() {
   }
 
   function handleTransitionClick(b: BookingRow, next: string) {
+    if (!guard("Update this booking")) return;
     if (next === "Cancelled") {
       openDialog({ type: "cancel", booking: b });
     } else if (next === "CounterOffered") {
@@ -157,12 +173,12 @@ export default function WarehouseBookingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>All bookings</CardTitle>
-          <CardDescription>{bookingsQuery.data?.length ?? 0} total</CardDescription>
+          <CardDescription>{bookings.length} total</CardDescription>
         </CardHeader>
         <CardContent>
-          {bookingsQuery.isLoading ? (
+          {!isExploring && bookingsQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (bookingsQuery.data ?? []).length === 0 ? (
+          ) : bookings.length === 0 ? (
             <p className="text-sm text-muted-foreground">No bookings yet.</p>
           ) : (
             <Table>
@@ -177,7 +193,7 @@ export default function WarehouseBookingsPage() {
                 </TR>
               </THead>
               <TBody>
-                {(bookingsQuery.data ?? []).map((b) => (
+                {bookings.map((b) => (
                   <TR key={b.id}>
                     <TD className="font-mono text-xs">{b.id.slice(0, 8)}</TD>
                     <TD>

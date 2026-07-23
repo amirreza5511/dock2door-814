@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_CONTAINER_ORDERS } from "@/lib/explore-samples";
 
 const CONTAINER_SIZES = ["20ft", "40ft", "40HC", "45HC", "53ft"];
 const CONTAINER_TYPES = ["Standard", "Reefer", "Flatrack", "Tank", "Open Top", "High Cube"];
@@ -61,12 +63,15 @@ interface DrayCompany {
 }
 
 export default function FreightForwarderPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState<boolean>(false);
 
   const ordersQuery = useQuery({
     queryKey: ["forwarder", "orders"],
+    enabled: !isExploring,
     refetchInterval: 30000,
     queryFn: async (): Promise<DrayageOrder[]> => {
       const { data, error } = await supabase
@@ -107,7 +112,10 @@ export default function FreightForwarderPage() {
     },
   });
 
-  const orders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
+  const orders = useMemo<DrayageOrder[]>(
+    () => (isExploring ? (SAMPLE_CONTAINER_ORDERS as unknown as DrayageOrder[]) : (ordersQuery.data ?? [])),
+    [ordersQuery.data, isExploring],
+  );
   const terminals = useMemo(() => terminalsQuery.data ?? [], [terminalsQuery.data]);
   const companies = useMemo(() => companiesQuery.data ?? [], [companiesQuery.data]);
   const portRailTerminals = useMemo(
@@ -138,7 +146,7 @@ export default function FreightForwarderPage() {
       </div>
 
       <button
-        onClick={() => setShowForm(true)}
+        onClick={() => { if (guard("Post a container order")) setShowForm(true); }}
         className="flex w-full items-center gap-4 rounded-2xl bg-primary p-4 text-left text-primary-foreground transition-opacity hover:opacity-90"
       >
         <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/20">
@@ -174,7 +182,7 @@ export default function FreightForwarderPage() {
 
       <div>
         <p className="mb-3 text-base font-semibold">Your container orders</p>
-        {ordersQuery.isLoading ? (
+        {!isExploring && ordersQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : orders.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center">

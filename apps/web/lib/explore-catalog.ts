@@ -157,6 +157,34 @@ export const DOMAIN_MAP: Record<Domain, DomainDef> = DOMAINS.reduce(
   {} as Record<Domain, DomainDef>,
 );
 
+/**
+ * Web dashboard route for each explorable role. A visitor taps "Explore as
+ * [role]" on the domain page, we set the explore cookie, then navigate here.
+ * Mirrors the mobile domain routes (adjusted to the web app's URL scheme).
+ */
+export const EXPLORE_ROLE_ROUTE: Record<string, string> = {
+  Employer: "/employer",
+  Worker: "/worker",
+  EmploymentAgency: "/agency",
+  Customer: "/customer",
+  WarehouseProvider: "/warehouse",
+  ServiceProvider: "/service-provider",
+  GateStaff: "/gate-staff",
+  Shipper: "/shipper",
+  Driver: "/driver",
+  TruckingCompany: "/trucking",
+  FreightForwarder: "/freight-forwarder",
+  DrayageCompany: "/drayage-company",
+  CustomsBroker: "/customs-broker",
+  MarketplaceBuyer: "/marketplace-buyer",
+  EquipmentRentalCompany: "/rental-company",
+  MobileRepairProvider: "/repair-provider",
+  CargoInsurer: "/cargo-insurer",
+  ImporterExporter: "/global-freight",
+  GlobalFreightForwarder: "/global-freight",
+  Carrier: "/global-freight",
+};
+
 export interface DirectoryCompany {
   id: string; name: string; domain: Domain; roleLabel: string;
   city: string; rating: number; reviews: number; verified: boolean; blurb: string;

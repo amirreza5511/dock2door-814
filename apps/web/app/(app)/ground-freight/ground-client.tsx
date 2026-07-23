@@ -23,6 +23,8 @@ import {
   type CoverageArea, type LoadType,
 } from "@/lib/ground-freight";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_GROUND_LOADS } from "@/lib/explore-samples";
 
 interface FreightRequest {
   id: string; reference_code: string; title: string; freight_mode: FreightMode;
@@ -45,6 +47,7 @@ interface BoardRow {
 const LOAD_ICON: Record<LoadType, typeof Truck> = { ltl: Layers, ftl: Truck, lcl: Boxes };
 
 export function GroundFreightClient({ role }: { role: UserRole | null }) {
+  const guard = useActionGuard();
   const kind = freightRoleKind(role);
   const isCustomer = kind === "customer";
   const isProvider = kind === "freight" || kind === "ground";
@@ -110,7 +113,7 @@ export function GroundFreightClient({ role }: { role: UserRole | null }) {
       {/* CTAs */}
       <div className="space-y-3">
         {isCustomer || kind === "none" || kind === "admin" ? (
-          <Button size="lg" className="w-full bg-emerald-600 hover:bg-emerald-500" onClick={() => setWizardOpen(true)}>
+          <Button size="lg" className="w-full bg-emerald-600 hover:bg-emerald-500" onClick={() => { if (guard("Get quotes for my load")) setWizardOpen(true); }}>
             <Plus className="mr-1.5 h-4 w-4" /> Get quotes for my load
           </Button>
         ) : null}
@@ -158,24 +161,28 @@ export function GroundFreightClient({ role }: { role: UserRole | null }) {
 /* ---------------- Customer loads ---------------- */
 
 function MyLoads({ onPost }: { onPost: () => void }) {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
   const q = useQuery({
     queryKey: ["freight", "mine"],
+    enabled: !isExploring,
     queryFn: async (): Promise<FreightRequest[]> => {
       const { data, error } = await supabase.rpc("freight_list_mine");
       if (error) throw error;
       return (data as FreightRequest[] | null) ?? [];
     },
   });
-  const loads = useMemo(
-    () => (q.data ?? []).filter((r) => GROUND_FREIGHT_MODES.includes(r.freight_mode)),
-    [q.data],
+  const loads = useMemo<FreightRequest[]>(
+    () => (isExploring
+      ? (SAMPLE_GROUND_LOADS as unknown as FreightRequest[])
+      : (q.data ?? []).filter((r) => GROUND_FREIGHT_MODES.includes(r.freight_mode))),
+    [q.data, isExploring],
   );
 
   return (
     <div>
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-400">My loads</p>
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : loads.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 py-10 text-center">

@@ -9,6 +9,14 @@ import {
   Search, ShoppingBag, ChevronRight, Wrench, Forklift, Hammer, ShieldCheck, Construction, type LucideIcon,
 } from "lucide-react";
 import { SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, type ServiceType } from "@/lib/serviceMarketplace";
+import { useExplore } from "@/lib/explore-store";
+
+const mbDate = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+const SAMPLE_BUYER_REQUESTS = [
+  { id: "ex-mb-1", status: "Accepted", quote_status: "accepted", quoted_amount: 880, total_price: 880, location_city: "Surrey", created_at: mbDate(-26), service_type: "equipment_rental", subcategory: "crane" },
+  { id: "ex-mb-2", status: "Requested", quote_status: "sent", quoted_amount: null, total_price: null, location_city: "Burnaby", created_at: mbDate(-4), service_type: "mobile_repair", subcategory: "reefer" },
+  { id: "ex-mb-3", status: "Completed", quote_status: "accepted", quoted_amount: 240, total_price: 240, location_city: "Vancouver", created_at: mbDate(-96), service_type: "cargo_insurance", subcategory: null },
+];
 
 const TYPE_ICON: Record<ServiceType, LucideIcon> = {
   service: Wrench,
@@ -36,10 +44,12 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
 };
 
 export default function MarketplaceBuyerPage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
 
   const requestsQ = useQuery({
     queryKey: ["buyer", "my-requests"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -65,7 +75,7 @@ export default function MarketplaceBuyerPage() {
     },
   });
 
-  const requests = requestsQ.data ?? [];
+  const requests = isExploring ? SAMPLE_BUYER_REQUESTS : (requestsQ.data ?? []);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">

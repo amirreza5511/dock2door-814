@@ -5,6 +5,19 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useExplore } from "@/lib/explore-store";
+
+function sampleDate(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const SAMPLE_ASSIGNMENTS: AssignmentRow[] = [
+  { id: "ex-asg-1", shift_id: "ex-sp-1", status: "Scheduled", worker_user_id: "explore-user", shift_posts: { id: "ex-sp-1", title: "Warehouse Loader", date: sampleDate(1), start_time: "08:00", end_time: "16:00", location_address: "120 Industrial Ave", location_city: "Vancouver", employer_company_id: "explore-company", companies: { name: "Preview Logistics Co." } } },
+  { id: "ex-asg-2", shift_id: "ex-sp-2", status: "Scheduled", worker_user_id: "explore-user", shift_posts: { id: "ex-sp-2", title: "Forklift Operator", date: sampleDate(3), start_time: "07:00", end_time: "15:00", location_address: "55 Dock Rd", location_city: "Richmond", employer_company_id: "explore-company", companies: { name: "Preview Logistics Co." } } },
+  { id: "ex-asg-3", shift_id: "ex-sp-4", status: "Scheduled", worker_user_id: "explore-user", shift_posts: { id: "ex-sp-4", title: "Dock Hand", date: sampleDate(6), start_time: "09:00", end_time: "17:00", location_address: "20 Port Rd", location_city: "Burnaby", employer_company_id: "ex-co-2", companies: { name: "Harbour Freight Ltd." } } },
+];
 
 const TILES = [
   { href: "/worker/browse-shifts", title: "Browse shifts", desc: "Find open shifts and apply." },
@@ -59,10 +72,12 @@ function fmtTime(t: string | null): string {
 }
 
 export default function WorkerHomePage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
 
   const assignmentsQ = useQuery({
     queryKey: ["worker", "dashboard-schedule"],
+    enabled: !isExploring,
     queryFn: async (): Promise<AssignmentRow[]> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -91,7 +106,8 @@ export default function WorkerHomePage() {
     const endKey = gridDays[gridDays.length - 1].key;
     const startKey = gridDays[0].key;
 
-    const scheduled: ScheduledShift[] = (assignmentsQ.data ?? [])
+    const source = isExploring ? SAMPLE_ASSIGNMENTS : (assignmentsQ.data ?? []);
+    const scheduled: ScheduledShift[] = source
       .map((a) => {
         const s = Array.isArray(a.shift_posts) ? a.shift_posts[0] : a.shift_posts;
         if (!s || !s.date) return null;
@@ -116,7 +132,7 @@ export default function WorkerHomePage() {
       if (day) day.count += 1;
     }
     return { days: gridDays, upcoming: scheduled };
-  }, [assignmentsQ.data]);
+  }, [assignmentsQ.data, isExploring]);
 
   const todayKey = new Date().toISOString().slice(0, 10);
 
@@ -159,7 +175,7 @@ export default function WorkerHomePage() {
             })}
           </div>
 
-          {assignmentsQ.isLoading ? (
+          {!isExploring && assignmentsQ.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading your schedule…</p>
           ) : upcoming.length === 0 ? (
             <div className="rounded-xl border border-dashed py-8 text-center">

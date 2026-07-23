@@ -9,6 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const spDate = (h: number): string => new Date(Date.now() + h * 3600e3).toISOString();
+const SAMPLE_SP_JOBS: ServiceJob[] = [
+  { id: "ex-spj-1", service_id: "ex-sl-2", status: "Requested", location_city: "Burnaby", location_address: "20 Port Rd", date_time_start: spDate(3), duration_hours: 3, total_price: 435, payment_status: "Pending", notes: "Reefer unit throwing an alarm.", check_in_ts: null, check_out_ts: null, customer_confirmed: false, created_at: spDate(-4), service_category: "IndustrialCleaning", customer_company: "Harbour Freight Ltd." },
+  { id: "ex-spj-2", service_id: "ex-sl-2", status: "Scheduled", location_city: "Vancouver", location_address: "120 Industrial Ave", date_time_start: spDate(26), duration_hours: 4, total_price: 620, payment_status: "Held", notes: null, check_in_ts: null, check_out_ts: null, customer_confirmed: false, created_at: spDate(-26), service_category: "Forklift", customer_company: "Preview Logistics Co." },
+  { id: "ex-spj-3", status: "Completed", service_id: "ex-sl-2", location_city: "Delta", location_address: "9200 River Rd", date_time_start: spDate(-40), duration_hours: 2, total_price: 290, payment_status: "Paid", notes: null, check_in_ts: spDate(-40), check_out_ts: spDate(-38), customer_confirmed: true, created_at: spDate(-96), service_category: "Labour", customer_company: "Annacis Island Distribution" },
+];
 
 interface ServiceJob {
   id: string;
@@ -48,6 +56,8 @@ const CAT_LABEL: Record<string, string> = {
 };
 
 export default function ServiceProviderPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [selected, setSelected] = useState<ServiceJob | null>(null);
@@ -55,6 +65,7 @@ export default function ServiceProviderPage() {
 
   const jobsQ = useQuery({
     queryKey: ["service-provider", "jobs"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("service_jobs")
@@ -72,8 +83,11 @@ export default function ServiceProviderPage() {
     },
   });
 
+  const jobs = isExploring ? SAMPLE_SP_JOBS : (jobsQ.data ?? []);
+
   const transition = useMutation({
     mutationFn: async ({ id, status, reason }: { id: string; status: string; reason?: string }) => {
+      if (isExploring) throw new Error("explore");
       const { error } = await supabase.rpc("transition_service_job", {
         p_job_id: id,
         p_new_status: status,
@@ -88,10 +102,10 @@ export default function ServiceProviderPage() {
   });
 
   const stats = {
-    pending: (jobsQ.data ?? []).filter((j) => j.status === "Requested").length,
-    active: (jobsQ.data ?? []).filter((j) => ["Accepted","Scheduled","InProgress"].includes(j.status)).length,
-    completed: (jobsQ.data ?? []).filter((j) => j.status === "Completed").length,
-    revenue: (jobsQ.data ?? []).filter((j) => j.payment_status === "Paid").reduce((s, j) => s + Number(j.total_price ?? 0), 0),
+    pending: jobs.filter((j) => j.status === "Requested").length,
+    active: jobs.filter((j) => ["Accepted","Scheduled","InProgress"].includes(j.status)).length,
+    completed: jobs.filter((j) => j.status === "Completed").length,
+    revenue: jobs.filter((j) => j.payment_status === "Paid").reduce((s, j) => s + Number(j.total_price ?? 0), 0),
   };
 
   const cols: Column<ServiceJob>[] = [
@@ -184,14 +198,14 @@ export default function ServiceProviderPage() {
       <Card>
         <CardHeader>
           <CardTitle>All jobs</CardTitle>
-          <CardDescription>{jobsQ.data?.length ?? 0} total</CardDescription>
+          <CardDescription>{jobs.length} total</CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
-            rows={jobsQ.data ?? []}
+            rows={jobs}
             columns={cols}
             rowKey={(j) => j.id}
-            isLoading={jobsQ.isLoading}
+            isLoading={!isExploring && jobsQ.isLoading}
             error={jobsQ.error as Error | null}
             searchPlaceholder="Search customer or service…"
             filters={[
@@ -264,7 +278,7 @@ export default function ServiceProviderPage() {
                 {selected.status === "Requested" && (
                   <>
                     <Button className="flex-1" disabled={transition.isPending}
-                      onClick={() => transition.mutate({ id: selected.id, status: "Accepted" })}>Accept</Button>
+                      onClick={() => { if (guard("Accept this job")) transition.mutate({ id: selected.id, status: "Accepted" }); }}>Accept</Button>
                     <Button variant="destructive" className="flex-1" disabled={transition.isPending}
                       onClick={() => setDeclineReason(declineReason === "__open__" ? "" : "__open__")}>Decline</Button>
                   </>

@@ -61,6 +61,11 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Explore mode: a session cookie `d2d_explore` lets a no-account visitor
+  // browse any role's real dashboard shell (read-only, sample/public data).
+  // Any real write is intercepted client-side by the action gate.
+  const isExploring = Boolean(request.cookies.get("d2d_explore")?.value);
+
   // Build a redirect that PRESERVES the Supabase auth cookies just refreshed on
   // `supabaseResponse`. Plain `NextResponse.redirect` returns a fresh response
   // with NO cookies, so the rotated tokens never reach the browser, the session
@@ -87,8 +92,13 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/international") ||
     pathname.startsWith("/ground-freight");
 
-  // Redirect unauthenticated visitors away from protected routes.
-  if (!user && !isPublicRoute) {
+  // Admin & super-admin areas are NEVER explorable — real privileged surfaces.
+  const isPrivilegedRoute =
+    pathname.startsWith("/admin") || pathname.startsWith("/super-admin");
+
+  // Redirect unauthenticated visitors away from protected routes, unless they
+  // are exploring a (non-privileged) role dashboard without an account.
+  if (!user && !isPublicRoute && !(isExploring && !isPrivilegedRoute)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     // Preserve the intended destination so we can redirect back after sign-in.

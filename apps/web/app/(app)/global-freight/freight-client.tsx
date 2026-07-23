@@ -19,6 +19,8 @@ import {
   type FreightMode, type DeliveryMethod, type FreightQuoteStatus,
 } from "@/lib/global-freight";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_FREIGHT_QUOTES, SAMPLE_GROUND_LOADS } from "@/lib/explore-samples";
 
 interface FreightRequest {
   id: string; reference_code: string; title: string; freight_mode: FreightMode;
@@ -79,26 +81,32 @@ export function FreightClient({ role }: { role: UserRole | null }) {
 /* ---------------- Customer ---------------- */
 
 function CustomerHub() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const [open, setOpen] = useState(false);
   const q = useQuery({
     queryKey: ["freight", "mine"],
+    enabled: !isExploring,
     queryFn: async (): Promise<FreightRequest[]> => {
       const { data, error } = await supabase.rpc("freight_list_mine");
       if (error) throw error;
       return (data as FreightRequest[] | null) ?? [];
     },
   });
-  const requests = useMemo(() => q.data ?? [], [q.data]);
+  const requests = useMemo<FreightRequest[]>(
+    () => (isExploring ? (SAMPLE_FREIGHT_QUOTES as unknown as FreightRequest[]) : (q.data ?? [])),
+    [q.data, isExploring],
+  );
 
   return (
     <>
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">My requests</h2>
-        <Button onClick={() => setOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Get a freight quote</Button>
+        <Button onClick={() => { if (guard("Get a freight quote")) setOpen(true); }}><Plus className="mr-1.5 h-4 w-4" /> Get a freight quote</Button>
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : requests.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 py-12 text-center">
@@ -307,6 +315,8 @@ function QuoteWizard({ open, onOpenChange, onSubmitted }: { open: boolean; onOpe
 /* ---------------- Provider board ---------------- */
 
 function ProviderBoard({ kind }: { kind: "freight" | "ground" }) {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const [scope, setScope] = useState<"open" | "mine">("open");
   const [target, setTarget] = useState<BoardRow | null>(null);
@@ -319,13 +329,29 @@ function ProviderBoard({ kind }: { kind: "freight" | "ground" }) {
 
   const q = useQuery({
     queryKey: ["freight", "board", scope],
+    enabled: !isExploring,
     queryFn: async (): Promise<BoardRow[]> => {
       const { data, error: e } = await supabase.rpc("freight_provider_board", { p_scope: scope });
       if (e) throw e;
       return (data as BoardRow[] | null) ?? [];
     },
   });
-  const rows = useMemo(() => q.data ?? [], [q.data]);
+  const sampleBoard = useMemo<BoardRow[]>(() => {
+    const src = kind === "ground" ? SAMPLE_GROUND_LOADS : SAMPLE_FREIGHT_QUOTES;
+    return src.map((r: any) => ({
+      ...r,
+      commodity: r.title,
+      customer_name: "Preview Shipper Co.",
+      my_offer_amount: scope === "mine" ? (r.awarded_amount || 1200) : null,
+      my_offer_currency: r.currency ?? "CAD",
+      my_offer_status: r.status === "Accepted" ? "Accepted" : "Sent",
+      offer_kind: kind,
+    })) as unknown as BoardRow[];
+  }, [kind, scope]);
+  const rows = useMemo<BoardRow[]>(
+    () => (isExploring ? sampleBoard : (q.data ?? [])),
+    [q.data, isExploring, sampleBoard],
+  );
 
   const openQuote = (r: BoardRow) => {
     setTarget(r); setAmount(r.my_offer_amount ? String(r.my_offer_amount) : "");
@@ -333,6 +359,7 @@ function ProviderBoard({ kind }: { kind: "freight" | "ground" }) {
   };
 
   const submit = async () => {
+    if (!guard("Submit a freight quote")) return;
     if (!target || !(Number(amount) > 0)) { setError("Enter an amount greater than zero."); return; }
     setBusy(true); setError("");
     try {
@@ -360,7 +387,7 @@ function ProviderBoard({ kind }: { kind: "freight" | "ground" }) {
         ))}
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
         <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Nothing here yet. Approved requests will appear for you to quote.</CardContent></Card>
