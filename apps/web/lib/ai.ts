@@ -18,6 +18,7 @@ export interface AiImageAttachment {
 
 const LLM_ENDPOINT = "https://toolkit.rork.com/text/llm/";
 const GATEWAY_ENDPOINT = "https://toolkit.rork.com/v2/vercel/v1/chat/completions";
+const EXA_SEARCH_ENDPOINT = "https://toolkit.rork.com/v2/exa/search";
 const VISION_MODEL = "anthropic/claude-sonnet-5";
 
 interface LlmResponse {
@@ -70,8 +71,8 @@ async function askViaVision(messages: AiMessage[], images: AiImageAttachment[]):
   }
 }
 
-/** Send a conversation to the AI and return the assistant's reply. */
-export async function askAssistant(messages: AiMessage[], images?: AiImageAttachment[]): Promise<string> {
+/** One round-trip to the model: vision gateway when images are present, else the LLM endpoint. */
+async function askOnce(messages: AiMessage[], images?: AiImageAttachment[]): Promise<string> {
   if (images && images.length > 0) {
     const viaVision = await askViaVision(messages, images);
     if (viaVision) return viaVision;
@@ -96,6 +97,91 @@ export async function askAssistant(messages: AiMessage[], images?: AiImageAttach
     throw new Error("The assistant did not return a response. Please try again.");
   }
   return completion;
+}
+
+/**
+ * Send a conversation to the AI and return the assistant's reply.
+ *
+ * Supports an autonomous web-research loop: if the model replies with ONLY a
+ * `SEARCH: <query>` line, we run a live web search, feed the results back and
+ * let the model answer with fresh, grounded facts. Read-only and safe.
+ */
+export async function askAssistant(messages: AiMessage[], images?: AiImageAttachment[]): Promise<string> {
+  let convo: AiMessage[] = messages;
+  let imgs = images;
+  for (let round = 0; round < 3; round += 1) {
+    const reply = await askOnce(convo, imgs);
+    const query = parseSearchDirective(reply);
+    if (!query) return reply;
+    const results = await searchWeb(query);
+    convo = [
+      ...convo,
+      { role: "assistant", content: reply },
+      {
+        role: "user",
+        content: results
+          ? `WEB_SEARCH_RESULTS for "${query}":\n${results}\n\nUsing these results (cite full URLs), answer my previous question now. Only output another "SEARCH:" line if you genuinely need one more search.`
+          : `No web results were found for "${query}". Answer my previous question using your own expert knowledge and be transparent that you could not fetch live sources. Do NOT output another SEARCH line.`,
+      },
+    ];
+    imgs = undefined;
+  }
+  return askOnce(convo);
+}
+
+/**
+ * When the model wants to look something up it replies with a single line
+ * `SEARCH: <query>` and nothing else. Returns the query, or null otherwise.
+ */
+function parseSearchDirective(reply: string): string | null {
+  const trimmed = reply.trim();
+  const match = trimmed.match(/^SEARCH:\s*(.+)$/i);
+  if (!match) return null;
+  if (trimmed.includes("\n")) return null;
+  const q = match[1].trim();
+  return q.length > 0 ? q : null;
+}
+
+interface ExaSearchHit {
+  title?: string;
+  url: string;
+  publishedDate?: string | null;
+  highlights?: string[];
+  summary?: string;
+}
+
+/**
+ * Live web search via the Exa proxy. Returns a compact digest of the top hits.
+ * Returns '' on any failure so the research loop falls back to model knowledge.
+ */
+export async function searchWeb(query: string): Promise<string> {
+  try {
+    const res = await fetch(EXA_SEARCH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${toolkitKey()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query,
+        type: "auto",
+        numResults: 5,
+        contents: { highlights: true, summary: { query } },
+      }),
+    });
+    if (!res.ok) return "";
+    const data = (await res.json()) as { results?: ExaSearchHit[] };
+    const hits = data.results ?? [];
+    return hits
+      .map((h) => {
+        const date = h.publishedDate ? ` [${h.publishedDate}]` : "";
+        const body = (h.highlights && h.highlights.length > 0 ? h.highlights.join(" ") : h.summary ?? "").trim();
+        return `- ${h.title ?? "Untitled"} (${h.url})${date}\n  ${body}`;
+      })
+      .join("\n");
+  } catch {
+    return "";
+  }
 }
 
 interface TranscriptionResponse {
