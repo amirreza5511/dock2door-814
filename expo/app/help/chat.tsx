@@ -22,11 +22,29 @@ interface ChatAction {
   route?: string;
 }
 
+/** A single field inside an intake form card the assistant builds. */
+interface ChatFormField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  type?: 'text' | 'number';
+}
+
+/** An intake form the assistant renders so the user just fills in the blanks. */
+interface ChatForm {
+  title?: string;
+  submitLabel?: string;
+  fields: ChatFormField[];
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   actions?: ChatAction[];
+  form?: ChatForm;
+  /** Once a form is submitted it becomes read-only. */
+  formDone?: boolean;
 }
 
 /** In-app destinations the guest assistant is allowed to deep-link into. */
@@ -40,15 +58,16 @@ const ALLOWED_ROUTES: Record<string, true> = {
 
 /**
  * Split a raw model reply into visible text + a trailing fenced ```actions block.
- * The block is JSON: {"actions":[{"type":"open","label":"...","route":"/ground-freight"}]}.
- * Unknown routes are dropped so the assistant can never link somewhere invalid.
+ * The block is JSON that may contain `actions` (tap-to-open cards) and/or `form`
+ * (an intake form the user fills in). Unknown routes are dropped so the assistant
+ * can never link somewhere invalid.
  */
-function parseReply(raw: string): { text: string; actions: ChatAction[] } {
+function parseReply(raw: string): { text: string; actions: ChatAction[]; form?: ChatForm } {
   const match = raw.match(/```(?:actions|json)\s*([\s\S]*?)```\s*$/);
   if (!match) return { text: raw.trim(), actions: [] };
   const text = raw.slice(0, match.index).trim();
   try {
-    const parsed = JSON.parse(match[1]) as { actions?: unknown };
+    const parsed = JSON.parse(match[1]) as { actions?: unknown; form?: unknown };
     const list = Array.isArray(parsed.actions) ? parsed.actions : [];
     const actions: ChatAction[] = list
       .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
@@ -60,10 +79,34 @@ function parseReply(raw: string): { text: string; actions: ChatAction[] } {
       })
       .filter((a) => a.label.length > 0 && (a.type === 'signup' || (a.route != null && ALLOWED_ROUTES[a.route])))
       .slice(0, 3);
-    return { text: text || raw.trim(), actions };
+    const form = parseForm(parsed.form);
+    return { text: text || raw.trim(), actions, form };
   } catch {
     return { text: raw.trim(), actions: [] };
   }
+}
+
+/** Validates and normalizes a raw `form` object from the model. */
+function parseForm(raw: unknown): ChatForm | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const obj = raw as Record<string, unknown>;
+  const rawFields = Array.isArray(obj.fields) ? obj.fields : [];
+  const fields: ChatFormField[] = rawFields
+    .filter((f): f is Record<string, unknown> => typeof f === 'object' && f !== null)
+    .map((f) => ({
+      key: typeof f.key === 'string' ? f.key : '',
+      label: typeof f.label === 'string' ? f.label.trim() : '',
+      placeholder: typeof f.placeholder === 'string' ? f.placeholder : undefined,
+      type: f.type === 'number' ? ('number' as const) : ('text' as const),
+    }))
+    .filter((f) => f.key.length > 0 && f.label.length > 0)
+    .slice(0, 8);
+  if (fields.length === 0) return undefined;
+  return {
+    title: typeof obj.title === 'string' ? obj.title.trim() : undefined,
+    submitLabel: typeof obj.submitLabel === 'string' ? obj.submitLabel.trim() : undefined,
+    fields,
+  };
 }
 
 /** Free assistant messages a guest gets before we ask them to sign in. */
@@ -142,12 +185,22 @@ ${isGuest ? 'This person is exploring WITHOUT an account. Answer their logistics
 LANGUAGE: Reply in the SAME language the user writes in (if they write Persian/Farsi, answer in fluent Persian). If their language is unclear, use ${langDef.aiName}. Keep app screen/world names recognizable.
 Be concise, practical and step-by-step. Reference the exact screen/world names when relevant. If something isn't covered by the platform, say so briefly and suggest the closest world. Keep replies complete but tight — never leave a sentence unfinished.
 
-ACTION CARDS:
-When the user is ready to actually DO something on the platform, append EXACTLY ONE fenced block at the very END of your reply so the app can render tap-to-open cards:
+MANY USERS KNOW NOTHING ABOUT LOGISTICS. Don't dump jargon or ask them to fill a long form themselves. Instead, gently gather what you need with a simple INTAKE FORM CARD, then do the thinking for them.
+
+END-OF-REPLY BLOCK:
+When it helps, append EXACTLY ONE fenced block at the very END of your reply. It is JSON that may contain a "form" (fields the user fills in) and/or "actions" (tap-to-open cards). Nothing after it.
+
+1) INTAKE FORM — use this to collect a shipment's/job's details ONE friendly step at a time. Ask only for what you still need, in plain words with examples:
+\`\`\`actions
+{"form":{"title":"Tell me about your load","submitLabel":"Get my estimate","fields":[{"key":"from","label":"Where does it ship FROM? (city)","placeholder":"e.g. Toronto"},{"key":"to","label":"Where should it go? (city)","placeholder":"e.g. Vancouver"},{"key":"what","label":"What are you shipping?","placeholder":"e.g. 5 pallets of furniture"},{"key":"weight","label":"Rough total weight?","placeholder":"e.g. 800 kg","type":"number"},{"key":"when","label":"When is it ready?","placeholder":"e.g. next Monday"}]}}
+\`\`\`
+Keep forms short (max ~6 fields). After the user submits, their answers arrive as their next message; then explain in simple terms what it means (which mode — LTL/FTL/LCL), give a rough ballpark estimate and range, and guide the next step. Never show a form and an 'open' card at the same time.
+
+2) OPEN / SIGN-UP CARDS — once details are gathered, send them to the right place:
 \`\`\`actions
 {"actions":[{"type":"open","label":"Get LTL & FTL truck quotes","route":"/ground-freight"}]}
 \`\`\`
-Allowed routes ONLY: "/ground-freight" (LTL/FTL/LCL truck quotes), "/global-freight" (international air/ocean freight quotes), "/international" (import/export tools), "/ship" (parcel & load shipping), "/directory" (browse companies). Use type "signup" (no route) for a card that invites them to create an account when the next step needs one (posting a real load, sending a request, seeing live quotes). Add at most 2 cards, only when genuinely useful. If no action fits, omit the block entirely. The visible text before the block must read naturally on its own.
+Allowed routes ONLY: "/ground-freight" (LTL/FTL/LCL truck quotes), "/global-freight" (international air/ocean freight quotes), "/international" (import/export tools), "/ship" (parcel & load shipping), "/directory" (browse companies). Use type "signup" (no route) when the next step needs an account (posting a real load, sending a request, seeing live quotes). Max 2 action cards. Omit the block entirely when nothing fits. The visible text before the block must read naturally on its own.
 
 APP KNOWLEDGE:
 ${buildKnowledge()}`;
@@ -175,8 +228,8 @@ ${buildKnowledge()}`;
         ...history.map((m): AiMessage => ({ role: m.role, content: m.content })),
       ];
       const reply = await askAssistant(payload);
-      const { text: replyText, actions } = parseReply(reply);
-      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: replyText, actions }]);
+      const { text: replyText, actions, form } = parseReply(reply);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: replyText, actions, form }]);
       if (isGuest) setGuestReplies((n) => n + 1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong.';
@@ -191,6 +244,22 @@ ${buildKnowledge()}`;
     if (action.type === 'signup') { router.push('/auth/signup' as never); return; }
     if (action.route && ALLOWED_ROUTES[action.route]) router.push(action.route as never);
   }, [router]);
+
+  // Per-message form answers, keyed by message id then field key.
+  const [formData, setFormData] = useState<Record<string, Record<string, string>>>({});
+  const setField = useCallback((msgId: string, key: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [msgId]: { ...(prev[msgId] ?? {}), [key]: value } }));
+  }, []);
+
+  const submitForm = useCallback((msg: ChatMessage) => {
+    if (!msg.form || msg.formDone || sending) return;
+    const answers = formData[msg.id] ?? {};
+    const filled = msg.form.fields.filter((f) => (answers[f.key] ?? '').trim().length > 0);
+    if (filled.length === 0) return;
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, formDone: true } : m)));
+    const summary = filled.map((f) => `- ${f.label}: ${(answers[f.key] ?? '').trim()}`).join('\n');
+    void send(`Here are my details:\n${summary}`);
+  }, [formData, sending, send]);
 
   const suggestions = CHAT_SUGGESTIONS[lang] ?? CHAT_SUGGESTIONS.en;
 
@@ -255,6 +324,31 @@ ${buildKnowledge()}`;
                     <Text style={[styles.bubbleText, { textAlign: dirText }, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
                   </View>
                 </View>
+                {m.role === 'assistant' && m.form && (
+                  <View style={styles.formCard}>
+                    {m.form.title ? <Text style={[styles.formTitle, { textAlign: dirText }]}>{m.form.title}</Text> : null}
+                    {m.form.fields.map((f) => (
+                      <View key={`${m.id}-f-${f.key}`} style={styles.formField}>
+                        <Text style={[styles.formLabel, { textAlign: dirText }]}>{f.label}</Text>
+                        <TextInput
+                          value={(formData[m.id] ?? {})[f.key] ?? ''}
+                          onChangeText={(v) => setField(m.id, f.key, v)}
+                          placeholder={f.placeholder}
+                          placeholderTextColor={C.textMuted}
+                          editable={!m.formDone}
+                          keyboardType={f.type === 'number' ? 'numeric' : 'default'}
+                          style={[styles.formInput, { textAlign: dirText }, m.formDone && styles.formInputDone]}
+                        />
+                      </View>
+                    ))}
+                    {!m.formDone && (
+                      <TouchableOpacity style={styles.formSubmit} activeOpacity={0.85} onPress={() => submitForm(m)}>
+                        <Sparkles size={15} color={C.white} />
+                        <Text style={styles.formSubmitText}>{m.form.submitLabel ?? tUI(lang, 'askAi')}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
                 {m.role === 'assistant' && m.actions && m.actions.length > 0 && (
                   <View style={styles.actionCards}>
                     {m.actions.map((a, i) => (
@@ -354,6 +448,24 @@ const styles = StyleSheet.create({
   },
   actionIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: C.accent + '22', alignItems: 'center', justifyContent: 'center' },
   actionLabel: { flex: 1, fontSize: 13.5, fontWeight: '700' as const, color: C.text },
+
+  formCard: {
+    alignSelf: 'stretch', gap: 12, backgroundColor: C.card, borderRadius: 16,
+    borderWidth: 1, borderColor: C.accent + '44', padding: 16,
+  },
+  formTitle: { fontSize: 15, fontWeight: '800' as const, color: C.text },
+  formField: { gap: 6 },
+  formLabel: { fontSize: 12.5, fontWeight: '600' as const, color: C.textSecondary },
+  formInput: {
+    backgroundColor: C.bg, borderRadius: 10, borderWidth: 1, borderColor: C.border,
+    paddingHorizontal: 12, paddingVertical: 10, color: C.text, fontSize: 14,
+  },
+  formInputDone: { opacity: 0.6 },
+  formSubmit: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: C.accent, borderRadius: 12, paddingVertical: 12, marginTop: 2,
+  },
+  formSubmitText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
   gateCard: {
     alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 18,
     borderWidth: 1, borderColor: C.accent + '55', padding: 20, marginTop: 4,
