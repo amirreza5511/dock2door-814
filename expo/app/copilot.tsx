@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl, Modal,
   type NativeSyntheticEvent, type TextInputKeyPressEventData,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import {
   Send, Sparkles, ChevronLeft, ChevronRight, ShieldCheck, AlertTriangle, Lightbulb, Info,
   OctagonAlert, Radar, Check, X, Play, Brain, Trash2, Repeat2, TrendingDown,
   DollarSign, Plus, Mic, Square, Paperclip, ImageIcon, FileText, SquarePen,
+  History, MessageSquare,
 } from 'lucide-react-native';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -29,6 +30,23 @@ import { trpc } from '@/lib/trpc';
 import { useAuthStore } from '@/store/auth';
 
 type TabKey = 'chat' | 'alerts' | 'insights';
+
+interface ChatSession {
+  session_id: string;
+  title: string;
+  msg_count: number;
+  started_at: string;
+  last_at: string;
+}
+
+/** Lightweight uuid v4 for grouping chat sessions (not cryptographic). */
+function newSessionId(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface UiMsg {
   id: string;
@@ -104,9 +122,16 @@ export default function CopilotScreen() {
   const [ideas, setIdeas] = useState<string>('');
   const [ideasLoading, setIdeasLoading] = useState<boolean>(false);
   const [alertFilter, setAlertFilter] = useState<'open' | 'all'>('open');
+  // The conversation the user is currently viewing. null = the latest session
+  // (resolved server-side on first load); a fresh uuid = a brand-new chat.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
 
   const contextQuery = trpc.ai.context.useQuery(undefined, { refetchInterval: 60000, staleTime: 30000 });
-  const historyQuery = trpc.ai.chatHistory.useQuery();
+  const historyQuery = trpc.ai.chatHistory.useQuery(
+    sessionId ? { sessionId } : undefined,
+  );
+  const sessionsQuery = trpc.ai.chatSessions.useQuery(undefined, { enabled: showHistory });
   const memoriesQuery = trpc.ai.memories.useQuery();
   const eventsQuery = trpc.ai.events.useQuery(undefined, { refetchInterval: 30000 });
   const streetTurnsQuery = trpc.drayage.streetTurnSuggestions.useQuery();
@@ -155,15 +180,18 @@ export default function CopilotScreen() {
     }
   }, [userId, utils]);
 
-  // Hydrate chat from persisted history once.
+  // Hydrate chat from persisted history once (for the active session). Also
+  // capture the session_id of the loaded rows so appends stay in this thread.
   useEffect(() => {
     if (messages === null && historyQuery.data) {
-      const rows = (historyQuery.data as { id: string; role: string; content: string; actions?: unknown }[]).map((r): UiMsg => ({
+      const raw = historyQuery.data as { id: string; role: string; content: string; actions?: unknown; session_id?: string }[];
+      const rows = raw.map((r): UiMsg => ({
         id: r.id,
         role: r.role === 'assistant' ? 'assistant' : 'user',
         content: r.content,
         actions: sanitizeActions(r.actions),
       }));
+      if (sessionId === null && raw[0]?.session_id) setSessionId(raw[0].session_id);
       setMessages(rows);
     }
   }, [historyQuery.data, messages]);
@@ -193,6 +221,9 @@ export default function CopilotScreen() {
       ? `[Attached ${pending.filter((a) => a.kind === 'image').length} photo(s)]`
       : '';
     const composed = [trimmed, imgNote, docNote].filter(Boolean).join('\n').trim() || '(see attachment)';
+    // Ensure the very first message of a brand-new conversation opens a session.
+    const sid = sessionId ?? newSessionId();
+    if (!sessionId) setSessionId(sid);
     const images: AiImageAttachment[] = pending
       .filter((a) => a.kind === 'image' && a.dataUrl)
       .map((a) => ({ dataUrl: a.dataUrl as string }));
@@ -203,7 +234,7 @@ export default function CopilotScreen() {
     setAttachments([]);
     setSending(true);
     scrollDown();
-    void appendChat.mutateAsync({ items: [{ role: 'user', content: composed }] }).catch(() => undefined);
+    void appendChat.mutateAsync({ sessionId: sid, items: [{ role: 'user', content: composed }] }).catch(() => undefined);
     try {
       const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
       const prior: AiMessage[] = history.slice(-16).map((m) => ({ role: m.role, content: m.content }));
@@ -211,7 +242,7 @@ export default function CopilotScreen() {
       const parsed = parseCopilotReply(raw);
       const aiMsg: UiMsg = { id: `a-${Date.now()}`, role: 'assistant', content: parsed.text, actions: parsed.actions };
       setMessages((prev) => [...(prev ?? []), aiMsg]);
-      void appendChat.mutateAsync({ items: [{ role: 'assistant', content: parsed.text, actions: parsed.actions }] }).catch(() => undefined);
+      void appendChat.mutateAsync({ sessionId: sid, items: [{ role: 'assistant', content: parsed.text, actions: parsed.actions }] }).catch(() => undefined);
       if (parsed.memory) {
         void addMemory.mutateAsync({ content: parsed.memory }).catch(() => undefined);
       }
@@ -222,7 +253,7 @@ export default function CopilotScreen() {
       setSending(false);
       scrollDown();
     }
-  }, [messages, sending, attachments, context, memories, appendChat, addMemory, scrollDown]);
+  }, [messages, sending, attachments, context, memories, appendChat, addMemory, scrollDown, sessionId]);
 
   // ── Enter to send (web): Enter submits, Shift+Enter makes a newline ──
   const onInputKeyPress = useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
@@ -464,7 +495,7 @@ export default function CopilotScreen() {
         ? `✅ Done: ${action.label}\n\nYour load is posted — carriers will send competing prices. Tap below to watch the quotes come in whenever you like; your chat stays right here.`
         : `✅ Done: ${action.label}`;
       setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: 'assistant', content: confirm, actions: [], link: resultLink ?? undefined }]);
-      void appendChat.mutateAsync({ items: [{ role: 'assistant', content: confirm }] }).catch(() => undefined);
+      void appendChat.mutateAsync({ sessionId: sessionId ?? undefined, items: [{ role: 'assistant', content: confirm }] }).catch(() => undefined);
       await Promise.all([
         utils.ai.context.invalidate(),
         utils.ai.events.invalidate(),
@@ -523,27 +554,45 @@ export default function CopilotScreen() {
     }
   }, [recording, transcribing, sending, recorder]);
 
+  // Delete only the conversation currently on screen (past chats are kept).
   const confirmClear = useCallback(() => {
-    Alert.alert('Clear conversation?', 'The chat history will be deleted. Memories stay.', [
+    Alert.alert('Delete this conversation?', 'Only this chat is deleted. Past chats and memories stay.', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Clear', style: 'destructive',
-        onPress: () => void clearChat.mutateAsync(undefined)
-          .then(() => setMessages([]))
+        text: 'Delete', style: 'destructive',
+        onPress: () => void clearChat.mutateAsync(sessionId ? { sessionId } : undefined)
+          .then(() => {
+            setMessages([]);
+            setSessionId(newSessionId());
+            void utils.ai.chatSessions.invalidate();
+          })
           .catch((e) => Alert.alert('Failed', e instanceof Error ? e.message : 'Unknown')),
       },
     ]);
-  }, [clearChat]);
+  }, [clearChat, sessionId, utils]);
 
+  // Start a brand-new conversation WITHOUT deleting the current one — the old
+  // chat is preserved and reachable from the history list.
   const startNewChat = useCallback(() => {
     if (sending || (messages ?? []).length === 0) return;
-    // Fresh conversation: wipe the thread but keep saved memories.
     setMessages([]);
     setInput('');
     setAttachments([]);
+    setDoneKeys(new Set());
+    setSessionId(newSessionId());
     if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    void clearChat.mutateAsync(undefined).catch(() => undefined);
-  }, [sending, messages, clearChat]);
+    void utils.ai.chatSessions.invalidate();
+  }, [sending, messages, utils]);
+
+  // Open a past conversation from the history list.
+  const openSession = useCallback((sid: string) => {
+    setShowHistory(false);
+    if (sid === sessionId) return;
+    setMessages(null);
+    setDoneKeys(new Set());
+    setSessionId(sid);
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [sessionId]);
 
   const generateIdeas = useCallback(async () => {
     if (ideasLoading) return;
@@ -574,9 +623,9 @@ export default function CopilotScreen() {
   // when a step completes). The user always stays in the chat.
   const appendAssistant = useCallback((content: string, link?: { href: string; label: string }) => {
     setMessages((prev) => [...(prev ?? []), { id: `p-${Date.now()}`, role: 'assistant', content, actions: [], link }]);
-    void appendChat.mutateAsync({ items: [{ role: 'assistant', content }] }).catch(() => undefined);
+    void appendChat.mutateAsync({ sessionId: sessionId ?? undefined, items: [{ role: 'assistant', content }] }).catch(() => undefined);
     scrollDown();
-  }, [appendChat, scrollDown]);
+  }, [appendChat, scrollDown, sessionId]);
 
   // Role-aware screen where a user can watch a dispatched driver on the map.
   const trackHref = roleStr === 'Shipper' || roleStr === 'FreightForwarder' ? '/shipper/loads' : '/customer/loads';
@@ -600,14 +649,21 @@ export default function CopilotScreen() {
             </Text>
           </View>
         </View>
-        {tab === 'chat' && !empty ? (
+        {tab === 'chat' ? (
           <>
-            <TouchableOpacity onPress={startNewChat} style={styles.backBtn} accessibilityLabel="New chat">
-              <SquarePen size={18} color={C.text} />
+            <TouchableOpacity onPress={() => setShowHistory(true)} style={styles.backBtn} accessibilityLabel="Chat history">
+              <History size={18} color={C.text} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={confirmClear} style={styles.backBtn} accessibilityLabel="Clear chat">
-              <Trash2 size={17} color={C.textMuted} />
-            </TouchableOpacity>
+            {!empty ? (
+              <>
+                <TouchableOpacity onPress={startNewChat} style={styles.backBtn} accessibilityLabel="New chat">
+                  <SquarePen size={18} color={C.text} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmClear} style={styles.backBtn} accessibilityLabel="Delete chat">
+                  <Trash2 size={17} color={C.textMuted} />
+                </TouchableOpacity>
+              </>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -1004,6 +1060,53 @@ export default function CopilotScreen() {
           </Card>
         </ScrollView>
       )}
+
+      {/* Chat history — browse & reopen past conversations */}
+      <Modal visible={showHistory} animationType="slide" transparent onRequestClose={() => setShowHistory(false)}>
+        <View style={styles.modalRoot}>
+          <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setShowHistory(false)} />
+          <View style={[styles.historySheet, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.historyHead}>
+              <History size={18} color={C.accent} />
+              <Text style={styles.historyTitle}>گفتگوهای شما</Text>
+              <TouchableOpacity onPress={() => setShowHistory(false)} hitSlop={8}>
+                <X size={20} color={C.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={styles.newChatRow}
+              onPress={() => { setShowHistory(false); startNewChat(); }}
+            >
+              <View style={styles.newChatIcon}><SquarePen size={16} color={C.accent} /></View>
+              <Text style={styles.newChatText}>گفتگوی جدید</Text>
+            </TouchableOpacity>
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              {sessionsQuery.isLoading ? (
+                <View style={styles.historyEmpty}><ActivityIndicator size="small" color={C.accent} /></View>
+              ) : (sessionsQuery.data ?? []).length === 0 ? (
+                <View style={styles.historyEmpty}>
+                  <Text style={styles.historyEmptyText}>هنوز گفتگوی ذخیره‌شده‌ای نیست.</Text>
+                </View>
+              ) : (
+                (sessionsQuery.data as ChatSession[]).map((sesh) => (
+                  <TouchableOpacity
+                    key={sesh.session_id}
+                    style={[styles.historyRow, sesh.session_id === sessionId && styles.historyRowActive]}
+                    onPress={() => openSession(sesh.session_id)}
+                  >
+                    <View style={styles.historyRowIcon}><MessageSquare size={15} color={C.textSecondary} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyRowTitle} numberOfLines={1}>{sesh.title || 'گفتگو'}</Text>
+                      <Text style={styles.historyRowMeta}>{timeAgo(sesh.last_at)} · {sesh.msg_count} پیام</Text>
+                    </View>
+                    <ChevronRight size={16} color={C.textMuted} />
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1114,4 +1217,20 @@ const styles = StyleSheet.create({
   memAddBtn: { width: 42, height: 42, borderRadius: 10, backgroundColor: C.blue, alignItems: 'center', justifyContent: 'center' },
   memRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderTopWidth: 1, borderTopColor: C.border },
   memText: { flex: 1, fontSize: 12.5, color: C.text, lineHeight: 18 },
+
+  modalRoot: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: C.overlay },
+  historySheet: { backgroundColor: C.bgSecondary, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 16, borderTopWidth: 1, borderColor: C.border },
+  historyHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 12 },
+  historyTitle: { flex: 1, fontSize: 16, fontWeight: '800' as const, color: C.text },
+  newChatRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accent + '44', borderRadius: 12, padding: 12, marginBottom: 8 },
+  newChatIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  newChatText: { fontSize: 13.5, fontWeight: '800' as const, color: C.text },
+  historyEmpty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 30 },
+  historyEmptyText: { fontSize: 13, color: C.textSecondary },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderTopWidth: 1, borderTopColor: C.border },
+  historyRowActive: { backgroundColor: C.accentDim, borderRadius: 10, paddingHorizontal: 8, borderTopColor: 'transparent' },
+  historyRowIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' },
+  historyRowTitle: { fontSize: 13.5, fontWeight: '700' as const, color: C.text },
+  historyRowMeta: { fontSize: 11, color: C.textMuted, marginTop: 2 },
 });

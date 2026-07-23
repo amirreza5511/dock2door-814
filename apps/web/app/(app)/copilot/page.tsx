@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles, Radar, Lightbulb, ShieldCheck, AlertTriangle, Info, OctagonAlert,
   Check, X, Play, Brain, Trash2, Repeat2, TrendingDown, DollarSign, Plus, Send, Mic, Square,
-  Paperclip, FileText,
+  Paperclip, FileText, History, MessageSquare, SquarePen, ChevronRight,
 } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +19,23 @@ import {
   type CopilotAction,
 } from "@/lib/copilot";
 import { cn } from "@/lib/utils";
+
+interface ChatSession {
+  session_id: string;
+  title: string;
+  msg_count: number;
+  started_at: string;
+  last_at: string;
+}
+
+/** Lightweight uuid v4 for grouping chat sessions (not cryptographic). */
+function newSessionId(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
 
 interface SpeechRecognitionLike {
   lang: string;
@@ -135,6 +152,10 @@ export default function CopilotPage() {
   const [ideas, setIdeas] = useState<string>("");
   const [ideasLoading, setIdeasLoading] = useState<boolean>(false);
   const [alertFilter, setAlertFilter] = useState<"open" | "all">("open");
+  // The conversation currently on screen. null = latest session (resolved on
+  // first load); a fresh uuid = a brand-new chat.
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // Current user id — used to scope all cached copilot queries so switching
   // accounts in the same tab never shows another user's cached chat/data.
@@ -163,15 +184,28 @@ export default function CopilotPage() {
   });
 
   const historyQ = useQuery({
-    queryKey: ["ai", "chatHistory", uid],
+    queryKey: ["ai", "chatHistory", uid, sessionId],
     enabled: !!uid,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
+      let sid = sessionId;
+      if (!sid) {
+        const { data: last } = await supabase
+          .from("ai_chat_messages")
+          .select("session_id")
+          .eq("user_id", u.user.id)
+          .not("session_id", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        sid = (Array.isArray(last) ? (last[0]?.session_id as string | undefined) : undefined) ?? null;
+      }
+      if (!sid) return [];
       const { data, error } = await supabase
         .from("ai_chat_messages")
         .select("*")
         .eq("user_id", u.user.id)
+        .eq("session_id", sid)
         .order("created_at", { ascending: true })
         .limit(200);
       if (error) {
@@ -179,6 +213,19 @@ export default function CopilotPage() {
         throw error;
       }
       return data ?? [];
+    },
+  });
+
+  const sessionsQ = useQuery({
+    queryKey: ["ai", "chatSessions", uid],
+    enabled: !!uid && showHistory,
+    queryFn: async (): Promise<ChatSession[]> => {
+      const { data, error } = await supabase.rpc("ai_chat_sessions");
+      if (error) {
+        if (error.code === "42P01" || error.code === "PGRST202" || error.message.includes("schema cache")) return [];
+        throw error;
+      }
+      return (data as ChatSession[] | null) ?? [];
     },
   });
 
@@ -234,11 +281,11 @@ export default function CopilotPage() {
   });
 
   const appendChat = useMutation({
-    mutationFn: async (items: { role: "user" | "assistant"; content: string; actions?: unknown[] }[]) => {
+    mutationFn: async (payload: { sessionId?: string | null; items: { role: "user" | "assistant"; content: string; actions?: unknown[] }[] }) => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
       await supabase.from("ai_chat_messages").insert(
-        items.map((m) => ({ user_id: u.user!.id, role: m.role, content: m.content, actions: m.actions ?? [] })),
+        payload.items.map((m) => ({ user_id: u.user!.id, session_id: payload.sessionId ?? null, role: m.role, content: m.content, actions: m.actions ?? [] })),
       );
     },
   });
@@ -262,12 +309,18 @@ export default function CopilotPage() {
   });
 
   const clearChat = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (sid?: string | null) => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
-      await supabase.from("ai_chat_messages").delete().eq("user_id", u.user.id);
+      let q = supabase.from("ai_chat_messages").delete().eq("user_id", u.user.id);
+      if (sid) q = q.eq("session_id", sid);
+      await q;
     },
-    onSuccess: () => setMessages([]),
+    onSuccess: () => {
+      setMessages([]);
+      setSessionId(newSessionId());
+      void qc.invalidateQueries({ queryKey: ["ai", "chatSessions"] });
+    },
   });
 
   const runWatchdog = useMutation({
@@ -333,18 +386,21 @@ export default function CopilotPage() {
     }
   }, [uid]);
 
-  // Hydrate chat from persisted history once.
+  // Hydrate chat from persisted history once (for the active session). Also
+  // capture the session_id so appends stay in this thread.
   useEffect(() => {
     if (messages === null && historyQ.data) {
-      const rows = (historyQ.data as { id: string; role: string; content: string; actions?: unknown }[]).map((r): UiMsg => ({
+      const raw = historyQ.data as { id: string; role: string; content: string; actions?: unknown; session_id?: string }[];
+      const rows = raw.map((r): UiMsg => ({
         id: r.id,
         role: r.role === "assistant" ? "assistant" : "user",
         content: r.content,
         actions: sanitizeActions(r.actions),
       }));
+      if (sessionId === null && raw[0]?.session_id) setSessionId(raw[0].session_id);
       setMessages(rows);
     }
-  }, [historyQ.data, messages]);
+  }, [historyQ.data, messages, sessionId]);
 
   // Kick a watchdog scan on open (fire-and-forget).
   const scannedRef = useRef<boolean>(false);
@@ -368,6 +424,8 @@ export default function CopilotPage() {
     const imgCount = pending.filter((a) => a.kind === "image").length;
     const imgNote = imgCount > 0 ? `[Attached ${imgCount} photo(s)]` : "";
     const composed = [trimmed, imgNote, docNote].filter(Boolean).join("\n").trim() || "(see attachment)";
+    const sid = sessionId ?? newSessionId();
+    if (!sessionId) setSessionId(sid);
     const images: AiImageAttachment[] = pending
       .filter((a) => a.kind === "image" && a.dataUrl)
       .map((a) => ({ dataUrl: a.dataUrl as string }));
@@ -377,7 +435,7 @@ export default function CopilotPage() {
     setInput("");
     setAttachments([]);
     setSending(true);
-    void appendChat.mutateAsync([{ role: "user", content: composed }]).catch(() => undefined);
+    void appendChat.mutateAsync({ sessionId: sid, items: [{ role: "user", content: composed }] }).catch(() => undefined);
     try {
       const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
       const prior: AiMessage[] = history.slice(-16).map((m) => ({ role: m.role, content: m.content }));
@@ -385,7 +443,7 @@ export default function CopilotPage() {
       const parsed = parseCopilotReply(raw);
       const aiMsg: UiMsg = { id: `a-${Date.now()}`, role: "assistant", content: parsed.text, actions: parsed.actions };
       setMessages((prev) => [...(prev ?? []), aiMsg]);
-      void appendChat.mutateAsync([{ role: "assistant", content: parsed.text, actions: parsed.actions }]).catch(() => undefined);
+      void appendChat.mutateAsync({ sessionId: sid, items: [{ role: "assistant", content: parsed.text, actions: parsed.actions }] }).catch(() => undefined);
       if (parsed.memory) {
         void addMemory.mutateAsync(parsed.memory).catch(() => undefined);
       }
@@ -395,7 +453,7 @@ export default function CopilotPage() {
     } finally {
       setSending(false);
     }
-  }, [messages, sending, attachments, context, memories, appendChat, addMemory]);
+  }, [messages, sending, attachments, context, memories, appendChat, addMemory, sessionId]);
 
   // ── Attachments: photo (vision) or document ──
   const onPickFiles = useCallback(async (files: FileList | null) => {
@@ -577,7 +635,7 @@ export default function CopilotPage() {
       setDoneKeys((prev) => new Set(prev).add(key));
       const confirm = `✅ Done: ${action.label}`;
       setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: "assistant", content: confirm, actions: [] }]);
-      void appendChat.mutateAsync([{ role: "assistant", content: confirm }]).catch(() => undefined);
+      void appendChat.mutateAsync({ sessionId: sessionId ?? undefined, items: [{ role: "assistant", content: confirm }] }).catch(() => undefined);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["ai", "context"] }),
         qc.invalidateQueries({ queryKey: ["ai", "events"] }),
@@ -638,6 +696,35 @@ export default function CopilotPage() {
     }
   }, [ideasLoading, context, memories]);
 
+  // Start a brand-new conversation WITHOUT deleting the current one.
+  const startNewChat = useCallback(() => {
+    if (sending || (messages ?? []).length === 0) return;
+    setMessages([]);
+    setInput("");
+    setAttachments([]);
+    setDoneKeys(new Set());
+    setSessionId(newSessionId());
+    void qc.invalidateQueries({ queryKey: ["ai", "chatSessions"] });
+  }, [sending, messages, qc]);
+
+  // Open a past conversation from the history list.
+  const openSession = useCallback((sid: string) => {
+    setShowHistory(false);
+    if (sid === sessionId) return;
+    setMessages(null);
+    setDoneKeys(new Set());
+    setSessionId(sid);
+  }, [sessionId]);
+
+  const timeAgo = useCallback((iso?: string | null): string => {
+    if (!iso) return "";
+    const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+    if (secs < 86400) return `${Math.floor(secs / 3600)}h`;
+    return `${Math.floor(secs / 86400)}d`;
+  }, []);
+
   const events = eventsQ.data ?? [];
   const shownEvents = alertFilter === "open" ? events.filter((e) => e.status === "open") : events;
   const openCount = events.filter((e) => e.status === "open").length;
@@ -653,10 +740,22 @@ export default function CopilotPage() {
           </p>
           <h1 className="text-2xl font-semibold tracking-tight">{companyName ? `Watching ${companyName}` : "Your personal AI operator"}</h1>
         </div>
-        {tab === "chat" && !empty ? (
-          <Button variant="outline" size="sm" onClick={() => clearChat.mutate()} disabled={clearChat.isPending}>
-            <Trash2 className="mr-1.5 h-4 w-4" /> Clear chat
-          </Button>
+        {tab === "chat" ? (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowHistory(true)}>
+              <History className="mr-1.5 h-4 w-4" /> History
+            </Button>
+            {!empty ? (
+              <>
+                <Button variant="outline" size="sm" onClick={startNewChat}>
+                  <SquarePen className="mr-1.5 h-4 w-4" /> New chat
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => clearChat.mutate(sessionId ?? undefined)} disabled={clearChat.isPending}>
+                  <Trash2 className="mr-1.5 h-4 w-4" /> Delete
+                </Button>
+              </>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -994,6 +1093,54 @@ export default function CopilotPage() {
           </Card>
         </div>
       )}
+
+      {/* Chat history — browse & reopen past conversations */}
+      {showHistory ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowHistory(false)} />
+          <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-card p-4 shadow-xl">
+            <div className="flex items-center gap-2 pb-3">
+              <History className="h-4 w-4 text-primary" />
+              <p className="flex-1 text-base font-semibold">Your conversations</p>
+              <button className="text-muted-foreground hover:text-foreground" onClick={() => setShowHistory(false)}>
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <button
+              className="mb-2 flex w-full items-center gap-2.5 rounded-xl border border-primary/40 bg-primary/10 p-3 text-left"
+              onClick={() => { setShowHistory(false); startNewChat(); }}
+            >
+              <SquarePen className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold">New chat</span>
+            </button>
+            <div className="max-h-[420px] overflow-y-auto">
+              {sessionsQ.isLoading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">Loading…</div>
+              ) : (sessionsQ.data ?? []).length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">No saved conversations yet.</div>
+              ) : (
+                (sessionsQ.data as ChatSession[]).map((sesh) => (
+                  <button
+                    key={sesh.session_id}
+                    className={cn(
+                      "flex w-full items-center gap-3 border-t border-border py-3 text-left",
+                      sesh.session_id === sessionId && "rounded-lg border-t-transparent bg-primary/10 px-2",
+                    )}
+                    onClick={() => openSession(sesh.session_id)}
+                  >
+                    <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate">
+                      <span className="block truncate text-sm font-medium">{sesh.title || "Chat"}</span>
+                      <span className="block text-xs text-muted-foreground">{timeAgo(sesh.last_at)} · {sesh.msg_count} messages</span>
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

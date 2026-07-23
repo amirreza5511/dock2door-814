@@ -2923,11 +2923,26 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'ai.chatHistory': async (_input, ctx) => {
+  // Load one session's messages. When no sessionId is given, load the MOST
+  // RECENT session so the copilot reopens on the last conversation.
+  'ai.chatHistory': async (input: { sessionId?: string } | undefined, ctx) => {
+    let sessionId = input?.sessionId ?? null;
+    if (!sessionId) {
+      const { data: last } = await supabase
+        .from('ai_chat_messages')
+        .select('session_id')
+        .eq('user_id', ctx.user.id)
+        .not('session_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      sessionId = (Array.isArray(last) ? last[0]?.session_id : null) ?? null;
+    }
+    if (!sessionId) return [];
     const { data, error } = await supabase
       .from('ai_chat_messages')
       .select('*')
       .eq('user_id', ctx.user.id)
+      .eq('session_id', sessionId)
       .order('created_at', { ascending: true })
       .limit(200);
     if (isMissingRelation(error)) return [];
@@ -2935,9 +2950,20 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return data ?? [];
   },
 
-  'ai.appendChat': async (input: { items: { role: 'user' | 'assistant'; content: string; actions?: unknown[] }[] }, ctx) => {
+  // List the user's past chat sessions (newest activity first).
+  'ai.chatSessions': async () => {
+    const { data, error } = await supabase.rpc('ai_chat_sessions');
+    if (error) {
+      if (isMissingFunction(error) || isMissingRelation(error)) return [];
+      throwErr(error, 'Unable to load conversations');
+    }
+    return (data ?? []) as { session_id: string; title: string; msg_count: number; started_at: string; last_at: string }[];
+  },
+
+  'ai.appendChat': async (input: { sessionId?: string; items: { role: 'user' | 'assistant'; content: string; actions?: unknown[] }[] }, ctx) => {
     const rows = input.items.map((m) => ({
       user_id: ctx.user.id,
+      session_id: input.sessionId ?? null,
       role: m.role,
       content: m.content,
       actions: m.actions ?? [],
@@ -2947,8 +2973,11 @@ const PROCEDURES: Record<string, ProcedureFn> = {
     return { success: true };
   },
 
-  'ai.clearChat': async (_input, ctx) => {
-    const { error } = await supabase.from('ai_chat_messages').delete().eq('user_id', ctx.user.id);
+  // Delete a single session (or the whole thread when no sessionId is passed).
+  'ai.clearChat': async (input: { sessionId?: string } | undefined, ctx) => {
+    let q = supabase.from('ai_chat_messages').delete().eq('user_id', ctx.user.id);
+    if (input?.sessionId) q = q.eq('session_id', input.sessionId);
+    const { error } = await q;
     if (error) throwErr(error, 'Unable to clear chat');
     return { success: true };
   },
