@@ -83,7 +83,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/auth/") ||
     pathname.startsWith("/explore") ||
     pathname.startsWith("/directory") ||
-    pathname.startsWith("/ship");
+    pathname.startsWith("/ship") ||
+    pathname.startsWith("/international") ||
+    pathname.startsWith("/ground-freight");
 
   // Redirect unauthenticated visitors away from protected routes.
   if (!user && !isPublicRoute) {

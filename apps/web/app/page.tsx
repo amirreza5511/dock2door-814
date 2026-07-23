@@ -5,6 +5,7 @@ import { HowItWorks } from "@/components/landing/how-it-works";
 import { NetworkGlobe } from "@/components/landing/network-globe";
 import { Showcase3D } from "@/components/landing/showcase-3d";
 import { Modules } from "@/components/landing/modules";
+import { Capabilities } from "@/components/landing/capabilities";
 import { Gallery } from "@/components/landing/gallery";
 import { News } from "@/components/landing/news";
 import { Spotlight } from "@/components/landing/spotlight";
@@ -38,6 +39,7 @@ export default function LandingPage() {
         <NetworkGlobe />
         <Showcase3D />
         <Modules />
+        <Capabilities />
         <Gallery />
         <News />
         <Spotlight />
