@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useAudioPlayer } from 'expo-audio';
 import { Image } from 'expo-image';
@@ -17,6 +17,17 @@ import {
   PROMO_MUSIC_URL,
   type PromoScene,
 } from '@/constants/promo';
+
+/**
+ * Swallow the promise returned by a media element's play() so a benign
+ * autoplay/interruption rejection (common on web when swapping sources) never
+ * bubbles up as an unhandled rejection / runtime-error overlay.
+ */
+function safePlay(result: unknown): void {
+  if (result && typeof (result as Promise<void>).catch === 'function') {
+    (result as Promise<void>).catch(() => undefined);
+  }
+}
 
 /**
  * Full-screen launch intro. Plays a sequence of branded video clips interleaved
@@ -47,6 +58,23 @@ export default function IntroVideo() {
 
   const firstVideo = PROMO_SCENES.find((s): s is Extract<PromoScene, { kind: 'video' }> => s.kind === 'video');
 
+  // On web, rapidly swapping video sources (and the looping bg music) makes the
+  // browser reject the pending play() promise with "interrupted by a new load
+  // request". It is harmless, so swallow just that rejection to avoid the
+  // runtime-error overlay. Scoped to the benign media messages only.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onRejection = (e: PromiseRejectionEvent): void => {
+      const reason = e?.reason as { message?: string } | string | undefined;
+      const msg = String((typeof reason === 'object' ? reason?.message : reason) ?? '');
+      if (/play\(\) request was interrupted|interrupted by a new load request|interrupted because the media was paused/i.test(msg)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, []);
+
   const player = useVideoPlayer(firstVideo?.url ?? null, (p) => {
     p.muted = true;
     p.loop = false;
@@ -75,7 +103,7 @@ export default function IntroVideo() {
     fade.setValue(0);
     Animated.timing(fade, { toValue: 1, duration: 400, useNativeDriver: true }).start();
     if (PROMO_MUSIC_URL) {
-      try { music.seekTo(0); music.volume = 0.7; music.loop = true; music.play(); } catch {}
+      try { music.seekTo(0); music.volume = 0.7; music.loop = true; safePlay(music.play()); } catch {}
     }
   }, [playToken, fade, firstVideo, setActive, music]);
 
@@ -118,7 +146,7 @@ export default function IntroVideo() {
           loadedUrlRef.current = scene.url;
         }
         player.currentTime = 0;
-        player.play();
+        safePlay(player.play());
       } catch {}
       advanceTimer.current = setTimeout(goNext, scene.maxMs ?? 14000);
     } else {
