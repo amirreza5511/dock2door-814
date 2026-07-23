@@ -411,6 +411,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/customer/post-load", label: "Post a load", icon: Plus },
         { href: "/customer/loads", label: "My loads", icon: ClipboardList },
         { href: "/customer/drayage", label: "Container orders", icon: Container },
+        { href: "/customer/ocean", label: "Ocean booking", icon: Ship },
+        { href: "/customer/air", label: "Air cargo", icon: Plane },
+        { href: "/customer/parcel", label: "Parcel counter", icon: Package },
       ],
     });
     sections.push({
