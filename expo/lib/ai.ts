@@ -12,6 +12,12 @@ export interface AiMessage {
   content: string;
 }
 
+/** An image attachment the user added to a chat message (full data URI). */
+export interface AiImageAttachment {
+  /** e.g. `data:image/jpeg;base64,...` */
+  dataUrl: string;
+}
+
 const LEGACY_LLM_ENDPOINT = 'https://toolkit.rork.com/text/llm/';
 const CHAT_MODEL = 'anthropic/claude-sonnet-5';
 
@@ -98,7 +104,14 @@ async function askViaLegacy(messages: AiMessage[]): Promise<string | null> {
  * blocked. Falls back to the AI Gateway (Claude Sonnet 5) and the legacy
  * toolkit endpoint. Throws a user-friendly error only when every attempt fails.
  */
-export async function askAssistant(messages: AiMessage[]): Promise<string> {
+export async function askAssistant(messages: AiMessage[], images?: AiImageAttachment[]): Promise<string> {
+  // When the last user turn carries image attachments, use the vision-capable
+  // gateway so the model actually "sees" them. Fall back to text-only paths.
+  if (images && images.length > 0) {
+    const viaVision = await askViaGatewayVision(messages, images);
+    if (viaVision) return viaVision;
+  }
+
   const viaEdge = await askViaEdgeFunction(messages);
   if (viaEdge) return viaEdge;
 
@@ -109,6 +122,49 @@ export async function askAssistant(messages: AiMessage[]): Promise<string> {
   if (viaLegacy) return viaLegacy;
 
   throw new Error('Could not reach the assistant. Check your connection and try again.');
+}
+
+/**
+ * Multimodal chat: attaches the given images to the LAST user message and asks
+ * the vision model. Returns null on any failure so callers can fall back to a
+ * text-only path.
+ */
+async function askViaGatewayVision(messages: AiMessage[], images: AiImageAttachment[]): Promise<string | null> {
+  try {
+    let attached = false;
+    const built = [...messages].reverse().map((m) => {
+      if (!attached && m.role === 'user') {
+        attached = true;
+        return {
+          role: m.role,
+          content: [
+            { type: 'text', text: m.content },
+            ...images.map((img) => ({ type: 'image_url', image_url: { url: img.dataUrl } })),
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    }).reverse();
+
+    const res = await fetch(`${toolkitBase()}/v2/vercel/v1/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${toolkitKey()}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ model: VISION_MODEL, messages: built, max_tokens: 2048 }),
+    });
+    if (!res.ok) {
+      console.log('[ai] vision chat failed', res.status);
+      return null;
+    }
+    const data = (await res.json()) as ChatCompletionResponse;
+    const content = data.choices?.[0]?.message?.content?.trim();
+    return content && content.length > 0 ? content : null;
+  } catch (e) {
+    console.log('[ai] vision chat error', e instanceof Error ? e.message : 'unknown');
+    return null;
+  }
 }
 
 const VISION_MODEL = 'anthropic/claude-sonnet-5';

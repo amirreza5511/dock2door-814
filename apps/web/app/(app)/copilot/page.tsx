@@ -7,12 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles, Radar, Lightbulb, ShieldCheck, AlertTriangle, Info, OctagonAlert,
   Check, X, Play, Brain, Trash2, Repeat2, TrendingDown, DollarSign, Plus, Send, Mic, Square,
+  Paperclip, FileText,
 } from "lucide-react";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { askAssistant, type AiMessage } from "@/lib/ai";
+import { askAssistant, type AiMessage, type AiImageAttachment } from "@/lib/ai";
 import {
   buildCopilotSystemPrompt, parseCopilotReply, copilotSuggestions,
   type CopilotAction,
@@ -47,6 +48,16 @@ interface UiMsg {
   role: "user" | "assistant";
   content: string;
   actions: CopilotAction[];
+  attachments?: ChatAttachment[];
+}
+
+/** A pending or sent chat attachment (photo for vision, or a document). */
+interface ChatAttachment {
+  id: string;
+  kind: "image" | "doc";
+  name: string;
+  /** Full data URI for images (used for the thumbnail and vision). */
+  dataUrl?: string;
 }
 
 interface AiEvent {
@@ -114,7 +125,9 @@ export default function CopilotPage() {
   const [tab, setTab] = useState<TabKey>("chat");
   const [messages, setMessages] = useState<UiMsg[] | null>(null);
   const [input, setInput] = useState<string>("");
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [sending, setSending] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [runningKey, setRunningKey] = useState<string | null>(null);
   const [doneKeys, setDoneKeys] = useState<Set<string>>(new Set());
   const [actionError, setActionError] = useState<string>("");
@@ -349,17 +362,26 @@ export default function CopilotPage() {
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    const userMsg: UiMsg = { id: `u-${Date.now()}`, role: "user", content: trimmed, actions: [] };
+    const pending = attachments;
+    if ((!trimmed && pending.length === 0) || sending) return;
+    const docNote = pending.filter((a) => a.kind === "doc").map((a) => `[Attached document: ${a.name}]`).join("\n");
+    const imgCount = pending.filter((a) => a.kind === "image").length;
+    const imgNote = imgCount > 0 ? `[Attached ${imgCount} photo(s)]` : "";
+    const composed = [trimmed, imgNote, docNote].filter(Boolean).join("\n").trim() || "(see attachment)";
+    const images: AiImageAttachment[] = pending
+      .filter((a) => a.kind === "image" && a.dataUrl)
+      .map((a) => ({ dataUrl: a.dataUrl as string }));
+    const userMsg: UiMsg = { id: `u-${Date.now()}`, role: "user", content: composed, actions: [], attachments: pending };
     const history = [...(messages ?? []), userMsg];
     setMessages(history);
     setInput("");
+    setAttachments([]);
     setSending(true);
-    void appendChat.mutateAsync([{ role: "user", content: trimmed }]).catch(() => undefined);
+    void appendChat.mutateAsync([{ role: "user", content: composed }]).catch(() => undefined);
     try {
       const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
       const prior: AiMessage[] = history.slice(-16).map((m) => ({ role: m.role, content: m.content }));
-      const raw = await askAssistant([{ role: "system", content: system }, ...prior]);
+      const raw = await askAssistant([{ role: "system", content: system }, ...prior], images);
       const parsed = parseCopilotReply(raw);
       const aiMsg: UiMsg = { id: `a-${Date.now()}`, role: "assistant", content: parsed.text, actions: parsed.actions };
       setMessages((prev) => [...(prev ?? []), aiMsg]);
@@ -373,7 +395,36 @@ export default function CopilotPage() {
     } finally {
       setSending(false);
     }
-  }, [messages, sending, context, memories, appendChat, addMemory]);
+  }, [messages, sending, attachments, context, memories, appendChat, addMemory]);
+
+  // ── Attachments: photo (vision) or document ──
+  const onPickFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const readAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error("read failed"));
+      reader.readAsDataURL(file);
+    });
+    const next: ChatAttachment[] = [];
+    for (const file of Array.from(files)) {
+      try {
+        if (file.type.startsWith("image/")) {
+          const dataUrl = await readAsDataUrl(file);
+          next.push({ id: `img-${Date.now()}-${next.length}`, kind: "image", name: file.name, dataUrl });
+        } else {
+          next.push({ id: `doc-${Date.now()}-${next.length}`, kind: "doc", name: file.name });
+        }
+      } catch {
+        /* skip unreadable file */
+      }
+    }
+    if (next.length > 0) setAttachments((prev) => [...prev, ...next]);
+  }, []);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   const runAction = useCallback(async (msgId: string, idx: number, action: CopilotAction) => {
     const key = `${msgId}:${idx}`;
@@ -652,7 +703,21 @@ export default function CopilotPage() {
                       "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
                       m.role === "user" ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm border border-border bg-card",
                     )}>
-                      {m.content}
+                      {m.attachments && m.attachments.length > 0 ? (
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          {m.attachments.map((att) => (
+                            att.kind === "image" && att.dataUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img key={att.id} src={att.dataUrl} alt={att.name} className="h-24 w-32 rounded-lg object-cover" />
+                            ) : (
+                              <span key={att.id} className="flex max-w-[200px] items-center gap-1.5 rounded-lg bg-black/20 px-2 py-1 text-xs">
+                                <FileText className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{att.name}</span>
+                              </span>
+                            )
+                          ))}
+                        </div>
+                      ) : null}
+                      {m.content ? m.content : null}
                     </div>
                   </div>
                   {m.actions.map((a, idx) => {
@@ -693,10 +758,45 @@ export default function CopilotPage() {
             <div ref={bottomRef} />
           </div>
 
+          {attachments.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {attachments.map((att) => (
+                <div key={att.id} className="relative flex items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5">
+                  {att.kind === "image" && att.dataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={att.dataUrl} alt={att.name} className="h-10 w-10 rounded object-cover" />
+                  ) : (
+                    <span className="grid h-10 w-10 place-items-center rounded bg-primary/10"><FileText className="h-4 w-4 text-primary" /></span>
+                  )}
+                  <span className="max-w-[120px] truncate text-xs font-medium">{att.name}</span>
+                  <button type="button" onClick={() => removeAttachment(att.id)} className="grid h-5 w-5 place-items-center rounded-full bg-red-500 text-white" title="Remove">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
           <form
             className="flex gap-2"
             onSubmit={(e) => { e.preventDefault(); void send(input); }}
           >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf,text/*,.doc,.docx,.xls,.xlsx"
+              multiple
+              hidden
+              onChange={(e) => { void onPickFiles(e.target.files); e.target.value = ""; }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              title="Attach photo or document"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant={recording ? "destructive" : "outline"}
@@ -709,11 +809,17 @@ export default function CopilotPage() {
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={recording ? "Listening…" : 'Ask, act, or say "remember…"'}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send(input);
+                }
+              }}
+              placeholder={recording ? "Listening…" : 'Ask, act, attach, or say "remember…"'}
               disabled={sending}
               className="flex-1"
             />
-            <Button type="submit" disabled={sending || input.trim().length === 0}>
+            <Button type="submit" disabled={sending || (input.trim().length === 0 && attachments.length === 0)}>
               <Send className="h-4 w-4" />
             </Button>
           </form>

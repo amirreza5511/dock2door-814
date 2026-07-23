@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   KeyboardAvoidingView, Platform, ActivityIndicator, Alert, RefreshControl,
+  type NativeSyntheticEvent, type TextInputKeyPressEventData,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -9,13 +10,16 @@ import * as Haptics from 'expo-haptics';
 import {
   Send, Sparkles, ChevronLeft, ShieldCheck, AlertTriangle, Lightbulb, Info,
   OctagonAlert, Radar, Check, X, Play, Brain, Trash2, Repeat2, TrendingDown,
-  DollarSign, Plus, Mic, Square,
+  DollarSign, Plus, Mic, Square, Paperclip, ImageIcon, FileText,
 } from 'lucide-react-native';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import { Image } from 'expo-image';
 import Card from '@/components/ui/Card';
 import C from '@/constants/colors';
-import { askAssistant, transcribeAudio, type AiMessage } from '@/lib/ai';
+import { askAssistant, transcribeAudio, type AiMessage, type AiImageAttachment } from '@/lib/ai';
 import {
   buildCopilotSystemPrompt, parseCopilotReply, copilotSuggestions,
   type CopilotAction,
@@ -30,6 +34,17 @@ interface UiMsg {
   role: 'user' | 'assistant';
   content: string;
   actions: CopilotAction[];
+  /** Thumbnails/labels for anything the user attached to this turn. */
+  attachments?: ChatAttachment[];
+}
+
+/** A pending or sent chat attachment (photo for vision, or a document). */
+interface ChatAttachment {
+  id: string;
+  kind: 'image' | 'doc';
+  name: string;
+  /** Full data URI for images (used for the thumbnail and vision). */
+  dataUrl?: string;
 }
 
 interface AiEvent {
@@ -77,6 +92,8 @@ export default function CopilotScreen() {
   const [tab, setTab] = useState<TabKey>('chat');
   const [messages, setMessages] = useState<UiMsg[] | null>(null);
   const [input, setInput] = useState<string>('');
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attaching, setAttaching] = useState<boolean>(false);
   const [sending, setSending] = useState<boolean>(false);
   const [runningKey, setRunningKey] = useState<string | null>(null);
   const [doneKeys, setDoneKeys] = useState<Set<string>>(new Set());
@@ -164,18 +181,30 @@ export default function CopilotScreen() {
 
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
-    const userMsg: UiMsg = { id: `u-${Date.now()}`, role: 'user', content: trimmed, actions: [] };
+    const pending = attachments;
+    if ((!trimmed && pending.length === 0) || sending) return;
+    // Fold attachment labels into the message text so both the AI and the
+    // persisted history keep a record of what was shared.
+    const docNote = pending.filter((a) => a.kind === 'doc').map((a) => `[Attached document: ${a.name}]`).join('\n');
+    const imgNote = pending.filter((a) => a.kind === 'image').length > 0
+      ? `[Attached ${pending.filter((a) => a.kind === 'image').length} photo(s)]`
+      : '';
+    const composed = [trimmed, imgNote, docNote].filter(Boolean).join('\n').trim() || '(see attachment)';
+    const images: AiImageAttachment[] = pending
+      .filter((a) => a.kind === 'image' && a.dataUrl)
+      .map((a) => ({ dataUrl: a.dataUrl as string }));
+    const userMsg: UiMsg = { id: `u-${Date.now()}`, role: 'user', content: composed, actions: [], attachments: pending };
     const history = [...(messages ?? []), userMsg];
     setMessages(history);
     setInput('');
+    setAttachments([]);
     setSending(true);
     scrollDown();
-    void appendChat.mutateAsync({ items: [{ role: 'user', content: trimmed }] }).catch(() => undefined);
+    void appendChat.mutateAsync({ items: [{ role: 'user', content: composed }] }).catch(() => undefined);
     try {
       const system = buildCopilotSystemPrompt(context ?? {}, memories.map((m) => m.content));
       const prior: AiMessage[] = history.slice(-16).map((m) => ({ role: m.role, content: m.content }));
-      const raw = await askAssistant([{ role: 'system', content: system }, ...prior]);
+      const raw = await askAssistant([{ role: 'system', content: system }, ...prior], images);
       const parsed = parseCopilotReply(raw);
       const aiMsg: UiMsg = { id: `a-${Date.now()}`, role: 'assistant', content: parsed.text, actions: parsed.actions };
       setMessages((prev) => [...(prev ?? []), aiMsg]);
@@ -190,7 +219,89 @@ export default function CopilotScreen() {
       setSending(false);
       scrollDown();
     }
-  }, [messages, sending, context, memories, appendChat, addMemory, scrollDown]);
+  }, [messages, sending, attachments, context, memories, appendChat, addMemory, scrollDown]);
+
+  // ── Enter to send (web): Enter submits, Shift+Enter makes a newline ──
+  const onInputKeyPress = useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    if (Platform.OS !== 'web') return;
+    const ev = e as unknown as { nativeEvent: { key: string; shiftKey?: boolean }; preventDefault?: () => void };
+    if (ev.nativeEvent.key === 'Enter' && !ev.nativeEvent.shiftKey) {
+      ev.preventDefault?.();
+      void send(input);
+    }
+  }, [send, input]);
+
+  // ── Attachments: photo (vision) or document ──
+  const readAsDataUrl = useCallback(async (uri: string, mime: string): Promise<string> => {
+    const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+    return `data:${mime};base64,${base64}`;
+  }, []);
+
+  const attachPhoto = useCallback(async () => {
+    if (attaching || sending) return;
+    setAttaching(true);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Photos', 'Photo access is needed to attach an image. You can enable it in Settings.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'], quality: 0.7, base64: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      const mime = a.mimeType ?? 'image/jpeg';
+      const dataUrl = a.base64 ? `data:${mime};base64,${a.base64}` : await readAsDataUrl(a.uri, mime);
+      setAttachments((prev) => [...prev, { id: `img-${Date.now()}`, kind: 'image', name: a.fileName ?? 'photo.jpg', dataUrl }]);
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert('Could not attach photo', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setAttaching(false);
+    }
+  }, [attaching, sending, readAsDataUrl]);
+
+  const attachDocument = useCallback(async () => {
+    if (attaching || sending) return;
+    setAttaching(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*', 'text/*',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true, multiple: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      const a = result.assets[0];
+      const mime = a.mimeType ?? 'application/octet-stream';
+      // Images picked as documents still go through vision.
+      if (mime.startsWith('image/')) {
+        const dataUrl = await readAsDataUrl(a.uri, mime);
+        setAttachments((prev) => [...prev, { id: `img-${Date.now()}`, kind: 'image', name: a.name ?? 'image', dataUrl }]);
+      } else {
+        setAttachments((prev) => [...prev, { id: `doc-${Date.now()}`, kind: 'doc', name: a.name ?? 'document' }]);
+      }
+      if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert('Could not attach document', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setAttaching(false);
+    }
+  }, [attaching, sending, readAsDataUrl]);
+
+  const chooseAttachment = useCallback(() => {
+    if (attaching || sending) return;
+    Alert.alert('Add attachment', 'Share a photo or a document with the assistant.', [
+      { text: 'Photo', onPress: () => void attachPhoto() },
+      { text: 'Document', onPress: () => void attachDocument() },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [attaching, sending, attachPhoto, attachDocument]);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   const runAction = useCallback(async (msgId: string, idx: number, action: CopilotAction) => {
     const key = `${msgId}:${idx}`;
@@ -510,7 +621,21 @@ export default function CopilotScreen() {
                 <View key={m.id}>
                   <View style={[styles.bubbleRow, m.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAi]}>
                     <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}>
-                      <Text style={[styles.bubbleText, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
+                      {m.attachments && m.attachments.length > 0 ? (
+                        <View style={styles.msgAttachments}>
+                          {m.attachments.map((att) => (
+                            att.kind === 'image' && att.dataUrl ? (
+                              <Image key={att.id} source={{ uri: att.dataUrl }} style={styles.msgThumb} contentFit="cover" />
+                            ) : (
+                              <View key={att.id} style={styles.msgDocChip}>
+                                <FileText size={13} color={m.role === 'user' ? C.white : C.textMuted} />
+                                <Text style={[styles.msgDocText, m.role === 'user' && { color: C.white }]} numberOfLines={1}>{att.name}</Text>
+                              </View>
+                            )
+                          ))}
+                        </View>
+                      ) : null}
+                      {m.content ? <Text style={[styles.bubbleText, m.role === 'user' && { color: C.white }]}>{m.content}</Text> : null}
                     </View>
                   </View>
                   {m.actions.length > 0 ? m.actions.map((a, idx) => {
@@ -561,37 +686,65 @@ export default function CopilotScreen() {
             ) : null}
           </ScrollView>
 
-          <View style={[styles.composer, { paddingBottom: insets.bottom + 10 }]}>
-            <TouchableOpacity
-              onPress={() => void toggleMic()}
-              disabled={transcribing || sending}
-              style={[styles.micBtn, recording && styles.micBtnRecording]}
-              testID="copilot-mic"
-            >
-              {transcribing ? (
-                <ActivityIndicator size="small" color={C.accent} />
-              ) : recording ? (
-                <Square size={16} color={C.white} fill={C.white} />
-              ) : (
-                <Mic size={18} color={C.accent} />
-              )}
-            </TouchableOpacity>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder={recording ? 'Listening… tap ■ to stop' : 'Ask, act, or say “remember…”'}
-              placeholderTextColor={recording ? C.red : C.textMuted}
-              style={styles.input}
-              multiline
-              editable={!sending}
-            />
-            <TouchableOpacity
-              onPress={() => void send(input)}
-              disabled={sending || input.trim().length === 0}
-              style={[styles.sendBtn, (sending || input.trim().length === 0) && styles.sendBtnDisabled]}
-            >
-              <Send size={18} color={C.white} />
-            </TouchableOpacity>
+          <View style={[styles.composerWrap, { paddingBottom: insets.bottom + 10 }]}>
+            {attachments.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attachStrip} contentContainerStyle={styles.attachStripContent}>
+                {attachments.map((att) => (
+                  <View key={att.id} style={styles.attachChip}>
+                    {att.kind === 'image' && att.dataUrl ? (
+                      <Image source={{ uri: att.dataUrl }} style={styles.attachThumb} contentFit="cover" />
+                    ) : (
+                      <View style={styles.attachDoc}><FileText size={16} color={C.accent} /></View>
+                    )}
+                    <Text style={styles.attachName} numberOfLines={1}>{att.name}</Text>
+                    <TouchableOpacity onPress={() => removeAttachment(att.id)} style={styles.attachRemove} hitSlop={8}>
+                      <X size={12} color={C.white} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : null}
+            <View style={styles.composer}>
+              <TouchableOpacity
+                onPress={chooseAttachment}
+                disabled={attaching || sending}
+                style={styles.micBtn}
+                testID="copilot-attach"
+              >
+                {attaching ? <ActivityIndicator size="small" color={C.accent} /> : <Paperclip size={18} color={C.accent} />}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => void toggleMic()}
+                disabled={transcribing || sending}
+                style={[styles.micBtn, recording && styles.micBtnRecording]}
+                testID="copilot-mic"
+              >
+                {transcribing ? (
+                  <ActivityIndicator size="small" color={C.accent} />
+                ) : recording ? (
+                  <Square size={16} color={C.white} fill={C.white} />
+                ) : (
+                  <Mic size={18} color={C.accent} />
+                )}
+              </TouchableOpacity>
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                onKeyPress={onInputKeyPress}
+                placeholder={recording ? 'Listening… tap ■ to stop' : 'Ask, act, attach, or say “remember…”'}
+                placeholderTextColor={recording ? C.red : C.textMuted}
+                style={styles.input}
+                multiline
+                editable={!sending}
+              />
+              <TouchableOpacity
+                onPress={() => void send(input)}
+                disabled={sending || (input.trim().length === 0 && attachments.length === 0)}
+                style={[styles.sendBtn, (sending || (input.trim().length === 0 && attachments.length === 0)) && styles.sendBtnDisabled]}
+              >
+                <Send size={18} color={C.white} />
+              </TouchableOpacity>
+            </View>
           </View>
         </KeyboardAvoidingView>
       ) : tab === 'alerts' ? (
@@ -837,7 +990,19 @@ const styles = StyleSheet.create({
   approveBtnText: { fontSize: 13, fontWeight: '800' as const, color: C.white },
   skipBtn: { width: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: C.card, borderWidth: 1, borderColor: C.border },
 
-  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 10, backgroundColor: C.bgSecondary, borderTopWidth: 1, borderTopColor: C.border },
+  composerWrap: { backgroundColor: C.bgSecondary, borderTopWidth: 1, borderTopColor: C.border },
+  composer: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingTop: 10 },
+  attachStrip: { maxHeight: 76, paddingTop: 10 },
+  attachStripContent: { paddingHorizontal: 12, gap: 8, flexDirection: 'row' },
+  attachChip: { width: 120, height: 56, borderRadius: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 8 },
+  attachThumb: { width: 40, height: 40, borderRadius: 8, backgroundColor: C.bg },
+  attachDoc: { width: 40, height: 40, borderRadius: 8, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center' },
+  attachName: { flex: 1, fontSize: 11, color: C.text, fontWeight: '600' as const },
+  attachRemove: { position: 'absolute', top: -6, right: -6, width: 20, height: 20, borderRadius: 10, backgroundColor: C.red, alignItems: 'center', justifyContent: 'center' },
+  msgAttachments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
+  msgThumb: { width: 120, height: 90, borderRadius: 10, backgroundColor: C.bg },
+  msgDocChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#00000022', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, maxWidth: 200 },
+  msgDocText: { fontSize: 12, color: C.textMuted, fontWeight: '600' as const, flexShrink: 1 },
   input: { flex: 1, maxHeight: 120, minHeight: 44, backgroundColor: C.card, borderRadius: 14, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, color: C.text, fontSize: 14 },
   sendBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { backgroundColor: C.border },
