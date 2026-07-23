@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { askAssistant } from '@/lib/ai';
 import { usePreferences } from '@/store/preferences';
 import { useExploreStore } from '@/store/explore';
+import { useAuthStore } from '@/store/auth';
 import { AIRPORTS, CURRENCY_CODES, weightUnitFor, dimUnitFor } from '@/constants/world';
 
 const CURRENCIES = CURRENCY_CODES;
@@ -74,7 +75,8 @@ export default function CustomerAirScreen() {
   const router = useRouter();
   const utils = trpc.useUtils();
   const isExploring = useExploreStore((s) => s.isExploring);
-  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled: !isExploring });
+  const user = useAuthStore((s) => s.user);
+  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled: Boolean(user) && !isExploring });
   const requests = (mineQuery.data ?? []) as AirRequest[];
 
   const [postModal, setPostModal] = useState<boolean>(false);
@@ -355,9 +357,11 @@ function AirDetailModal({ requestId, onClose }: { requestId: string; onClose: ()
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
   const isExploring = useExploreStore((s) => s.isExploring);
-  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled: !isExploring });
-  const offersQuery = trpc.air.offers.useQuery({ requestId }, { enabled: !isExploring });
-  const messagesQuery = trpc.air.messages.useQuery({ requestId }, { enabled: !isExploring });
+  const user = useAuthStore((s) => s.user);
+  const enabled = Boolean(user) && !isExploring;
+  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled });
+  const offersQuery = trpc.air.offers.useQuery({ requestId }, { enabled });
+  const messagesQuery = trpc.air.messages.useQuery({ requestId }, { enabled });
   const req = ((mineQuery.data ?? []) as AirRequest[]).find((r) => r.id === requestId) ?? null;
   const offers = (offersQuery.data ?? []) as AirOffer[];
   const messages = (messagesQuery.data ?? []) as AirMessage[];
