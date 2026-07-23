@@ -20,6 +20,8 @@ export type CopilotActionType =
   | 'dispatch_load'
   | 'create_load'
   | 'create_drayage_order'
+  | 'collect_parcel'
+  | 'collect_return'
   | 'forward_intake'
   | 'escalate_human';
 
@@ -51,6 +53,8 @@ const ACTION_TYPES: CopilotActionType[] = [
   'dispatch_load',
   'create_load',
   'create_drayage_order',
+  'collect_parcel',
+  'collect_return',
   'forward_intake',
   'escalate_human',
 ];
@@ -98,7 +102,14 @@ function actionDocsForRole(role: string, companyType: string, ctx: CopilotContex
   }
   if (canPostLoad) {
     lines.push(
-      '- create_load: { "title", "originCity", "originCountry"?, "destCity", "destCountry"?, "freightMode"? ("truck"|"lcl"|"fcl"), "weight"? (number), "weightUnit"? ("kg"|"lb"), "pieces"? (pallet/piece count), "commodity"?, "readyDate"? (YYYY-MM-DD), "finalMile"? (boolean — deliver to the door), "notes"? } — posts a NEW LTL/FTL/LCL truck load to the marketplace so carriers and companies send competing price quotes. Default originCountry/destCountry to "Canada" if the user only gives a city and it is clearly domestic. Use freightMode "truck" for LTL/FTL road freight (default), "lcl" for a shared container, "fcl" for a full container. Collect at least origin city, destination city and what is being shipped before proposing.',
+      '- create_load: { "title", "originCity", "originCountry"?, "destCity", "destCountry"?, "freightMode"? ("truck"|"lcl"|"fcl"), "weight"? (number), "weightUnit"? ("kg"|"lb"), "pieces"? (pallet/piece count), "commodity"?, "readyDate"? (YYYY-MM-DD), "finalMile"? (boolean — deliver to the door), "notes"? } — posts a NEW LTL/FTL/LCL truck load to the marketplace so carriers and companies send competing price quotes. Use this for BIGGER freight (a pallet, a truckload, LTL/FTL, container). Default originCountry/destCountry to "Canada" if the user only gives a city and it is clearly domestic. Use freightMode "truck" for LTL/FTL road freight (default), "lcl" for a shared container, "fcl" for a full container. Collect at least origin city, destination city and what is being shipped before proposing.',
+    );
+  }
+  // Everyone (except drivers/workers) can open the in-chat parcel & return cards.
+  if (canPostLoad) {
+    lines.push(
+      '- collect_parcel: { prefill hints only — "fromName"?, "fromPhone"?, "fromLine1"?, "fromCity"?, "fromRegion"?, "fromPostal"?, "toName"?, "toPhone"?, "toLine1"?, "toCity"?, "toRegion"?, "toPostal"?, "commodity"?, "weight"? (kg), "length"?/"width"?/"height"? (cm), "readyDate"?, "deliveryMethod"? ("dropoff"|"pickup") } — opens an in-chat FILLABLE CARD for sending a small parcel / package / e-commerce shipment. The card collects sender + recipient + item + weight/size, shows the price, takes payment, then generates a printable barcode/label, and lets the user drop it at the nearest post office OR request a driver pickup. Put every detail the user already told you into params so the card is pre-filled; the user completes the rest IN THE CARD. Prefer this over create_load for anything parcel-sized.',
+      '- collect_return: { prefill hints only — "fromName"?, "fromPhone"?, "fromLine1"?, "fromCity"?, "fromRegion"?, "fromPostal"?, "commodity"?, "platform"? ("Amazon"|"Temu"|"Shopify"|...), "returnLabelMode"? ("scan"|"printed") } — opens an in-chat FILLABLE CARD for a store RETURN (Amazon/Temu/Shopify/etc.). We send a driver to the pickup address who either scans the store return barcode or takes the customer-printed label, then drops it at the post office. Pre-fill everything you already know.',
     );
   }
   if (canOrderDrayage) {
@@ -135,13 +146,13 @@ function rolePlaybook(role: string, companyType: string): string {
   }
   if (role === 'FreightForwarder' || role === 'Shipper' || role === 'CustomsBroker') {
     return `PLAYBOOK — FREIGHT COORDINATION:
-- To ship a truck load / get price quotes ("I want to send a load from Vancouver to Calgary"), gather origin city, destination city and what is being shipped (plus rough weight/pallets if handy), then propose create_load. This posts it to the marketplace so carriers send competing prices.
+- For a SMALL parcel / package / e-commerce shipment, propose collect_parcel to open the in-chat card (pre-fill everything you know). For a store RETURN (Amazon/Temu/Shopify), propose collect_return. For a bigger LTL/FTL truck load, gather origin city, destination city and what is being shipped, then propose create_load.
 - For container work ("coordinate delivery of MSCU1234567"), collect direction, container number/size, and pickup/delivery details step by step, then propose create_drayage_order. Suggest a drayage company from providerCompanies when relevant (set targetDrayageCompanyId).
 - For anything a provider must answer (rates, insurance, customs), prepare a summary and propose forward_intake to the right company.`;
   }
   if (role === 'Guest' || role === 'Customer' || role === 'MarketplaceBuyer') {
     return `PLAYBOOK — INTAKE:
-- To ship ANYTHING ("I want to send a package/load/parcel from A to B"), keep it ON-PLATFORM no matter the size — never suggest Canada Post/UPS/FedEx/etc. Gather origin city, destination city and what is being shipped (plus rough weight/size), then propose create_load so OUR carriers send competing price quotes. Even a SINGLE small parcel, an e-commerce return, or an "Amazon return" is a load — post it with create_load (set finalMile true for door delivery/returns). This is a core capability we ALREADY have; NEVER treat parcels/returns as an unavailable feature and NEVER file request_customization for them.
+- To ship ANYTHING, keep it ON-PLATFORM no matter the size — never suggest Canada Post/UPS/FedEx/etc. For a small parcel / package / "I want to send this box", propose collect_parcel to open the in-chat fillable card (pre-fill sender/recipient/item from what you know). For a store RETURN or "Amazon return", propose collect_return. For a bigger truck load, use create_load. These are core capabilities we ALREADY have; NEVER treat parcels/returns as unavailable and NEVER file request_customization for them.
 - When the user wants a service (cargo insurance, customs clearance, warehousing, trucking, workers), run a short intake: ask the needed follow-up questions ONE AT A TIME (for insurance: what cargo, its value, route from/to, dates, container or LTL). Keep it conversational.
 - Once you have enough, write a clean summary, pick the best-matching company from providerCompanies, and propose forward_intake so they receive the package. Tell the user who you picked and why.`;
   }
@@ -155,7 +166,7 @@ function rolePlaybook(role: string, companyType: string): string {
   }
   return `PLAYBOOK:
 - Help the user run their day on the platform. Ground answers in the snapshot; propose the matching action when they want something done.
-- If they want to ship a truck load or get freight prices ("send a load from A to B"), gather origin city, destination city and what is being shipped, then propose create_load so carriers send competing quotes.`;
+- For a small parcel/package propose collect_parcel; for a store/Amazon return propose collect_return; for a bigger truck load gather origin, destination and cargo then propose create_load.`;
 }
 
 /**
@@ -185,7 +196,15 @@ HOW OUR PARCEL & RETURNS SERVICE ACTUALLY WORKS (know this cold — never contra
 - Dock2Door fully handles small parcels, e-commerce shipments and store returns (including Amazon returns) END-TO-END. WE do all the work: we generate the shipping label and barcode, we set/collect the price and payment, we choose the carrier, and we arrange the whole movement on OUR network.
 - The customer's ONLY job is drop-off: they take the parcel to the nearest/first post office (or drop point) and hand it over. That's it. Everything else — label, barcode, pricing, payment, tracking, delivery, and the return leg — is done by us.
 - So NEVER tell a customer to "go create a label with Canada Post/UPS/etc.", "pay the courier", or "arrange it yourself". That is exactly backwards. We produce the label + barcode; they just drop it off. If they ask "how do I send this / do a return", explain OUR flow: you post it here → we give you the label & barcode → you drop it at the nearest post office → we handle the rest.
-- Treat a parcel / package / Amazon or store return as a normal load: post it with create_load (set finalMile true when it's a door pickup/return). This is a first-class, fully-supported service, not an edge case.
+- The RIGHT tool for this is the in-chat card: propose collect_parcel to send a parcel, or collect_return for a store/Amazon return. The card collects the details, takes payment, generates the barcode/label, and offers drop-off (nearest post office) or a driver pickup. Pre-fill the card with everything the user already told you. This is a first-class, fully-supported service, not an edge case.
+
+APP MAP (know what Dock2Door can do so you never send the user elsewhere):
+- Send a parcel → in-chat collect_parcel card (quote → pay → printable barcode/label → drop-off at nearest post office OR driver pickup).
+- Store/Amazon/Temu/Shopify return → in-chat collect_return card (driver scans the return barcode or takes the printed label, then drops at the post office).
+- Bigger LTL/FTL/LCL/FCL freight → create_load (marketplace of competing carrier quotes).
+- Container drayage → create_drayage_order. Provider intake (insurance/customs/warehousing) → forward_intake. Staffing → create_shift/accept_applicant.
+- Our driver network is Uber-style: owner-operators on bicycle, motorcycle, car, pickup, moving truck, 3/5-ton, flat-deck and semi accept jobs and are tracked live on a map. The card picks the right vehicle by weight automatically.
+- Do everything INSIDE the chat with cards; after an action, keep the user in the chat — a tappable link appears if they want to open a screen. Never say "go to the X screen" as the answer.
 
 RESEARCH WATERFALL — answer in this order, every time:
 1) OUR PLATFORM FIRST: always try to solve the need with Dock2Door — the live snapshot above (the user's data, providerCompanies, loads, shifts, etc.) and the platform's own capabilities and actions listed below. This is always the preferred answer.

@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Image } from 'expo-image';
 import Card from '@/components/ui/Card';
+import ParcelIntakeCard from '@/components/ParcelIntakeCard';
 import C from '@/constants/colors';
 import { askAssistant, transcribeAudio, type AiMessage, type AiImageAttachment } from '@/lib/ai';
 import {
@@ -569,6 +570,17 @@ export default function CopilotScreen() {
   const dead = (context as { deadRuns7d?: { empty_miles?: number; deadhead_miles?: number; dead_cost?: number; savings_cost?: number } } | null | undefined)?.deadRuns7d;
   const companyName = (context as { companyName?: string } | null | undefined)?.companyName ?? '';
 
+  // Append a persistent assistant message (used by the in-chat parcel/return card
+  // when a step completes). The user always stays in the chat.
+  const appendAssistant = useCallback((content: string, link?: { href: string; label: string }) => {
+    setMessages((prev) => [...(prev ?? []), { id: `p-${Date.now()}`, role: 'assistant', content, actions: [], link }]);
+    void appendChat.mutateAsync({ items: [{ role: 'assistant', content }] }).catch(() => undefined);
+    scrollDown();
+  }, [appendChat, scrollDown]);
+
+  // Role-aware screen where a user can watch a dispatched driver on the map.
+  const trackHref = roleStr === 'Shipper' || roleStr === 'FreightForwarder' ? '/shipper/loads' : '/customer/loads';
+
   const empty = (messages ?? []).length === 0;
 
   return (
@@ -680,6 +692,19 @@ export default function CopilotScreen() {
                     const key = `${m.id}:${idx}`;
                     const done = doneKeys.has(key);
                     const running = runningKey === key;
+                    // Parcel & return actions render an in-chat fillable card
+                    // instead of a one-tap approval button.
+                    if (a.type === 'collect_parcel' || a.type === 'collect_return') {
+                      return (
+                        <ParcelIntakeCard
+                          key={key}
+                          flow={a.type === 'collect_return' ? 'return' : 'send'}
+                          params={a.params}
+                          onComplete={appendAssistant}
+                          trackHref={trackHref}
+                        />
+                      );
+                    }
                     return (
                       <View key={key} style={styles.actionCard}>
                         <View style={styles.actionHead}>
