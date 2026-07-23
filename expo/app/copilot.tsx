@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import {
   Send, Sparkles, ChevronLeft, ShieldCheck, AlertTriangle, Lightbulb, Info,
   OctagonAlert, Radar, Check, X, Play, Brain, Trash2, Repeat2, TrendingDown,
-  DollarSign, Plus, Mic, Square, Paperclip, ImageIcon, FileText,
+  DollarSign, Plus, Mic, Square, Paperclip, ImageIcon, FileText, SquarePen,
 } from 'lucide-react-native';
 import { AudioModule, RecordingPresets, setAudioModeAsync, useAudioRecorder } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -530,6 +530,16 @@ export default function CopilotScreen() {
     ]);
   }, [clearChat]);
 
+  const startNewChat = useCallback(() => {
+    if (sending || (messages ?? []).length === 0) return;
+    // Fresh conversation: wipe the thread but keep saved memories.
+    setMessages([]);
+    setInput('');
+    setAttachments([]);
+    if (Platform.OS !== 'web') void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void clearChat.mutateAsync(undefined).catch(() => undefined);
+  }, [sending, messages, clearChat]);
+
   const generateIdeas = useCallback(async () => {
     if (ideasLoading) return;
     setIdeasLoading(true);
@@ -575,9 +585,14 @@ export default function CopilotScreen() {
           </View>
         </View>
         {tab === 'chat' && !empty ? (
-          <TouchableOpacity onPress={confirmClear} style={styles.backBtn}>
-            <Trash2 size={17} color={C.textMuted} />
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity onPress={startNewChat} style={styles.backBtn} accessibilityLabel="New chat">
+              <SquarePen size={18} color={C.text} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={confirmClear} style={styles.backBtn} accessibilityLabel="Clear chat">
+              <Trash2 size={17} color={C.textMuted} />
+            </TouchableOpacity>
+          </>
         ) : null}
       </View>
 
