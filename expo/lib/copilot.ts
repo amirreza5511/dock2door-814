@@ -18,6 +18,7 @@ export type CopilotActionType =
   | 'accept_applicant'
   | 'apply_shift'
   | 'dispatch_load'
+  | 'create_load'
   | 'create_drayage_order'
   | 'forward_intake'
   | 'escalate_human';
@@ -48,6 +49,7 @@ const ACTION_TYPES: CopilotActionType[] = [
   'accept_applicant',
   'apply_shift',
   'dispatch_load',
+  'create_load',
   'create_drayage_order',
   'forward_intake',
   'escalate_human',
@@ -67,6 +69,8 @@ function actionDocsForRole(role: string, companyType: string, ctx: CopilotContex
   const isTrucking = companyType === 'TruckingCompany' || 'companyLoads' in ctx;
   const canOrderDrayage = ['FreightForwarder', 'Customer', 'Shipper', 'CustomsBroker'].includes(role);
   const canForward = 'providerCompanies' in ctx;
+  // Everyone who is NOT a driver can post a freight load for quotes.
+  const canPostLoad = role !== 'Driver' && role !== 'Worker';
 
   if (isDrayage) {
     lines.push(
@@ -90,6 +94,11 @@ function actionDocsForRole(role: string, companyType: string, ctx: CopilotContex
   if (isTrucking || isDrayage) {
     lines.push(
       '- dispatch_load: { "loadId", "driverUserId" } — assign a freight load from companyLoads to a driver from drivers[].driverUserId.',
+    );
+  }
+  if (canPostLoad) {
+    lines.push(
+      '- create_load: { "title", "originCity", "originCountry"?, "destCity", "destCountry"?, "freightMode"? ("truck"|"lcl"|"fcl"), "weight"? (number), "weightUnit"? ("kg"|"lb"), "pieces"? (pallet/piece count), "commodity"?, "readyDate"? (YYYY-MM-DD), "finalMile"? (boolean — deliver to the door), "notes"? } — posts a NEW LTL/FTL/LCL truck load to the marketplace so carriers and companies send competing price quotes. Default originCountry/destCountry to "Canada" if the user only gives a city and it is clearly domestic. Use freightMode "truck" for LTL/FTL road freight (default), "lcl" for a shared container, "fcl" for a full container. Collect at least origin city, destination city and what is being shipped before proposing.',
     );
   }
   if (canOrderDrayage) {
@@ -126,11 +135,13 @@ function rolePlaybook(role: string, companyType: string): string {
   }
   if (role === 'FreightForwarder' || role === 'Shipper' || role === 'CustomsBroker') {
     return `PLAYBOOK — FREIGHT COORDINATION:
+- To ship a truck load / get price quotes ("I want to send a load from Vancouver to Calgary"), gather origin city, destination city and what is being shipped (plus rough weight/pallets if handy), then propose create_load. This posts it to the marketplace so carriers send competing prices.
 - For container work ("coordinate delivery of MSCU1234567"), collect direction, container number/size, and pickup/delivery details step by step, then propose create_drayage_order. Suggest a drayage company from providerCompanies when relevant (set targetDrayageCompanyId).
 - For anything a provider must answer (rates, insurance, customs), prepare a summary and propose forward_intake to the right company.`;
   }
   if (role === 'Guest' || role === 'Customer' || role === 'MarketplaceBuyer') {
     return `PLAYBOOK — INTAKE:
+- To ship something ("I want to send a package/load from A to B"), first size it up: a small courier parcel is different from palletized freight. For a truck load (pallets / heavy freight), gather origin city, destination city and what is being shipped, then propose create_load so carriers send competing price quotes.
 - When the user wants a service (cargo insurance, customs clearance, warehousing, trucking, workers), run a short intake: ask the needed follow-up questions ONE AT A TIME (for insurance: what cargo, its value, route from/to, dates, container or LTL). Keep it conversational.
 - Once you have enough, write a clean summary, pick the best-matching company from providerCompanies, and propose forward_intake so they receive the package. Tell the user who you picked and why.`;
   }
@@ -143,7 +154,8 @@ function rolePlaybook(role: string, companyType: string): string {
 - Answer about their assigned moves/loads (myMoves, myLoads), appointments and what to do next. Escalate to a human for anything you cannot resolve.`;
   }
   return `PLAYBOOK:
-- Help the user run their day on the platform. Ground answers in the snapshot; propose the matching action when they want something done.`;
+- Help the user run their day on the platform. Ground answers in the snapshot; propose the matching action when they want something done.
+- If they want to ship a truck load or get freight prices ("send a load from A to B"), gather origin city, destination city and what is being shipped, then propose create_load so carriers send competing quotes.`;
 }
 
 /**

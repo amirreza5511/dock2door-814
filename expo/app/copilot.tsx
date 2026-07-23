@@ -106,6 +106,7 @@ export default function CopilotScreen() {
   const acceptApplicant = trpc.shifts.acceptApplicant.useMutation();
   const applyShift = trpc.shifts.apply.useMutation();
   const dispatchLoad = trpc.loads.dispatch.useMutation();
+  const createLoad = trpc.freight.create.useMutation();
   const createDrayageOrder = trpc.drayage.createOrder.useMutation();
   const forwardIntake = trpc.ai.forwardIntake.useMutation();
   const createTicket = trpc.tickets.create.useMutation();
@@ -252,6 +253,32 @@ export default function CopilotScreen() {
       } else if (action.type === 'dispatch_load') {
         if (!p.loadId || !p.driverUserId) throw new Error('The proposal is missing the load or driver id.');
         await dispatchLoad.mutateAsync({ id: String(p.loadId), driverUserId: String(p.driverUserId) });
+      } else if (action.type === 'create_load') {
+        const originCity = p.originCity ? String(p.originCity) : '';
+        const destCity = p.destCity ? String(p.destCity) : '';
+        if (!originCity || !destCity) throw new Error('The proposal is missing the origin or destination city.');
+        const modeRaw = p.freightMode ? String(p.freightMode) : 'truck';
+        const freightMode = (['truck', 'lcl', 'fcl'].includes(modeRaw) ? modeRaw : 'truck') as 'truck' | 'lcl' | 'fcl';
+        const unitRaw = p.weightUnit ? String(p.weightUnit) : 'kg';
+        const weightUnit = (unitRaw === 'lb' ? 'lb' : 'kg') as 'kg' | 'lb';
+        const finalMile = p.finalMile === true;
+        await createLoad.mutateAsync({
+          title: p.title ? String(p.title) : `${originCity} → ${destCity}`,
+          originCountry: p.originCountry ? String(p.originCountry) : 'Canada',
+          originCity,
+          destCountry: p.destCountry ? String(p.destCountry) : 'Canada',
+          destCity,
+          freightMode,
+          weight: p.weight != null ? Number(p.weight) : 0,
+          weightUnit,
+          pieces: p.pieces != null ? Math.max(Number(p.pieces), 1) : 1,
+          commodity: p.commodity ? String(p.commodity) : '',
+          currency: p.currency ? String(p.currency) : 'CAD',
+          notes: p.notes ? String(p.notes) : '',
+          readyDate: p.readyDate ? String(p.readyDate) : undefined,
+          deliveryMethod: finalMile ? 'door_pickup' : 'booking_only',
+          needsContainerPickup: finalMile,
+        });
       } else if (action.type === 'create_drayage_order') {
         if (!p.direction || !p.containerNumber) throw new Error('The proposal is missing the direction or container number.');
         await createDrayageOrder.mutateAsync({
