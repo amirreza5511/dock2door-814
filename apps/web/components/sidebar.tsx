@@ -53,6 +53,7 @@ import {
   SlidersHorizontal,
   Landmark,
   BookOpen,
+  Plane,
 } from "lucide-react";
 import type { UserRole } from "@/lib/types";
 import { isBusinessRole, canAccessMarketplace } from "@/lib/relationships";
@@ -348,6 +349,8 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
       label: "Forwarding",
       items: [
         { href: "/freight-forwarder", label: "Container orders", icon: Ship },
+        { href: "/freight-forwarder/ocean", label: "Ocean board", icon: Ship },
+        { href: "/freight-forwarder/air", label: "Air cargo board", icon: Plane },
         { href: "/freight-forwarder/rates", label: "Forwarding rates", icon: DollarSign },
         { href: "/freight-forwarder/invoicing", label: "Invoicing", icon: DollarSign },
         { href: "/clearance", label: "Customs clearance", icon: Landmark },
