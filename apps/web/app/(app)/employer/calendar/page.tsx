@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useExplore } from "@/lib/explore-store";
 
 interface ShiftRow {
   id: string;
@@ -42,14 +43,34 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function EmployerCalendarPage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
+  const sampleShifts = useMemo<ShiftRow[]>(() => {
+    const dd = (d: number) => `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const base = today.getDate();
+    const day = (o: number) => Math.min(Math.max(base + o, 1), 28);
+    return [
+      { id: "ex-cal-1", title: "Warehouse Loader", category: "General", status: "Posted", date: dd(day(0)), start_time: "08:00", end_time: "16:00", hourly_rate: 24, workers_needed: 3, location_city: "Delta" },
+      { id: "ex-cal-2", title: "Forklift Operator", category: "Forklift", status: "Filled", date: dd(day(0)), start_time: "09:00", end_time: "17:00", hourly_rate: 31, workers_needed: 1, location_city: "Richmond" },
+      { id: "ex-cal-3", title: "Order Picker", category: "General", status: "Posted", date: dd(day(2)), start_time: "07:00", end_time: "15:00", hourly_rate: 23, workers_needed: 4, location_city: "Surrey" },
+      { id: "ex-cal-4", title: "Reach Truck Driver", category: "HighReach", status: "InProgress", date: dd(day(-1)), start_time: "06:00", end_time: "14:00", hourly_rate: 33, workers_needed: 2, location_city: "Langley" },
+      { id: "ex-cal-5", title: "Dock Crew", category: "General", status: "Completed", date: dd(day(-3)), start_time: "22:00", end_time: "06:00", hourly_rate: 27, workers_needed: 5, location_city: "Vancouver" },
+    ];
+  }, [year, month, today]);
+
+  const sampleAssignments = useMemo<AssignmentRow[]>(() => [
+    { id: "ex-ca-1", shift_id: "ex-cal-2", worker_user_id: "ex-w-3", status: "Scheduled", worker_name: "Dan Kowalski" },
+    { id: "ex-ca-2", shift_id: "ex-cal-4", worker_user_id: "ex-w-5", status: "InProgress", worker_name: "Tomas Alvarez" },
+  ], []);
+
   const shiftsQ = useQuery({
     queryKey: ["employer", "calendar-shifts", year, month],
+    enabled: !isExploring,
     queryFn: async () => {
       const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
       const endDate = new Date(year, month + 1, 0);
@@ -69,6 +90,7 @@ export default function EmployerCalendarPage() {
 
   const assignmentsQ = useQuery({
     queryKey: ["employer", "calendar-assignments", year, month],
+    enabled: !isExploring,
     queryFn: async () => {
       const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`;
       const endDate = new Date(year, month + 1, 0);
@@ -91,23 +113,26 @@ export default function EmployerCalendarPage() {
   });
 
   // Group shifts by date
+  const shiftsData: ShiftRow[] = isExploring ? sampleShifts : (shiftsQ.data ?? []);
+  const assignmentsData: AssignmentRow[] = isExploring ? sampleAssignments : (assignmentsQ.data ?? []);
+
   const shiftsByDate = useMemo(() => {
     const map: Record<string, ShiftRow[]> = {};
-    for (const s of (shiftsQ.data ?? [])) {
+    for (const s of shiftsData) {
       if (!map[s.date]) map[s.date] = [];
       map[s.date].push(s);
     }
     return map;
-  }, [shiftsQ.data]);
+  }, [shiftsData]);
 
   const assignmentsByShift = useMemo(() => {
     const map: Record<string, AssignmentRow[]> = {};
-    for (const a of (assignmentsQ.data ?? [])) {
+    for (const a of assignmentsData) {
       if (!map[a.shift_id]) map[a.shift_id] = [];
       map[a.shift_id].push(a);
     }
     return map;
-  }, [assignmentsQ.data]);
+  }, [assignmentsData]);
 
   // Build calendar grid
   const firstDay = new Date(year, month, 1).getDay();
@@ -161,7 +186,7 @@ export default function EmployerCalendarPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {shiftsQ.isLoading ? (
+              {!isExploring && shiftsQ.isLoading ? (
                 <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
               ) : (
                 <div>

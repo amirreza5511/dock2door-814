@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_WORKER_SHIFTS } from "@/lib/explore-samples";
 
 interface ShiftRow {
   id: string;
@@ -43,6 +45,8 @@ const CAT_COLOR: Record<string, string> = {
 };
 
 export default function BrowseShiftsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -52,6 +56,7 @@ export default function BrowseShiftsPage() {
 
   const shiftsQ = useQuery({
     queryKey: ["worker", "open-shifts"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shift_posts")
@@ -72,6 +77,7 @@ export default function BrowseShiftsPage() {
 
   const myAppsQ = useQuery({
     queryKey: ["worker", "my-applications"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -86,6 +92,7 @@ export default function BrowseShiftsPage() {
 
   const apply = useMutation({
     mutationFn: async (shiftId: string) => {
+      if (!guard("Apply for this shift")) return;
       const { error } = await supabase.rpc("worker_apply_shift", { p_shift_id: shiftId });
       if (error) throw error;
     },
@@ -97,6 +104,7 @@ export default function BrowseShiftsPage() {
 
   const withdraw = useMutation({
     mutationFn: async (applicationId: string) => {
+      if (!guard("Withdraw this application")) return;
       const { error } = await supabase.rpc("worker_withdraw_shift", {
         p_application_id: applicationId,
       });
@@ -110,7 +118,8 @@ export default function BrowseShiftsPage() {
     return acc;
   }, {});
 
-  const filtered = (shiftsQ.data ?? []).filter((s) => {
+  const source: ShiftRow[] = isExploring ? (SAMPLE_WORKER_SHIFTS as unknown as ShiftRow[]) : (shiftsQ.data ?? []);
+  const filtered = source.filter((s) => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       s.title?.toLowerCase().includes(q) ||
@@ -169,7 +178,7 @@ export default function BrowseShiftsPage() {
         </div>
       )}
 
-      {shiftsQ.isLoading ? (
+      {!isExploring && shiftsQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading shifts…</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">No open shifts matching your criteria.</p>

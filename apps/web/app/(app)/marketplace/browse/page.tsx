@@ -18,6 +18,7 @@ import { Store, MapPin, Building2, Plus, Search, ChevronRight } from "lucide-rea
 import {
   SERVICE_TYPES, serviceTypeLabel, subcategoryLabel, isInsuranceType, type ServiceType,
 } from "@/lib/serviceMarketplace";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface MarketListing {
   id: string;
@@ -47,6 +48,16 @@ const TYPE_BADGE: Record<ServiceType, "success" | "warning" | "secondary"> = {
   cargo_insurance: "warning",
 };
 
+/** Explore-mode sample listings — matches MarketListing shape exactly. */
+const SAMPLE_MARKET_LISTINGS: MarketListing[] = [
+  { id: "ex-ml-1", company_id: "ex-co-r1", service_type: "equipment_rental", subcategory: "crane", title: "Operated Crane — 20t", description: "Operated mobile crane for lifts, by the day or half day. Certified operator included.", coverage_area: ["Surrey", "Langley", "Delta"], hourly_rate: 220, per_job_rate: null, daily_rate: 1500, weekly_rate: null, minimum_hours: 4, cargo_rate_percent: null, min_premium: null, negotiable: true, certifications: "Red Seal operator", company: { id: "ex-co-r1", name: "WestCoast Crane & Rigging", city: "Surrey" } },
+  { id: "ex-ml-2", company_id: "ex-co-r2", service_type: "mobile_repair", subcategory: "reefer_repair", title: "Mobile Reefer & Trailer Repair", description: "On-site reefer, trailer and forklift repair technicians, available 24/7 across Metro Vancouver.", coverage_area: ["Vancouver", "Burnaby", "Richmond"], hourly_rate: 145, per_job_rate: null, daily_rate: null, weekly_rate: null, minimum_hours: 1, cargo_rate_percent: null, min_premium: null, negotiable: false, certifications: "310T certified", company: { id: "ex-co-r2", name: "RapidFix Mobile Service", city: "Burnaby" } },
+  { id: "ex-ml-3", company_id: "ex-co-r3", service_type: "cargo_insurance", subcategory: null, title: "Per-Shipment Cargo Cover", description: "Freight cargo insurance, per-shipment or annual policies. Fast binding, instant certificates.", coverage_area: ["Vancouver", "Toronto", "Calgary"], hourly_rate: null, per_job_rate: null, daily_rate: null, weekly_rate: null, minimum_hours: null, cargo_rate_percent: 0.4, min_premium: 85, negotiable: false, certifications: null, company: { id: "ex-co-r3", name: "Harbour Underwriters", city: "Vancouver" } },
+  { id: "ex-ml-4", company_id: "ex-co-r4", service_type: "equipment_rental", subcategory: "forklift", title: "Forklift Rental — 5,000 lb", description: "Warehouse forklift rental, daily or weekly. Delivery and pickup available.", coverage_area: ["Richmond", "Delta"], hourly_rate: null, per_job_rate: null, daily_rate: 180, weekly_rate: 720, minimum_hours: null, cargo_rate_percent: null, min_premium: null, negotiable: true, certifications: null, company: { id: "ex-co-r4", name: "Fraser Equipment Co.", city: "Richmond" } },
+  { id: "ex-ml-5", company_id: "ex-co-r5", service_type: "service", subcategory: "customs_brokerage", title: "Customs Clearance (Import/Export)", description: "PARS/PAPS, HS classification, duty & tax remittance. CIFFA & CBSA compliant.", coverage_area: ["Delta", "Vancouver"], hourly_rate: 120, per_job_rate: 250, daily_rate: null, weekly_rate: null, minimum_hours: 1, cargo_rate_percent: null, min_premium: null, negotiable: false, certifications: "CIFFA", company: { id: "ex-co-r5", name: "Pacific Customs Brokers", city: "Delta" } },
+  { id: "ex-ml-6", company_id: "ex-co-r6", service_type: "mobile_repair", subcategory: "tire_service", title: "24/7 Mobile Tire Service", description: "Roadside and yard tire replacement for trucks and trailers.", coverage_area: ["Vancouver", "Surrey", "Abbotsford"], hourly_rate: 130, per_job_rate: null, daily_rate: null, weekly_rate: null, minimum_hours: 1, cargo_rate_percent: null, min_premium: null, negotiable: true, certifications: null, company: { id: "ex-co-r6", name: "RoadReady Tire", city: "Surrey" } },
+];
+
 function priceLabel(l: MarketListing): string {
   if (l.service_type === "cargo_insurance") {
     if (l.cargo_rate_percent) return `${l.cargo_rate_percent}% of value`;
@@ -65,6 +76,8 @@ function priceLabel(l: MarketListing): string {
 }
 
 export default function MarketplaceBrowsePage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
@@ -85,6 +98,7 @@ export default function MarketplaceBrowsePage() {
 
   const listingsQ = useQuery({
     queryKey: ["marketplace", "listings"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("service_listings")
@@ -96,7 +110,7 @@ export default function MarketplaceBrowsePage() {
     },
   });
 
-  const listings = useMemo(() => listingsQ.data ?? [], [listingsQ.data]);
+  const listings = useMemo(() => (isExploring ? SAMPLE_MARKET_LISTINGS : (listingsQ.data ?? [])), [listingsQ.data, isExploring]);
 
   const filtered = useMemo(() => listings.filter((l) => {
     const matchType = typeFilter === "All" || l.service_type === typeFilter;
@@ -111,6 +125,7 @@ export default function MarketplaceBrowsePage() {
 
   const request = useMutation({
     mutationFn: async () => {
+      if (!guard("Request a quote")) return;
       if (!selected) throw new Error("No listing selected.");
       if (!city.trim() || !dateTime.trim()) {
         throw new Error("Please fill city and date/time.");
@@ -196,9 +211,9 @@ export default function MarketplaceBrowsePage() {
         </div>
       </div>
 
-      {listingsQ.isLoading ? (
+      {!isExploring && listingsQ.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Loading marketplace…</p>
-      ) : listingsQ.isError ? (
+      ) : !isExploring && listingsQ.isError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {(listingsQ.error as Error).message}
         </div>

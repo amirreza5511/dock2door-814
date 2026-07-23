@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface TimeEntryRow {
   id: string;
@@ -38,7 +39,18 @@ interface AssignmentRow {
 
 type Tab = "confirm" | "noshow";
 
+const SAMPLE_ENTRIES: TimeEntryRow[] = [
+  { id: "ex-te-1", assignment_id: "ex-as-1", start_timestamp: new Date(Date.now() - 9 * 36e5).toISOString(), end_timestamp: new Date(Date.now() - 1 * 36e5).toISOString(), total_hours: 8, employer_confirmed_hours: null, shift_id: "ex-sh-1", shift_title: "Warehouse Loader", worker_user_id: "ex-w-1", worker_name: "Marcus Lee", shift_date: new Date().toISOString().slice(0, 10) },
+  { id: "ex-te-2", assignment_id: "ex-as-2", start_timestamp: new Date(Date.now() - 30 * 36e5).toISOString(), end_timestamp: new Date(Date.now() - 24 * 36e5).toISOString(), total_hours: 6, employer_confirmed_hours: null, shift_id: "ex-sh-2", shift_title: "Forklift Operator", worker_user_id: "ex-w-3", worker_name: "Dan Kowalski", shift_date: new Date(Date.now() - 864e5).toISOString().slice(0, 10) },
+];
+
+const SAMPLE_NOSHOW: AssignmentRow[] = [
+  { id: "ex-as-3", shift_id: "ex-sh-3", worker_user_id: "ex-w-4", status: "Scheduled", worker_confirmed: false, shift_title: "Order Picker", shift_date: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10), shift_end: "17:00", worker_name: "Aisha Mohamed" },
+];
+
 export default function EmployerHoursPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [tab, setTab] = useState<Tab>("confirm");
@@ -55,6 +67,7 @@ export default function EmployerHoursPage() {
   // Pending time entries (clocked out, not yet confirmed) for this employer's shifts
   const entriesQ = useQuery({
     queryKey: ["employer", "hours-pending"],
+    enabled: !isExploring,
     queryFn: async (): Promise<TimeEntryRow[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -119,6 +132,7 @@ export default function EmployerHoursPage() {
   // No-show candidates: assignments with status Scheduled where shift end is in the past, OR worker_confirmed is false
   const noShowQ = useQuery({
     queryKey: ["employer", "noshow-candidates"],
+    enabled: !isExploring,
     queryFn: async (): Promise<AssignmentRow[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -173,6 +187,7 @@ export default function EmployerHoursPage() {
 
   const confirmMut = useMutation({
     mutationFn: async ({ id, hours, notes, shiftId }: { id: string; hours: number; notes: string; shiftId?: string }) => {
+      if (!guard("Confirm hours")) return;
       const { error } = await supabase.rpc("employer_confirm_hours", {
         p_time_entry_id: id,
         p_hours: hours,
@@ -199,6 +214,7 @@ export default function EmployerHoursPage() {
 
   const noShowMut = useMutation({
     mutationFn: async ({ shiftId, workerUserId, reason }: { shiftId: string; workerUserId: string; reason: string }) => {
+      if (!guard("Mark no-show")) return;
       const { error } = await supabase.rpc("mark_shift_no_show", {
         p_shift_id: shiftId,
         p_worker_user_id: workerUserId,
@@ -219,6 +235,11 @@ export default function EmployerHoursPage() {
     setConfirmNotes("");
   };
 
+  const entries: TimeEntryRow[] = isExploring ? SAMPLE_ENTRIES : (entriesQ.data ?? []);
+  const noShowList: AssignmentRow[] = isExploring ? SAMPLE_NOSHOW : (noShowQ.data ?? []);
+  const entriesLoading = !isExploring && entriesQ.isLoading;
+  const noShowLoading = !isExploring && noShowQ.isLoading;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
@@ -230,10 +251,10 @@ export default function EmployerHoursPage() {
 
       <div className="flex gap-2">
         <Button size="sm" variant={tab === "confirm" ? "default" : "outline"} onClick={() => setTab("confirm")}>
-          Hours to confirm{(entriesQ.data?.length ?? 0) > 0 ? ` (${entriesQ.data?.length})` : ""}
+          Hours to confirm{entries.length > 0 ? ` (${entries.length})` : ""}
         </Button>
         <Button size="sm" variant={tab === "noshow" ? "default" : "outline"} onClick={() => setTab("noshow")}>
-          No-show candidates{(noShowQ.data?.length ?? 0) > 0 ? ` (${noShowQ.data?.length})` : ""}
+          No-show candidates{noShowList.length > 0 ? ` (${noShowList.length})` : ""}
         </Button>
       </div>
 
@@ -244,9 +265,9 @@ export default function EmployerHoursPage() {
             <CardDescription>Workers have clocked out — confirm their hours so payroll can proceed.</CardDescription>
           </CardHeader>
           <CardContent>
-            {entriesQ.isLoading ? (
+            {entriesLoading ? (
               <p className="py-4 text-sm text-muted-foreground">Loading…</p>
-            ) : (entriesQ.data ?? []).length === 0 ? (
+            ) : entries.length === 0 ? (
               <p className="py-4 text-sm text-muted-foreground">Nothing to confirm right now.</p>
             ) : (
               <Table>
@@ -254,7 +275,7 @@ export default function EmployerHoursPage() {
                   <TR><TH>Worker</TH><TH>Shift</TH><TH>Date</TH><TH>Clock in/out</TH><TH>Submitted hrs</TH><TH></TH></TR>
                 </THead>
                 <TBody>
-                  {(entriesQ.data ?? []).map((e) => (
+                  {entries.map((e) => (
                     <TR key={e.id}>
                       <TD className="font-medium">{e.worker_name}</TD>
                       <TD>{e.shift_title}</TD>
@@ -286,9 +307,9 @@ export default function EmployerHoursPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {noShowQ.isLoading ? (
+            {noShowLoading ? (
               <p className="py-4 text-sm text-muted-foreground">Loading…</p>
-            ) : (noShowQ.data ?? []).length === 0 ? (
+            ) : noShowList.length === 0 ? (
               <p className="py-4 text-sm text-muted-foreground">No candidates right now.</p>
             ) : (
               <Table>
@@ -296,7 +317,7 @@ export default function EmployerHoursPage() {
                   <TR><TH>Worker</TH><TH>Shift</TH><TH>Date</TH><TH>Status</TH><TH></TH></TR>
                 </THead>
                 <TBody>
-                  {(noShowQ.data ?? []).map((a) => (
+                  {noShowList.map((a) => (
                     <TR key={a.id}>
                       <TD className="font-medium">{a.worker_name}</TD>
                       <TD>{a.shift_title}</TD>

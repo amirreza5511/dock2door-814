@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const VEHICLE_LABEL: Record<string, string> = {
   Bicycle: "Bicycle",
@@ -43,7 +44,16 @@ function legOf(l: OpenLeg): LegKind {
 }
 
 /** Open jobs board — hub-routed pickup/delivery legs a driver can self-claim. */
+const SAMPLE_LEGS: OpenLeg[] = [
+  { id: "ex-lg-1", vehicle_type: "FiveTon", pallets: 6, distance_km: 18, pickup_address: "1200 Industrial Ave, Vancouver", dropoff_address: null, pickup_city: "Vancouver", dropoff_city: null, hub_name: "Metro Hub — Burnaby", hub_leg_status: "Pending", provider_net: 142 },
+  { id: "ex-lg-2", vehicle_type: "Pickup", pallets: 2, distance_km: 12, pickup_address: null, dropoff_address: "8800 Bridgeport Rd, Richmond", pickup_city: null, dropoff_city: "Richmond", hub_name: "Metro Hub — Burnaby", hub_leg_status: "Released", provider_net: 88 },
+  { id: "ex-lg-3", vehicle_type: "MovingTruck", pallets: 4, distance_km: 27, pickup_address: "455 Fraser St, Surrey", dropoff_address: null, pickup_city: "Surrey", dropoff_city: null, hub_name: "South Hub — Delta", hub_leg_status: "Pending", provider_net: 176 },
+  { id: "ex-lg-4", vehicle_type: "Car", pallets: 1, distance_km: 9, pickup_address: null, dropoff_address: "120 Lonsdale Ave, North Vancouver", pickup_city: null, dropoff_city: "North Vancouver", hub_name: "Metro Hub — Burnaby", hub_leg_status: "Released", provider_net: 61 },
+];
+
 export default function DriverOpenJobsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const router = useRouter();
   const qc = useQueryClient();
@@ -53,7 +63,8 @@ export default function DriverOpenJobsPage() {
 
   const q = useQuery({
     queryKey: ["driver", "open-legs"],
-    refetchInterval: 20000,
+    enabled: !isExploring,
+    refetchInterval: isExploring ? false : 20000,
     queryFn: async (): Promise<OpenLeg[]> => {
       const { data, error: err } = await supabase
         .from("loads")
@@ -70,6 +81,7 @@ export default function DriverOpenJobsPage() {
 
   const claim = useMutation({
     mutationFn: async ({ id, leg }: { id: string; leg: LegKind }) => {
+      if (!guard("Take this leg")) return;
       const { error: err } = await supabase.rpc("claim_load_leg", { p_load_id: id, p_leg: leg });
       if (err) throw new Error(err.message);
     },
@@ -80,7 +92,7 @@ export default function DriverOpenJobsPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const legs = useMemo(() => q.data ?? [], [q.data]);
+  const legs = useMemo(() => (isExploring ? SAMPLE_LEGS : (q.data ?? [])), [q.data, isExploring]);
   const filtered = useMemo(() => {
     const z = zone.trim().toLowerCase();
     return legs.filter((l) => {
@@ -130,7 +142,7 @@ export default function DriverOpenJobsPage() {
         </Card>
       )}
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading open jobs…</p>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center">

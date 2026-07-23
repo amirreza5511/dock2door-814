@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const CURRENCIES = ["CAD", "USD", "EUR", "AED", "CNY", "GBP"] as const;
 
@@ -62,7 +63,15 @@ interface OceanLeg {
   [k: string]: unknown;
 }
 
+const SAMPLE_OCEAN_ROWS: BoardRow[] = [
+  { id: "ex-oc-1", title: "Furniture — Shanghai to Vancouver", origin_country: "China", origin_port: "Shanghai", dest_country: "Canada", dest_port: "Vancouver", container_size: "40HC", cargo_type: "Furniture", weight: 18500, weight_unit: "kg", ready_date: null, incoterms: "FOB", currency: "CAD", notes: "Palletized, non-stackable. Need door delivery to Surrey.", status: "Open", customer_name: "Harbour Home Goods", my_offer_amount: null, my_offer_status: null, awarded_amount: 0, created_at: new Date().toISOString() },
+  { id: "ex-oc-2", title: "Auto parts — Yantian to Prince Rupert", origin_country: "China", origin_port: "Yantian", dest_country: "Canada", dest_port: "Prince Rupert", container_size: "20GP", cargo_type: "Auto parts", weight: 9200, weight_unit: "kg", ready_date: null, incoterms: "CIF", currency: "USD", notes: "", status: "Open", customer_name: "Cascade Motors", my_offer_amount: 2850, my_offer_status: "Pending", awarded_amount: 0, created_at: new Date(Date.now() - 2 * 864e5).toISOString() },
+  { id: "ex-oc-3", title: "Apparel — Ho Chi Minh to Vancouver", origin_country: "Vietnam", origin_port: "Cat Lai", dest_country: "Canada", dest_port: "Vancouver", container_size: "40GP", cargo_type: "Apparel", weight: 12400, weight_unit: "kg", ready_date: null, incoterms: "FOB", currency: "USD", notes: "Time-sensitive, fall season stock.", status: "Open", customer_name: "Northline Apparel", my_offer_amount: null, my_offer_status: null, awarded_amount: 0, created_at: new Date(Date.now() - 4 * 864e5).toISOString() },
+];
+
 export default function ForwarderOceanPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [scope, setScope] = useState<"open" | "mine">("open");
@@ -72,6 +81,7 @@ export default function ForwarderOceanPage() {
 
   const boardQuery = useQuery({
     queryKey: ["ocean", "board", scope],
+    enabled: !isExploring,
     queryFn: async (): Promise<BoardRow[]> => {
       const { data, error: err } = await supabase.rpc("ocean_forwarder_board", { p_scope: scope });
       if (err) return [];
@@ -97,6 +107,7 @@ export default function ForwarderOceanPage() {
 
   const submit = useMutation({
     mutationFn: async () => {
+      if (!guard("Send this offer")) return;
       if (!offerRow) return;
       const amt = Number(amount);
       if (!Number.isFinite(amt) || amt <= 0) throw new Error("Enter a quote greater than zero.");
@@ -117,7 +128,7 @@ export default function ForwarderOceanPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const rows = useMemo(() => boardQuery.data ?? [], [boardQuery.data]);
+  const rows = useMemo(() => (isExploring ? (scope === "open" ? SAMPLE_OCEAN_ROWS : SAMPLE_OCEAN_ROWS.filter((r) => r.my_offer_amount != null)) : (boardQuery.data ?? [])), [boardQuery.data, isExploring, scope]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -141,7 +152,7 @@ export default function ForwarderOceanPage() {
         ))}
       </div>
 
-      {boardQuery.isLoading ? (
+      {!isExploring && boardQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center">

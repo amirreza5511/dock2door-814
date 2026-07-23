@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useExplore } from "@/lib/explore-store";
 
 interface WorkerRow {
   id: string;
@@ -29,7 +30,23 @@ interface CertRow {
 
 const SKILL_FILTERS = ["All", "General", "Driver", "Forklift", "HighReach"] as const;
 
+const SAMPLE_WORKERS: WorkerRow[] = [
+  { id: "ex-w-1", user_id: "ex-w-1", display_name: "Marcus Lee", skills: ["General", "Forklift"], coverage_cities: ["Vancouver", "Burnaby", "Richmond"], hourly_expectation: 26, verified: true, status: "Active", bio: "5 years warehouse experience, counterbalance and reach certified.", tagline: "Reliable warehouse generalist" },
+  { id: "ex-w-2", user_id: "ex-w-2", display_name: "Priya Sharma", skills: ["General", "HighReach"], coverage_cities: ["Surrey", "Langley"], hourly_expectation: 24, verified: true, status: "Active", bio: "Order picking, inventory counts, dependable and fast.", tagline: "Order picker & inventory" },
+  { id: "ex-w-3", user_id: "ex-w-3", display_name: "Dan Kowalski", skills: ["Forklift", "Driver"], coverage_cities: ["Delta", "Richmond"], hourly_expectation: 31, verified: true, status: "Active", bio: "Class 1 driver and forklift operator. Reefer experience.", tagline: "Class 1 driver / forklift" },
+  { id: "ex-w-4", user_id: "ex-w-4", display_name: "Aisha Mohamed", skills: ["General"], coverage_cities: ["Vancouver", "North Vancouver"], hourly_expectation: 23, verified: false, status: "Active", bio: "Available for evenings and weekends. Quick learner.", tagline: "Flexible general labour" },
+  { id: "ex-w-5", user_id: "ex-w-5", display_name: "Tomas Alvarez", skills: ["HighReach", "Forklift"], coverage_cities: ["Abbotsford", "Langley"], hourly_expectation: 33, verified: true, status: "Active", bio: "Reach truck specialist, narrow-aisle certified.", tagline: "Reach truck specialist" },
+];
+
+const SAMPLE_WORKER_CERTS: CertRow[] = [
+  { worker_user_id: "ex-w-1", type: "Forklift", expiry_date: "2027-03-01" },
+  { worker_user_id: "ex-w-3", type: "Class 1", expiry_date: "2028-06-15" },
+  { worker_user_id: "ex-w-3", type: "Forklift", expiry_date: "2027-01-10" },
+  { worker_user_id: "ex-w-5", type: "Reach Truck", expiry_date: "2027-09-20" },
+];
+
 export default function BrowseWorkersPage() {
+  const { isExploring } = useExplore();
   const supabase = getBrowserSupabase();
   const [search, setSearch] = useState("");
   const [skillFilter, setSkillFilter] = useState<typeof SKILL_FILTERS[number]>("All");
@@ -37,6 +54,7 @@ export default function BrowseWorkersPage() {
 
   const workersQ = useQuery({
     queryKey: ["employer", "browse-workers"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worker_profiles")
@@ -52,6 +70,7 @@ export default function BrowseWorkersPage() {
 
   const certsQ = useQuery({
     queryKey: ["employer", "worker-certs"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("worker_certifications")
@@ -62,7 +81,9 @@ export default function BrowseWorkersPage() {
     },
   });
 
-  const filtered = (workersQ.data ?? []).filter((w) => {
+  const workersSource: WorkerRow[] = isExploring ? SAMPLE_WORKERS : (workersQ.data ?? []);
+  const certsSource: CertRow[] = isExploring ? SAMPLE_WORKER_CERTS : (certsQ.data ?? []);
+  const filtered = workersSource.filter((w) => {
     const q = search.toLowerCase();
     const matchSearch = !q ||
       w.display_name?.toLowerCase().includes(q) ||
@@ -72,7 +93,7 @@ export default function BrowseWorkersPage() {
     return matchSearch && matchSkill;
   });
 
-  const certsByWorker = (certsQ.data ?? []).reduce<Record<string, CertRow[]>>((acc, c) => {
+  const certsByWorker = certsSource.reduce<Record<string, CertRow[]>>((acc, c) => {
     if (!acc[c.worker_user_id]) acc[c.worker_user_id] = [];
     acc[c.worker_user_id].push(c);
     return acc;
@@ -114,9 +135,9 @@ export default function BrowseWorkersPage() {
         </span>
       </div>
 
-      {workersQ.isLoading ? (
+      {!isExploring && workersQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading workers…</p>
-      ) : workersQ.error ? (
+      ) : !isExploring && workersQ.error ? (
         <p className="text-sm text-red-600">{(workersQ.error as Error).message}</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">No workers found matching your criteria.</p>

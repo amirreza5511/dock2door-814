@@ -21,7 +21,7 @@ export function ExploreGate() {
           <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-primary">
             <Sparkles className="h-5 w-5" />
           </div>
-          <DialogTitle>Create a free account to continue</DialogTitle>
+          <DialogTitle>Create an account to continue</DialogTitle>
           <DialogDescription>
             {gateAction
               ? `“${gateAction}” needs an account. Sign up free to unlock this — it takes less than a minute, and everything you explored stays exactly the same.`
@@ -34,7 +34,7 @@ export function ExploreGate() {
           </Button>
           <Link href="/login?next=/dashboard">
             <Button className="w-full gap-2">
-              <UserPlus className="h-4 w-4" /> Create a free account
+              <UserPlus className="h-4 w-4" /> Create free account
             </Button>
           </Link>
         </DialogFooter>

@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_EMPLOYER_SHIFTS, SAMPLE_EMPLOYER_APPLICATIONS } from "@/lib/explore-samples";
 
 type ShiftStatus = "Posted" | "Filled" | "InProgress" | "Completed" | "Cancelled" | "Draft";
 const FILTERS: (ShiftStatus | "All")[] = ["All", "Posted", "Filled", "InProgress", "Completed", "Cancelled"];
@@ -79,6 +81,8 @@ function roundHalf(n: number): number {
 }
 
 export default function EmployerShiftsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const router = useRouter();
@@ -127,8 +131,9 @@ export default function EmployerShiftsPage() {
       return (data ?? []) as ShiftRow[];
     },
   });
-  const myShifts = shiftsQ.data ?? [];
+  const myShifts: ShiftRow[] = isExploring ? (SAMPLE_EMPLOYER_SHIFTS as unknown as ShiftRow[]) : (shiftsQ.data ?? []);
   const shiftIds = useMemo(() => myShifts.map((s) => s.id), [myShifts]);
+  const sampleApps = useMemo<AppRow[]>(() => (SAMPLE_EMPLOYER_APPLICATIONS.filter((a) => a.status === "Applied") as unknown as AppRow[]), []);
 
   const appsQ = useQuery({
     queryKey: ["emp-apps", shiftIds],
@@ -210,10 +215,14 @@ export default function EmployerShiftsPage() {
     },
   });
 
-  const workerName = (id: string) => profilesQ.data?.profiles.get(id)?.display_name ?? profilesQ.data?.names.get(id) ?? "Worker";
+  const workerName = (id: string) => {
+    if (isExploring) return SAMPLE_EMPLOYER_APPLICATIONS.find((a) => a.worker_user_id === id)?.worker_name ?? "Worker";
+    return profilesQ.data?.profiles.get(id)?.display_name ?? profilesQ.data?.names.get(id) ?? "Worker";
+  };
 
   const acceptM = useMutation({
     mutationFn: async (appId: string) => {
+      if (!guard("Accept this applicant")) return;
       const { error } = await supabase.rpc("employer_accept_applicant", { p_application_id: appId });
       if (error) throw error;
     },
@@ -221,6 +230,7 @@ export default function EmployerShiftsPage() {
   });
   const rejectM = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!guard("Reject this applicant")) return;
       const { error } = await supabase.rpc("employer_reject_applicant", { p_application_id: id, p_reason: reason });
       if (error) throw error;
     },
@@ -228,6 +238,7 @@ export default function EmployerShiftsPage() {
   });
   const noShowM = useMutation({
     mutationFn: async ({ shiftId, workerId, reason }: { shiftId: string; workerId: string; reason: string }) => {
+      if (!guard("Mark no-show")) return;
       const { error } = await supabase.rpc("mark_shift_no_show", { p_shift_id: shiftId, p_worker_user_id: workerId, p_reason: reason });
       if (error) throw error;
     },
@@ -235,6 +246,7 @@ export default function EmployerShiftsPage() {
   });
   const clockInM = useMutation({
     mutationFn: async (assignmentId: string) => {
+      if (!guard("Clock in worker")) return;
       const { error: te } = await supabase.from("time_entries").insert({ assignment_id: assignmentId, start_timestamp: new Date().toISOString() });
       if (te) throw te;
       const { error: a } = await supabase.from("shift_assignments").update({ status: "InProgress" }).eq("id", assignmentId);
@@ -244,6 +256,7 @@ export default function EmployerShiftsPage() {
   });
   const clockOutM = useMutation({
     mutationFn: async ({ assignmentId, teId }: { assignmentId: string; teId: string }) => {
+      if (!guard("Clock out worker")) return;
       const { error: te } = await supabase.from("time_entries").update({ end_timestamp: new Date().toISOString() }).eq("id", teId);
       if (te) throw te;
       const { error: a } = await supabase.from("shift_assignments").update({ status: "Completed" }).eq("id", assignmentId);
@@ -253,6 +266,7 @@ export default function EmployerShiftsPage() {
   });
   const confirmHoursM = useMutation({
     mutationFn: async ({ teId, hours, shiftId }: { teId: string; hours: number; shiftId: string }) => {
+      if (!guard("Confirm hours")) return;
       const { error } = await supabase.rpc("employer_confirm_hours", { p_time_entry_id: teId, p_hours: hours, p_notes: "" });
       if (error) throw error;
       const { error: inv } = await supabase.rpc("issue_invoice_for_shift", { p_shift_id: shiftId, p_due_days: null });
@@ -262,6 +276,7 @@ export default function EmployerShiftsPage() {
   });
   const completeM = useMutation({
     mutationFn: async (shiftId: string) => {
+      if (!guard("Complete shift")) return;
       const { error } = await supabase.rpc("employer_close_shift_post", { p_shift_id: shiftId, p_reason: "Shift completed by employer" });
       if (error) throw error;
     },
@@ -269,6 +284,7 @@ export default function EmployerShiftsPage() {
   });
   const cancelM = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!guard("Cancel shift")) return;
       const { error } = await supabase.rpc("cancel_shift_with_reason", { p_shift_id: id, p_reason: reason });
       if (error) throw error;
     },
@@ -276,6 +292,7 @@ export default function EmployerShiftsPage() {
   });
   const openThreadM = useMutation({
     mutationFn: async (shiftId: string) => {
+      if (!guard("Message worker")) return;
       const { error } = await supabase.rpc("open_shift_thread", { p_shift_id: shiftId });
       if (error) throw error;
     },
@@ -284,7 +301,8 @@ export default function EmployerShiftsPage() {
 
   const filtered = filter === "All" ? myShifts : myShifts.filter((s) => s.status === filter);
   const selected = myShifts.find((s) => s.id === selectedId) ?? null;
-  const getApps = (id: string) => (appsQ.data ?? []).filter((a) => a.shift_id === id);
+  const appsData: AppRow[] = isExploring ? sampleApps : (appsQ.data ?? []);
+  const getApps = (id: string) => appsData.filter((a) => a.shift_id === id);
   const getAssigns = (id: string) => allAssignments.filter((a) => a.shift_id === id);
   const getTE = (assignmentId: string) => (teQ.data ?? []).find((t) => t.assignment_id === assignmentId);
 
@@ -294,7 +312,7 @@ export default function EmployerShiftsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">My Shifts</h1>
           <p className="text-sm text-muted-foreground">
-            {myShifts.length} total · {(appsQ.data ?? []).length} pending applicants
+            {myShifts.length} total · {appsData.length} pending applicants
           </p>
         </div>
         <Link href="/employer/create-shift"><Button>+ Post shift</Button></Link>
@@ -315,8 +333,8 @@ export default function EmployerShiftsPage() {
       </div>
 
       <div className="grid gap-3">
-        {shiftsQ.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {!shiftsQ.isLoading && filtered.length === 0 && (
+        {!isExploring && shiftsQ.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {!(!isExploring && shiftsQ.isLoading) && filtered.length === 0 && (
           <p className="py-8 text-center text-sm text-muted-foreground">No shifts here.</p>
         )}
         {filtered.map((s) => {

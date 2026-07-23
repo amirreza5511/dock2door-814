@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_EMPLOYER_SHIFTS, SAMPLE_EMPLOYER_APPLICATIONS } from "@/lib/explore-samples";
 
 interface ShiftRow {
   id: string;
@@ -49,6 +51,8 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
 const PAGE_SIZE = 50;
 
 export default function EmployerPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"shifts" | "applications">("shifts");
@@ -71,6 +75,7 @@ export default function EmployerPage() {
   // Company readiness — drives the dashboard's Profile / Billing / Approval card.
   const readinessQ = useQuery({
     queryKey: ["employer", "company-readiness"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -104,10 +109,11 @@ export default function EmployerPage() {
   const approvalStatus = readiness?.status ?? "";
   const verified = Boolean(readiness?.verified_at) && approvalStatus === "Approved";
   const blockedStatus = approvalStatus === "Suspended";
-  const showReadiness = Boolean(readiness) && (!profileReady || !billingReady || blockedStatus || !verified);
+  const showReadiness = !isExploring && Boolean(readiness) && (!profileReady || !billingReady || blockedStatus || !verified);
 
   const shiftsQ = useQuery({
     queryKey: ["employer", "shifts", shiftsPage],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shift_posts")
@@ -121,6 +127,7 @@ export default function EmployerPage() {
 
   const appsQ = useQuery({
     queryKey: ["employer", "applications", appsPage],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [];
@@ -181,6 +188,7 @@ export default function EmployerPage() {
 
   const acceptApp = useMutation({
     mutationFn: async (id: string) => {
+      if (!guard("Accept this applicant")) return;
       const { error } = await supabase.rpc("employer_accept_applicant", { p_application_id: id });
       if (error) throw error;
     },
@@ -192,6 +200,7 @@ export default function EmployerPage() {
 
   const rejectApp = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      if (!guard("Reject this applicant")) return;
       const { error } = await supabase.rpc("employer_reject_applicant", {
         p_application_id: id,
         p_reason: reason,
@@ -340,7 +349,7 @@ export default function EmployerPage() {
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => { setCancelTarget({ id: s.id, title: s.title }); setCancelReason(""); }}
+              onClick={() => { if (guard("Cancel this shift")) { setCancelTarget({ id: s.id, title: s.title }); setCancelReason(""); } }}
             >
               Cancel
             </Button>
@@ -392,7 +401,7 @@ export default function EmployerPage() {
       render: (a) => a.status === "Applied" ? (
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="outline"
-            onClick={() => setQualsFor({ workerId: a.worker_user_id, workerName: a.worker_name ?? "Worker" })}>
+            onClick={() => { if (guard("View worker profile")) setQualsFor({ workerId: a.worker_user_id, workerName: a.worker_name ?? "Worker" }); }}>
             View profile
           </Button>
           <Button size="sm" disabled={acceptApp.isPending}
@@ -407,9 +416,11 @@ export default function EmployerPage() {
     },
   ];
 
-  const pendingApps = (appsQ.data ?? []).filter((a) => a.status === "Applied").length;
-  const hasMoreShifts = (shiftsQ.data?.length ?? 0) === shiftsPage * PAGE_SIZE;
-  const hasMoreApps = (appsQ.data?.length ?? 0) === appsPage * PAGE_SIZE;
+  const shifts: ShiftRow[] = isExploring ? (SAMPLE_EMPLOYER_SHIFTS as unknown as ShiftRow[]) : (shiftsQ.data ?? []);
+  const apps: ApplicationRow[] = isExploring ? (SAMPLE_EMPLOYER_APPLICATIONS as unknown as ApplicationRow[]) : (appsQ.data ?? []);
+  const pendingApps = apps.filter((a) => a.status === "Applied").length;
+  const hasMoreShifts = !isExploring && (shiftsQ.data?.length ?? 0) === shiftsPage * PAGE_SIZE;
+  const hasMoreApps = !isExploring && (appsQ.data?.length ?? 0) === appsPage * PAGE_SIZE;
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -477,10 +488,10 @@ export default function EmployerPage() {
       {/* Stats row */}
       <div className="grid gap-4 md:grid-cols-4">
         {[
-          { label: "Total shifts", value: shiftsQ.data?.length ?? 0 },
-          { label: "Active shifts", value: (shiftsQ.data ?? []).filter((s) => s.status === "Posted").length },
+          { label: "Total shifts", value: shifts.length },
+          { label: "Active shifts", value: shifts.filter((s) => s.status === "Posted").length },
           { label: "Pending applications", value: pendingApps },
-          { label: "Filled shifts", value: (shiftsQ.data ?? []).filter((s) => s.status === "Filled").length },
+          { label: "Filled shifts", value: shifts.filter((s) => s.status === "Filled").length },
         ].map((stat) => (
           <Card key={stat.label}>
             <CardHeader className="pb-2">
@@ -702,14 +713,14 @@ export default function EmployerPage() {
         <Card>
           <CardHeader>
             <CardTitle>Posted shifts</CardTitle>
-            <CardDescription>{shiftsQ.data?.length ?? 0} loaded</CardDescription>
+            <CardDescription>{shifts.length} loaded</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <DataTable
-              rows={shiftsQ.data ?? []}
+              rows={shifts}
               columns={shiftCols}
               rowKey={(s) => s.id}
-              isLoading={shiftsQ.isLoading}
+              isLoading={!isExploring && shiftsQ.isLoading}
               error={shiftsQ.error as Error | null}
               searchPlaceholder="Search shifts…"
               filters={[
@@ -734,14 +745,14 @@ export default function EmployerPage() {
         <Card>
           <CardHeader>
             <CardTitle>Applications</CardTitle>
-            <CardDescription>{appsQ.data?.length ?? 0} loaded · {pendingApps} pending</CardDescription>
+            <CardDescription>{apps.length} loaded · {pendingApps} pending</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <DataTable
-              rows={appsQ.data ?? []}
+              rows={apps}
               columns={appCols}
               rowKey={(a) => a.id}
-              isLoading={appsQ.isLoading}
+              isLoading={!isExploring && appsQ.isLoading}
               error={appsQ.error as Error | null}
               searchPlaceholder="Search workers or shifts…"
               filters={[
