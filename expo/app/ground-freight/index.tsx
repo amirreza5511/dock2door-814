@@ -80,8 +80,9 @@ export default function GroundFreightHub() {
 
   const openWizard = useCallback(() => {
     if (!guard('Post a load & get quotes')) return;
+    if (!user && !isExploring) { router.push('/auth/signup' as never); return; }
     setWizardOpen(true);
-  }, [guard]);
+  }, [guard, user, isExploring, router]);
 
   return (
     <View style={[styles.root, { backgroundColor: C.bg }]}>
