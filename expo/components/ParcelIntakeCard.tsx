@@ -1,17 +1,21 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as Print from 'expo-print';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   Package, MapPin, User, Scale, Calendar, Truck, Store, CheckCircle2,
   Printer, Search, ChevronRight, CreditCard, RotateCcw, ScanLine,
+  Camera, Sparkles, Loader2, ChevronDown,
 } from 'lucide-react-native';
 import Input from '@/components/ui/Input';
 import TrackingCode from '@/components/TrackingCode';
 import C from '@/constants/colors';
 import { trpc } from '@/lib/trpc';
-import { searchWeb } from '@/lib/ai';
+import { searchWeb, estimatePackageFromPhoto } from '@/lib/ai';
+import { searchAddress, lookupPostalCode, type AddressDetail } from '@/lib/geocode';
 
 /** Which conversational flow this card drives. */
 export type ParcelFlow = 'send' | 'return';
@@ -101,6 +105,16 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
   const [postOffice, setPostOffice] = useState<string>('');
   const [poLoading, setPoLoading] = useState<boolean>(false);
 
+  // Date picker
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+
+  // Photo → AI estimate
+  const [estimating, setEstimating] = useState<boolean>(false);
+  const [estimateNote, setEstimateNote] = useState<string>('');
+
+  // Postal-code auto-lookup (fills city/region)
+  const [postalLoading, setPostalLoading] = useState<boolean>(false);
+
   const weightNum = useMemo(() => {
     const n = Number(weight);
     return Number.isFinite(n) && n > 0 ? n : 0;
@@ -110,6 +124,79 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : 0;
   };
+
+  // ── Postal-code auto-lookup: fill city/region from the code the user types ──
+  useEffect(() => {
+    const code = fromPostal.trim();
+    if (code.replace(/\s/g, '').length < 5) return;
+    const id = setTimeout(async () => {
+      setPostalLoading(true);
+      const hit = await lookupPostalCode(code);
+      setPostalLoading(false);
+      if (hit) {
+        setFromCity((prev) => (prev.trim() ? prev : hit.city));
+        setFromRegion((prev) => (prev.trim() ? prev : hit.region));
+      }
+    }, 650);
+    return () => clearTimeout(id);
+  }, [fromPostal]);
+
+  useEffect(() => {
+    const code = toPostal.trim();
+    if (code.replace(/\s/g, '').length < 5) return;
+    const id = setTimeout(async () => {
+      const hit = await lookupPostalCode(code);
+      if (hit) {
+        setToCity((prev) => (prev.trim() ? prev : hit.city));
+        setToRegion((prev) => (prev.trim() ? prev : hit.region));
+      }
+    }, 650);
+    return () => clearTimeout(id);
+  }, [toPostal]);
+
+  // ── Date picker ──
+  const onDateChange = useCallback((event: DateTimePickerEvent, date?: Date) => {
+    setShowDatePicker(false);
+    if (date && event.type !== 'dismissed') {
+      setReadyDate(date.toISOString().slice(0, 10));
+    }
+  }, []);
+
+  // ── Photo → AI estimate of weight & dimensions ──
+  const estimateFromPhoto = useCallback(async (source: 'camera' | 'library') => {
+    if (estimating) return;
+    setEstimateNote('');
+    try {
+      if (source === 'camera') {
+        const perm = await ImagePicker.requestCameraPermissionsAsync();
+        if (!perm.granted) { setEstimateNote('برای گرفتن عکس به اجازه‌ی دوربین نیاز است.'); return; }
+      } else {
+        const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!perm.granted) { setEstimateNote('برای انتخاب عکس به اجازه‌ی گالری نیاز است.'); return; }
+      }
+      const result = source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ quality: 0.6, base64: true })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.6, base64: true });
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+      const asset = result.assets[0];
+      const mime = asset.mimeType ?? 'image/jpeg';
+      const dataUrl = `data:${mime};base64,${asset.base64}`;
+      setEstimating(true);
+      const est = await estimatePackageFromPhoto(dataUrl);
+      if (!commodity.trim() && est.itemName) setCommodity(est.itemName);
+      setWeight(String(est.weightKg));
+      setLengthCm(String(est.lengthCm));
+      setWidthCm(String(est.widthCm));
+      setHeightCm(String(est.heightCm));
+      const confFa = est.confidence === 'high' ? 'زیاد' : est.confidence === 'low' ? 'کم' : 'متوسط';
+      setEstimateNote(`✨ تخمین هوش مصنوعی (اطمینان: ${confFa}). می‌توانید اصلاح کنید.${est.note ? ' ' + est.note : ''}`);
+      if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      setEstimateNote(e instanceof Error ? e.message : 'تخمین از روی عکس ناموفق بود.');
+    } finally {
+      setEstimating(false);
+    }
+  }, [estimating, commodity]);
 
   // ── Validation ──
   const missing = useMemo(() => {
@@ -363,12 +450,27 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
       <View style={styles.sectionRow}><User size={13} color={C.textSecondary} /><Text style={styles.sectionTitle}>{isReturn ? 'آدرس شما (محل pickup)' : 'فرستنده'}</Text></View>
       <Input label="نام" value={fromName} onChangeText={setFromName} placeholder="نام کامل" />
       <Input label="تلفن" value={fromPhone} onChangeText={setFromPhone} placeholder="+1 ..." keyboardType="phone-pad" />
-      <Input label="آدرس" value={fromLine1} onChangeText={setFromLine1} placeholder="خیابان و پلاک" />
+      <AddressField
+        label="آدرس"
+        value={fromLine1}
+        onChangeText={setFromLine1}
+        placeholder="شروع کنید به تایپ آدرس…"
+        onPick={(a) => {
+          setFromLine1(a.line1 || a.label);
+          if (a.city) setFromCity(a.city);
+          if (a.region) setFromRegion(a.region);
+          if (a.postal) setFromPostal(a.postal);
+        }}
+      />
       <View style={styles.grid2}>
         <Input containerStyle={styles.gridItem} label="شهر" value={fromCity} onChangeText={setFromCity} placeholder="شهر" />
         <Input containerStyle={styles.gridItem} label="استان" value={fromRegion} onChangeText={setFromRegion} placeholder="استان" />
       </View>
-      <Input label="کد پستی" value={fromPostal} onChangeText={setFromPostal} placeholder="A1A 1A1" autoCapitalize="characters" />
+      <View style={styles.postalWrap}>
+        <Input label="کد پستی" value={fromPostal} onChangeText={setFromPostal} placeholder="A1A 1A1" autoCapitalize="characters" />
+        {postalLoading ? <ActivityIndicator size="small" color={C.accent} style={styles.postalSpin} /> : null}
+      </View>
+      <Text style={styles.fieldHint}>آدرس یا کد پستی را وارد کنید — بقیه‌ی فیلدها خودکار پر می‌شوند.</Text>
 
       {!isReturn ? (
         <>
@@ -376,7 +478,18 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
           <View style={styles.sectionRow}><MapPin size={13} color={C.textSecondary} /><Text style={styles.sectionTitle}>گیرنده</Text></View>
           <Input label="نام" value={toName} onChangeText={setToName} placeholder="نام گیرنده" />
           <Input label="تلفن" value={toPhone} onChangeText={setToPhone} placeholder="+1 ..." keyboardType="phone-pad" />
-          <Input label="آدرس" value={toLine1} onChangeText={setToLine1} placeholder="خیابان و پلاک" />
+          <AddressField
+            label="آدرس"
+            value={toLine1}
+            onChangeText={setToLine1}
+            placeholder="شروع کنید به تایپ آدرس…"
+            onPick={(a) => {
+              setToLine1(a.line1 || a.label);
+              if (a.city) setToCity(a.city);
+              if (a.region) setToRegion(a.region);
+              if (a.postal) setToPostal(a.postal);
+            }}
+          />
           <View style={styles.grid2}>
             <Input containerStyle={styles.gridItem} label="شهر" value={toCity} onChangeText={setToCity} placeholder="شهر" />
             <Input containerStyle={styles.gridItem} label="استان" value={toRegion} onChangeText={setToRegion} placeholder="استان" />
@@ -392,6 +505,21 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
       {!isReturn ? (
         <>
           <View style={styles.sectionRow}><Scale size={13} color={C.textSecondary} /><Text style={styles.sectionTitle}>وزن و ابعاد</Text></View>
+
+          {/* Photo → AI estimate */}
+          <View style={styles.photoRow}>
+            <TouchableOpacity style={styles.photoBtn} onPress={() => void estimateFromPhoto('camera')} disabled={estimating}>
+              {estimating ? <ActivityIndicator size="small" color={C.accent} /> : <Camera size={15} color={C.accent} />}
+              <Text style={styles.photoBtnText}>عکس بگیر</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.photoBtn} onPress={() => void estimateFromPhoto('library')} disabled={estimating}>
+              <Sparkles size={15} color={C.accent} />
+              <Text style={styles.photoBtnText}>از گالری</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.fieldHint}>عکس بسته را بده تا وزن و ابعاد را حدس بزنم.</Text>
+          {estimateNote ? <Text style={styles.estimateNote}>{estimateNote}</Text> : null}
+
           <Input label="وزن (kg)" value={weight} onChangeText={setWeight} placeholder="مثلاً 2" keyboardType="numeric" />
           <View style={styles.grid3}>
             <Input containerStyle={styles.gridItem} label="طول" value={lengthCm} onChangeText={setLengthCm} placeholder="cm" keyboardType="numeric" />
@@ -399,7 +527,26 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
             <Input containerStyle={styles.gridItem} label="ارتفاع" value={heightCm} onChangeText={setHeightCm} placeholder="cm" keyboardType="numeric" />
           </View>
           <View style={styles.sectionRow}><Calendar size={13} color={C.textSecondary} /><Text style={styles.sectionTitle}>تاریخ آمادگی</Text></View>
-          <Input label="کِی حاضر است؟" value={readyDate} onChangeText={setReadyDate} placeholder="YYYY-MM-DD (اختیاری)" />
+          {Platform.OS === 'web' ? (
+            <Input label="کِی حاضر است؟" value={readyDate} onChangeText={setReadyDate} placeholder="YYYY-MM-DD (اختیاری)" />
+          ) : (
+            <>
+              <Text style={styles.label}>کِی حاضر است؟ (اختیاری)</Text>
+              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowDatePicker(true)}>
+                <Calendar size={15} color={readyDate ? C.accent : C.textMuted} />
+                <Text style={[styles.dateText, !readyDate && styles.datePlaceholder]}>{readyDate || 'انتخاب تاریخ'}</Text>
+                <ChevronDown size={16} color={C.textMuted} />
+              </TouchableOpacity>
+              {showDatePicker ? (
+                <DateTimePicker
+                  value={readyDate ? new Date(readyDate) : new Date()}
+                  mode="date"
+                  minimumDate={new Date()}
+                  onChange={onDateChange}
+                />
+              ) : null}
+            </>
+          )}
 
           {/* Delivery method */}
           <View style={styles.sectionRow}><Truck size={13} color={C.textSecondary} /><Text style={styles.sectionTitle}>روش تحویل</Text></View>
@@ -452,6 +599,69 @@ export default function ParcelIntakeCard({ flow, params, onComplete, trackHref }
         <Text style={styles.primaryText}>{isReturn ? 'درخواست راننده برای مرجوعی' : 'ادامه'}</Text>
       </TouchableOpacity>
       {errText ? <Text style={styles.err}>{errText}</Text> : null}
+    </View>
+  );
+}
+
+interface AddressFieldProps {
+  label: string;
+  value: string;
+  onChangeText: (t: string) => void;
+  onPick: (a: AddressDetail) => void;
+  placeholder?: string;
+}
+
+/**
+ * A text input with live address autocomplete. Typing triggers a debounced
+ * OpenStreetMap search; tapping a suggestion fills the parent's city/region/
+ * postal via `onPick`. Falls back to plain typing if the search returns nothing.
+ */
+function AddressField({ label, value, onChangeText, onPick, placeholder }: AddressFieldProps) {
+  const [suggestions, setSuggestions] = useState<AddressDetail[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [open, setOpen] = useState<boolean>(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipNext = useRef<boolean>(false);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  const handleChange = useCallback((t: string) => {
+    onChangeText(t);
+    if (skipNext.current) { skipNext.current = false; return; }
+    if (timer.current) clearTimeout(timer.current);
+    if (t.trim().length < 3) { setSuggestions([]); setOpen(false); setLoading(false); return; }
+    setLoading(true);
+    timer.current = setTimeout(async () => {
+      const res = await searchAddress(t);
+      setSuggestions(res);
+      setOpen(res.length > 0);
+      setLoading(false);
+    }, 500);
+  }, [onChangeText]);
+
+  const choose = useCallback((a: AddressDetail) => {
+    skipNext.current = true;
+    onPick(a);
+    setOpen(false);
+    setSuggestions([]);
+  }, [onPick]);
+
+  return (
+    <View>
+      <View style={styles.addrInputWrap}>
+        <Input label={label} value={value} onChangeText={handleChange} placeholder={placeholder} />
+        {loading ? <ActivityIndicator size="small" color={C.accent} style={styles.addrSpin} /> : null}
+      </View>
+      {open && suggestions.length > 0 ? (
+        <View style={styles.suggestBox}>
+          {suggestions.map((sug, i) => (
+            <TouchableOpacity key={`${sug.lat}-${sug.lng}-${i}`} style={styles.suggestRow} onPress={() => choose(sug)}>
+              <MapPin size={13} color={C.accent} />
+              <Text style={styles.suggestText} numberOfLines={2}>{sug.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -510,4 +720,37 @@ const styles = StyleSheet.create({
   poResult: { fontSize: 12.5, color: C.text, lineHeight: 18, backgroundColor: C.card, borderRadius: 10, padding: 10 },
   doneSub: { fontSize: 12.5, color: C.textSecondary, lineHeight: 18 },
   err: { fontSize: 12, color: C.red, lineHeight: 17 },
+  fieldHint: { fontSize: 11.5, color: C.textMuted, lineHeight: 16 },
+  label: { fontSize: 13, fontWeight: '600' as const, color: C.textSecondary, letterSpacing: 0.3 },
+  postalWrap: { position: 'relative' as const },
+  postalSpin: { position: 'absolute' as const, right: 12, top: 34 },
+  addrInputWrap: { position: 'relative' as const },
+  addrSpin: { position: 'absolute' as const, right: 12, top: 34 },
+  suggestBox: {
+    marginTop: 2, backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.accent + '44',
+    borderRadius: 10, overflow: 'hidden' as const,
+  },
+  suggestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border,
+  },
+  suggestText: { flex: 1, fontSize: 12.5, color: C.text, lineHeight: 17 },
+  photoRow: { flexDirection: 'row', gap: 8 },
+  photoBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: C.accent + '18', borderWidth: 1, borderColor: C.accent + '55',
+    borderRadius: 10, paddingVertical: 11,
+  },
+  photoBtnText: { color: C.accent, fontSize: 13, fontWeight: '700' as const },
+  estimateNote: {
+    fontSize: 12, color: C.text, lineHeight: 17, backgroundColor: C.accent + '14',
+    borderRadius: 10, padding: 10,
+  },
+  dateBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: C.bgSecondary, borderWidth: 1, borderColor: C.border,
+    borderRadius: 10, paddingHorizontal: 14, minHeight: 48,
+  },
+  dateText: { flex: 1, fontSize: 15, color: C.text },
+  datePlaceholder: { color: C.textMuted },
 });

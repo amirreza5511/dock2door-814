@@ -10,8 +10,21 @@ export type GeocodeResult = { lat: number; lng: number; label: string };
 export type AddressSuggestion = { id: string; lat: number; lng: number; label: string };
 export type RouteResult = { coordinates: { lat: number; lng: number }[]; distanceKm: number; durationMin: number };
 
+/** Rich suggestion for the parcel intake card: parsed into street/city/region/postal. */
+export interface AddressDetail {
+  label: string;
+  line1: string;
+  city: string;
+  region: string;
+  postal: string;
+  country: string;
+  lat: number;
+  lng: number;
+}
+
 const BASE = 'https://nominatim.openstreetmap.org';
 const OSRM = 'https://router.project-osrm.org';
+const UA = 'Dock2Door/1.0 (logistics app; contact support@dock2door.app)';
 
 /**
  * Normalize a free-text address so Nominatim can parse it reliably.
@@ -132,4 +145,83 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
   } catch {
     return null;
   }
+}
+
+// ── Rich, parsed lookups for the parcel intake card ──
+
+interface NominatimAddress {
+  house_number?: string;
+  road?: string;
+  pedestrian?: string;
+  city?: string;
+  town?: string;
+  village?: string;
+  municipality?: string;
+  state?: string;
+  province?: string;
+  postcode?: string;
+  country_code?: string;
+}
+
+interface NominatimResult {
+  display_name?: string;
+  lat?: string;
+  lon?: string;
+  address?: NominatimAddress;
+}
+
+function toDetail(r: NominatimResult): AddressDetail {
+  const a = r.address ?? {};
+  const street = [a.house_number, a.road ?? a.pedestrian].filter(Boolean).join(' ').trim();
+  const city = a.city ?? a.town ?? a.village ?? a.municipality ?? '';
+  const region = a.state ?? a.province ?? '';
+  return {
+    label: r.display_name ?? [street, city, region].filter(Boolean).join(', '),
+    line1: street,
+    city,
+    region,
+    postal: (a.postcode ?? '').toUpperCase(),
+    country: (a.country_code ?? '').toUpperCase(),
+    lat: Number(r.lat ?? 0),
+    lng: Number(r.lon ?? 0),
+  };
+}
+
+async function detailQuery(params: Record<string, string>): Promise<NominatimResult[]> {
+  const qs = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', limit: '6', ...params });
+  try {
+    const res = await fetch(`${BASE}/search?${qs.toString()}`, {
+      headers: { 'User-Agent': UA, Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    const data = (await res.json()) as NominatimResult[];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search addresses matching free text, returning parsed street/city/region/postal.
+ * Biased to Canada + US (the app's operating region). Used by the parcel intake card.
+ */
+export async function searchAddress(text: string): Promise<AddressDetail[]> {
+  const q = normalizeQuery(text);
+  if (q.length < 3) return [];
+  const results = await detailQuery({ q, countrycodes: 'ca,us' });
+  return results.map(toDetail).filter((s) => s.line1 || s.city);
+}
+
+/**
+ * Resolve a postal/ZIP code to its city + region. Returns the best match or null.
+ * Canada first, then US as a fallback.
+ */
+export async function lookupPostalCode(postal: string): Promise<AddressDetail | null> {
+  const code = postal.trim().toUpperCase();
+  if (code.replace(/\s/g, '').length < 3) return null;
+  for (const cc of ['ca', 'us']) {
+    const results = await detailQuery({ postalcode: code, countrycodes: cc });
+    if (results[0]) return toDetail(results[0]);
+  }
+  return null;
 }
