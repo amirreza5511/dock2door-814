@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  Send, Sparkles, ChevronLeft, ShieldCheck, AlertTriangle, Lightbulb, Info,
+  Send, Sparkles, ChevronLeft, ChevronRight, ShieldCheck, AlertTriangle, Lightbulb, Info,
   OctagonAlert, Radar, Check, X, Play, Brain, Trash2, Repeat2, TrendingDown,
   DollarSign, Plus, Mic, Square, Paperclip, ImageIcon, FileText, SquarePen,
 } from 'lucide-react-native';
@@ -36,6 +36,8 @@ interface UiMsg {
   actions: CopilotAction[];
   /** Thumbnails/labels for anything the user attached to this turn. */
   attachments?: ChatAttachment[];
+  /** Optional tappable deep-link shown under a confirmation (user stays in chat until they tap). */
+  link?: { href: string; label: string };
 }
 
 /** A pending or sent chat attachment (photo for vision, or a document). */
@@ -319,6 +321,9 @@ export default function CopilotScreen() {
     setRunningKey(key);
     // When an action creates a freight load we deep-link to its live quotes.
     let createdLoadId: string | null = null;
+    // A tappable link surfaced under the confirmation — the user stays in the
+    // chat and only navigates if they choose to.
+    let resultLink: { href: string; label: string } | null = null;
     try {
       const p = action.params as Record<string, unknown>;
       if (action.type === 'dispatch_move') {
@@ -426,7 +431,7 @@ export default function CopilotScreen() {
           body: String(p.body),
         });
         if (fw?.threadId) {
-          setTimeout(() => router.push(`/messages/${fw.threadId}` as never), 600);
+          resultLink = { href: `/messages/${fw.threadId}`, label: 'Open the conversation' };
         }
       } else if (action.type === 'escalate_human') {
         const tk = await createTicket.mutateAsync({
@@ -434,7 +439,7 @@ export default function CopilotScreen() {
           summary: p.summary ? String(p.summary) : '',
         });
         if (tk?.threadId) {
-          setTimeout(() => router.push(`/messages/${tk.threadId}` as never), 600);
+          resultLink = { href: `/messages/${tk.threadId}`, label: 'Open the support chat' };
         }
       } else if (action.type === 'run_watchdog') {
         await runWatchdog.mutateAsync(undefined);
@@ -449,12 +454,15 @@ export default function CopilotScreen() {
       } else {
         throw new Error('Unknown action type.');
       }
+      if (createdLoadId) {
+        resultLink = { href: `/global-freight/${createdLoadId}`, label: 'View live quotes' };
+      }
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDoneKeys((prev) => new Set(prev).add(key));
       const confirm = createdLoadId
-        ? `✅ Done: ${action.label}\n\nYour load is posted. Opening its live quotes — carriers will send competing prices here.`
+        ? `✅ Done: ${action.label}\n\nYour load is posted — carriers will send competing prices. Tap below to watch the quotes come in whenever you like; your chat stays right here.`
         : `✅ Done: ${action.label}`;
-      setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: 'assistant', content: confirm, actions: [] }]);
+      setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: 'assistant', content: confirm, actions: [], link: resultLink ?? undefined }]);
       void appendChat.mutateAsync({ items: [{ role: 'assistant', content: confirm }] }).catch(() => undefined);
       await Promise.all([
         utils.ai.context.invalidate(),
@@ -462,10 +470,6 @@ export default function CopilotScreen() {
         utils.drayage.dashboard.invalidate(),
         utils.drayage.streetTurnSuggestions.invalidate(),
       ]);
-      if (createdLoadId) {
-        const loadId = createdLoadId;
-        setTimeout(() => router.push(`/global-freight/${loadId}` as never), 700);
-      }
       scrollDown();
     } catch (e) {
       Alert.alert('Action failed', e instanceof Error ? e.message : 'Unknown error');
@@ -661,6 +665,15 @@ export default function CopilotScreen() {
                         </View>
                       ) : null}
                       {m.content ? <Text style={[styles.bubbleText, m.role === 'user' && { color: C.white }]}>{m.content}</Text> : null}
+                      {m.link ? (
+                        <TouchableOpacity
+                          style={styles.msgLinkBtn}
+                          onPress={() => router.push(m.link!.href as never)}
+                        >
+                          <Text style={styles.msgLinkText}>{m.link.label}</Text>
+                          <ChevronRight size={15} color={C.accent} />
+                        </TouchableOpacity>
+                      ) : null}
                     </View>
                   </View>
                   {m.actions.length > 0 ? m.actions.map((a, idx) => {
@@ -1002,6 +1015,8 @@ const styles = StyleSheet.create({
   bubbleUser: { backgroundColor: C.accent, borderBottomRightRadius: 4 },
   bubbleAi: { backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 14, color: C.text, lineHeight: 20 },
+  msgLinkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 10, alignSelf: 'flex-start', backgroundColor: C.accent + '18', borderWidth: 1, borderColor: C.accent + '55', borderRadius: 10, paddingVertical: 7, paddingHorizontal: 12 },
+  msgLinkText: { fontSize: 13, fontWeight: '700' as const, color: C.accent },
   typing: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   typingText: { fontSize: 13, color: C.textSecondary },
 
