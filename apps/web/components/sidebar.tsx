@@ -155,7 +155,9 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
     sections.push({
       label: "Global Freight",
       items: [
+        { href: "/international", label: "Freight hub", icon: Globe },
         { href: "/global-freight", label: "Freight exchange", icon: Globe },
+        { href: "/global-freight/hubs", label: "Canada hub network", icon: Boxes },
         ...(isAdmin || role === "Admin" || role === "SuperAdmin"
           ? [{ href: "/admin/freight-review", label: "Freight review", icon: ClipboardCheck }]
           : []),
@@ -282,6 +284,7 @@ function buildNav(role: UserRole | null, isAdmin: boolean): NavSection[] {
         { href: "/trucking/dispatch", label: "Dispatch", icon: ClipboardList },
         { href: "/trucking/appointments", label: "Dock appointments", icon: Calendar },
         { href: "/trucking/pod", label: "POD review", icon: ScrollText },
+        { href: "/trucking/messages", label: "Inbox", icon: MessageSquare },
         { href: "/trucking/rates", label: "Rates & lanes", icon: DollarSign },
         { href: "/trucking/fuel-surcharge", label: "Fuel surcharge", icon: DollarSign },
         { href: "/trucking/settlement", label: "Driver settlement", icon: DollarSign },
