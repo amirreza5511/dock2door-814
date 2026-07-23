@@ -315,16 +315,26 @@ export default function AdBanner() {
   );
 }
 
+/**
+ * Swallow the benign play() promise rejection browsers raise when a muted
+ * autoplay video is paused to save power or its source swaps mid-load.
+ */
+function safePlay(result: unknown): void {
+  if (result && typeof (result as Promise<void>).catch === 'function') {
+    (result as Promise<void>).catch(() => undefined);
+  }
+}
+
 /** Muted, looping autoplay video creative. */
 function AdVideo({ uri }: { uri: string }) {
   const player = useVideoPlayer(uri, (p) => {
     p.loop = true;
     p.muted = true;
-    p.play();
+    safePlay(p.play());
   });
   // Web autoplay sometimes needs a nudge after mount.
   useEffect(() => {
-    const t = setTimeout(() => { try { player.play(); } catch { /* noop */ } }, 300);
+    const t = setTimeout(() => { try { safePlay(player.play()); } catch { /* noop */ } }, 300);
     return () => clearTimeout(t);
   }, [player]);
   return (
