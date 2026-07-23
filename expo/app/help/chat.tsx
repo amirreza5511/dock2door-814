@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { Send, Sparkles, ChevronLeft } from 'lucide-react-native';
+import { Send, Sparkles, ChevronLeft, Lock } from 'lucide-react-native';
 import { useAuthStore } from '@/store/auth';
 import C from '@/constants/colors';
 import { askAssistant, type AiMessage } from '@/lib/ai';
@@ -18,6 +18,33 @@ interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+}
+
+/** Free assistant messages a guest gets before we ask them to sign in. */
+const GUEST_FREE_MESSAGES = 5;
+
+/** Localized copy for the sign-in / credits gate shown to guests. */
+function gateCopy(lang: string): { title: string; body: string; cta: string } {
+  switch (lang) {
+    case 'fa':
+      return {
+        title: 'به سقف گفتگوی رایگان رسیدی',
+        body: 'برای ادامهٔ گفتگو با دستیار هوشمند لجستیک، وارد حساب کاربری شو و کردیت بگیر.',
+        cta: 'ورود / ثبت‌نام و دریافت کردیت',
+      };
+    case 'fr':
+      return { title: 'Limite gratuite atteinte', body: 'Connectez-vous et obtenez des crédits pour continuer à discuter avec l’assistant logistique.', cta: 'Se connecter et obtenir des crédits' };
+    case 'es':
+      return { title: 'Límite gratuito alcanzado', body: 'Inicia sesión y obtén créditos para seguir hablando con el asistente de logística.', cta: 'Iniciar sesión y obtener créditos' };
+    case 'hi':
+      return { title: 'मुफ़्त सीमा पूरी हुई', body: 'लॉजिस्टिक्स असिस्टेंट से बात जारी रखने के लिए लॉग इन करें और क्रेडिट लें।', cta: 'लॉग इन करें और क्रेडिट लें' };
+    case 'zh':
+      return { title: '已达免费上限', body: '登录并获取额度，即可继续与物流助手对话。', cta: '登录并获取额度' };
+    case 'pa':
+      return { title: 'ਮੁਫ਼ਤ ਹੱਦ ਪੂਰੀ ਹੋਈ', body: 'ਲੌਜਿਸਟਿਕਸ ਸਹਾਇਕ ਨਾਲ ਗੱਲ ਜਾਰੀ ਰੱਖਣ ਲਈ ਲੌਗ ਇਨ ਕਰੋ ਤੇ ਕ੍ਰੈਡਿਟ ਲਓ।', cta: 'ਲੌਗ ਇਨ ਕਰੋ ਤੇ ਕ੍ਰੈਡਿਟ ਲਓ' };
+    default:
+      return { title: 'You’ve reached the free limit', body: 'Sign in and get credits to keep chatting with the logistics assistant.', cta: 'Sign in & get credits' };
+  }
 }
 
 /** Builds a compact knowledge summary of the manual so the AI answers accurately. */
@@ -48,17 +75,26 @@ export default function HelpChat() {
 
   const isGuest = !user;
 
-  const systemPrompt = `You are the Dock2Door assistant. Dock2Door is a B2B logistics super-app with SIX worlds (domains):
+  const systemPrompt = `You are the Dock2Door AI — a senior logistics, supply-chain and freight-transport expert AND the product guide for the Dock2Door platform (identical mobile app + web app; everything below works on both).
+
+YOUR EXPERTISE (answer like a seasoned professional, not a generic chatbot):
+- End-to-end supply chain: procurement, inbound/outbound, warehousing, inventory, fulfillment, last-mile and reverse logistics.
+- Freight modes & pricing: LTL, FTL, LCL, FCL, drayage/container trucking, ocean, air; how chargeable/volumetric weight, accessorials, fuel surcharges, per diem, demurrage and detention work.
+- Incoterms 2020 (EXW, FOB, CIF, DAP, DDP, etc.), customs clearance, HS codes, duties/taxes and required documents (BOL, commercial invoice, packing list, AWB, B/L).
+- Transport regulations & compliance: carrier authority/operating licenses, insurance & liability, weight/axle limits, hours-of-service/driver rules, dangerous-goods/hazmat basics, and cross-border (Canada/US/international) requirements. Give practical guidance and ALWAYS remind the user to confirm current local rules with the relevant authority — never invent specific legal citations.
+
+Dock2Door is a B2B logistics super-app with these worlds (domains):
 1. Labour — post & fill work shifts; workers find shifts; employment agencies bring their own crews.
 2. Logistics & Warehousing — book warehouse space (dry/chilled/frozen), industrial services, trucking & fulfillment.
 3. Freight & Delivery — "Uber for trucks": shippers post loads (parcel to full truckload), owner-operators & fleet carriers accept and dispatch.
 4. Container Drayage — post import/export container orders; drayage companies claim, dispatch drivers & track live; customs brokers clear shipments.
 5. Rentals & Services — rent equipment (forklifts, cranes), book mobile repair, and insure cargo.
 6. Global Freight — international shipping exchange: post one freight request (air/ocean/truck, FCL/LCL) and receive competing quotes from forwarders and carriers worldwide.
+7. LTL & FTL Quotes — post a truck load (LTL part-load, FTL full-truck, or LCL shared container) locally, across Canada, or internationally with optional final-mile to the door, get an instant ballpark estimate, and receive competing quotes from carriers and companies.
 The current user's role is "${myRole?.name ?? user?.role ?? 'guest visitor (no account yet)'}".
-${isGuest ? 'This person is exploring WITHOUT an account. Help them understand what the app does, which world/role fits their business, and how to get started. Warmly encourage them to explore any world for free and create an account when they want to place a real order or do work. Keep it friendly and non-pushy.' : ''}
-ALWAYS reply in ${langDef.aiName}, regardless of the language the question is written in. Keep screen names recognizable.
-Be concise, practical and step-by-step. When relevant reference the exact screen names from the app knowledge. If something isn't covered, say so briefly and suggest the closest screen or world.
+${isGuest ? 'This person is exploring WITHOUT an account. Answer their logistics question expertly first, then briefly connect it to the right world/screen and warmly invite them to create an account to post a real order or get live quotes. Keep it helpful, not pushy.' : ''}
+LANGUAGE: Reply in the SAME language the user writes in (if they write Persian/Farsi, answer in fluent Persian). If their language is unclear, use ${langDef.aiName}. Keep app screen/world names recognizable.
+Be concise, practical and step-by-step. Reference the exact screen/world names when relevant. If something isn't covered by the platform, say so briefly and suggest the closest world.
 
 APP KNOWLEDGE:
 ${buildKnowledge()}`;
