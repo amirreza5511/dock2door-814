@@ -216,6 +216,16 @@ MEMORY:
 If the user tells you something worth remembering across sessions ("always...", "remember...", preferences, standing rules), set "memory" in the actions block to a short one-line fact (you may emit the block with an empty actions array just to save a memory). Otherwise keep it null.`;
 }
 
+/** True when a proposed action's text is really a shipping/parcel request. */
+function looksLikeShippingRequest(a: Record<string, unknown>): boolean {
+  const parts = [a.label, a.reason];
+  const params = (typeof a.params === 'object' && a.params !== null ? a.params : {}) as Record<string, unknown>;
+  parts.push(params.title, params.details);
+  const hay = parts.filter((p) => typeof p === 'string').join(' ').toLowerCase();
+  return /\b(ship|shipping|shipment|parcel|package|packages|courier|deliver|delivery|final[- ]?mile|return|returns|amazon|freight|load|pickup|drop[- ]?off|post a load)\b/.test(hay)
+    || /(ارسال|بسته|مرسوله|حمل|بار|تحویل|پست|برگشت|مرجوع)/.test(hay);
+}
+
 /**
  * Extract the trailing ```actions block from a raw model reply.
  * Returns clean display text, validated actions and an optional memory.
@@ -233,6 +243,10 @@ export function parseCopilotReply(raw: string): ParsedCopilotReply {
       actions = parsed.actions
         .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
         .filter((a) => ACTION_TYPES.includes(a.type as CopilotActionType))
+        // Guardrail: the model sometimes mis-files a shipping request as a
+        // workspace customization. Shipping is ALREADY supported (create_load),
+        // so drop any request_customization that is really about moving goods.
+        .filter((a) => !(a.type === 'request_customization' && looksLikeShippingRequest(a)))
         .slice(0, 3)
         .map((a) => ({
           type: a.type as CopilotActionType,
