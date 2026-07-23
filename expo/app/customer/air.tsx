@@ -19,6 +19,7 @@ import { trpc } from '@/lib/trpc';
 import { supabase } from '@/lib/supabase';
 import { askAssistant } from '@/lib/ai';
 import { usePreferences } from '@/store/preferences';
+import { useExploreStore } from '@/store/explore';
 import { AIRPORTS, CURRENCY_CODES, weightUnitFor, dimUnitFor } from '@/constants/world';
 
 const CURRENCIES = CURRENCY_CODES;
@@ -72,7 +73,8 @@ export default function CustomerAirScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const utils = trpc.useUtils();
-  const mineQuery = trpc.air.mine.useQuery(undefined);
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled: !isExploring });
   const requests = (mineQuery.data ?? []) as AirRequest[];
 
   const [postModal, setPostModal] = useState<boolean>(false);
@@ -352,9 +354,10 @@ Shipment: ${p.title} (${p.kind}); ${p.cargoType || 'general cargo'}; route ${p.o
 function AirDetailModal({ requestId, onClose }: { requestId: string; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const utils = trpc.useUtils();
-  const mineQuery = trpc.air.mine.useQuery(undefined);
-  const offersQuery = trpc.air.offers.useQuery({ requestId });
-  const messagesQuery = trpc.air.messages.useQuery({ requestId });
+  const isExploring = useExploreStore((s) => s.isExploring);
+  const mineQuery = trpc.air.mine.useQuery(undefined, { enabled: !isExploring });
+  const offersQuery = trpc.air.offers.useQuery({ requestId }, { enabled: !isExploring });
+  const messagesQuery = trpc.air.messages.useQuery({ requestId }, { enabled: !isExploring });
   const req = ((mineQuery.data ?? []) as AirRequest[]).find((r) => r.id === requestId) ?? null;
   const offers = (offersQuery.data ?? []) as AirOffer[];
   const messages = (messagesQuery.data ?? []) as AirMessage[];
