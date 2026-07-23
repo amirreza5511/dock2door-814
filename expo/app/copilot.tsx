@@ -196,6 +196,8 @@ export default function CopilotScreen() {
     const key = `${msgId}:${idx}`;
     if (runningKey || doneKeys.has(key)) return;
     setRunningKey(key);
+    // When an action creates a freight load we deep-link to its live quotes.
+    let createdLoadId: string | null = null;
     try {
       const p = action.params as Record<string, unknown>;
       if (action.type === 'dispatch_move') {
@@ -262,7 +264,7 @@ export default function CopilotScreen() {
         const unitRaw = p.weightUnit ? String(p.weightUnit) : 'kg';
         const weightUnit = (unitRaw === 'lb' ? 'lb' : 'kg') as 'kg' | 'lb';
         const finalMile = p.finalMile === true;
-        await createLoad.mutateAsync({
+        const created = await createLoad.mutateAsync({
           title: p.title ? String(p.title) : `${originCity} → ${destCity}`,
           originCountry: p.originCountry ? String(p.originCountry) : 'Canada',
           originCity,
@@ -279,6 +281,7 @@ export default function CopilotScreen() {
           deliveryMethod: finalMile ? 'door_pickup' : 'booking_only',
           needsContainerPickup: finalMile,
         });
+        createdLoadId = created?.id ? String(created.id) : null;
       } else if (action.type === 'create_drayage_order') {
         if (!p.direction || !p.containerNumber) throw new Error('The proposal is missing the direction or container number.');
         await createDrayageOrder.mutateAsync({
@@ -327,7 +330,9 @@ export default function CopilotScreen() {
       }
       if (Platform.OS !== 'web') void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setDoneKeys((prev) => new Set(prev).add(key));
-      const confirm = `✅ Done: ${action.label}`;
+      const confirm = createdLoadId
+        ? `✅ Done: ${action.label}\n\nYour load is posted. Opening its live quotes — carriers will send competing prices here.`
+        : `✅ Done: ${action.label}`;
       setMessages((prev) => [...(prev ?? []), { id: `c-${Date.now()}`, role: 'assistant', content: confirm, actions: [] }]);
       void appendChat.mutateAsync({ items: [{ role: 'assistant', content: confirm }] }).catch(() => undefined);
       await Promise.all([
@@ -336,6 +341,10 @@ export default function CopilotScreen() {
         utils.drayage.dashboard.invalidate(),
         utils.drayage.streetTurnSuggestions.invalidate(),
       ]);
+      if (createdLoadId) {
+        const loadId = createdLoadId;
+        setTimeout(() => router.push(`/global-freight/${loadId}` as never), 700);
+      }
       scrollDown();
     } catch (e) {
       Alert.alert('Action failed', e instanceof Error ? e.message : 'Unknown error');
