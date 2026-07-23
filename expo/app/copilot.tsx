@@ -233,6 +233,16 @@ export default function CopilotScreen() {
 
   // ── Attachments: photo (vision) or document ──
   const readAsDataUrl = useCallback(async (uri: string, mime: string): Promise<string> => {
+    // On web, expo-file-system is unavailable — read the blob URI with FileReader.
+    if (Platform.OS === 'web') {
+      const blob = await (await fetch(uri)).blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Could not read the file.'));
+        reader.readAsDataURL(blob);
+      });
+    }
     const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
     return `data:${mime};base64,${base64}`;
   }, []);
