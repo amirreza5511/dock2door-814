@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useRef } from 'react';
-import { KeyboardAvoidingView, PanResponder, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, PanResponder, Platform, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -258,6 +258,25 @@ function BootstrapController() {
 
     void SplashScreen.hideAsync();
   }, [isHydrated]);
+
+  // On web, autoplaying muted videos (intro reel, ad creatives) can have their
+  // pending play() promise rejected by the browser when the source swaps or the
+  // element is paused to save power. These rejections are harmless but surface
+  // as a runtime-error overlay. Swallow ONLY those benign media messages,
+  // permanently at the app root (IntroVideo's own handler unmounts with it, so
+  // later videos like ad creatives would otherwise still trip the overlay).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    const onRejection = (e: PromiseRejectionEvent): void => {
+      const reason = e?.reason as { message?: string } | string | undefined;
+      const msg = String((typeof reason === 'object' ? reason?.message : reason) ?? '');
+      if (/play\(\) request was interrupted|interrupted by a new load request|interrupted because the media was paused|paused to save power/i.test(msg)) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, []);
 
   return null;
 }
