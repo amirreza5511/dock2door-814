@@ -61,6 +61,18 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Build a redirect that PRESERVES the Supabase auth cookies just refreshed on
+  // `supabaseResponse`. Plain `NextResponse.redirect` returns a fresh response
+  // with NO cookies, so the rotated tokens never reach the browser, the session
+  // breaks, and the user bounces in a loop between /login and their destination.
+  const redirectWithCookies = (url: URL): NextResponse => {
+    const res = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      res.cookies.set(cookie);
+    });
+    return res;
+  };
+
   // `/t/<token>` is the public, no-account tracking page for receivers.
   // `/auth/*` hosts the password-recovery flow (the recovery code is exchanged
   // client-side, so the middleware sees no session yet).
@@ -79,7 +91,7 @@ export async function middleware(request: NextRequest) {
     loginUrl.pathname = "/login";
     // Preserve the intended destination so we can redirect back after sign-in.
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return redirectWithCookies(loginUrl);
   }
 
   // Redirect authenticated users away from the login page.
@@ -88,7 +100,7 @@ export async function middleware(request: NextRequest) {
     const dashUrl = request.nextUrl.clone();
     dashUrl.pathname = dest;
     dashUrl.search = "";
-    return NextResponse.redirect(dashUrl);
+    return redirectWithCookies(dashUrl);
   }
 
   // -------------------------------------------------------------------
@@ -121,7 +133,7 @@ export async function middleware(request: NextRequest) {
         const denyUrl = request.nextUrl.clone();
         denyUrl.pathname = "/dashboard";
         denyUrl.search = "?denied=1";
-        return NextResponse.redirect(denyUrl);
+        return redirectWithCookies(denyUrl);
       }
     }
   }
