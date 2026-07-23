@@ -14,10 +14,56 @@ import { useHelpLanguage } from '@/store/help-language';
 import { getLang, tUI, CHAT_SUGGESTIONS } from '@/constants/i18n';
 import LanguagePicker from '@/components/help/LanguagePicker';
 
+/** A tappable action card the assistant can attach to a reply. */
+interface ChatAction {
+  /** 'open' navigates to an in-app world/screen; 'signup' routes to sign-up. */
+  type: 'open' | 'signup';
+  label: string;
+  route?: string;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  actions?: ChatAction[];
+}
+
+/** In-app destinations the guest assistant is allowed to deep-link into. */
+const ALLOWED_ROUTES: Record<string, true> = {
+  '/ground-freight': true,
+  '/global-freight': true,
+  '/international': true,
+  '/ship': true,
+  '/directory': true,
+};
+
+/**
+ * Split a raw model reply into visible text + a trailing fenced ```actions block.
+ * The block is JSON: {"actions":[{"type":"open","label":"...","route":"/ground-freight"}]}.
+ * Unknown routes are dropped so the assistant can never link somewhere invalid.
+ */
+function parseReply(raw: string): { text: string; actions: ChatAction[] } {
+  const match = raw.match(/```(?:actions|json)\s*([\s\S]*?)```\s*$/);
+  if (!match) return { text: raw.trim(), actions: [] };
+  const text = raw.slice(0, match.index).trim();
+  try {
+    const parsed = JSON.parse(match[1]) as { actions?: unknown };
+    const list = Array.isArray(parsed.actions) ? parsed.actions : [];
+    const actions: ChatAction[] = list
+      .filter((a): a is Record<string, unknown> => typeof a === 'object' && a !== null)
+      .map((a) => {
+        const type = a.type === 'signup' ? 'signup' : 'open';
+        const label = typeof a.label === 'string' ? a.label.trim() : '';
+        const route = typeof a.route === 'string' ? a.route : undefined;
+        return { type, label, route } as ChatAction;
+      })
+      .filter((a) => a.label.length > 0 && (a.type === 'signup' || (a.route != null && ALLOWED_ROUTES[a.route])))
+      .slice(0, 3);
+    return { text: text || raw.trim(), actions };
+  } catch {
+    return { text: raw.trim(), actions: [] };
+  }
 }
 
 /** Free assistant messages a guest gets before we ask them to sign in. */
@@ -94,14 +140,27 @@ Dock2Door is a B2B logistics super-app with these worlds (domains):
 The current user's role is "${myRole?.name ?? user?.role ?? 'guest visitor (no account yet)'}".
 ${isGuest ? 'This person is exploring WITHOUT an account. Answer their logistics question expertly first, then briefly connect it to the right world/screen and warmly invite them to create an account to post a real order or get live quotes. Keep it helpful, not pushy.' : ''}
 LANGUAGE: Reply in the SAME language the user writes in (if they write Persian/Farsi, answer in fluent Persian). If their language is unclear, use ${langDef.aiName}. Keep app screen/world names recognizable.
-Be concise, practical and step-by-step. Reference the exact screen/world names when relevant. If something isn't covered by the platform, say so briefly and suggest the closest world.
+Be concise, practical and step-by-step. Reference the exact screen/world names when relevant. If something isn't covered by the platform, say so briefly and suggest the closest world. Keep replies complete but tight — never leave a sentence unfinished.
+
+ACTION CARDS:
+When the user is ready to actually DO something on the platform, append EXACTLY ONE fenced block at the very END of your reply so the app can render tap-to-open cards:
+\`\`\`actions
+{"actions":[{"type":"open","label":"Get LTL & FTL truck quotes","route":"/ground-freight"}]}
+\`\`\`
+Allowed routes ONLY: "/ground-freight" (LTL/FTL/LCL truck quotes), "/global-freight" (international air/ocean freight quotes), "/international" (import/export tools), "/ship" (parcel & load shipping), "/directory" (browse companies). Use type "signup" (no route) for a card that invites them to create an account when the next step needs one (posting a real load, sending a request, seeing live quotes). Add at most 2 cards, only when genuinely useful. If no action fits, omit the block entirely. The visible text before the block must read naturally on its own.
 
 APP KNOWLEDGE:
 ${buildKnowledge()}`;
 
+  // Guests get a handful of free replies before we invite them to sign in.
+  const [guestReplies, setGuestReplies] = useState<number>(0);
+  const gated = isGuest && guestReplies >= GUEST_FREE_MESSAGES;
+  const gate = gateCopy(lang);
+
   const send = useCallback(async (text: string) => {
     const trimmed = text.trim();
     if (!trimmed || sending) return;
+    if (isGuest && guestReplies >= GUEST_FREE_MESSAGES) return;
 
     const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: 'user', content: trimmed };
     const history = [...messages, userMsg];
@@ -116,7 +175,9 @@ ${buildKnowledge()}`;
         ...history.map((m): AiMessage => ({ role: m.role, content: m.content })),
       ];
       const reply = await askAssistant(payload);
-      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: reply }]);
+      const { text: replyText, actions } = parseReply(reply);
+      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', content: replyText, actions }]);
+      if (isGuest) setGuestReplies((n) => n + 1);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong.';
       setMessages((prev) => [...prev, { id: `e-${Date.now()}`, role: 'assistant', content: msg }]);
@@ -124,7 +185,12 @@ ${buildKnowledge()}`;
       setSending(false);
       requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
     }
-  }, [messages, sending, systemPrompt]);
+  }, [messages, sending, systemPrompt, isGuest, guestReplies]);
+
+  const runAction = useCallback((action: ChatAction) => {
+    if (action.type === 'signup') { router.push('/auth/signup' as never); return; }
+    if (action.route && ALLOWED_ROUTES[action.route]) router.push(action.route as never);
+  }, [router]);
 
   const suggestions = CHAT_SUGGESTIONS[lang] ?? CHAT_SUGGESTIONS.en;
 
@@ -181,15 +247,46 @@ ${buildKnowledge()}`;
             </View>
           ) : (
             messages.map((m) => (
-              <View
-                key={m.id}
-                style={[styles.bubbleRow, m.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAi]}
-              >
-                <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}>
-                  <Text style={[styles.bubbleText, { textAlign: dirText }, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
+              <View key={m.id} style={styles.msgGroup}>
+                <View
+                  style={[styles.bubbleRow, m.role === 'user' ? styles.bubbleRowUser : styles.bubbleRowAi]}
+                >
+                  <View style={[styles.bubble, m.role === 'user' ? styles.bubbleUser : styles.bubbleAi]}>
+                    <Text style={[styles.bubbleText, { textAlign: dirText }, m.role === 'user' && { color: C.white }]}>{m.content}</Text>
+                  </View>
                 </View>
+                {m.role === 'assistant' && m.actions && m.actions.length > 0 && (
+                  <View style={styles.actionCards}>
+                    {m.actions.map((a, i) => (
+                      <TouchableOpacity
+                        key={`${m.id}-a-${i}`}
+                        style={styles.actionCard}
+                        activeOpacity={0.85}
+                        onPress={() => runAction(a)}
+                      >
+                        <View style={styles.actionIcon}>
+                          {a.type === 'signup'
+                            ? <Lock size={15} color={C.accent} />
+                            : <Sparkles size={15} color={C.accent} />}
+                        </View>
+                        <Text style={[styles.actionLabel, { textAlign: dirText }]} numberOfLines={2}>{a.label}</Text>
+                        <Send size={15} color={C.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             ))
+          )}
+          {gated && (
+            <View style={styles.gateCard}>
+              <View style={styles.gateIcon}><Lock size={22} color={C.accent} /></View>
+              <Text style={styles.gateTitle}>{gate.title}</Text>
+              <Text style={[styles.gateBody, { textAlign: dirText }]}>{gate.body}</Text>
+              <TouchableOpacity style={styles.gateBtn} activeOpacity={0.85} onPress={() => router.push('/auth/signup' as never)}>
+                <Text style={styles.gateBtnText}>{gate.cta}</Text>
+              </TouchableOpacity>
+            </View>
           )}
           {sending && (
             <View style={[styles.bubbleRow, styles.bubbleRowAi]}>
@@ -210,12 +307,12 @@ ${buildKnowledge()}`;
             style={[styles.input, { textAlign: dirText }]}
             multiline
             onSubmitEditing={() => void send(input)}
-            editable={!sending}
+            editable={!sending && !gated}
           />
           <TouchableOpacity
             onPress={() => void send(input)}
-            disabled={sending || input.trim().length === 0}
-            style={[styles.sendBtn, (sending || input.trim().length === 0) && styles.sendBtnDisabled]}
+            disabled={sending || gated || input.trim().length === 0}
+            style={[styles.sendBtn, (sending || gated || input.trim().length === 0) && styles.sendBtnDisabled]}
           >
             <Send size={18} color={C.white} />
           </TouchableOpacity>
@@ -247,6 +344,25 @@ const styles = StyleSheet.create({
   suggestions: { gap: 8, width: '100%' },
   suggestionChip: { backgroundColor: C.card, borderRadius: 12, borderWidth: 1, borderColor: C.border, padding: 14 },
   suggestionText: { fontSize: 13, color: C.text, fontWeight: '500' as const },
+
+  msgGroup: { gap: 8 },
+  actionCards: { gap: 8, alignSelf: 'stretch' },
+  actionCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: C.accentDim, borderRadius: 14, borderWidth: 1, borderColor: C.accent + '55',
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  actionIcon: { width: 30, height: 30, borderRadius: 9, backgroundColor: C.accent + '22', alignItems: 'center', justifyContent: 'center' },
+  actionLabel: { flex: 1, fontSize: 13.5, fontWeight: '700' as const, color: C.text },
+  gateCard: {
+    alignItems: 'center', gap: 8, backgroundColor: C.card, borderRadius: 18,
+    borderWidth: 1, borderColor: C.accent + '55', padding: 20, marginTop: 4,
+  },
+  gateIcon: { width: 52, height: 52, borderRadius: 16, backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  gateTitle: { fontSize: 17, fontWeight: '800' as const, color: C.text, textAlign: 'center' as const },
+  gateBody: { fontSize: 13, color: C.textSecondary, lineHeight: 19 },
+  gateBtn: { marginTop: 8, backgroundColor: C.accent, borderRadius: 14, paddingHorizontal: 20, paddingVertical: 12, alignSelf: 'stretch', alignItems: 'center' },
+  gateBtnText: { fontSize: 14, fontWeight: '800' as const, color: C.white },
 
   bubbleRow: { flexDirection: 'row' },
   bubbleRowUser: { justifyContent: 'flex-end' },
