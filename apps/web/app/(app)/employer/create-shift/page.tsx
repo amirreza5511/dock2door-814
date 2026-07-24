@@ -10,11 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { SKILL_GROUPS, type SkillId } from "@/lib/skills";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 export default function CreateShiftPage() {
   const router = useRouter();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const [form, setForm] = useState({
     title: "",
@@ -43,6 +46,7 @@ export default function CreateShiftPage() {
   // Gate posting on company profile + billing completion.
   const readinessQ = useQuery({
     queryKey: ["employer", "create-shift", "readiness"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -94,9 +98,9 @@ export default function CreateShiftPage() {
   const billingReady = readinessQ.data?.billingComplete ?? Boolean(readiness?.billing_setup_completed_at);
   const companyStatus = readiness?.status ?? "";
   const postingBlocked = companyStatus === "Suspended";
-  const canPostPaid = readinessQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked);
+  const canPostPaid = isExploring ? true : (readinessQ.data?.canPostPaid ?? (profileReady && billingReady && !postingBlocked));
   const paid = form.hourly_rate > 0;
-  const gateBlocked = paid && !canPostPaid;
+  const gateBlocked = !isExploring && paid && !canPostPaid;
 
   const create = useMutation({
     mutationFn: async () => {
@@ -291,7 +295,7 @@ export default function CreateShiftPage() {
         <Link href="/employer"><Button variant="secondary">Cancel</Button></Link>
         <Button
           disabled={!form.title || !form.date || create.isPending || gateBlocked}
-          onClick={() => create.mutate()}
+          onClick={() => { if (!guard("Post this shift")) return; create.mutate(); }}
         >
           {create.isPending ? "Posting…" : gateBlocked ? "Complete profile & billing to post" : "Post shift"}
         </Button>

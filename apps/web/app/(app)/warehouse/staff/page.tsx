@@ -5,6 +5,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_MEMBERS: MemberRow[] = [
+  { company_id: "explore-company", user_id: "ex-m-1", role: "owner", name: "Alex Morgan" },
+  { company_id: "explore-company", user_id: "ex-m-2", role: "manager", name: "Priya Sharma" },
+  { company_id: "explore-company", user_id: "ex-m-3", role: "receiver", name: "Marcus Lee" },
+  { company_id: "explore-company", user_id: "ex-m-4", role: "picker", name: "Dan Kowalski" },
+  { company_id: "explore-company", user_id: "ex-m-5", role: "dock", name: "Sofia Reyes" },
+];
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +30,8 @@ const ROLES = ["owner", "manager", "supervisor", "receiver", "picker", "packer",
 export default function WarehouseStaffPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<string>("viewer");
   const [removePending, setRemovePending] = useState<MemberRow | null>(null);
@@ -28,17 +39,18 @@ export default function WarehouseStaffPage() {
 
   const myCompaniesQuery = useQuery({
     queryKey: ["my_companies"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("my_companies");
       if (error) throw error;
       return (data ?? []) as string[];
     },
   });
-  const companyId = myCompaniesQuery.data?.[0];
+  const companyId = isExploring ? "explore-company" : myCompaniesQuery.data?.[0];
 
   const membersQuery = useQuery({
     queryKey: ["company_members", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("company_users")
@@ -95,6 +107,7 @@ export default function WarehouseStaffPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (!guard("Invite a team member")) return;
               if (!companyId) return;
               addMember.mutate();
             }}
@@ -134,10 +147,10 @@ export default function WarehouseStaffPage() {
       <Card>
         <CardHeader>
           <CardTitle>Team</CardTitle>
-          <CardDescription>{membersQuery.data?.length ?? 0} members</CardDescription>
+          <CardDescription>{(isExploring ? SAMPLE_MEMBERS : membersQuery.data ?? []).length} members</CardDescription>
         </CardHeader>
         <CardContent>
-          {membersQuery.isLoading ? (
+          {!isExploring && membersQuery.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : !companyId ? (
             <p className="text-sm text-muted-foreground">You don&apos;t belong to any company.</p>
@@ -151,7 +164,7 @@ export default function WarehouseStaffPage() {
                 </TR>
               </THead>
               <TBody>
-                {(membersQuery.data ?? []).map((m) => (
+                {(isExploring ? SAMPLE_MEMBERS : membersQuery.data ?? []).map((m) => (
                   <TR key={m.user_id}>
                     <TD className="font-medium">{m.name ?? m.user_id.slice(0, 8)}</TD>
                     <TD>{m.role}</TD>
@@ -159,7 +172,7 @@ export default function WarehouseStaffPage() {
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => { setRemovePending(m); setRemoveReason(""); }}
+                        onClick={() => { if (!guard("Remove a team member")) return; setRemovePending(m); setRemoveReason(""); }}
                       >
                         Remove
                       </Button>

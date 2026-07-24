@@ -12,6 +12,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Building2, MapPin, Clock, Camera, FileText } from "lucide-react";
 import { subcategoryLabel, serviceTypeLabel, isInsuranceType, type ServiceType } from "@/lib/serviceMarketplace";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+function sampleJob(jobId: string): JobRow {
+  return {
+    id: jobId, service_id: "ex-ml-1", customer_company_id: "c1", provider_company_id: "explore-company",
+    location_address: "1200 Cliveden Ave", location_city: "Delta", date_time_start: new Date(Date.now() + 86400000).toISOString(),
+    duration_hours: 4, notes: "Need an operated forklift for a container unload.", total_price: 880, status: "Requested",
+    quote_status: "requested", quoted_amount: null, quote_notes: null, cargo_value: null, invoice_id: null,
+    service_listings: { service_type: "equipment_rental", title: "Toyota 5,000 lb Forklift", subcategory: "forklift", company: { name: "Preview Logistics Co." } },
+    customer: { name: "Harbour Freight Ltd." },
+  };
+}
 
 const COMMISSION_RATE = 0.08;
 
@@ -60,6 +72,8 @@ interface Invoice { id: string; invoice_number: string; subtotal_amount: number 
 export default function MarketplaceOrderPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const params = useParams<{ id: string }>();
   const jobId = params.id;
   const fileRef = useRef<HTMLInputElement>(null);
@@ -70,6 +84,7 @@ export default function MarketplaceOrderPage() {
 
   const meQ = useQuery({
     queryKey: ["me", "company"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
@@ -86,6 +101,7 @@ export default function MarketplaceOrderPage() {
 
   const jobQ = useQuery({
     queryKey: ["marketplace", "order", jobId],
+    enabled: !isExploring,
     queryFn: async () => {
       const select =
         "id, service_id, customer_company_id, provider_company_id, location_address, location_city, date_time_start, duration_hours, notes, total_price, status, quote_status, quoted_amount, quote_notes, cargo_value, invoice_id, " +
@@ -99,16 +115,17 @@ export default function MarketplaceOrderPage() {
 
   const photosQ = useQuery({
     queryKey: ["marketplace", "order", jobId, "photos"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data } = await supabase.from("service_job_photos").select("id,url,kind").eq("job_id", jobId).order("created_at", { ascending: true });
       return (data ?? []) as Photo[];
     },
   });
 
-  const job = jobQ.data;
+  const job = isExploring ? sampleJob(jobId) : jobQ.data;
   const invoiceQ = useQuery({
     queryKey: ["marketplace", "order", jobId, "invoice", job?.invoice_id],
-    enabled: !!job?.invoice_id,
+    enabled: !!job?.invoice_id && !isExploring,
     queryFn: async () => {
       const [{ data: inv }, { data: lines }] = await Promise.all([
         supabase.from("invoices").select("*").eq("id", job!.invoice_id!).single(),
@@ -118,7 +135,7 @@ export default function MarketplaceOrderPage() {
     },
   });
 
-  const myCompany = meQ.data ?? null;
+  const myCompany = isExploring ? "explore-company" : (meQ.data ?? null);
   const isProvider = !!myCompany && myCompany === job?.provider_company_id;
   const isCustomer = !!myCompany && myCompany === job?.customer_company_id;
   const insurance = job?.service_listings ? isInsuranceType(job.service_listings.service_type) : false;
@@ -178,6 +195,7 @@ export default function MarketplaceOrderPage() {
   });
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!guard("Add a photo")) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
@@ -201,8 +219,8 @@ export default function MarketplaceOrderPage() {
 
   const photos = useMemo(() => photosQ.data ?? [], [photosQ.data]);
 
-  if (jobQ.isLoading) return <p className="py-16 text-center text-sm text-muted-foreground">Loading order…</p>;
-  if (jobQ.isError || !job) return <p className="py-16 text-center text-sm text-muted-foreground">Order not found.</p>;
+  if (!isExploring && jobQ.isLoading) return <p className="py-16 text-center text-sm text-muted-foreground">Loading order…</p>;
+  if (!job || (!isExploring && jobQ.isError)) return <p className="py-16 text-center text-sm text-muted-foreground">Order not found.</p>;
 
   const title = job.service_listings?.title || subcategoryLabel(job.service_listings?.subcategory) || "Marketplace order";
 
@@ -242,8 +260,8 @@ export default function MarketplaceOrderPage() {
             <div className="space-y-1.5"><Label>Note to customer</Label><Textarea value={quoteNote} onChange={(e) => setQuoteNote(e.target.value)} rows={2} placeholder="Includes delivery & operator" /></div>
             {Number(quoteAmount) > 0 && <p className="text-xs text-muted-foreground">Platform commission ({Math.round(COMMISSION_RATE * 100)}%): ${(Number(quoteAmount) * COMMISSION_RATE).toFixed(2)}</p>}
             <div className="flex gap-2">
-              <Button disabled={sendQuote.isPending} onClick={() => sendQuote.mutate()}>{sendQuote.isPending ? "Sending…" : "Send quote"}</Button>
-              <Button variant="secondary" disabled={respondQuote.isPending} onClick={() => respondQuote.mutate(false)}>Decline request</Button>
+              <Button disabled={sendQuote.isPending} onClick={() => { if (!guard("Send a quote")) return; sendQuote.mutate(); }}>{sendQuote.isPending ? "Sending…" : "Send quote"}</Button>
+              <Button variant="secondary" disabled={respondQuote.isPending} onClick={() => { if (!guard("Decline this request")) return; respondQuote.mutate(false); }}>Decline request</Button>
             </div>
             {sendQuote.error && <p className="text-sm text-red-600">{(sendQuote.error as Error).message}</p>}
           </CardContent>
@@ -265,8 +283,8 @@ export default function MarketplaceOrderPage() {
             {job.quote_notes ? <p className="text-sm">{job.quote_notes}</p> : null}
             {quoteStatus === "quoted" && isCustomer && (
               <div className="flex gap-2">
-                <Button disabled={respondQuote.isPending} onClick={() => respondQuote.mutate(true)}>Accept</Button>
-                <Button variant="secondary" disabled={respondQuote.isPending} onClick={() => respondQuote.mutate(false)}>Decline</Button>
+                <Button disabled={respondQuote.isPending} onClick={() => { if (!guard("Accept this quote")) return; respondQuote.mutate(true); }}>Accept</Button>
+                <Button variant="secondary" disabled={respondQuote.isPending} onClick={() => { if (!guard("Decline this quote")) return; respondQuote.mutate(false); }}>Decline</Button>
               </div>
             )}
             {quoteStatus === "quoted" && isProvider && <p className="text-sm text-muted-foreground">Waiting for the customer to accept your quote.</p>}
@@ -280,9 +298,9 @@ export default function MarketplaceOrderPage() {
         <Card>
           <CardHeader><CardTitle>Job progress</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {job.status === "Requested" && quoteStatus === "accepted" && <Button disabled={transition.isPending} onClick={() => transition.mutate("Accepted")}>Accept & schedule</Button>}
-            {(job.status === "Accepted" || job.status === "Scheduled") && <Button disabled={transition.isPending} onClick={() => transition.mutate("InProgress")}>Start work (check in)</Button>}
-            {job.status === "InProgress" && <Button disabled={transition.isPending} onClick={() => transition.mutate("Completed")}>Mark completed</Button>}
+            {job.status === "Requested" && quoteStatus === "accepted" && <Button disabled={transition.isPending} onClick={() => { if (!guard("Accept & schedule")) return; transition.mutate("Accepted"); }}>Accept & schedule</Button>}
+            {(job.status === "Accepted" || job.status === "Scheduled") && <Button disabled={transition.isPending} onClick={() => { if (!guard("Start work")) return; transition.mutate("InProgress"); }}>Start work (check in)</Button>}
+            {job.status === "InProgress" && <Button disabled={transition.isPending} onClick={() => { if (!guard("Mark completed")) return; transition.mutate("Completed"); }}>Mark completed</Button>}
             {transition.error && <p className="text-sm text-red-600">{(transition.error as Error).message}</p>}
           </CardContent>
         </Card>
@@ -341,11 +359,11 @@ export default function MarketplaceOrderPage() {
                 <div className="flex justify-between border-t border-border pt-1.5 text-base font-bold"><span>Total</span><span className="text-emerald-500">${Number(invoiceQ.data.invoice.total_amount ?? 0).toFixed(2)} {invoiceQ.data.invoice.currency ?? "CAD"}</span></div>
               </div>
               {isProvider && invoiceQ.data.invoice.status !== "Paid" && (
-                <Button disabled={markPaid.isPending} onClick={() => markPaid.mutate()}>{markPaid.isPending ? "Saving…" : "Mark as paid"}</Button>
+                <Button disabled={markPaid.isPending} onClick={() => { if (!guard("Mark invoice paid")) return; markPaid.mutate(); }}>{markPaid.isPending ? "Saving…" : "Mark as paid"}</Button>
               )}
             </>
           ) : isProvider && job.status === "Completed" ? (
-            <Button disabled={generateInvoice.isPending} onClick={() => generateInvoice.mutate()}>{generateInvoice.isPending ? "Generating…" : "Generate invoice"}</Button>
+            <Button disabled={generateInvoice.isPending} onClick={() => { if (!guard("Generate invoice")) return; generateInvoice.mutate(); }}>{generateInvoice.isPending ? "Generating…" : "Generate invoice"}</Button>
           ) : (
             <p className="text-sm text-muted-foreground">{job.status === "Completed" ? "The provider will issue an invoice for this job." : "An invoice can be issued once the job is completed."}</p>
           )}

@@ -17,6 +17,14 @@ import {
   type InvoiceLineInput,
 } from "@/lib/hooks/use-invoicing";
 import { useCustomization } from "@/lib/hooks/use-customization";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_INVOICES = [
+  { id: "ex-inv-1", number: "INV-20481", customer_name: "Preview Retail Co.", total: 3300, currency: "CAD", status: "Paid", due_date: null },
+  { id: "ex-inv-2", number: "INV-20502", customer_name: "Harbour Freight Ltd.", total: 1044, currency: "CAD", status: "Issued", due_date: new Date(Date.now() + 86400000 * 10).toISOString().slice(0, 10) },
+  { id: "ex-inv-3", number: "INV-20460", customer_name: "Annacis Island Distribution", total: 2700, currency: "CAD", status: "Overdue", due_date: new Date(Date.now() - 86400000 * 4).toISOString().slice(0, 10) },
+];
+const SAMPLE_SUMMARY = { collected: 3300, outstanding: 3744, overdue: 2700, net: 7044 };
 
 function money(n: number | null | undefined, currency = "CAD"): string {
   return `${currency} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -48,13 +56,15 @@ export function InvoicingView({
   roleLabel: string;
   subtitle: string;
 }) {
-  const invoicesQ = useInvoices(companyId);
-  const summaryQ = useAccountingSummary(companyId);
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
+  const invoicesQ = useInvoices(isExploring ? null : companyId);
+  const summaryQ = useAccountingSummary(isExploring ? null : companyId);
   const setStatus = useSetInvoiceStatus();
   const [composerOpen, setComposerOpen] = useState(false);
 
-  const invoices = invoicesQ.data ?? [];
-  const summary = summaryQ.data ?? null;
+  const invoices = isExploring ? (SAMPLE_INVOICES as unknown as NonNullable<typeof invoicesQ.data>) : (invoicesQ.data ?? []);
+  const summary = isExploring ? SAMPLE_SUMMARY : (summaryQ.data ?? null);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -64,7 +74,7 @@ export function InvoicingView({
           <h1 className="text-2xl font-semibold tracking-tight">Invoicing</h1>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
         </div>
-        <Button onClick={() => setComposerOpen(true)}>
+        <Button onClick={() => { if (!guard("Create an invoice")) return; setComposerOpen(true); }}>
           <Plus className="mr-1.5 h-4 w-4" /> New invoice
         </Button>
       </div>
@@ -87,7 +97,7 @@ export function InvoicingView({
         </div>
       ) : null}
 
-      {invoicesQ.isLoading ? (
+      {!isExploring && invoicesQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading invoices…</p>
       ) : invoices.length === 0 ? (
         <Card>
@@ -116,7 +126,7 @@ export function InvoicingView({
                       size="sm"
                       variant="outline"
                       disabled={setStatus.isPending}
-                      onClick={() => setStatus.mutate({ id: inv.id, status: "Paid", method: "bank_transfer" })}
+                      onClick={() => { if (!guard("Mark invoice paid")) return; setStatus.mutate({ id: inv.id, status: "Paid", method: "bank_transfer" }); }}
                     >
                       <DollarSign className="mr-1 h-3.5 w-3.5" /> Mark paid
                     </Button>

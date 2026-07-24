@@ -9,6 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDriverJobs, usePods, useAttachPod, type DriverJob } from "@/lib/hooks/use-pod";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_POD_JOBS = [
+  { id: "ex-pj-1", appointment_type: "Delivery", dock_door: "7", truck_plate: "BC 4821 KP", scheduled_start: new Date(Date.now() + 3600000).toISOString(), status: "Arrived" },
+  { id: "ex-pj-2", appointment_type: "Delivery", dock_door: "3", truck_plate: "BC 4821 KP", scheduled_start: new Date(Date.now() + 86400000).toISOString(), status: "Scheduled" },
+] as unknown as DriverJob[];
 
 function SignaturePad({ onChange }: { onChange: (blank: boolean) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,6 +80,8 @@ function SignaturePad({ onChange }: { onChange: (blank: boolean) => void }) {
 }
 
 export default function DriverPodPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const jobsQ = useDriverJobs();
   const attach = useAttachPod();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -85,7 +93,7 @@ export default function DriverPodPage() {
   const [signerName, setSignerName] = useState("");
   const [notes, setNotes] = useState("");
 
-  const jobs = useMemo<DriverJob[]>(() => jobsQ.data ?? [], [jobsQ.data]);
+  const jobs = useMemo<DriverJob[]>(() => (isExploring ? SAMPLE_POD_JOBS : jobsQ.data ?? []), [jobsQ.data, isExploring]);
   const podsQ = usePods(selectedId);
   const pods = podsQ.data ?? [];
 
@@ -100,6 +108,7 @@ export default function DriverPodPage() {
   }, [photo]);
 
   const submit = useCallback(async () => {
+    if (!guard("Save proof of delivery")) return;
     if (!selectedId) return window.alert("Pick a job first");
     if (!photo) return window.alert("Add a photo of the cargo / receipt");
     if (signatureBlank) return window.alert("Signature required");
@@ -114,7 +123,7 @@ export default function DriverPodPage() {
     } catch (e) {
       window.alert(e instanceof Error ? e.message : "Unable to save POD");
     }
-  }, [selectedId, photo, signatureBlank, signerName, notes, attach]);
+  }, [selectedId, photo, signatureBlank, signerName, notes, attach, guard]);
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -126,7 +135,7 @@ export default function DriverPodPage() {
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pick a job</h2>
-        {jobsQ.isLoading ? (
+        {!isExploring && jobsQ.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : jobs.length === 0 ? (
           <Card>

@@ -20,6 +20,17 @@ import {
   type RateCard,
   type VerticalConfig,
 } from "@/lib/hooks/use-pricing";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_ZONES = [
+  { id: "ex-z-1", name: "Metro Vancouver", description: "YVR + surrounding municipalities" },
+  { id: "ex-z-2", name: "Fraser Valley", description: "Abbotsford, Chilliwack, Mission" },
+  { id: "ex-z-3", name: "Vancouver Island", description: "Victoria, Nanaimo" },
+];
+const SAMPLE_CARDS = [
+  { id: "ex-rc-1", name: "Published rates", is_default: true, currency: "CAD", base_unit: "per_pallet", customer: null, accessorials: [{ key: "fuel", label: "Fuel surcharge", type: "pct" as const, amount: 12 }, { key: "tailgate", label: "Tailgate", type: "flat" as const, amount: 45 }], provider_zone_rates: [{ zone_id: "ex-z-1", base_rate: 18 }, { zone_id: "ex-z-2", base_rate: 26 }] },
+  { id: "ex-rc-2", name: "Preview Retail Co. (contract)", is_default: false, currency: "CAD", base_unit: "per_pallet", customer: { name: "Preview Retail Co." }, accessorials: [{ key: "fuel", label: "Fuel surcharge", type: "pct" as const, amount: 10 }], provider_zone_rates: [{ zone_id: "ex-z-1", base_rate: 16 }] },
+];
 
 function num(v: string): number {
   const n = Number(v.replace(/[^0-9.]/g, ""));
@@ -39,22 +50,25 @@ export function RatesView({
   config: VerticalConfig;
   roleLabel: string;
 }) {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const vertical = config.vertical;
-  const zonesQ = useZones(companyId, vertical);
-  const cardsQ = useRateCards(companyId, vertical);
+  const zonesQ = useZones(isExploring ? null : companyId, vertical);
+  const cardsQ = useRateCards(isExploring ? null : companyId, vertical);
   const upsertZone = useUpsertZone(companyId, vertical);
   const deleteZone = useDeleteZone(companyId, vertical);
   const upsertCard = useUpsertRateCard(companyId, vertical);
   const deleteCard = useDeleteRateCard(companyId, vertical);
   const setZoneRate = useSetZoneRate(companyId, vertical);
 
-  const zones = useMemo(() => zonesQ.data ?? [], [zonesQ.data]);
-  const cards = useMemo(() => cardsQ.data ?? [], [cardsQ.data]);
+  const zones = useMemo(() => (isExploring ? SAMPLE_ZONES : zonesQ.data ?? []), [zonesQ.data, isExploring]);
+  const cards = useMemo(() => (isExploring ? (SAMPLE_CARDS as unknown as RateCard[]) : cardsQ.data ?? []), [cardsQ.data, isExploring]);
 
   const [zoneModal, setZoneModal] = useState<{ id?: string; name: string; description: string } | null>(null);
   const [cardModal, setCardModal] = useState<RateCard | null>(null);
 
   const addCard = () => {
+    if (!guard("Add a rate card")) return;
     upsertCard.mutate({
       name: "Published rates",
       customerCompanyId: null,
@@ -65,6 +79,7 @@ export function RatesView({
   };
 
   const saveZone = () => {
+    if (!guard("Save this zone")) return;
     if (!zoneModal?.name.trim()) return;
     upsertZone.mutate(
       { id: zoneModal.id ?? null, name: zoneModal.name, description: zoneModal.description },
@@ -87,7 +102,7 @@ export function RatesView({
             <MapPin className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-semibold">{config.zoneLabelPlural}</h2>
           </div>
-          <Button size="sm" variant="outline" onClick={() => setZoneModal({ name: "", description: "" })}>
+          <Button size="sm" variant="outline" onClick={() => { if (!guard("Add a zone")) return; setZoneModal({ name: "", description: "" }); }}>
             <Plus className="mr-1.5 h-4 w-4" /> Add {config.zoneLabel.toLowerCase()}
           </Button>
         </div>
@@ -110,7 +125,7 @@ export function RatesView({
                     <Button size="icon" variant="ghost" onClick={() => setZoneModal({ id: z.id, name: z.name, description: z.description ?? "" })}>
                       <DollarSign className="h-4 w-4" />
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => deleteZone.mutate(z.id)}>
+                    <Button size="icon" variant="ghost" onClick={() => { if (!guard("Delete this zone")) return; deleteZone.mutate(z.id); }}>
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>
@@ -154,10 +169,10 @@ export function RatesView({
                     </p>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => setCardModal(card)}>
+                    <Button size="sm" variant="ghost" onClick={() => { if (!guard("Edit rates")) return; setCardModal(card); }}>
                       Edit rates
                     </Button>
-                    <Button size="icon" variant="ghost" onClick={() => deleteCard.mutate(card.id)}>
+                    <Button size="icon" variant="ghost" onClick={() => { if (!guard("Delete this rate card")) return; deleteCard.mutate(card.id); }}>
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
                   </div>

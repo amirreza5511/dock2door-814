@@ -11,8 +11,26 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const CURRENCIES = ["CAD", "USD", "EUR", "AED", "CNY", "GBP"] as const;
+
+function blankBoardRow(over: Partial<BoardRow>): BoardRow {
+  return {
+    id: "", title: "", shipment_kind: "commercial", origin_country: "", origin_city: "", origin_airport: "",
+    dest_country: "", dest_city: "", dest_airport: "", cargo_type: "", photos: [], length_cm: 0, width_cm: 0,
+    height_cm: 0, dim_unit: "cm", weight: 0, weight_unit: "kg", pieces: 1, ready_date: null, commodity: "",
+    declared_value: 0, hs_code: "", currency: "CAD", notes: "", estimate_low: 0, estimate_high: 0,
+    estimate_currency: "CAD", status: "Open", customer_name: "", my_offer_amount: null, my_offer_status: null,
+    awarded_amount: 0, created_at: new Date().toISOString(), ...over,
+  };
+}
+
+const SAMPLE_AIR_ROWS: BoardRow[] = [
+  blankBoardRow({ id: "ex-air-1", title: "Frankfurt → Toronto, 800kg electronics", origin_city: "Frankfurt", origin_airport: "FRA", dest_city: "Toronto", dest_airport: "YYZ", cargo_type: "General cargo", commodity: "Electronics", weight: 800, pieces: 6, length_cm: 120, width_cm: 100, height_cm: 90, estimate_low: 4200, estimate_high: 5200, estimate_currency: "CAD", customer_name: "Preview Retail Co.", created_at: new Date(Date.now() - 3600000 * 6).toISOString() }),
+  blankBoardRow({ id: "ex-air-2", title: "Shanghai → Vancouver, urgent spares", origin_city: "Shanghai", origin_airport: "PVG", dest_city: "Vancouver", dest_airport: "YVR", cargo_type: "Perishable", commodity: "Machine spares", weight: 320, pieces: 2, length_cm: 80, width_cm: 60, height_cm: 55, estimate_low: 2600, estimate_high: 3100, estimate_currency: "CAD", customer_name: "Harbour Freight Ltd.", created_at: new Date(Date.now() - 3600000 * 2).toISOString() }),
+  blankBoardRow({ id: "ex-air-3", title: "Dubai → Calgary, personal effects", shipment_kind: "personal", origin_city: "Dubai", origin_airport: "DXB", dest_city: "Calgary", dest_airport: "YYC", cargo_type: "General cargo", weight: 140, pieces: 4, length_cm: 100, width_cm: 80, height_cm: 70, customer_name: "Sofia Reyes", my_offer_amount: 1850, my_offer_status: "Pending", currency: "CAD", created_at: new Date(Date.now() - 86400000).toISOString() }),
+];
 
 interface BoardRow {
   id: string;
@@ -60,6 +78,8 @@ interface AirMessage {
 export default function ForwarderAirPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [scope, setScope] = useState<"open" | "mine">("open");
   const [offerRow, setOfferRow] = useState<BoardRow | null>(null);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -67,6 +87,7 @@ export default function ForwarderAirPage() {
 
   const boardQuery = useQuery({
     queryKey: ["air", "board", scope],
+    enabled: !isExploring,
     queryFn: async (): Promise<BoardRow[]> => {
       const { data, error: err } = await supabase.rpc("air_forwarder_board", { p_scope: scope });
       if (err) return [];
@@ -81,6 +102,7 @@ export default function ForwarderAirPage() {
   const [note, setNote] = useState<string>("");
 
   const openOffer = useCallback((row: BoardRow) => {
+    if (!guard("Send an offer")) return;
     setAmount(row.my_offer_amount ? String(row.my_offer_amount) : "");
     setCurrency(row.currency || "CAD");
     setTransit("");
@@ -112,7 +134,10 @@ export default function ForwarderAirPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const rows = useMemo(() => boardQuery.data ?? [], [boardQuery.data]);
+  const rows = useMemo(() => {
+    if (isExploring) return scope === "open" ? SAMPLE_AIR_ROWS.filter((r) => r.my_offer_amount == null) : SAMPLE_AIR_ROWS.filter((r) => r.my_offer_amount != null);
+    return boardQuery.data ?? [];
+  }, [boardQuery.data, isExploring, scope]);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -136,7 +161,7 @@ export default function ForwarderAirPage() {
         ))}
       </div>
 
-      {boardQuery.isLoading ? (
+      {!isExploring && boardQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-16 text-center">
@@ -211,7 +236,7 @@ export default function ForwarderAirPage() {
                       <span />
                     )}
                     {won ? (
-                      <Button size="sm" variant="secondary" onClick={() => setChatId(r.id)}>
+                      <Button size="sm" variant="secondary" onClick={() => { if (!guard("Open chat")) return; setChatId(r.id); }}>
                         <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
                         Chat
                       </Button>

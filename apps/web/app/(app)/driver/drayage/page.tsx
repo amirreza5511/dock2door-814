@@ -16,6 +16,13 @@ import {
   MOVE_NEXT,
   type WorkOrder,
 } from "@/lib/hooks/use-drayage-driver";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_WORK_ORDERS = [
+  { id: "ex-wo-1", move_type: "Import", status: "EnRoute", order_id: "ex-ord-1", appt_date: new Date().toISOString().slice(0, 10), appt_time: "10:00", from_address: "Centerm Terminal, Vancouver", to_address: "Burnaby DC", drayage_orders: { reference_code: "DRY-10428", container_number: "MSKU7841200", container_size: "40ft", is_hazmat: false, is_overweight: false, mt_reported_at: null } },
+  { id: "ex-wo-2", move_type: "EmptyPickup", status: "Assigned", order_id: "ex-ord-2", appt_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10), appt_time: "09:00", from_address: "Delta yard", to_address: "Vanterm", drayage_orders: { reference_code: "DRY-10455", container_number: "TCLU9930411", container_size: "20ft", is_hazmat: false, is_overweight: true, mt_reported_at: null } },
+  { id: "ex-wo-3", move_type: "Import", status: "Completed", order_id: "ex-ord-3", appt_date: new Date(Date.now() - 86400000).toISOString().slice(0, 10), appt_time: "13:00", from_address: "Fraser Surrey Docks", to_address: "Langley warehouse", drayage_orders: { reference_code: "DRY-10390", container_number: "HLBU1122334", container_size: "40ft", is_hazmat: false, is_overweight: false, mt_reported_at: new Date(Date.now() - 82800000).toISOString() } },
+] as unknown as WorkOrder[];
 
 const ACTIVE = ["EnRoute", "AtOrigin", "Loaded", "InTransit", "AtDestination", "Unloaded"];
 
@@ -26,6 +33,8 @@ function statusVariant(s: string): "default" | "secondary" | "outline" {
 }
 
 export default function DriverDrayagePage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const q = useDriverWorkOrders();
   const advance = useAdvanceMove();
   const joinFleet = useJoinFleet();
@@ -42,7 +51,7 @@ export default function DriverDrayagePage() {
   const [mtBusy, setMtBusy] = useState(false);
   const supabase = getBrowserSupabase();
 
-  const orders = useMemo<WorkOrder[]>(() => q.data ?? [], [q.data]);
+  const orders = useMemo<WorkOrder[]>(() => (isExploring ? SAMPLE_WORK_ORDERS : q.data ?? []), [q.data, isExploring]);
 
   const groups = useMemo(() => {
     const active: WorkOrder[] = [];
@@ -57,6 +66,7 @@ export default function DriverDrayagePage() {
   }, [orders]);
 
   const doAdvance = async (order: WorkOrder) => {
+    if (!guard("Advance this move")) return;
     const next = MOVE_NEXT[order.status];
     if (!next) return;
     if (next.requiresReceiver) {
@@ -124,6 +134,7 @@ export default function DriverDrayagePage() {
   };
 
   const submitJoin = async () => {
+    if (!guard("Join a fleet")) return;
     if (joinCode.trim().length < 4) return;
     try {
       const res = await joinFleet.mutateAsync(joinCode);
@@ -177,7 +188,7 @@ export default function DriverDrayagePage() {
             </Button>
           ) : null}
           {(order.move_type === "EmptyPickup" || order.move_type === "Pickup") && !o?.mt_reported_at ? (
-            <Button variant="outline" className="w-full" onClick={() => { setMtOrder(order); setMtNumber(o?.container_number ?? ""); }}>
+            <Button variant="outline" className="w-full" onClick={() => { if (!guard("Report empty container")) return; setMtOrder(order); setMtNumber(o?.container_number ?? ""); }}>
               <Package className="mr-1.5 h-4 w-4" /> Report empty container #
             </Button>
           ) : null}
@@ -216,7 +227,7 @@ export default function DriverDrayagePage() {
         ))}
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : orders.length === 0 ? (
         <Card>

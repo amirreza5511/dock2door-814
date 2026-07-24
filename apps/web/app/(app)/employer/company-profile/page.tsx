@@ -10,6 +10,26 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckCircle2, Circle, Star, Send, Building2, MapPin } from "lucide-react";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+function sampleCompanyProfile(): { company: CompanyRow; shifts: ShiftRow[]; reviews: ReviewRow[] } {
+  const company: CompanyRow = {
+    id: "explore-company", name: "Preview Logistics Co.", city: "Vancouver", status: "Active", created_at: new Date(Date.now() - 86400000 * 200).toISOString(),
+    display_name: "Preview Logistics Co.", industry: "Warehousing", public_bio: "A Metro Vancouver 3PL running high-volume pick/pack and cross-dock operations. We hire reliable warehouse crews year-round.", website: "https://previewlogistics.example", public_contact_email: "hello@previewco.com", public_contact_phone: "+1 604 555 0100",
+    legal_business_name: "Preview Logistics Co. Ltd.", business_number: "BC-8842217", business_address: "4000 Still Creek Ave, Burnaby, BC", admin_contact_name: "Alex Morgan", admin_contact_email: "alex@previewco.com", admin_contact_phone: "+1 604 555 0199",
+    submitted_for_approval_at: new Date(Date.now() - 86400000 * 190).toISOString(), verified_at: new Date(Date.now() - 86400000 * 180).toISOString(), billing_setup_completed_at: new Date(Date.now() - 86400000 * 180).toISOString(),
+  };
+  const shifts: ShiftRow[] = [
+    { id: "ex-sp-1", status: "Completed", title: "Warehouse Loader", date: new Date(Date.now() - 86400000 * 3).toISOString().slice(0, 10), hourly_rate: 24 },
+    { id: "ex-sp-2", status: "Posted", title: "Forklift Operator", date: new Date().toISOString().slice(0, 10), hourly_rate: 31 },
+    { id: "ex-sp-3", status: "Completed", title: "Order Picker", date: new Date(Date.now() - 86400000 * 7).toISOString().slice(0, 10), hourly_rate: 26 },
+  ];
+  const reviews: ReviewRow[] = [
+    { id: "ex-cr-1", rating: 5, comment: "Clear instructions, paid on time.", created_at: new Date(Date.now() - 86400000 * 5).toISOString() },
+    { id: "ex-cr-2", rating: 4, comment: "Good shift, well organized dock.", created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
+  ];
+  return { company, shifts, reviews };
+}
 
 interface CompanyRow {
   id: string;
@@ -43,6 +63,8 @@ const INDUSTRIES = ["Logistics", "Warehousing", "Manufacturing", "Retail", "Cons
 export default function EmployerCompanyProfilePage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
     display_name: "", industry: "", city: "", public_bio: "", website: "",
@@ -53,6 +75,7 @@ export default function EmployerCompanyProfilePage() {
 
   const profileQ = useQuery({
     queryKey: ["employer", "company-profile"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Not authenticated");
@@ -77,9 +100,10 @@ export default function EmployerCompanyProfilePage() {
     },
   });
 
-  const company = profileQ.data?.company ?? null;
-  const shifts = profileQ.data?.shifts ?? [];
-  const reviews = profileQ.data?.reviews ?? [];
+  const exploreData = useMemo(() => (isExploring ? sampleCompanyProfile() : null), [isExploring]);
+  const company = isExploring ? exploreData!.company : (profileQ.data?.company ?? null);
+  const shifts = isExploring ? exploreData!.shifts : (profileQ.data?.shifts ?? []);
+  const reviews = isExploring ? exploreData!.reviews : (profileQ.data?.reviews ?? []);
 
   useEffect(() => {
     if (!company) return;
@@ -159,7 +183,7 @@ export default function EmployerCompanyProfilePage() {
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  if (profileQ.isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading your company…</div>;
+  if (!isExploring && profileQ.isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading your company…</div>;
   if (!company) return <div className="p-6 text-sm text-muted-foreground">No company yet. Finish company setup first.</div>;
 
   return (
@@ -178,7 +202,7 @@ export default function EmployerCompanyProfilePage() {
             </div>
           </div>
         </div>
-        {!editing && <Button variant="outline" onClick={() => setEditing(true)}>Edit profile</Button>}
+        {!editing && <Button variant="outline" onClick={() => { if (!guard("Edit company profile")) return; setEditing(true); }}>Edit profile</Button>}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -223,7 +247,7 @@ export default function EmployerCompanyProfilePage() {
 
             {save.error && <p className="text-sm text-red-600">{(save.error as Error).message}</p>}
             <div className="flex gap-2">
-              <Button disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save changes"}</Button>
+              <Button disabled={save.isPending} onClick={() => { if (!guard("Save company profile")) return; save.mutate(); }}>{save.isPending ? "Saving…" : "Save changes"}</Button>
               <Button variant="outline" onClick={() => setEditing(false)}>Cancel</Button>
             </div>
           </CardContent>
@@ -245,7 +269,7 @@ export default function EmployerCompanyProfilePage() {
               {profileComplete && company.status !== "Active" && company.status !== "Approved" && !company.submitted_for_approval_at && (
                 <div className="pt-2">
                   {submit.error && <p className="mb-2 text-sm text-red-600">{(submit.error as Error).message}</p>}
-                  <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
+                  <Button disabled={submit.isPending} onClick={() => { if (!guard("Submit for approval")) return; submit.mutate(); }}>
                     <Send className="mr-1.5 h-4 w-4" />{submit.isPending ? "Submitting…" : "Submit for approval"}
                   </Button>
                 </div>

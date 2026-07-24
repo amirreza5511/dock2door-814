@@ -10,6 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_CERTS: Cert[] = [
+  { id: "ex-c-1", type: "Forklift", status: "Approved", expiry_date: "2027-09-30", notes: null, file_path: "x", reviewed_at: new Date(Date.now() - 86400000 * 12).toISOString(), created_at: new Date(Date.now() - 86400000 * 14).toISOString() },
+  { id: "ex-c-2", type: "WHMIS", status: "Approved", expiry_date: "2028-01-15", notes: null, file_path: "x", reviewed_at: new Date(Date.now() - 86400000 * 30).toISOString(), created_at: new Date(Date.now() - 86400000 * 33).toISOString() },
+  { id: "ex-c-3", type: "FirstAid", status: "Pending", expiry_date: "2027-06-01", notes: null, file_path: null, reviewed_at: null, created_at: new Date(Date.now() - 86400000 * 1).toISOString() },
+];
 
 interface Cert {
   id: string;
@@ -27,12 +34,15 @@ const TYPES = ["Forklift", "HighReach", "WHMIS", "FirstAid", "Other"];
 export default function WorkerCertificationsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [type, setType] = useState("Forklift");
   const [expiry, setExpiry] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
   const certs = useQuery({
     queryKey: ["worker", "certifications"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -95,7 +105,7 @@ export default function WorkerCertificationsPage() {
     { key: "reviewed", header: "Reviewed", render: (c) => c.reviewed_at ? formatDate(c.reviewed_at) : "—" },
     { key: "notes", header: "Notes", render: (c) => c.notes ?? "—" },
     { key: "actions", header: "", className: "text-right", render: (c) => (
-      c.file_path ? <Button size="sm" variant="secondary" onClick={() => view.mutate(c.file_path!)}>View file</Button> : null
+      c.file_path ? <Button size="sm" variant="secondary" onClick={() => { if (!guard("View this file")) return; view.mutate(c.file_path!); }}>View file</Button> : null
     ) },
   ];
 
@@ -109,7 +119,7 @@ export default function WorkerCertificationsPage() {
       <Card>
         <CardHeader><CardTitle>Upload</CardTitle><CardDescription>PDF or image. Status is set to Pending until admin review.</CardDescription></CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); upload.mutate(); }}>
+          <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); if (!guard("Upload a certification")) return; upload.mutate(); }}>
             <div>
               <Label>Type</Label>
               <select className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
@@ -128,14 +138,14 @@ export default function WorkerCertificationsPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>My certifications</CardTitle><CardDescription>{certs.data?.length ?? 0} total</CardDescription></CardHeader>
+        <CardHeader><CardTitle>My certifications</CardTitle><CardDescription>{(isExploring ? SAMPLE_CERTS : certs.data ?? []).length} total</CardDescription></CardHeader>
         <CardContent>
           <DataTable
-            rows={certs.data ?? []}
+            rows={isExploring ? SAMPLE_CERTS : certs.data ?? []}
             columns={cols}
             rowKey={(c) => c.id}
-            isLoading={certs.isLoading}
-            error={certs.error as Error | null}
+            isLoading={!isExploring && certs.isLoading}
+            error={isExploring ? null : (certs.error as Error | null)}
             filters={[
               { value: "pending", label: "Pending", predicate: (c) => c.status === "Pending" },
               { value: "approved", label: "Approved", predicate: (c) => c.status === "Approved" },

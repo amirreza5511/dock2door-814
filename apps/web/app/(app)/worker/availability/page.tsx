@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { getMyAvailability, saveAvailabilityDay, type AvailabilityRow, type DayMode } from "./actions";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const DEFAULT_START = "08:00";
 const DEFAULT_END = "17:00";
@@ -18,6 +19,8 @@ function hhmm(t: string): string {
 
 export default function WorkerAvailabilityPage() {
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const today = new Date().toISOString().slice(0, 10);
   const [cursor, setCursor] = useState(() => { const d = new Date(); d.setDate(1); return d; });
@@ -29,6 +32,7 @@ export default function WorkerAvailabilityPage() {
   const availQ = useQuery({
     queryKey: ["worker", "availability"],
     retry: 3,
+    enabled: !isExploring,
     queryFn: (): Promise<AvailabilityRow[]> => getMyAvailability(),
   });
 
@@ -50,6 +54,7 @@ export default function WorkerAvailabilityPage() {
   });
 
   const openDay = (iso: string) => {
+    if (!guard("Edit your availability")) return;
     if (iso < today) return;
     const r = rowByDate.get(iso);
     setSelected(iso);

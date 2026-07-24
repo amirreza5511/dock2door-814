@@ -12,6 +12,17 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_SPACES: SpaceRow[] = [
+  { id: "ex-sp-1", name: "Bay C — floor storage", space_kind: "Floor", city: "Delta", total_sqft: 12000, booked_sqft: 7200, min_sqft: 200, base_rate_per_sqft_month: 1.85, currency: "CAD", min_term_months: 1, term_discount_3m_pct: 5, term_discount_6m_pct: 10, term_discount_12m_pct: 15, status: "Active", warehouse_space_tiers: [{ id: "ex-t-1", min_sqft: 2000, rate_per_sqft_month: 1.65 }, { id: "ex-t-2", min_sqft: 5000, rate_per_sqft_month: 1.45 }], warehouse_space_addons: [{ id: "ex-a-1", name: "Forklift & handling", pricing_unit: "per_month", rate: 350, is_required: false }] },
+  { id: "ex-sp-2", name: "Racked pick module", space_kind: "Rack", city: "Richmond", total_sqft: 4800, booked_sqft: 1200, min_sqft: 100, base_rate_per_sqft_month: 2.4, currency: "CAD", min_term_months: 3, term_discount_3m_pct: 4, term_discount_6m_pct: 8, term_discount_12m_pct: 12, status: "Active", warehouse_space_tiers: [], warehouse_space_addons: [] },
+  { id: "ex-sp-3", name: "Climate cage — cold", space_kind: "ClimateControlled", city: "Vancouver", total_sqft: 2600, booked_sqft: 2600, min_sqft: 100, base_rate_per_sqft_month: 4.1, currency: "CAD", min_term_months: 6, term_discount_3m_pct: 0, term_discount_6m_pct: 8, term_discount_12m_pct: 14, status: "Paused", warehouse_space_tiers: [], warehouse_space_addons: [] },
+];
+const SAMPLE_SPACE_BOOKINGS: BookingRow[] = [
+  { id: "ex-sb-1", space_name: "Bay C — floor storage", customer_name: "Preview Retail Co.", sqft: 2000, term_months: 6, start_date: new Date().toISOString().slice(0, 10), monthly_total: 3300, one_time_total: 350, contract_total: 20150, currency: "CAD", status: "Requested", customer_notes: "Need dock access weekday mornings.", months_billed: 0, quote: { applied_rate: 1.65, term_discount_pct: 10 } },
+  { id: "ex-sb-2", space_name: "Racked pick module", customer_name: "Harbour Freight Ltd.", sqft: 1200, term_months: 12, start_date: new Date(Date.now() - 86400000 * 20).toISOString().slice(0, 10), monthly_total: 2880, one_time_total: 0, contract_total: 34560, currency: "CAD", status: "Active", customer_notes: "", months_billed: 2, quote: { applied_rate: 2.4, term_discount_pct: 12 } },
+];
 
 interface TierRow { id: string; min_sqft: number; rate_per_sqft_month: number }
 interface AddonRow { id: string; name: string; pricing_unit: string; rate: number; is_required: boolean }
@@ -60,13 +71,15 @@ const UNIT_LABEL: Record<string, string> = { per_sqft_month: "$/sqft/mo", per_mo
 export default function WarehouseSpacesPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("WarehouseProvider");
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
 
   const spacesQ = useQuery({
     queryKey: ["spaces", "mine", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     refetchInterval: 30000,
     queryFn: async (): Promise<SpaceRow[]> => {
       const { data, error: e } = await supabase
@@ -81,6 +94,7 @@ export default function WarehouseSpacesPage() {
 
   const bookingsQ = useQuery({
     queryKey: ["spaces", "bookings", "provider"],
+    enabled: !isExploring,
     refetchInterval: 15000,
     queryFn: async (): Promise<BookingRow[]> => {
       const { data, error: e } = await supabase.rpc("space_list_bookings", { p_scope: "provider" });
@@ -186,8 +200,8 @@ export default function WarehouseSpacesPage() {
     onSuccess: invalidate,
   });
 
-  const spaces = useMemo(() => spacesQ.data ?? [], [spacesQ.data]);
-  const bookings = useMemo(() => bookingsQ.data ?? [], [bookingsQ.data]);
+  const spaces = useMemo(() => (isExploring ? SAMPLE_SPACES : spacesQ.data ?? []), [spacesQ.data, isExploring]);
+  const bookings = useMemo(() => (isExploring ? SAMPLE_SPACE_BOOKINGS : bookingsQ.data ?? []), [bookingsQ.data, isExploring]);
   const requests = bookings.filter((b) => b.status === "Requested");
   const active = bookings.filter((b) => b.status === "Active");
   const totalSqft = spaces.reduce((s, x) => s + Number(x.total_sqft ?? 0), 0);
@@ -202,7 +216,7 @@ export default function WarehouseSpacesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Space rentals (per sqft)</h1>
           <p className="mt-1 text-sm text-muted-foreground">Rent out square footage with measured pricing — volume tiers, term discounts and add-ons.</p>
         </div>
-        <Dialog open={showForm} onOpenChange={setShowForm}>
+        <Dialog open={showForm} onOpenChange={(o) => { if (o && !guard("Publish a space")) return; setShowForm(o); }}>
           <DialogTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" />New space</Button>
           </DialogTrigger>
@@ -271,11 +285,11 @@ export default function WarehouseSpacesPage() {
                 {b.customer_notes ? <p className="mt-2 text-xs italic text-muted-foreground">“{b.customer_notes}”</p> : null}
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" variant="outline" className="text-red-300" disabled={rpc.isPending}
-                    onClick={() => rpc.mutate({ fn: "space_respond_booking", args: { p_booking_id: b.id, p_action: "decline", p_note: "" } })}>
+                    onClick={() => { if (!guard("Decline this request")) return; rpc.mutate({ fn: "space_respond_booking", args: { p_booking_id: b.id, p_action: "decline", p_note: "" } }); }}>
                     <XCircle className="mr-1.5 h-3.5 w-3.5" />Decline
                   </Button>
                   <Button size="sm" disabled={rpc.isPending}
-                    onClick={() => rpc.mutate({ fn: "space_respond_booking", args: { p_booking_id: b.id, p_action: "approve", p_note: "" } })}>
+                    onClick={() => { if (!guard("Approve & invoice")) return; rpc.mutate({ fn: "space_respond_booking", args: { p_booking_id: b.id, p_action: "approve", p_note: "" } }); }}>
                     <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />Approve & invoice
                   </Button>
                 </div>
@@ -298,12 +312,12 @@ export default function WarehouseSpacesPage() {
                 <div className="flex items-center gap-2">
                   <Badge className="bg-blue-500/15 text-blue-300">{b.months_billed}/{b.term_months} billed</Badge>
                   {b.months_billed < b.term_months && (
-                    <Button size="sm" disabled={rpc.isPending} onClick={() => rpc.mutate({ fn: "space_bill_month", args: { p_booking_id: b.id } })}>
+                    <Button size="sm" disabled={rpc.isPending} onClick={() => { if (!guard("Bill this month")) return; rpc.mutate({ fn: "space_bill_month", args: { p_booking_id: b.id } }); }}>
                       <Receipt className="mr-1.5 h-3.5 w-3.5" />Bill month {b.months_billed + 1}
                     </Button>
                   )}
                   <Button size="sm" variant="outline" disabled={rpc.isPending}
-                    onClick={() => rpc.mutate({ fn: "space_end_booking", args: { p_booking_id: b.id, p_note: "" } })}>
+                    onClick={() => { if (!guard("End this rental")) return; rpc.mutate({ fn: "space_end_booking", args: { p_booking_id: b.id, p_note: "" } }); }}>
                     End
                   </Button>
                 </div>
@@ -316,7 +330,7 @@ export default function WarehouseSpacesPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">My spaces ({spaces.length})</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          {spacesQ.isLoading ? (
+          {!isExploring && spacesQ.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : spaces.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-10 text-center">
@@ -335,7 +349,7 @@ export default function WarehouseSpacesPage() {
                       <p className="font-medium">{s.name} {s.status !== "Active" && <Badge className="ml-1 bg-yellow-500/15 text-yellow-300">Paused</Badge>}</p>
                       <p className="text-xs text-muted-foreground">{KIND_LABEL[s.space_kind] ?? s.space_kind}{s.city ? ` · ${s.city}` : ""}</p>
                     </div>
-                    <Button size="sm" variant="ghost" onClick={() => toggleStatus.mutate(s)}>
+                    <Button size="sm" variant="ghost" onClick={() => { if (!guard("Change space status")) return; toggleStatus.mutate(s); }}>
                       {s.status === "Active" ? <PauseCircle className="h-4 w-4 text-yellow-400" /> : <PlayCircle className="h-4 w-4 text-emerald-400" />}
                     </Button>
                   </div>

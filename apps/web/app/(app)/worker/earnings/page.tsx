@@ -7,6 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { DollarSign, Clock } from "lucide-react";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_EARNINGS: EarningRow[] = [
+  { payable_id: "ex-e-1", worker_user_id: "ex-w", shift_id: "ex-sp-1", shift_title: "Warehouse Loader", shift_date: new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10), confirmed_hours: 8, hourly_rate: 24, gross_pay: 192, status: "Paid", paid_at: new Date(Date.now() - 86400000).toISOString(), invoice_id: null, invoice_status: null, employer_name: "Preview Logistics Co." },
+  { payable_id: "ex-e-2", worker_user_id: "ex-w", shift_id: "ex-sp-2", shift_title: "Forklift Operator", shift_date: new Date(Date.now() - 86400000 * 5).toISOString().slice(0, 10), confirmed_hours: 8, hourly_rate: 31, gross_pay: 248, status: "Approved", paid_at: null, invoice_id: null, invoice_status: null, employer_name: "Harbour Freight Ltd." },
+  { payable_id: "ex-e-3", worker_user_id: "ex-w", shift_id: "ex-sp-3", shift_title: "Order Picker (evening)", shift_date: new Date(Date.now() - 86400000 * 1).toISOString().slice(0, 10), confirmed_hours: 7, hourly_rate: 26, gross_pay: 182, status: "Pending", paid_at: null, invoice_id: null, invoice_status: null, employer_name: "Preview Logistics Co." },
+];
 
 interface EarningRow {
   payable_id: string;
@@ -26,9 +33,11 @@ interface EarningRow {
 
 export default function WorkerEarningsPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
 
   const earnings = useQuery({
     queryKey: ["worker", "earnings"],
+    enabled: !isExploring,
     queryFn: async (): Promise<EarningRow[]> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -42,14 +51,15 @@ export default function WorkerEarningsPage() {
     },
   });
 
+  const rows0 = isExploring ? SAMPLE_EARNINGS : (earnings.data ?? []);
   const totals = useMemo(() => {
-    const rows = earnings.data ?? [];
+    const rows = rows0;
     const paid = rows.filter((r) => r.status === "Paid").reduce((s, r) => s + Number(r.gross_pay), 0);
     const pending = rows
       .filter((r) => r.status !== "Paid" && r.status !== "Cancelled")
       .reduce((s, r) => s + Number(r.gross_pay), 0);
     return { paid, pending };
-  }, [earnings.data]);
+  }, [rows0]);
 
   const cols: Column<EarningRow>[] = [
     { key: "shift", header: "Shift", render: (r) => <span className="font-medium">{r.shift_title ?? "Shift"}</span> },
@@ -105,15 +115,15 @@ export default function WorkerEarningsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Pay history</CardTitle>
-          <CardDescription>{(earnings.data ?? []).length} entries</CardDescription>
+          <CardDescription>{rows0.length} entries</CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
-            rows={earnings.data ?? []}
+            rows={rows0}
             columns={cols}
             rowKey={(r) => r.payable_id}
-            isLoading={earnings.isLoading}
-            error={earnings.error as Error | null}
+            isLoading={!isExploring && earnings.isLoading}
+            error={isExploring ? null : (earnings.error as Error | null)}
             searchPlaceholder="Search shift…"
             filters={[
               { value: "unpaid", label: "Unpaid", predicate: (r) => r.status !== "Paid" && r.status !== "Cancelled" },

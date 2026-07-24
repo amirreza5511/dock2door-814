@@ -13,11 +13,13 @@ import Link from "next/link";
 import {
   SERVICE_TYPES, SUBCATEGORIES, type ServiceType,
 } from "@/lib/serviceMarketplace";
+import { useActionGuard } from "@/lib/explore-store";
 
 export default function CreateMarketplaceListingPage() {
   const router = useRouter();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const guard = useActionGuard();
 
   const [serviceType, setServiceType] = useState<ServiceType>("equipment_rental");
   const [subcategory, setSubcategory] = useState("");
@@ -236,7 +238,7 @@ export default function CreateMarketplaceListingPage() {
 
       <div className="flex justify-end gap-3">
         <Link href="/marketplace"><Button variant="secondary">Cancel</Button></Link>
-        <Button disabled={create.isPending} onClick={() => create.mutate()}>
+        <Button disabled={create.isPending} onClick={() => { if (!guard("Publish this listing")) return; create.mutate(); }}>
           {create.isPending ? "Publishing…" : "Publish listing"}
         </Button>
       </div>

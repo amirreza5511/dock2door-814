@@ -9,6 +9,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Award, Camera, CheckCircle2, MapPin, Star, Zap } from "lucide-react";
 import { skillLabel } from "@/lib/skills";
+import { useExplore } from "@/lib/explore-store";
+
+function sampleWorkerData(userId: string) {
+  const profile: WorkerPublic = {
+    id: "ex-wp", user_id: userId, display_name: "Alex Morgan", bio: "Reliable warehouse generalist with forklift and reach-truck experience. Comfortable in fast-paced pick/pack environments.", tagline: "Certified forklift operator", skills: ["forklift", "general_labour"], coverage_cities: ["Vancouver", "Burnaby", "Richmond"], hourly_expectation: 26, verified: true, status: "Active", profile_photo_path: null, avatar_path: null, languages: ["English", "Spanish"], experience_years: 5, transportation: "Own vehicle", work_history: "Preview Logistics Co. (2022–present)\nHarbour Freight Ltd. (2019–2022)", education: "Forklift certification, WHMIS", references_text: "Available on request" };
+  const certs: CertRow[] = [
+    { id: "ex-c-1", type: "Forklift", expiry_date: "2027-09-30", status: "Approved" },
+    { id: "ex-c-2", type: "WHMIS", expiry_date: "2028-01-15", status: "Approved" },
+  ];
+  const reviews: ReviewRow[] = [
+    { id: "ex-r-1", rating: 5, comment: "Great worker, on time and efficient.", created_at: new Date(Date.now() - 86400000 * 10).toISOString(), reviewer_company: { name: "Preview Logistics Co." } },
+    { id: "ex-r-2", rating: 4, comment: "Solid shift, would hire again.", created_at: new Date(Date.now() - 86400000 * 25).toISOString(), reviewer_company: { name: "Harbour Freight Ltd." } },
+  ];
+  const assignments: AssignmentCountRow[] = [
+    { id: "a1", status: "Completed" }, { id: "a2", status: "Completed" }, { id: "a3", status: "HoursConfirmed" }, { id: "a4", status: "Completed" },
+  ];
+  return { profile, certs, photos: [] as PhotoRow[], reviews, assignments, availability: [] as AvailabilityRow[] };
+}
 
 interface WorkerPublic {
   id: string;
@@ -54,12 +72,13 @@ function getWeekDays(): { label: string; isoDate: string }[] {
 export default function WorkerPublicProfilePage() {
   const supabase = getBrowserSupabase();
   const router = useRouter();
+  const { isExploring } = useExplore();
   const routeParams = useParams<{ id: string }>();
   const userId = String(routeParams?.id ?? "");
 
   const profileQ = useQuery({
     queryKey: ["worker-by-id", userId],
-    enabled: Boolean(userId),
+    enabled: Boolean(userId) && !isExploring,
     staleTime: 30_000,
     queryFn: async () => {
       const today = new Date().toISOString().split("T")[0];
@@ -111,13 +130,13 @@ export default function WorkerPublicProfilePage() {
     },
   });
 
-  const { profile, certs, photos, reviews, assignments, availability } = profileQ.data ?? {
+  const { profile, certs, photos, reviews, assignments, availability } = (isExploring ? sampleWorkerData(userId) : profileQ.data) ?? {
     profile: null, certs: [], photos: [], reviews: [], assignments: [], availability: [],
   };
 
   const photoUrlsQ = useQuery({
     queryKey: ["worker-id-photos", userId, photos.map((p) => p.id).join(",")],
-    enabled: photos.length > 0,
+    enabled: photos.length > 0 && !isExploring,
     staleTime: 60_000,
     queryFn: async (): Promise<Record<string, string>> => {
       const entries = await Promise.all(
@@ -161,7 +180,7 @@ export default function WorkerPublicProfilePage() {
     return s;
   }, [availability]);
 
-  if (profileQ.isLoading) {
+  if (!isExploring && profileQ.isLoading) {
     return <div className="mx-auto max-w-3xl py-16 text-center text-sm text-muted-foreground">Loading profile…</div>;
   }
 

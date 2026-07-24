@@ -8,6 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_INVOICES: InvoiceRow[] = [
+  { id: "ex-inv-1", invoice_number: "INV-20481", status: "Paid", total_amount: 3300, due_date: null, issued_at: new Date(Date.now() - 86400000 * 20).toISOString(), paid_at: new Date(Date.now() - 86400000 * 12).toISOString() },
+  { id: "ex-inv-2", invoice_number: "INV-20502", status: "Issued", total_amount: 1044, due_date: new Date(Date.now() + 86400000 * 10).toISOString().slice(0, 10), issued_at: new Date(Date.now() - 86400000 * 4).toISOString(), paid_at: null },
+  { id: "ex-inv-3", invoice_number: "INV-20460", status: "Overdue", total_amount: 2700, due_date: new Date(Date.now() - 86400000 * 4).toISOString().slice(0, 10), issued_at: new Date(Date.now() - 86400000 * 30).toISOString(), paid_at: null },
+];
+const SAMPLE_COMPANY: CompanyRow = { id: "explore-company", name: "Preview Logistics Co.", stripe_connect_account_id: null, stripe_connect_onboarded: false };
 
 interface InvoiceRow {
   id: string;
@@ -36,11 +44,14 @@ function invoiceStatusVariant(s: string): "success" | "warning" | "destructive" 
 
 export default function WarehouseBillingPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [onboardLoading, setOnboardLoading] = useState(false);
   const [onboardError, setOnboardError] = useState<string | null>(null);
 
   const companyQ = useQuery({
     queryKey: ["warehouse", "billing", "company"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -69,13 +80,15 @@ export default function WarehouseBillingPage() {
       if (error) throw error;
       return (data ?? []) as InvoiceRow[];
     },
-    enabled: Boolean(companyQ.data),
+    enabled: Boolean(companyQ.data) && !isExploring,
   });
 
-  const company = companyQ.data;
+  const invoices = isExploring ? SAMPLE_INVOICES : (invoicesQ.data ?? []);
+  const company = isExploring ? SAMPLE_COMPANY : companyQ.data;
   const isOnboarded = company?.stripe_connect_onboarded ?? false;
 
   const handleOnboard = async () => {
+    if (!guard("Connect Stripe payouts")) return;
     setOnboardLoading(true);
     setOnboardError(null);
     try {
@@ -96,6 +109,7 @@ export default function WarehouseBillingPage() {
   };
 
   const handleDashboard = async () => {
+    if (!guard("Open Stripe dashboard")) return;
     setOnboardLoading(true);
     setOnboardError(null);
     try {
@@ -113,11 +127,11 @@ export default function WarehouseBillingPage() {
     }
   };
 
-  const totalPaid = (invoicesQ.data ?? [])
+  const totalPaid = invoices
     .filter((i) => i.status === "Paid")
     .reduce((s, i) => s + (i.total_amount ?? 0), 0);
 
-  const totalPending = (invoicesQ.data ?? [])
+  const totalPending = invoices
     .filter((i) => i.status === "Issued" || i.status === "Overdue")
     .reduce((s, i) => s + (i.total_amount ?? 0), 0);
 
@@ -191,7 +205,7 @@ export default function WarehouseBillingPage() {
             <CardDescription>Total invoices</CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{invoicesQ.data?.length ?? 0}</p>
+            <p className="text-2xl font-bold">{invoices.length}</p>
           </CardContent>
         </Card>
       </div>
@@ -203,9 +217,9 @@ export default function WarehouseBillingPage() {
           <CardDescription>All invoices for your warehouse operations.</CardDescription>
         </CardHeader>
         <CardContent>
-          {invoicesQ.isLoading ? (
+          {!isExploring && invoicesQ.isLoading ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
-          ) : (invoicesQ.data ?? []).length === 0 ? (
+          ) : invoices.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">No invoices yet.</p>
           ) : (
             <Table>
@@ -220,7 +234,7 @@ export default function WarehouseBillingPage() {
                 </TR>
               </THead>
               <TBody>
-                {(invoicesQ.data ?? []).map((inv) => (
+                {invoices.map((inv) => (
                   <TR key={inv.id}>
                     <TD className="font-mono text-sm">{inv.invoice_number ?? inv.id.slice(0, 8)}</TD>
                     <TD>

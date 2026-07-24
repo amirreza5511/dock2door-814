@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Camera, Building2, ChevronRight, Star, Bell, Shield } from "lucide-react";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const AVATAR_BUCKET = "worker-photos";
 
@@ -36,6 +37,8 @@ interface CompanyLite {
 export default function EmployerAccountPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState("");
@@ -45,6 +48,7 @@ export default function EmployerAccountPage() {
 
   const profileQ = useQuery({
     queryKey: ["employer", "account"],
+    enabled: !isExploring,
     queryFn: async (): Promise<{ profile: ProfileRow; email: string; company: CompanyLite | null }> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("Not authenticated");
@@ -65,12 +69,17 @@ export default function EmployerAccountPage() {
   });
 
   useEffect(() => {
+    if (isExploring) {
+      setName("Alex Morgan");
+      setPhone("+1 604 555 0199");
+      return;
+    }
     if (profileQ.data) {
       setName(profileQ.data.profile.name ?? "");
       setPhone(profileQ.data.profile.phone ?? "");
       setAvatarUrl(profileQ.data.profile.profile_image ?? null);
     }
-  }, [profileQ.data]);
+  }, [profileQ.data, isExploring]);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -87,6 +96,7 @@ export default function EmployerAccountPage() {
   });
 
   async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!guard("Change your photo")) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
@@ -112,8 +122,8 @@ export default function EmployerAccountPage() {
     }
   }
 
-  const email = profileQ.data?.email ?? "";
-  const company = profileQ.data?.company ?? null;
+  const email = isExploring ? "alex@previewco.com" : (profileQ.data?.email ?? "");
+  const company = isExploring ? { id: "explore-company", name: "Preview Logistics Co.", status: "Active" } : (profileQ.data?.company ?? null);
   const initials = (name || email || "E").slice(0, 1).toUpperCase();
 
   return (
@@ -167,7 +177,7 @@ export default function EmployerAccountPage() {
           </div>
           {save.error && <p className="text-sm text-red-600">{(save.error as Error).message}</p>}
           {save.isSuccess && <p className="text-sm text-emerald-600">Saved.</p>}
-          <Button disabled={save.isPending} onClick={() => save.mutate()}>
+          <Button disabled={save.isPending} onClick={() => { if (!guard("Save your account")) return; save.mutate(); }}>
             {save.isPending ? "Saving…" : "Save changes"}
           </Button>
         </CardContent>

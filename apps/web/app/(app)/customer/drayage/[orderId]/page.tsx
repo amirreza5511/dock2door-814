@@ -20,6 +20,7 @@ import {
   Ship,
   Truck,
 } from "lucide-react";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface DrayageOrder {
   id: string;
@@ -90,6 +91,23 @@ interface QuoteRow {
   companies: { id: string; name: string; city: string | null } | null;
 }
 
+function sampleDrayageDetail(orderId: string): { order: DrayageOrder; moves: MoveRow[]; tracking: TrackingRow[] } {
+  const order: DrayageOrder = {
+    id: orderId, reference_code: "DRY-10428", direction: "Import", status: "Assigned",
+    container_number: "MSKU7841200", container_size: "40ft", container_type: "Standard", weight_kg: 18500,
+    bol_number: "BOL-55821", booking_number: "BKG-2201", commodity: "Retail furniture, palletized",
+    is_hazmat: false, is_overweight: false, is_oversized: false, origin_terminal_id: "ex-term-1",
+    destination_terminal_id: null, pickup_address: null, delivery_address: "Burnaby DC, 4000 Still Creek Ave",
+    port_reservation_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10), port_reservation_time: "10:00",
+    port_reservation_confirmed: true, is_prepull: false, prepull_pickup_date: null, target_drayage_company_id: null,
+  };
+  const moves: MoveRow[] = [
+    { id: "ex-mv-1", move_type: "Port pickup", status: "Completed", appt_date: new Date().toISOString().slice(0, 10), appt_time: "10:00", pickup_photo_path: null, delivery_photo_path: null, picked_up_at: new Date(Date.now() - 3600000 * 3).toISOString(), delivered_at: null, captured_container_number: "MSKU7841200", receiver_name: null },
+    { id: "ex-mv-2", move_type: "Delivery to DC", status: "InProgress", appt_date: new Date().toISOString().slice(0, 10), appt_time: "14:00", pickup_photo_path: null, delivery_photo_path: null, picked_up_at: null, delivered_at: null, captured_container_number: null, receiver_name: null },
+  ];
+  return { order, moves, tracking: [] };
+}
+
 const STATUS_LABEL: Record<string, string> = {
   Open: "Open — waiting for drayage company",
   Assigned: "Drayage company assigned",
@@ -108,11 +126,13 @@ export default function CustomerDrayageOrderDetailPage() {
   const params = useParams<{ orderId: string }>();
   const orderId = params.orderId;
   const queryClient = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const detailsQuery = useQuery({
     queryKey: ["customer", "drayage-order", orderId],
     refetchInterval: 10000,
-    enabled: !!orderId,
+    enabled: !!orderId && !isExploring,
     queryFn: async () => {
       const [orderRes, movesRes, trackingRes] = await Promise.all([
         supabase.from("drayage_orders").select("*").eq("id", orderId).maybeSingle(),
@@ -131,7 +151,7 @@ export default function CustomerDrayageOrderDetailPage() {
   const quotesQuery = useQuery({
     queryKey: ["customer", "drayage-order-quotes", orderId],
     refetchInterval: 15000,
-    enabled: !!orderId,
+    enabled: !!orderId && !isExploring,
     queryFn: async (): Promise<QuoteRow[]> => {
       const { data, error } = await supabase
         .from("drayage_quotes")
@@ -145,6 +165,7 @@ export default function CustomerDrayageOrderDetailPage() {
 
   const terminalsQuery = useQuery({
     queryKey: ["terminals-active"],
+    enabled: !isExploring,
     queryFn: async (): Promise<TerminalRow[]> => {
       const { data } = await supabase.from("terminals").select("*").eq("is_active", true).order("name");
       return (data as TerminalRow[] | null) ?? [];
@@ -165,9 +186,10 @@ export default function CustomerDrayageOrderDetailPage() {
     },
   });
 
-  const order = detailsQuery.data?.order;
-  const moves = useMemo(() => detailsQuery.data?.moves ?? [], [detailsQuery.data]);
-  const allTracking = useMemo(() => detailsQuery.data?.tracking ?? [], [detailsQuery.data]);
+  const exploreData = useMemo(() => (isExploring ? sampleDrayageDetail(orderId) : null), [isExploring, orderId]);
+  const order = isExploring ? exploreData?.order : detailsQuery.data?.order;
+  const moves = useMemo(() => (isExploring ? exploreData?.moves ?? [] : detailsQuery.data?.moves ?? []), [detailsQuery.data, isExploring, exploreData]);
+  const allTracking = useMemo(() => (isExploring ? [] : detailsQuery.data?.tracking ?? []), [detailsQuery.data, isExploring]);
   const terminals = useMemo(() => terminalsQuery.data ?? [], [terminalsQuery.data]);
   const quotes = useMemo(
     () => (quotesQuery.data ?? []).filter((q) => q.status !== "Withdrawn"),
@@ -211,10 +233,10 @@ export default function CustomerDrayageOrderDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detailsQuery.data]);
 
-  if (detailsQuery.isLoading) {
+  if (!isExploring && detailsQuery.isLoading) {
     return <p className="p-8 text-sm text-muted-foreground">Loading order…</p>;
   }
-  if (detailsQuery.isError || !order) {
+  if (!isExploring && (detailsQuery.isError || !order)) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 p-6">
         <p className="text-sm text-muted-foreground">Order not found.</p>
@@ -224,6 +246,8 @@ export default function CustomerDrayageOrderDetailPage() {
       </div>
     );
   }
+
+  if (!order) return null;
 
   const isActive = ["Dispatched", "EnRoute", "PickedUp", "InTransit"].includes(order.status);
 
@@ -329,6 +353,7 @@ export default function CustomerDrayageOrderDetailPage() {
                       size="sm"
                       disabled={acceptMutation.isPending}
                       onClick={() => {
+                        if (!guard("Accept this quote")) return;
                         if (
                           window.confirm(
                             `${q.companies?.name ?? "This company"} will be assigned at ${q.currency} ${q.price}. Other quotes will be declined.`,

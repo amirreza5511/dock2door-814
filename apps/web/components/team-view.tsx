@@ -11,6 +11,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_TEAM: MemberRow[] = [
+  { id: "ex-tm-1", user_id: "ex-u-1", company_role: "Owner", status: "Active", profiles: { id: "ex-u-1", name: "Alex Morgan", email: "alex@previewco.com", role: "employer" } },
+  { id: "ex-tm-2", user_id: "ex-u-2", company_role: "Manager", status: "Active", profiles: { id: "ex-u-2", name: "Priya Sharma", email: "priya@previewco.com", role: "employer" } },
+  { id: "ex-tm-3", user_id: "ex-u-3", company_role: "Supervisor", status: "Active", profiles: { id: "ex-u-3", name: "Marcus Lee", email: "marcus@previewco.com", role: "employer" } },
+  { id: "ex-tm-4", user_id: "ex-u-4", company_role: "Staff", status: "Suspended", profiles: { id: "ex-u-4", name: "Dan Kowalski", email: "dan@previewco.com", role: "employer" } },
+];
 
 /** Company roles offered to every company type. Mirrors GENERIC_COMPANY_ROLES on mobile. */
 export const GENERIC_COMPANY_ROLES = ["Owner", "Manager", "Supervisor", "Staff", "ReadOnly"] as const;
@@ -83,14 +91,16 @@ export function TeamView({
 }: TeamViewProps) {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companies = useMyCompanies();
   const active = useMemo(() => {
     const list = companies.data ?? [];
     if (companyType) return list.find((c) => c.company_type === companyType) ?? list[0];
     return list[0];
   }, [companies.data, companyType]);
-  const companyId = active?.company_id ?? null;
-  const myRole = active?.role ?? null;
+  const companyId = isExploring ? "explore-company" : (active?.company_id ?? null);
+  const myRole = isExploring ? "Owner" : (active?.role ?? null);
   const canManage = myRole === "Owner" || myRole === "Manager";
 
   const inviteRoles = useMemo(() => roleOptions.filter((r) => r !== "Owner"), [roleOptions]);
@@ -98,7 +108,7 @@ export function TeamView({
 
   const membersQuery = useQuery({
     queryKey: ["company", "members", companyId],
-    enabled: Boolean(companyId),
+    enabled: Boolean(companyId) && !isExploring,
     queryFn: async (): Promise<MemberRow[]> => {
       const { data, error } = await supabase
         .from("company_users")
@@ -162,7 +172,7 @@ export function TeamView({
   const [editing, setEditing] = useState<MemberRow | null>(null);
   const [editRole, setEditRole] = useState<string>(initialRole);
 
-  const members = membersQuery.data ?? [];
+  const members = isExploring ? SAMPLE_TEAM : (membersQuery.data ?? []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -181,6 +191,7 @@ export function TeamView({
   }, [members]);
 
   const handleAdd = async () => {
+    if (!guard("Invite a team member")) return;
     setFindErr("");
     const clean = email.trim().toLowerCase();
     if (!clean) { setFindErr("Enter a user email."); return; }
@@ -196,6 +207,7 @@ export function TeamView({
   };
 
   const handleSaveRole = async () => {
+    if (!guard("Change a member's role")) return;
     if (!editing) return;
     try {
       await updateRoleM.mutateAsync({ userId: editing.user_id, role: editRole });
@@ -205,7 +217,7 @@ export function TeamView({
     }
   };
 
-  if (companies.isLoading) {
+  if (!isExploring && companies.isLoading) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
   if (!companyId) {
@@ -271,7 +283,7 @@ export function TeamView({
         </Card>
       )}
 
-      {membersQuery.isLoading ? (
+      {!isExploring && membersQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading members…</p>
       ) : filtered.length === 0 ? (
         <Card><CardContent className="py-8 text-center text-sm text-muted-foreground">No members match your filter.</CardContent></Card>
@@ -301,20 +313,20 @@ export function TeamView({
                 </div>
                 {canManage && m.company_role !== "Owner" && (
                   <div className="flex shrink-0 gap-1.5">
-                    <Button size="icon" variant="outline" onClick={() => { setEditing(m); setEditRole(m.company_role); }} title="Change role">
+                    <Button size="icon" variant="outline" onClick={() => { if (!guard("Change a member's role")) return; setEditing(m); setEditRole(m.company_role); }} title="Change role">
                       <Pencil className="h-4 w-4" />
                     </Button>
                     {m.status === "Active" ? (
-                      <Button size="icon" variant="outline" onClick={() => setStatusM.mutate({ userId: m.user_id, status: "Suspended" })} title="Suspend">
+                      <Button size="icon" variant="outline" onClick={() => { if (!guard("Suspend a member")) return; setStatusM.mutate({ userId: m.user_id, status: "Suspended" }); }} title="Suspend">
                         <Pause className="h-4 w-4" />
                       </Button>
                     ) : m.status === "Suspended" ? (
-                      <Button size="icon" variant="outline" onClick={() => setStatusM.mutate({ userId: m.user_id, status: "Active" })} title="Reactivate">
+                      <Button size="icon" variant="outline" onClick={() => { if (!guard("Reactivate a member")) return; setStatusM.mutate({ userId: m.user_id, status: "Active" }); }} title="Reactivate">
                         <Play className="h-4 w-4" />
                       </Button>
                     ) : null}
                     {m.status === "Active" && (
-                      <Button size="icon" variant="outline" onClick={() => removeM.mutate({ userId: m.user_id })} title="Remove" className="text-destructive">
+                      <Button size="icon" variant="outline" onClick={() => { if (!guard("Remove a member")) return; removeM.mutate({ userId: m.user_id }); }} title="Remove" className="text-destructive">
                         <UserMinus className="h-4 w-4" />
                       </Button>
                     )}

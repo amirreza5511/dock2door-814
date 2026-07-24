@@ -19,6 +19,20 @@ import {
   type LoadPieceRow,
 } from "@/lib/hooks/use-loads";
 import { buildLabelsHtml, buildBolHtml, buildDeliveredBolHtml, printHtml, type DeliveryInfo, type PieceInfo, type ShipmentInfo } from "@/lib/bol-print";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_LOAD = {
+  id: "ex-load-2", bol_number: "BOL-20502", pickup_address: "Richmond, BC", pickup_city: "Richmond",
+  dropoff_address: "Surrey, BC", dropoff_city: "Surrey", sender_name: "Preview Logistics Co.",
+  recipient_name: "Harbour Freight Ltd.", recipient_phone: "+1 604 555 0142", cargo_class: "General",
+  vehicle_type: "FiveTon", pallets: 10, item_count: 10, weight_kg: 4200, distance_km: 32, total_price: 520,
+  item_description: "Palletized retail goods", notes: "Deliver to dock B before noon.", status: "EnRoute",
+  created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+} as unknown as ReturnType<typeof useLoad>["data"];
+const SAMPLE_PIECES: LoadPieceRow[] = Array.from({ length: 10 }, (_, i) => ({
+  piece_no: i + 1, total_pieces: 10, barcode: `D2D-20502-${String(i + 1).padStart(3, "0")}`,
+  cargo_class: "General", weight_kg: 420, scanned: i < 4,
+} as unknown as LoadPieceRow));
 
 async function signedUrl(path: string | null | undefined): Promise<string> {
   if (!path) return "";
@@ -48,12 +62,13 @@ async function toDataUrl(path: string | null | undefined): Promise<string> {
 
 function DocumentsInner() {
   const params = useSearchParams();
+  const { isExploring } = useExplore();
   const loadId = params.get("loadId") ?? "";
-  const loadQ = useLoad(loadId);
-  const piecesQ = useLoadPieces(loadId);
+  const loadQ = useLoad(isExploring ? "" : loadId);
+  const piecesQ = useLoadPieces(isExploring ? "" : loadId);
 
-  const load = loadQ.data;
-  const pieces = useMemo<LoadPieceRow[]>(() => piecesQ.data ?? [], [piecesQ.data]);
+  const load = isExploring ? SAMPLE_LOAD : loadQ.data;
+  const pieces = useMemo<LoadPieceRow[]>(() => (isExploring ? SAMPLE_PIECES : piecesQ.data ?? []), [piecesQ.data, isExploring]);
   const scannedCount = pieces.filter((p) => p.scanned).length;
   const totalCount = pieces.length;
 
@@ -120,7 +135,7 @@ function DocumentsInner() {
     printHtml(buildDeliveredBolHtml(shipment, pieceInfos, delivery));
   };
 
-  if (loadQ.isLoading) {
+  if (!isExploring && loadQ.isLoading) {
     return <p className="text-sm text-muted-foreground">Loading documents…</p>;
   }
   if (!load || !shipment) {

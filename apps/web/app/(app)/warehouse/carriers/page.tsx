@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_CARRIERS: CarrierAccountRow[] = [
+  { id: "ex-ca-1", carrier_code: "canada_post", account_number: "CP-88213", display_name: "Main Canada Post", is_active: true, created_at: new Date(Date.now() - 86400000 * 40).toISOString() },
+  { id: "ex-ca-2", carrier_code: "ups", account_number: "UPS-4471K", display_name: "UPS Ground", is_active: true, created_at: new Date(Date.now() - 86400000 * 18).toISOString() },
+  { id: "ex-ca-3", carrier_code: "purolator", account_number: null, display_name: "Purolator express", is_active: false, created_at: new Date(Date.now() - 86400000 * 6).toISOString() },
+];
 
 interface CarrierAccountRow {
   id: string;
@@ -38,6 +45,8 @@ function carrierLabel(code: string) {
 export default function WarehouseCarriersPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [showAdd, setShowAdd] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -48,6 +57,7 @@ export default function WarehouseCarriersPage() {
 
   const companyQ = useQuery({
     queryKey: ["warehouse", "carriers", "company"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -74,8 +84,10 @@ export default function WarehouseCarriersPage() {
       if (error) throw error;
       return (data ?? []) as CarrierAccountRow[];
     },
-    enabled: Boolean(companyQ.data),
+    enabled: Boolean(companyQ.data) && !isExploring,
   });
+
+  const carriers = isExploring ? SAMPLE_CARRIERS : (carriersQ.data ?? []);
 
   const addMut = useMutation({
     mutationFn: async () => {
@@ -125,7 +137,7 @@ export default function WarehouseCarriersPage() {
             Manage carrier integrations for rate shopping and label generation.
           </p>
         </div>
-        <Button onClick={() => setShowAdd((v) => !v)}>
+        <Button onClick={() => { if (!showAdd && !guard("Add a carrier account")) return; setShowAdd((v) => !v); }}>
           {showAdd ? "Cancel" : "+ Add carrier"}
         </Button>
       </div>
@@ -183,12 +195,12 @@ export default function WarehouseCarriersPage() {
       <Card>
         <CardHeader>
           <CardTitle>Connected carriers</CardTitle>
-          <CardDescription>{carriersQ.data?.length ?? 0} accounts</CardDescription>
+          <CardDescription>{carriers.length} accounts</CardDescription>
         </CardHeader>
         <CardContent>
-          {carriersQ.isLoading ? (
+          {!isExploring && carriersQ.isLoading ? (
             <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
-          ) : (carriersQ.data ?? []).length === 0 ? (
+          ) : carriers.length === 0 ? (
             <div className="py-8 text-center space-y-2">
               <p className="text-sm text-muted-foreground">No carrier accounts added yet.</p>
               <p className="text-xs text-muted-foreground">
@@ -208,7 +220,7 @@ export default function WarehouseCarriersPage() {
                 </TR>
               </THead>
               <TBody>
-                {(carriersQ.data ?? []).map((c) => (
+                {carriers.map((c) => (
                   <TR key={c.id}>
                     <TD className="font-medium">{carrierLabel(c.carrier_code)}</TD>
                     <TD className="font-mono text-sm">{c.account_number ?? "—"}</TD>
@@ -224,7 +236,7 @@ export default function WarehouseCarriersPage() {
                         size="sm"
                         variant="outline"
                         disabled={toggleMut.isPending}
-                        onClick={() => toggleMut.mutate({ id: c.id, is_active: c.is_active })}
+                        onClick={() => { if (!guard("Update carrier account")) return; toggleMut.mutate({ id: c.id, is_active: c.is_active }); }}
                       >
                         {c.is_active ? "Deactivate" : "Activate"}
                       </Button>
@@ -242,7 +254,7 @@ export default function WarehouseCarriersPage() {
                           size="sm"
                           variant="destructive"
                           disabled={deleteMut.isPending}
-                          onClick={() => setDeleteTarget(c.id)}
+                          onClick={() => { if (!guard("Remove carrier account")) return; setDeleteTarget(c.id); }}
                         >
                           Remove
                         </Button>

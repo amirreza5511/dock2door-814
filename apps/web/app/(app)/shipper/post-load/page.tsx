@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuoteLoad, usePostLoad, useCargoClasses, useSetReceiverContact, VEHICLE_LABEL, CARGO_LABEL, CARGO_CLASS_OPTIONS, money } from "@/lib/hooks/use-loads";
+import { useActionGuard } from "@/lib/explore-store";
 
 const VEHICLES = Object.keys(VEHICLE_LABEL);
 const CARGOS = Object.keys(CARGO_LABEL);
 
 export default function PostLoadPage() {
   const router = useRouter();
+  const guard = useActionGuard();
   const quote = useQuoteLoad();
   const post = usePostLoad();
 
@@ -70,6 +72,7 @@ export default function PostLoadPage() {
   const quoted = quote.data;
 
   const runQuote = async () => {
+    if (!guard("Get an instant quote")) return;
     setError(null);
     if (!coordsValid) { setError("Enter valid pickup and drop-off coordinates first."); return; }
     try {
@@ -87,6 +90,7 @@ export default function PostLoadPage() {
   };
 
   const submit = async () => {
+    if (!guard("Post a delivery")) return;
     setError(null);
     if (!coordsValid) { setError("Enter valid pickup and drop-off coordinates first."); return; }
     try {

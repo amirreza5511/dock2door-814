@@ -8,6 +8,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_HUB_LOADS: HubLoad[] = [
+  { id: "ex-hl-1", cargo_type: "Pallet", pallets: 6, status: "EnRoute", pickup_address: "Seattle, WA", dropoff_address: "Surrey, BC", hub_leg_status: "Pending", created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+  { id: "ex-hl-2", cargo_type: "Box", pallets: 1, status: "EnRoute", pickup_address: "Kelowna, BC", dropoff_address: "Vancouver, BC", hub_leg_status: "Pending", created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
+  { id: "ex-hl-3", cargo_type: "Pallet", pallets: 4, status: "AtHub", dropoff_address: "Burnaby, BC", hub_leg_status: "AtHub", hub_arrived_at: new Date(Date.now() - 86400000 * 2).toISOString(), storage_per_day: 12, storage_payer: "receiver", created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
+];
 
 const CARGO_LABEL: Record<string, string> = {
   Envelope: "Envelope / Letter",
@@ -43,12 +50,14 @@ function daysAtHub(arrivedAt?: string | null): number {
 export default function HubFreightPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId();
   const [error, setError] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: ["warehouse", "hub-freight", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     refetchInterval: 20000,
     queryFn: async (): Promise<HubLoad[]> => {
       const { data, error: err } = await supabase
@@ -82,7 +91,7 @@ export default function HubFreightPage() {
     onError: (e: Error) => setError(e.message),
   });
 
-  const loads = useMemo(() => q.data ?? [], [q.data]);
+  const loads = useMemo(() => (isExploring ? SAMPLE_HUB_LOADS : q.data ?? []), [q.data, isExploring]);
   const inbound = useMemo(() => loads.filter((l) => l.hub_leg_status === "Pending"), [loads]);
   const atHub = useMemo(() => loads.filter((l) => l.hub_leg_status === "AtHub"), [loads]);
   const palletsStored = useMemo(() => atHub.reduce((s, l) => s + Number(l.pallets ?? 0), 0), [atHub]);
@@ -111,7 +120,7 @@ export default function HubFreightPage() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Expected inbound</h2>
-        {q.isLoading ? (
+        {!isExploring && q.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : inbound.length === 0 ? (
           <div className="flex flex-col items-center gap-2 rounded-xl border border-white/5 py-10 text-center">
@@ -141,7 +150,7 @@ export default function HubFreightPage() {
                     To: {l.dropoff_address || "Drop-off point"}
                   </p>
                 </div>
-                <Button size="sm" className="w-full" onClick={() => { setError(null); confirmInbound.mutate(l.id); }} disabled={confirmInbound.isPending}>
+                <Button size="sm" className="w-full" onClick={() => { if (!guard("Confirm arrival at hub")) return; setError(null); confirmInbound.mutate(l.id); }} disabled={confirmInbound.isPending}>
                   <ArrowDownToLine className="mr-2 h-4 w-4" /> Confirm arrival at hub
                 </Button>
               </CardContent>
@@ -195,6 +204,7 @@ export default function HubFreightPage() {
                     className="w-full"
                     disabled={release.isPending}
                     onClick={() => {
+                      if (!guard("Release for final delivery")) return;
                       setError(null);
                       const ok = window.confirm(
                         `Release for delivery? Storage: ${days} day(s) · $${charge} (${l.storage_payer === "receiver" ? "billed to receiver" : "billed to shipper"}). This releases the goods for their final leg.`,

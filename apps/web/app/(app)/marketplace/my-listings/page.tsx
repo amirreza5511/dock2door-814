@@ -11,6 +11,13 @@ import { Tag, Plus, MapPin } from "lucide-react";
 import {
   serviceTypeLabel, subcategoryLabel, type ServiceType,
 } from "@/lib/serviceMarketplace";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_MY_LISTINGS: Listing[] = [
+  { id: "ex-ml-1", service_type: "equipment_rental", subcategory: "forklift", title: "Toyota 5,000 lb Forklift", status: "Active", coverage_area: ["Vancouver", "Burnaby"], hourly_rate: 35, per_job_rate: null, daily_rate: 180, weekly_rate: 750, negotiable: false },
+  { id: "ex-ml-2", service_type: "mobile_repair", subcategory: "reefer_repair", title: "Mobile Reefer & Trailer Repair", status: "Active", coverage_area: ["Vancouver", "Richmond", "Surrey"], hourly_rate: 145, per_job_rate: null, daily_rate: null, weekly_rate: null, negotiable: true },
+  { id: "ex-ml-3", service_type: "service", subcategory: "customs_brokerage", title: "Customs Clearance (Import/Export)", status: "Paused", coverage_area: ["Delta", "Vancouver"], hourly_rate: 120, per_job_rate: 450, daily_rate: null, weekly_rate: null, negotiable: false },
+];
 
 interface Listing {
   id: string;
@@ -46,9 +53,11 @@ function priceLabel(l: Listing): string {
 
 export default function MyListingsPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
 
   const listingsQ = useQuery({
     queryKey: ["marketplace", "my-listings"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return [] as Listing[];
@@ -71,7 +80,7 @@ export default function MyListingsPage() {
     },
   });
 
-  const listings = useMemo(() => listingsQ.data ?? [], [listingsQ.data]);
+  const listings = useMemo(() => (isExploring ? SAMPLE_MY_LISTINGS : listingsQ.data ?? []), [listingsQ.data, isExploring]);
 
   return (
     <div className="space-y-6">
@@ -87,9 +96,9 @@ export default function MyListingsPage() {
         </Link>
       </div>
 
-      {listingsQ.isLoading ? (
+      {!isExploring && listingsQ.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : listingsQ.isError ? (
+      ) : !isExploring && listingsQ.isError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {(listingsQ.error as Error).message}
         </div>

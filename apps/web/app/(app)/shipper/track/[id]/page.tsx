@@ -12,6 +12,17 @@ import { Label } from "@/components/ui/label";
 import { useLoad, useSetReceiverContact, VEHICLE_LABEL, money, loadStageLabel, type LoadRow } from "@/lib/hooks/use-loads";
 import LoadsMap, { type MapPoint, type MapRoute } from "@/components/loads-map";
 import { useRoadRoute } from "@/lib/route";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_TRACK_LOAD = {
+  id: "ex-load-2", vehicle_type: "FiveTon", cargo_type: "Pallet", status: "EnRoute",
+  pickup_address: "Richmond, BC", pickup_city: "Richmond", dropoff_address: "Surrey, BC", dropoff_city: "Surrey",
+  pickup_lat: 49.1666, pickup_lng: -123.1336, dropoff_lat: 49.1913, dropoff_lng: -122.849,
+  driver_lat: 49.178, driver_lng: -123.02, driver_location_at: new Date(Date.now() - 90000).toISOString(),
+  distance_km: 32, total_price: 520, picked_up_at: new Date(Date.now() - 3600000).toISOString(),
+  delivered_at: null, receiver_name: null, recipient_phone: "+1 604 555 0142", receiver_email: "",
+  track_token: null,
+} as unknown as LoadRow;
 
 function isCoord(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v !== 0;
@@ -29,12 +40,13 @@ function relativeTime(iso?: string | null): string {
 
 export default function ShipperTrackPage() {
   const params = useParams<{ id: string }>();
+  const { isExploring } = useExplore();
   const id = params?.id ?? "";
-  const q = useLoad(id);
-  const load = q.data;
+  const q = useLoad(isExploring ? "" : id);
+  const load = isExploring ? SAMPLE_TRACK_LOAD : q.data;
 
-  if (q.isLoading) return <p className="mx-auto max-w-3xl text-sm text-muted-foreground">Loading shipment…</p>;
-  if (q.isError || !load) {
+  if (!isExploring && q.isLoading) return <p className="mx-auto max-w-3xl text-sm text-muted-foreground">Loading shipment…</p>;
+  if (!load) {
     return (
       <div className="mx-auto max-w-3xl space-y-4">
         <BackLink />
@@ -141,6 +153,7 @@ function ShareCard({ load }: { load: LoadRow }) {
 
 function ReceiverContactCard({ load }: { load: LoadRow }) {
   const setContact = useSetReceiverContact();
+  const guard = useActionGuard();
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [saved, setSaved] = useState(false);
@@ -151,6 +164,7 @@ function ReceiverContactCard({ load }: { load: LoadRow }) {
   }, [load.recipient_phone, load.receiver_email]);
 
   const save = async () => {
+    if (!guard("Save receiver contact")) return;
     try {
       await setContact.mutateAsync({ id: load.id, phone: phone.trim(), email: email.trim() });
       setSaved(true); setTimeout(() => setSaved(false), 2000);

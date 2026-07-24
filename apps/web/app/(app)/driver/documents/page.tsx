@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface DocRow {
   id: string;
@@ -44,6 +45,8 @@ function statusVariant(status: string): "default" | "secondary" | "outline" {
 export default function DriverDocumentsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const fileRef = useRef<HTMLInputElement>(null);
   const [docType, setDocType] = useState(DOC_TYPES[0]);
   const [expiry, setExpiry] = useState("");
@@ -51,6 +54,7 @@ export default function DriverDocumentsPage() {
 
   const userQ = useQuery({
     queryKey: ["auth", "user"],
+    enabled: !isExploring,
     queryFn: async (): Promise<string | null> => {
       const { data } = await supabase.auth.getUser();
       return data.user?.id ?? null;
@@ -58,9 +62,15 @@ export default function DriverDocumentsPage() {
   });
   const userId = userQ.data ?? null;
 
+  const SAMPLE_DOCS: DocRow[] = useMemo(() => [
+    { id: "ex-doc-1", type: "Driver License", status: "Approved", expiry_date: "2028-04-30", file_path: "x", created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+    { id: "ex-doc-2", type: "CDL", status: "Approved", expiry_date: "2027-11-15", file_path: "x", created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
+    { id: "ex-doc-3", type: "Insurance", status: "Pending", expiry_date: "2026-12-31", file_path: "x", created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
+  ], []);
+
   const docsQ = useQuery({
     queryKey: ["driver", "documents", userId],
-    enabled: !!userId,
+    enabled: !!userId && !isExploring,
     queryFn: async (): Promise<DocRow[]> => {
       if (!userId) return [];
       const { data, error } = await supabase
@@ -114,7 +124,7 @@ export default function DriverDocumentsPage() {
     },
   });
 
-  const docs = docsQ.data ?? [];
+  const docs = isExploring ? SAMPLE_DOCS : (docsQ.data ?? []);
   const approved = useMemo(() => docs.filter((d) => d.status === "Approved").length, [docs]);
 
   return (
@@ -160,7 +170,7 @@ export default function DriverDocumentsPage() {
           {upload.isError ? (
             <p className="text-sm text-red-500">{upload.error instanceof Error ? upload.error.message : "Upload failed"}</p>
           ) : null}
-          <Button onClick={() => upload.mutate()} disabled={upload.isPending || !pendingFile}>
+          <Button onClick={() => { if (!guard("Submit a document")) return; upload.mutate(); }} disabled={upload.isPending || (!isExploring && !pendingFile)}>
             <Upload className="mr-1.5 h-4 w-4" /> {upload.isPending ? "Uploading…" : "Submit for review"}
           </Button>
         </CardContent>
@@ -171,7 +181,7 @@ export default function DriverDocumentsPage() {
         <span className="text-xs text-muted-foreground">{approved} approved</span>
       </div>
 
-      {docsQ.isLoading ? (
+      {!isExploring && docsQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : docs.length === 0 ? (
         <Card>

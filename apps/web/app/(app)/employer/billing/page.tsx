@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface InvoiceRow {
   invoice_id: string;
@@ -36,10 +37,13 @@ interface CompanyBilling {
 export default function EmployerBillingPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
-  const [companyId, setCompanyId] = useState<string | null>(null);
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
+  const [companyId, setCompanyId] = useState<string | null>(isExploring ? "explore-company" : null);
 
   // Load active company (first active membership)
   useEffect(() => {
+    if (isExploring) return;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -48,11 +52,19 @@ export default function EmployerBillingPage() {
         .eq("user_id", user.id).eq("status", "Active").limit(1).maybeSingle();
       setCompanyId((data as { company_id: string } | null)?.company_id ?? null);
     })();
-  }, [supabase]);
+  }, [supabase, isExploring]);
+
+  const SAMPLE_BILLING: CompanyBilling = {
+    id: "explore-company", billing_contact_name: "Alex Morgan", billing_email: "billing@previewco.com", billing_phone: "+1 604 555 0177", billing_address: "4000 Still Creek Ave, Burnaby, BC", billing_mode: "ManualInvoice", payment_terms_days: 14, billing_setup_completed_at: new Date(Date.now() - 86400000 * 60).toISOString(),
+  };
+  const SAMPLE_INVOICES: InvoiceRow[] = [
+    { invoice_id: "ex-ei-1", employer_company_id: "explore-company", invoice_number: "EMP-2041", status: "Paid", subtotal_amount: 1536, total_amount: 1720, currency: "CAD", due_date: null, issued_at: new Date(Date.now() - 86400000 * 18).toISOString(), paid_at: new Date(Date.now() - 86400000 * 10).toISOString() },
+    { invoice_id: "ex-ei-2", employer_company_id: "explore-company", invoice_number: "EMP-2058", status: "Issued", subtotal_amount: 992, total_amount: 1111, currency: "CAD", due_date: new Date(Date.now() + 86400000 * 8).toISOString().slice(0, 10), issued_at: new Date(Date.now() - 86400000 * 3).toISOString(), paid_at: null },
+  ];
 
   const companyQ = useQuery({
     queryKey: ["employer", "company-billing", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async (): Promise<CompanyBilling | null> => {
       const { data, error } = await supabase
         .from("companies")
@@ -66,7 +78,7 @@ export default function EmployerBillingPage() {
 
   const invoicesQ = useQuery({
     queryKey: ["employer", "invoices", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async (): Promise<InvoiceRow[]> => {
       const { data, error } = await supabase
         .from("employer_billing_overview")
@@ -86,6 +98,8 @@ export default function EmployerBillingPage() {
   const [mode, setMode] = useState<"ManualInvoice" | "CardOnFile" | "StripeCheckout">("ManualInvoice");
   const [terms, setTerms] = useState("14");
   const [editing, setEditing] = useState(false);
+
+  const billingData = isExploring ? SAMPLE_BILLING : companyQ.data;
 
   useEffect(() => {
     if (!companyQ.data) return;
@@ -132,8 +146,8 @@ export default function EmployerBillingPage() {
     onError: (e: unknown) => alert(e instanceof Error ? e.message : "Failed to start checkout"),
   });
 
-  const setup = Boolean(companyQ.data?.billing_setup_completed_at);
-  const invoices = invoicesQ.data ?? [];
+  const setup = Boolean(billingData?.billing_setup_completed_at);
+  const invoices = isExploring ? SAMPLE_INVOICES : (invoicesQ.data ?? []);
   const unpaid = invoices.filter((i) => i.status !== "Paid" && i.status !== "Void");
   const unpaidTotal = unpaid.reduce((s, i) => s + i.total_amount, 0);
 
@@ -164,16 +178,16 @@ export default function EmployerBillingPage() {
             <>
               {setup ? (
                 <div className="grid gap-2 text-sm sm:grid-cols-2">
-                  <div><span className="text-muted-foreground">Contact: </span>{companyQ.data?.billing_contact_name}</div>
-                  <div><span className="text-muted-foreground">Email: </span>{companyQ.data?.billing_email}</div>
-                  <div><span className="text-muted-foreground">Phone: </span>{companyQ.data?.billing_phone ?? "—"}</div>
-                  <div><span className="text-muted-foreground">Mode: </span>{companyQ.data?.billing_mode}</div>
-                  <div><span className="text-muted-foreground">Terms: </span>Net {companyQ.data?.payment_terms_days ?? 14} days</div>
+                  <div><span className="text-muted-foreground">Contact: </span>{billingData?.billing_contact_name}</div>
+                  <div><span className="text-muted-foreground">Email: </span>{billingData?.billing_email}</div>
+                  <div><span className="text-muted-foreground">Phone: </span>{billingData?.billing_phone ?? "—"}</div>
+                  <div><span className="text-muted-foreground">Mode: </span>{billingData?.billing_mode}</div>
+                  <div><span className="text-muted-foreground">Terms: </span>Net {billingData?.payment_terms_days ?? 14} days</div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">No billing details on file.</p>
               )}
-              <Button size="sm" variant={setup ? "outline" : "default"} onClick={() => setEditing(true)}>
+              <Button size="sm" variant={setup ? "outline" : "default"} onClick={() => { if (!guard("Set up billing")) return; setEditing(true); }}>
                 {setup ? "Edit billing details" : "Set up billing"}
               </Button>
             </>
@@ -198,7 +212,7 @@ export default function EmployerBillingPage() {
               <div className="space-y-1.5"><Label className="text-xs">Payment terms (days)</Label><Input type="number" min={0} max={90} value={terms} onChange={(e) => setTerms(e.target.value)} /></div>
               {saveSetup.error && <p className="col-span-full text-xs text-destructive">{(saveSetup.error as Error).message}</p>}
               <div className="col-span-full flex gap-2">
-                <Button size="sm" disabled={saveSetup.isPending} onClick={() => saveSetup.mutate()}>{saveSetup.isPending ? "Saving…" : "Save"}</Button>
+                <Button size="sm" disabled={saveSetup.isPending} onClick={() => { if (!guard("Save billing details")) return; saveSetup.mutate(); }}>{saveSetup.isPending ? "Saving…" : "Save"}</Button>
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
               </div>
             </div>
@@ -228,7 +242,7 @@ export default function EmployerBillingPage() {
           <CardDescription>Issued when you confirm worker hours after a shift.</CardDescription>
         </CardHeader>
         <CardContent>
-          {invoicesQ.isLoading ? (
+          {!isExploring && invoicesQ.isLoading ? (
             <p className="py-6 text-sm text-muted-foreground">Loading…</p>
           ) : invoices.length === 0 ? (
             <p className="py-6 text-sm text-muted-foreground">No invoices yet.</p>
@@ -248,8 +262,8 @@ export default function EmployerBillingPage() {
                     <Badge variant={inv.status === "Paid" ? "success" : inv.status === "Overdue" ? "destructive" : inv.status === "Void" ? "secondary" : "warning"}>
                       {inv.status}
                     </Badge>
-                    {inv.status !== "Paid" && inv.status !== "Void" && companyQ.data?.billing_mode !== "ManualInvoice" && (
-                      <Button size="sm" disabled={payInvoice.isPending} onClick={() => payInvoice.mutate(inv.invoice_id)}>
+                    {inv.status !== "Paid" && inv.status !== "Void" && billingData?.billing_mode !== "ManualInvoice" && (
+                      <Button size="sm" disabled={payInvoice.isPending} onClick={() => { if (!guard("Pay this invoice")) return; payInvoice.mutate(inv.invoice_id); }}>
                         Pay
                       </Button>
                     )}
@@ -258,7 +272,7 @@ export default function EmployerBillingPage() {
               ))}
             </ul>
           )}
-          {companyQ.data?.billing_mode === "ManualInvoice" && unpaid.length > 0 && (
+          {billingData?.billing_mode === "ManualInvoice" && unpaid.length > 0 && (
             <p className="mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               You are on manual invoicing. Pay according to the invoice instructions; an admin will record receipt and mark it paid.
             </p>

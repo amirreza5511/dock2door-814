@@ -9,6 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Inbox, Send, MapPin, Clock, Building2 } from "lucide-react";
 import { subcategoryLabel } from "@/lib/serviceMarketplace";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_INCOMING: JobRow[] = [
+  { id: "ex-mj-1", service_id: "ex-ml-1", customer_company_id: "c1", location_address: "1200 Cliveden Ave", location_city: "Delta", duration_hours: 4, total_price: 880, status: "Requested", quote_status: "requested", quoted_amount: null, service_listings: { company_id: "explore-company", title: "Toyota 5,000 lb Forklift", subcategory: "forklift", company: { name: "Preview Logistics Co." } }, customer: { name: "Harbour Freight Ltd." } },
+  { id: "ex-mj-2", service_id: "ex-ml-2", customer_company_id: "c2", location_address: "88 Glacier St", location_city: "Coquitlam", duration_hours: 3, total_price: 435, status: "Accepted", quote_status: "accepted", quoted_amount: 435, service_listings: { company_id: "explore-company", title: "Mobile Reefer & Trailer Repair", subcategory: "reefer_repair", company: { name: "Preview Logistics Co." } }, customer: { name: "Annacis Island Distribution" } },
+];
+const SAMPLE_SENT: JobRow[] = [
+  { id: "ex-mj-3", service_id: "ex-ext-1", customer_company_id: "explore-company", location_address: "4000 Still Creek Ave", location_city: "Burnaby", duration_hours: 6, total_price: 1080, status: "Scheduled", quote_status: "quoted", quoted_amount: 1080, service_listings: { company_id: "p1", title: "Operated Crane — 20t", subcategory: "crane", company: { name: "Skyline Crane Co." } }, customer: { name: "Preview Logistics Co." } },
+];
 
 interface JobRow {
   id: string;
@@ -43,10 +52,12 @@ type Tab = "incoming" | "sent";
 
 export default function MarketplaceRequestsPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
   const [tab, setTab] = useState<Tab>("incoming");
 
   const dataQ = useQuery({
     queryKey: ["marketplace", "requests"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { incoming: [] as JobRow[], sent: [] as JobRow[] };
@@ -90,8 +101,8 @@ export default function MarketplaceRequestsPage() {
     },
   });
 
-  const incoming = useMemo(() => dataQ.data?.incoming ?? [], [dataQ.data]);
-  const sent = useMemo(() => dataQ.data?.sent ?? [], [dataQ.data]);
+  const incoming = useMemo(() => (isExploring ? SAMPLE_INCOMING : dataQ.data?.incoming ?? []), [dataQ.data, isExploring]);
+  const sent = useMemo(() => (isExploring ? SAMPLE_SENT : dataQ.data?.sent ?? []), [dataQ.data, isExploring]);
   const rows = tab === "incoming" ? incoming : sent;
 
   const titleFor = (j: JobRow) =>
@@ -125,9 +136,9 @@ export default function MarketplaceRequestsPage() {
         </Button>
       </div>
 
-      {dataQ.isLoading ? (
+      {!isExploring && dataQ.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Loading…</p>
-      ) : dataQ.isError ? (
+      ) : !isExploring && dataQ.isError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {(dataQ.error as Error).message}
         </div>

@@ -7,6 +7,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
+import { useExplore } from "@/lib/explore-store";
+
+const SAMPLE_RECEIPTS: ReceiptRow[] = [
+  { id: "ex-rcpt-0001aa", status: "Receiving", expected_at: new Date(Date.now() - 3600000 * 2).toISOString(), arrived_at: new Date(Date.now() - 3600000).toISOString(), created_at: new Date(Date.now() - 3600000 * 3).toISOString() },
+  { id: "ex-rcpt-0002bb", status: "Expected", expected_at: new Date(Date.now() + 3600000 * 6).toISOString(), arrived_at: null, created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+  { id: "ex-rcpt-0003cc", status: "Completed", expected_at: new Date(Date.now() - 86400000).toISOString(), arrived_at: new Date(Date.now() - 86400000).toISOString(), created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
+];
+const SAMPLE_ZONES = [
+  { zone: "Receiving dock", count: 8 },
+  { zone: "Bulk storage", count: 42 },
+  { zone: "Pick faces", count: 96 },
+  { zone: "Cold room", count: 14 },
+];
+const SAMPLE_MOVEMENTS = [
+  { id: "ex-mv-1", kind: "receive", quantity: 120, reference_kind: "ASN", created_at: new Date(Date.now() - 3600000).toISOString() },
+  { id: "ex-mv-2", kind: "pick", quantity: 18, reference_kind: "Order", created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
+  { id: "ex-mv-3", kind: "adjust", quantity: -4, reference_kind: "CycleCount", created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+  { id: "ex-mv-4", kind: "transfer", quantity: 30, reference_kind: "Move", created_at: new Date(Date.now() - 86400000).toISOString() },
+];
 
 interface ReceiptRow {
   id: string;
@@ -40,9 +59,11 @@ const STATIONS = [
 
 export default function WarehouseWMSPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
 
   const receiptsQ = useQuery({
     queryKey: ["warehouse", "wms", "receipts"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_receipts")
@@ -56,6 +77,7 @@ export default function WarehouseWMSPage() {
 
   const stockQ = useQuery({
     queryKey: ["warehouse", "wms", "stock-summary"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("warehouse_locations")
@@ -74,6 +96,7 @@ export default function WarehouseWMSPage() {
 
   const movementsQ = useQuery({
     queryKey: ["warehouse", "wms", "recent-movements"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_movements")
@@ -84,6 +107,10 @@ export default function WarehouseWMSPage() {
       return (data ?? []) as { id: string; kind: string; quantity: number; reference_kind: string; created_at: string }[];
     },
   });
+
+  const receipts = isExploring ? SAMPLE_RECEIPTS : (receiptsQ.data ?? []);
+  const zones = isExploring ? SAMPLE_ZONES : (stockQ.data ?? []);
+  const movements = isExploring ? SAMPLE_MOVEMENTS : (movementsQ.data ?? []);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -120,13 +147,13 @@ export default function WarehouseWMSPage() {
             <CardDescription>Latest inbound inventory receipts</CardDescription>
           </CardHeader>
           <CardContent>
-            {receiptsQ.isLoading ? (
+            {!isExploring && receiptsQ.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (receiptsQ.data ?? []).length === 0 ? (
+            ) : receipts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No receipts yet.</p>
             ) : (
               <div className="space-y-2">
-                {(receiptsQ.data ?? []).map((r) => (
+                {receipts.map((r) => (
                   <div key={r.id} className="flex items-center justify-between rounded border px-3 py-2">
                     <div>
                       <p className="text-sm font-mono">{r.id.slice(0, 8)}…</p>
@@ -154,13 +181,13 @@ export default function WarehouseWMSPage() {
             <CardDescription>Location count by zone</CardDescription>
           </CardHeader>
           <CardContent>
-            {stockQ.isLoading ? (
+            {!isExploring && stockQ.isLoading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
-            ) : (stockQ.data ?? []).length === 0 ? (
+            ) : zones.length === 0 ? (
               <p className="text-sm text-muted-foreground">No zones configured yet.</p>
             ) : (
               <div className="space-y-2">
-                {(stockQ.data ?? []).map((z) => (
+                {zones.map((z) => (
                   <div key={z.zone} className="flex items-center justify-between rounded border px-3 py-2">
                     <span className="text-sm font-medium">{z.zone}</span>
                     <Badge variant="secondary">{z.count} locations</Badge>
@@ -184,13 +211,13 @@ export default function WarehouseWMSPage() {
           <CardDescription>Latest ledger entries across all operations</CardDescription>
         </CardHeader>
         <CardContent>
-          {movementsQ.isLoading ? (
+          {!isExploring && movementsQ.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : (movementsQ.data ?? []).length === 0 ? (
+          ) : movements.length === 0 ? (
             <p className="text-sm text-muted-foreground">No movements recorded yet.</p>
           ) : (
             <div className="divide-y">
-              {(movementsQ.data ?? []).map((m) => (
+              {movements.map((m) => (
                 <div key={m.id} className="flex items-center justify-between py-2">
                   <div>
                     <Badge variant="secondary" className="capitalize mr-2">{m.kind}</Badge>

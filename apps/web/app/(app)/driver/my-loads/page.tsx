@@ -24,6 +24,13 @@ import {
   LOAD_STATUS_FLOW,
   type LoadRow,
 } from "@/lib/hooks/use-loads";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+
+const SAMPLE_TRIPS = [
+  { id: "ex-trip-1", vehicle_type: "FiveTon", cargo_type: "Pallet", status: "EnRoute", pickup_address: "Richmond, BC", pickup_city: "Richmond", dropoff_address: "Surrey, BC", dropoff_city: "Surrey", pickup_lat: 49.1666, pickup_lng: -123.1336, dropoff_lat: 49.1913, dropoff_lng: -122.849, driver_lat: 49.178, driver_lng: -123.02, distance_km: 32, total_price: 520, picked_up_at: new Date(Date.now() - 3600000).toISOString(), delivered_at: null, recipient_phone: "+1 604 555 0142", recipient_name: "Harbour Freight Ltd." },
+  { id: "ex-trip-2", vehicle_type: "CargoVan", cargo_type: "Box", status: "Accepted", pickup_address: "Vancouver, BC", pickup_city: "Vancouver", dropoff_address: "Burnaby, BC", dropoff_city: "Burnaby", pickup_lat: 49.2827, pickup_lng: -123.1207, dropoff_lat: 49.2488, dropoff_lng: -122.9805, distance_km: 14, total_price: 180, picked_up_at: null, delivered_at: null },
+  { id: "ex-trip-3", vehicle_type: "FiveTon", cargo_type: "Pallet", status: "Delivered", pickup_address: "Delta, BC", pickup_city: "Delta", dropoff_address: "North Vancouver, BC", dropoff_city: "North Vancouver", distance_km: 41, total_price: 310, picked_up_at: new Date(Date.now() - 86400000).toISOString(), delivered_at: new Date(Date.now() - 82800000).toISOString(), receiver_name: "J. Tran" },
+] as unknown as LoadRow[];
 
 const FILTERS = ["All", "Active", "Delivered"] as const;
 
@@ -33,6 +40,8 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 export default function DriverMyLoadsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const trips = useMyTrips();
   const advance = useAdvanceLoad();
   const scanPiece = useScanPiece();
@@ -52,20 +61,20 @@ export default function DriverMyLoadsPage() {
   const sigRef = useRef<SignaturePadHandle>(null);
 
   const rows = useMemo<LoadRow[]>(() => {
-    const all = trips.data ?? [];
+    const all = isExploring ? SAMPLE_TRIPS : (trips.data ?? []);
     if (filter === "Active") return all.filter((l) => ["Accepted", "EnRoute", "Arrived"].includes(l.status));
     if (filter === "Delivered") return all.filter((l) => l.status === "Delivered");
     return all;
-  }, [trips.data, filter]);
+  }, [trips.data, filter, isExploring]);
 
   // The single load the driver is actively navigating: prefer the furthest-along
   // active trip (Arrived → EnRoute → Accepted), matching the mobile nav card.
   const navLoad = useMemo<LoadRow | null>(() => {
-    const all = trips.data ?? [];
+    const all = isExploring ? SAMPLE_TRIPS : (trips.data ?? []);
     const rank: Record<string, number> = { Arrived: 3, EnRoute: 2, Accepted: 1 };
     const active = all.filter((l) => rank[l.status]).sort((a, b) => rank[b.status] - rank[a.status]);
     return active[0] ?? null;
-  }, [trips.data]);
+  }, [trips.data, isExploring]);
 
   const handleScanned = (barcode: string) => {
     scanPiece.mutate(barcode, {
@@ -87,6 +96,7 @@ export default function DriverMyLoadsPage() {
   };
 
   const openProof = (load: LoadRow, nextStatus: string, kind: "pickup" | "delivery") => {
+    if (!guard("Update this trip")) return;
     setProof({ load, nextStatus, kind });
     onPickPhoto(null);
     setReceiverName("");
@@ -152,7 +162,7 @@ export default function DriverMyLoadsPage() {
 
       {navLoad && <DriverNavCard load={navLoad} advance={advance} openProof={openProof} />}
 
-      {trips.isLoading ? (
+      {!isExploring && trips.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : rows.length === 0 ? (
         <Card>
@@ -181,7 +191,7 @@ export default function DriverMyLoadsPage() {
 
                   {isPickup && (
                     <button
-                      onClick={() => { setScanFor(l); setScanState({ scanned: 0, total: 0 }); }}
+                      onClick={() => { if (!guard("Scan piece labels")) return; setScanFor(l); setScanState({ scanned: 0, total: 0 }); }}
                       className="flex w-full items-center gap-3 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2.5 text-left"
                     >
                       <ScanLine className="h-4 w-4 text-primary" />
@@ -197,7 +207,7 @@ export default function DriverMyLoadsPage() {
                     {flow && (
                       <Button
                         size="sm"
-                        onClick={() => (isPickup || isDelivery) ? openProof(l, flow.next, isDelivery ? "delivery" : "pickup") : void advance.mutateAsync({ id: l.id, status: flow.next })}
+                        onClick={() => { if (!(isPickup || isDelivery) && !guard(flow.label)) return; (isPickup || isDelivery) ? openProof(l, flow.next, isDelivery ? "delivery" : "pickup") : void advance.mutateAsync({ id: l.id, status: flow.next }); }}
                         disabled={busy}
                       >
                         <ArrowRight className="mr-2 h-4 w-4" />

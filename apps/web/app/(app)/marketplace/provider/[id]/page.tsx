@@ -11,6 +11,16 @@ import { Building2, MapPin, Star } from "lucide-react";
 import {
   serviceTypeLabel, subcategoryLabel, type ServiceType,
 } from "@/lib/serviceMarketplace";
+import { useExplore } from "@/lib/explore-store";
+
+function sampleProvider() {
+  const listings: Listing[] = [
+    { id: "ex-pl-1", service_type: "equipment_rental", subcategory: "forklift", title: "Toyota 5,000 lb Forklift", description: "Well-maintained LPG forklift, operator optional. Daily or weekly.", hourly_rate: 35, per_job_rate: null, daily_rate: 180, weekly_rate: 750, cargo_rate_percent: null, min_premium: null, negotiable: false },
+    { id: "ex-pl-2", service_type: "mobile_repair", subcategory: "reefer_repair", title: "Mobile Reefer & Trailer Repair", description: "On-site reefer, trailer and forklift repair, 24/7.", hourly_rate: 145, per_job_rate: null, daily_rate: null, weekly_rate: null, cargo_rate_percent: null, min_premium: null, negotiable: true },
+    { id: "ex-pl-3", service_type: "service", subcategory: "customs_brokerage", title: "Customs Clearance", description: "PARS/PAPS, HS classification, duty & tax remittance.", hourly_rate: 120, per_job_rate: 450, daily_rate: null, weekly_rate: null, cargo_rate_percent: null, min_premium: null, negotiable: false },
+  ];
+  return { company: { id: "explore-company", name: "Preview Logistics Co.", city: "Vancouver" }, listings, rating: 4.8, reviewCount: 24 };
+}
 
 interface Listing {
   id: string;
@@ -54,11 +64,13 @@ function priceLabel(l: Listing): string {
 
 export default function ProviderProfilePage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
   const params = useParams<{ id: string }>();
   const companyId = params.id;
 
   const profileQ = useQuery({
     queryKey: ["marketplace", "provider", companyId],
+    enabled: !isExploring,
     queryFn: async () => {
       const [{ data: company }, { data: listings }, { data: reviews }] = await Promise.all([
         supabase.from("companies").select("id,name,city").eq("id", companyId).maybeSingle(),
@@ -82,12 +94,12 @@ export default function ProviderProfilePage() {
     },
   });
 
-  const data = profileQ.data;
+  const data = isExploring ? sampleProvider() : profileQ.data;
   const listings = useMemo(() => data?.listings ?? [], [data]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      {profileQ.isLoading ? (
+      {!isExploring && profileQ.isLoading ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Loading provider…</p>
       ) : !data?.company ? (
         <p className="py-16 text-center text-sm text-muted-foreground">Provider not found.</p>

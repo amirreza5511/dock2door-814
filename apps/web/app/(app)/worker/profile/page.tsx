@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, MapPin, Star, ShieldCheck } from "lucide-react";
 import { SKILL_GROUPS, ALL_SKILL_IDS, type SkillId } from "@/lib/skills";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 type Skill = SkillId;
 
@@ -56,12 +57,18 @@ interface PrivateInfoRow {
   bank_account_holder_name: string | null;
 }
 
+const SAMPLE_PROFILE: WorkerProfileRow = {
+  id: "ex-wp-1", user_id: "explore-user", display_name: "Alex Morgan", bio: "Reliable warehouse generalist with forklift and reach-truck experience. Comfortable with fast-paced pick/pack environments.", skills: ["forklift", "general_labour"], coverage_cities: ["Vancouver", "Burnaby", "Richmond"], hourly_expectation: 26, verified: true, status: "Active", tagline: "Certified forklift operator", phone: "+1 604 555 0199", languages: ["English", "Spanish"], experience_years: 5, transportation: "Own vehicle", emergency_contact_name: "J. Morgan", emergency_contact_phone: "+1 604 555 0111", references_text: "Available on request", work_history: "Preview Logistics Co. (2022–present), Harbour Freight Ltd. (2019–2022)", education: "Forklift certification, WHMIS", preferred_shift: "Day", linkedin_url: "", website_url: "" };
+
 export default function WorkerProfilePage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const profileQuery = useQuery({
     queryKey: ["worker", "profile"],
+    enabled: !isExploring,
     queryFn: async (): Promise<WorkerProfileRow | null> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return null;
@@ -79,6 +86,7 @@ export default function WorkerProfilePage() {
 
   const privateQuery = useQuery({
     queryKey: ["worker", "private-info"],
+    enabled: !isExploring,
     queryFn: async (): Promise<PrivateInfoRow | null> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return null;
@@ -95,6 +103,7 @@ export default function WorkerProfilePage() {
 
   const ratingQuery = useQuery({
     queryKey: ["worker", "rating-summary"],
+    enabled: !isExploring,
     queryFn: async (): Promise<{ count: number; avg_rating: number } | null> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return null;
@@ -108,7 +117,7 @@ export default function WorkerProfilePage() {
     },
   });
 
-  const p = profileQuery.data;
+  const p = isExploring ? SAMPLE_PROFILE : profileQuery.data;
 
   // ── Public/profile edit state ─────────────────────────────────────
   const [bio, setBio] = useState("");
@@ -260,9 +269,9 @@ export default function WorkerProfilePage() {
   const toggleSkill = (s: Skill) =>
     setSkills((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
 
-  const rating = ratingQuery.data;
+  const rating = isExploring ? { count: 24, avg_rating: 4.8 } : ratingQuery.data;
 
-  if (profileQuery.isLoading) {
+  if (!isExploring && profileQuery.isLoading) {
     return <div className="mx-auto max-w-3xl py-16 text-center text-sm text-muted-foreground">Loading your profile…</div>;
   }
 
@@ -434,7 +443,7 @@ export default function WorkerProfilePage() {
             <Textarea rows={2} value={references} onChange={(e) => setReferences(e.target.value)} placeholder="Name, role, company, phone" />
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={() => saveProfile.mutate()} disabled={saveProfile.isPending}>
+            <Button onClick={() => { if (!guard("Save your profile")) return; saveProfile.mutate(); }} disabled={saveProfile.isPending}>
               {saveProfile.isPending ? "Saving…" : "Save public profile"}
             </Button>
             {saveProfile.isSuccess && (
@@ -505,7 +514,7 @@ export default function WorkerProfilePage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={() => savePrivate.mutate()} disabled={savePrivate.isPending}>
+            <Button onClick={() => { if (!guard("Save your information")) return; savePrivate.mutate(); }} disabled={savePrivate.isPending}>
               {savePrivate.isPending ? "Saving…" : "Save private info"}
             </Button>
             {savePrivate.isSuccess && (
