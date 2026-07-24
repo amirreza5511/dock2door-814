@@ -31,6 +31,10 @@ const SUPABASE_ANON_KEY =
   "sb_publishable_qHc_d78l_CCiTI-KBrlo_w_bz2eh8wz";
 
 export async function middleware(request: NextRequest) {
+  // Expose the pathname to Server Components (the (app) layout uses it to
+  // allow guests into the public Help Center + AI assistant, like the app).
+  request.headers.set("x-pathname", request.nextUrl.pathname);
+
   // We must create a new response object that mirrors the request cookies so
   // that the cookie-refresh writes land on the SAME response object we return.
   let supabaseResponse = NextResponse.next({ request });
@@ -90,7 +94,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/directory") ||
     pathname.startsWith("/ship") ||
     pathname.startsWith("/international") ||
-    pathname.startsWith("/ground-freight");
+    pathname.startsWith("/ground-freight") ||
+    // Help Center + AI assistant are guest-accessible, same as the mobile app.
+    pathname.startsWith("/help");
 
   // Admin & super-admin areas are NEVER explorable — real privileged surfaces.
   const isPrivilegedRoute =

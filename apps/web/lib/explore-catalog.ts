@@ -35,12 +35,19 @@ export interface DomainFeature {
   desc: string;
 }
 
+export interface DomainBullet {
+  label: string;
+  sub: string;
+}
+
 export interface DomainDef {
   key: Domain;
   badge: string;
   title: string;
   tagline: string;
   desc: string;
+  /** Short bullets shown on the landing card — mirrors the mobile app landing. */
+  bullets: DomainBullet[];
   features: DomainFeature[];
   roles: ExploreRole[];
 }
@@ -52,6 +59,11 @@ export const DOMAINS: DomainDef[] = [
     title: "Labour",
     tagline: "Staffing, on demand",
     desc: "Connect the people who need work with the businesses who need crews.",
+    bullets: [
+      { label: "Employers", sub: "Post & fill shifts fast" },
+      { label: "Workers", sub: "Find shifts that fit you" },
+      { label: "Employment Agencies", sub: "Your workers & clients, our platform" },
+    ],
     features: [
       { title: "Post shifts in minutes", desc: "Set role, pay, time & location — get matched crews fast." },
       { title: "Find work that fits", desc: "Browse nearby shifts, apply in a tap, track your earnings." },
@@ -69,6 +81,11 @@ export const DOMAINS: DomainDef[] = [
     title: "Logistics & Warehousing",
     tagline: "Space & services in one place",
     desc: "Warehouse space, industrial services, trucking and fulfillment in one place.",
+    bullets: [
+      { label: "Warehouse Space", sub: "Dry · Chill · Frozen" },
+      { label: "Industrial Services", sub: "On-demand crews" },
+      { label: "Trucking & Fulfillment", sub: "Move and ship goods" },
+    ],
     features: [
       { title: "Book warehouse space", desc: "Dry, chilled or frozen — reserve pallets by the day or month." },
       { title: "Hire industrial services", desc: "On-demand crews for loading, sorting, kitting and more." },
@@ -87,6 +104,11 @@ export const DOMAINS: DomainDef[] = [
     title: "Freight & Delivery",
     tagline: "Uber for trucks",
     desc: "Post any delivery, from a single box to a full load. Owner-operators and fleet carriers grab and dispatch them.",
+    bullets: [
+      { label: "Shippers", sub: "Post loads — parcel to full truck" },
+      { label: "Owner-Operators", sub: "Bring your truck, accept loads" },
+      { label: "Fleet / Carrier Companies", sub: "Accept loads & dispatch drivers" },
+    ],
     features: [
       { title: "Post any delivery", desc: "From a single parcel to a full truckload — set pickup & drop-off." },
       { title: "Accept & deliver", desc: "Owner-operators grab loads that fit their route and truck." },
@@ -104,6 +126,12 @@ export const DOMAINS: DomainDef[] = [
     title: "Container Drayage",
     tagline: "Port to door, tracked live",
     desc: "Post import/export container orders. Drayage companies claim them, dispatch drivers, and track containers live on a map.",
+    bullets: [
+      { label: "Freight Forwarders", sub: "Post import/export container orders" },
+      { label: "Drayage Companies", sub: "Claim orders, dispatch & track live" },
+      { label: "Drivers", sub: "Receive work orders & advance moves" },
+      { label: "Customs Brokers", sub: "Docs, quotes & clearance on-platform" },
+    ],
     features: [
       { title: "Post container orders", desc: "Import or export — with port, terminal and appointment details." },
       { title: "Claim & dispatch", desc: "Drayage companies claim orders and assign container drivers." },
@@ -121,6 +149,12 @@ export const DOMAINS: DomainDef[] = [
     title: "Rentals & Services",
     tagline: "Rent, repair & insure",
     desc: "Rent equipment you operate, hire an operated crane service, book mobile repair techs, and insure your cargo.",
+    bullets: [
+      { label: "Equipment Rental", sub: "Forklifts, lifts & gear you operate" },
+      { label: "Crane Service", sub: "Crane + operator comes & does the lift" },
+      { label: "Mobile Repair & Services", sub: "On-site techs & labour crews" },
+      { label: "Cargo Insurance", sub: "Insure freight & shipments" },
+    ],
     features: [
       { title: "Rent equipment", desc: "Forklifts, lifts and heavy gear you operate yourself." },
       { title: "Book mobile repair", desc: "On-site technicians and labour crews, dispatched to you." },
@@ -139,6 +173,11 @@ export const DOMAINS: DomainDef[] = [
     title: "Global Freight",
     tagline: "One request, competing quotes",
     desc: "International shipping exchange. Post one freight request — air, ocean, truck, FCL or LCL — and receive competing quotes worldwide.",
+    bullets: [
+      { label: "Importers / Exporters", sub: "One request, competing quotes" },
+      { label: "Global Freight Forwarders", sub: "Quote every mode worldwide" },
+      { label: "Carriers / Shipping Lines", sub: "Quote capacity directly" },
+    ],
     features: [
       { title: "One quote request", desc: "Air, ocean, truck, FCL or LCL — describe it once." },
       { title: "Competing quotes", desc: "Forwarders and carriers worldwide bid on your shipment." },

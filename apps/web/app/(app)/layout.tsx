@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getCurrentSessionContext } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
@@ -22,8 +22,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const exploreRole = (exploreRoleRaw as UserRole | null) ?? null;
   const exploreDomain = (exploreDomainRaw as Domain | null) ?? null;
 
+  // Help Center + AI assistant are open to guests (same as the mobile app).
+  const headerStore = await headers();
+  const pathname = headerStore.get("x-pathname") ?? "";
+  const isGuestHelp = pathname.startsWith("/help");
+
   // A real session always wins over explore mode.
-  if (!ctx.user && !exploreRole) redirect("/login");
+  if (!ctx.user && !exploreRole && !isGuestHelp) redirect("/login");
 
   const isExploring = !ctx.user && Boolean(exploreRole);
   const role = ctx.user ? ((ctx.role as UserRole | null) ?? null) : exploreRole;
