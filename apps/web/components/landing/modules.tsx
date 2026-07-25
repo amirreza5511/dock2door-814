@@ -8,11 +8,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Reveal } from "@/components/landing/reveal";
-import { DOMAINS, EXPLORE_ROLE_ROUTE, type Domain } from "@/lib/explore-catalog";
-import { startExploreCookie } from "@/lib/explore-store";
+import { DOMAINS, type Domain } from "@/lib/explore-catalog";
 import type { UserRole } from "@/lib/types";
 
 /** Icon + accent per domain — mirrors the mobile app landing cards. */
@@ -158,16 +156,6 @@ function HighlightCard({
  * LTL & FTL quotes, the "every role" grid and the directory card.
  */
 export function Modules() {
-  const router = useRouter();
-
-  /** Start explore mode as a role and jump straight into its dashboard. */
-  const exploreRole = (explore: { role: UserRole; domain: Domain }) => {
-    const route = EXPLORE_ROLE_ROUTE[explore.role];
-    if (!route) return;
-    startExploreCookie(explore.role, explore.domain);
-    router.push(route);
-  };
-
   return (
     <section id="platform" className="relative scroll-mt-8 overflow-hidden py-24">
       <div className="mx-auto max-w-7xl px-6">
@@ -350,11 +338,10 @@ export function Modules() {
           {ROLES.map((r, i) => (
             <Reveal key={r.role} delay={(i % 4) * 60}>
               {r.explore ? (
-                <button
-                  type="button"
-                  onClick={() => exploreRole(r.explore!)}
+                <a
+                  href={`/explore/start?role=${r.explore.role}&domain=${r.explore.domain}`}
                   data-testid={`role-card-${r.explore.role}`}
-                  className="group h-full w-full rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.06]"
+                  className="group block h-full w-full rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.06]"
                 >
                   <r.icon size={20} style={{ color: r.color }} />
                   <p className="mt-2 text-sm font-bold text-white">{r.role}</p>
@@ -362,7 +349,7 @@ export function Modules() {
                   <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ color: r.color }}>
                     Explore <ArrowRight size={11} />
                   </span>
-                </button>
+                </a>
               ) : (
                 <Link
                   href="/login"

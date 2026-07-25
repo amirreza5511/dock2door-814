@@ -2,11 +2,9 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { notFound, useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
 import { ChevronLeft, Compass, ArrowRight, Building2, CheckCircle2, UserPlus } from "lucide-react";
 import { DOMAIN_MAP, DOMAIN_ACCENT, EXPLORE_ROLE_ROUTE, type Domain } from "@/lib/explore-catalog";
-import { startExploreCookie } from "@/lib/explore-store";
-import type { UserRole } from "@/lib/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -14,17 +12,18 @@ const VALID: Domain[] = ["labour", "logistics", "freight", "drayage", "marketpla
 
 export default function DomainIntroPage({ params }: { params: Promise<{ domain: string }> }) {
   const { domain: domainParam } = use(params);
-  const router = useRouter();
   const domainKey = domainParam as Domain;
   if (!VALID.includes(domainKey)) notFound();
   const domain = DOMAIN_MAP[domainKey];
   const accent = DOMAIN_ACCENT[domain.key];
 
+  // Full navigation through the server route: the explore cookie is set
+  // SERVER-SIDE and the redirect lands on the dashboard with the cookie
+  // guaranteed present — no client cookie race, no bounce to /login.
   const exploreAs = (role: string) => {
     const route = EXPLORE_ROLE_ROUTE[role];
     if (!route) return;
-    startExploreCookie(role as UserRole, domainKey);
-    router.push(route);
+    window.location.assign(`/explore/start?role=${encodeURIComponent(role)}&domain=${encodeURIComponent(domainKey)}`);
   };
 
   return (
