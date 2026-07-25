@@ -8,9 +8,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { Reveal } from "@/components/landing/reveal";
-import { DOMAINS, type Domain } from "@/lib/explore-catalog";
+import { DOMAINS, EXPLORE_ROLE_ROUTE, type Domain } from "@/lib/explore-catalog";
+import { startExploreCookie } from "@/lib/explore-store";
+import type { UserRole } from "@/lib/types";
 
 /** Icon + accent per domain — mirrors the mobile app landing cards. */
 const DOMAIN_ICON: Record<Domain, LucideIcon> = {
@@ -59,25 +62,31 @@ const STATS: { label: string; value: string }[] = [
   { label: "Avg. Fill Time", value: "< 2h" },
 ];
 
-/** "Built for every role" grid — identical list to the mobile app landing. */
-const ROLES: { role: string; desc: string; icon: LucideIcon; color: string }[] = [
-  { role: "Customer", desc: "Book warehouse & services", icon: ShieldCheck, color: "#38bdf8" },
-  { role: "Warehouse Provider", desc: "List your storage space", icon: Warehouse, color: "#fb923c" },
-  { role: "Service Provider", desc: "Offer industrial services", icon: Wrench, color: "#34d399" },
-  { role: "Employer", desc: "Post and fill shifts fast", icon: Clock, color: "#fbbf24" },
-  { role: "Worker", desc: "Find shifts that fit you", icon: Users, color: "#a78bfa" },
-  { role: "Employment Agency", desc: "Your workers, our booking system", icon: UsersRound, color: "#a78bfa" },
-  { role: "Shipper", desc: "Post deliveries, any size", icon: PackageOpen, color: "#34d399" },
-  { role: "Owner-Operator", desc: "Own one truck, deliver loads", icon: Truck, color: "#34d399" },
-  { role: "Fleet / Carrier", desc: "Run a fleet & dispatch drivers", icon: Truck, color: "#34d399" },
-  { role: "Freight Forwarder", desc: "Post import/export containers", icon: Anchor, color: "#38bdf8" },
-  { role: "Drayage Company", desc: "Claim orders, dispatch & track", icon: Anchor, color: "#38bdf8" },
-  { role: "Customs Broker", desc: "Clear shipments through customs", icon: ShieldCheck, color: "#38bdf8" },
-  { role: "Container Driver", desc: "Receive work orders, move containers", icon: Truck, color: "#38bdf8" },
-  { role: "Crane / Equipment Co.", desc: "Rent out cranes & heavy gear", icon: Construction, color: "#fbbf24" },
-  { role: "Mobile Repair", desc: "Dispatch techs & crews on-site", icon: Hammer, color: "#a78bfa" },
-  { role: "Cargo Insurer", desc: "Insure freight & shipments", icon: ShieldCheck, color: "#fbbf24" },
-  { role: "Marketplace Buyer", desc: "Rent, repair & insure cargo", icon: Store, color: "#38bdf8" },
+/**
+ * "Built for every role" grid — identical list to the mobile app landing.
+ * Each card (except Admin) opens explore mode as that role, no account needed.
+ */
+const ROLES: {
+  role: string; desc: string; icon: LucideIcon; color: string;
+  explore?: { role: UserRole; domain: Domain };
+}[] = [
+  { role: "Customer", desc: "Book warehouse & services", icon: ShieldCheck, color: "#38bdf8", explore: { role: "Customer", domain: "logistics" } },
+  { role: "Warehouse Provider", desc: "List your storage space", icon: Warehouse, color: "#fb923c", explore: { role: "WarehouseProvider", domain: "logistics" } },
+  { role: "Service Provider", desc: "Offer industrial services", icon: Wrench, color: "#34d399", explore: { role: "ServiceProvider", domain: "logistics" } },
+  { role: "Employer", desc: "Post and fill shifts fast", icon: Clock, color: "#fbbf24", explore: { role: "Employer", domain: "labour" } },
+  { role: "Worker", desc: "Find shifts that fit you", icon: Users, color: "#a78bfa", explore: { role: "Worker", domain: "labour" } },
+  { role: "Employment Agency", desc: "Your workers, our booking system", icon: UsersRound, color: "#a78bfa", explore: { role: "EmploymentAgency", domain: "labour" } },
+  { role: "Shipper", desc: "Post deliveries, any size", icon: PackageOpen, color: "#34d399", explore: { role: "Shipper", domain: "freight" } },
+  { role: "Owner-Operator", desc: "Own one truck, deliver loads", icon: Truck, color: "#34d399", explore: { role: "Driver", domain: "freight" } },
+  { role: "Fleet / Carrier", desc: "Run a fleet & dispatch drivers", icon: Truck, color: "#34d399", explore: { role: "TruckingCompany", domain: "freight" } },
+  { role: "Freight Forwarder", desc: "Post import/export containers", icon: Anchor, color: "#38bdf8", explore: { role: "FreightForwarder", domain: "drayage" } },
+  { role: "Drayage Company", desc: "Claim orders, dispatch & track", icon: Anchor, color: "#38bdf8", explore: { role: "DrayageCompany", domain: "drayage" } },
+  { role: "Customs Broker", desc: "Clear shipments through customs", icon: ShieldCheck, color: "#38bdf8", explore: { role: "CustomsBroker", domain: "drayage" } },
+  { role: "Container Driver", desc: "Receive work orders, move containers", icon: Truck, color: "#38bdf8", explore: { role: "Driver", domain: "drayage" } },
+  { role: "Crane / Equipment Co.", desc: "Rent out cranes & heavy gear", icon: Construction, color: "#fbbf24", explore: { role: "EquipmentRentalCompany", domain: "marketplace" } },
+  { role: "Mobile Repair", desc: "Dispatch techs & crews on-site", icon: Hammer, color: "#a78bfa", explore: { role: "MobileRepairProvider", domain: "marketplace" } },
+  { role: "Cargo Insurer", desc: "Insure freight & shipments", icon: ShieldCheck, color: "#fbbf24", explore: { role: "CargoInsurer", domain: "marketplace" } },
+  { role: "Marketplace Buyer", desc: "Rent, repair & insure cargo", icon: Store, color: "#38bdf8", explore: { role: "MarketplaceBuyer", domain: "marketplace" } },
   { role: "Admin", desc: "Full platform control", icon: Star, color: "#f87171" },
 ];
 
@@ -149,6 +158,16 @@ function HighlightCard({
  * LTL & FTL quotes, the "every role" grid and the directory card.
  */
 export function Modules() {
+  const router = useRouter();
+
+  /** Start explore mode as a role and jump straight into its dashboard. */
+  const exploreRole = (explore: { role: UserRole; domain: Domain }) => {
+    const route = EXPLORE_ROLE_ROUTE[explore.role];
+    if (!route) return;
+    startExploreCookie(explore.role, explore.domain);
+    router.push(route);
+  };
+
   return (
     <section id="platform" className="relative scroll-mt-8 overflow-hidden py-24">
       <div className="mx-auto max-w-7xl px-6">
@@ -330,11 +349,30 @@ export function Modules() {
         <div className="mt-8 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
           {ROLES.map((r, i) => (
             <Reveal key={r.role} delay={(i % 4) * 60}>
-              <div className="h-full rounded-xl border border-white/10 bg-white/[0.03] p-3.5">
-                <r.icon size={20} style={{ color: r.color }} />
-                <p className="mt-2 text-sm font-bold text-white">{r.role}</p>
-                <p className="mt-0.5 text-xs text-white/55">{r.desc}</p>
-              </div>
+              {r.explore ? (
+                <button
+                  type="button"
+                  onClick={() => exploreRole(r.explore!)}
+                  data-testid={`role-card-${r.explore.role}`}
+                  className="group h-full w-full rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.06]"
+                >
+                  <r.icon size={20} style={{ color: r.color }} />
+                  <p className="mt-2 text-sm font-bold text-white">{r.role}</p>
+                  <p className="mt-0.5 text-xs text-white/55">{r.desc}</p>
+                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold opacity-0 transition-opacity duration-200 group-hover:opacity-100" style={{ color: r.color }}>
+                    Explore <ArrowRight size={11} />
+                  </span>
+                </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="block h-full rounded-xl border border-white/10 bg-white/[0.03] p-3.5 transition-colors hover:border-white/25"
+                >
+                  <r.icon size={20} style={{ color: r.color }} />
+                  <p className="mt-2 text-sm font-bold text-white">{r.role}</p>
+                  <p className="mt-0.5 text-xs text-white/55">{r.desc}</p>
+                </Link>
+              )}
             </Reveal>
           ))}
         </div>

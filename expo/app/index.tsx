@@ -14,8 +14,36 @@ import {
 } from 'lucide-react-native';
 import C from '@/constants/colors';
 import { DOMAINS } from '@/constants/domains';
+import { useExploreStore } from '@/store/explore';
+import type { UserRole } from '@/constants/types';
+import type { Domain } from '@/lib/access';
 
 const { width } = Dimensions.get('window');
+
+/** Landing role grid — each card (except Admin) opens explore mode as that role. */
+const ROLE_GRID: {
+  role: string; desc: string; icon: typeof ShieldCheck; color: string;
+  explore?: { role: UserRole; domain: Domain; route: string };
+}[] = [
+  { role: 'Customer', desc: 'Book warehouse & services', icon: ShieldCheck, color: C.blue, explore: { role: 'Customer', domain: 'logistics', route: '/customer' } },
+  { role: 'Warehouse Provider', desc: 'List your storage space', icon: Warehouse, color: C.accent, explore: { role: 'WarehouseProvider', domain: 'logistics', route: '/warehouse-provider' } },
+  { role: 'Service Provider', desc: 'Offer industrial services', icon: Wrench, color: C.green, explore: { role: 'ServiceProvider', domain: 'logistics', route: '/service-provider' } },
+  { role: 'Employer', desc: 'Post and fill shifts fast', icon: Clock, color: C.yellow, explore: { role: 'Employer', domain: 'labour', route: '/employer' } },
+  { role: 'Worker', desc: 'Find shifts that fit you', icon: Users, color: C.purple, explore: { role: 'Worker', domain: 'labour', route: '/worker' } },
+  { role: 'Employment Agency', desc: 'Your workers, our booking system', icon: UsersRound, color: C.purple, explore: { role: 'EmploymentAgency', domain: 'labour', route: '/agency' } },
+  { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green, explore: { role: 'Shipper', domain: 'freight', route: '/shipper' } },
+  { role: 'Owner-Operator', desc: 'Own one truck, deliver loads', icon: Truck, color: C.green, explore: { role: 'Driver', domain: 'freight', route: '/driver' } },
+  { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green, explore: { role: 'TruckingCompany', domain: 'freight', route: '/trucking-company' } },
+  { role: 'Freight Forwarder', desc: 'Post import/export containers', icon: Anchor, color: C.blue, explore: { role: 'FreightForwarder', domain: 'drayage', route: '/freight-forwarder' } },
+  { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue, explore: { role: 'DrayageCompany', domain: 'drayage', route: '/drayage-company' } },
+  { role: 'Customs Broker', desc: 'Clear shipments through customs', icon: ShieldCheck, color: C.blue, explore: { role: 'CustomsBroker', domain: 'drayage', route: '/customs-broker' } },
+  { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue, explore: { role: 'Driver', domain: 'drayage', route: '/driver' } },
+  { role: 'Crane / Equipment Co.', desc: 'Rent out cranes & heavy gear', icon: Construction, color: C.yellow, explore: { role: 'EquipmentRentalCompany', domain: 'marketplace', route: '/rental-company' } },
+  { role: 'Mobile Repair', desc: 'Dispatch techs & crews on-site', icon: Hammer, color: C.purple, explore: { role: 'MobileRepairProvider', domain: 'marketplace', route: '/repair-provider' } },
+  { role: 'Cargo Insurer', desc: 'Insure freight & shipments', icon: ShieldCheck, color: C.yellow, explore: { role: 'CargoInsurer', domain: 'marketplace', route: '/cargo-insurer' } },
+  { role: 'Marketplace Buyer', desc: 'Rent, repair & insure cargo', icon: Store, color: C.blue, explore: { role: 'MarketplaceBuyer', domain: 'marketplace', route: '/marketplace-buyer' } },
+  { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
+];
 
 const STATS = [
   { label: 'Pallet Spaces', value: '1,150+' },
@@ -29,6 +57,7 @@ const WORLDS = DOMAINS;
 export default function Landing() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const startExplore = useExploreStore((s) => s.startExplore);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -284,31 +313,25 @@ export default function Landing() {
           <Text style={styles.sectionTitle}>Every role in the{'\n'}supply chain.</Text>
 
           <View style={styles.rolesGrid}>
-            {[
-              { role: 'Customer', desc: 'Book warehouse & services', icon: ShieldCheck, color: C.blue },
-              { role: 'Warehouse Provider', desc: 'List your storage space', icon: Warehouse, color: C.accent },
-              { role: 'Service Provider', desc: 'Offer industrial services', icon: Wrench, color: C.green },
-              { role: 'Employer', desc: 'Post and fill shifts fast', icon: Clock, color: C.yellow },
-              { role: 'Worker', desc: 'Find shifts that fit you', icon: Users, color: C.purple },
-              { role: 'Employment Agency', desc: 'Your workers, our booking system', icon: UsersRound, color: C.purple },
-              { role: 'Shipper', desc: 'Post deliveries, any size', icon: PackageOpen, color: C.green },
-              { role: 'Owner-Operator', desc: 'Own one truck, deliver loads', icon: Truck, color: C.green },
-              { role: 'Fleet / Carrier', desc: 'Run a fleet & dispatch drivers', icon: Truck, color: C.green },
-              { role: 'Freight Forwarder', desc: 'Post import/export containers', icon: Anchor, color: C.blue },
-              { role: 'Drayage Company', desc: 'Claim orders, dispatch & track', icon: Anchor, color: C.blue },
-              { role: 'Customs Broker', desc: 'Clear shipments through customs', icon: ShieldCheck, color: C.blue },
-              { role: 'Container Driver', desc: 'Receive work orders, move containers', icon: Truck, color: C.blue },
-              { role: 'Crane / Equipment Co.', desc: 'Rent out cranes & heavy gear', icon: Construction, color: C.yellow },
-              { role: 'Mobile Repair', desc: 'Dispatch techs & crews on-site', icon: Hammer, color: C.purple },
-              { role: 'Cargo Insurer', desc: 'Insure freight & shipments', icon: ShieldCheck, color: C.yellow },
-              { role: 'Marketplace Buyer', desc: 'Rent, repair & insure cargo', icon: Store, color: C.blue },
-              { role: 'Admin', desc: 'Full platform control', icon: Star, color: C.red },
-            ].map((r) => (
-              <View key={r.role} style={styles.roleCard}>
+            {ROLE_GRID.map((r) => (
+              <TouchableOpacity
+                key={r.role}
+                style={styles.roleCard}
+                activeOpacity={0.8}
+                onPress={() => {
+                  if (r.explore) {
+                    startExplore(r.explore.role, r.explore.domain);
+                    router.push(r.explore.route as never);
+                  } else {
+                    router.push('/auth/login' as never);
+                  }
+                }}
+                testID={`role-card-${r.role}`}
+              >
                 <r.icon size={20} color={r.color} />
                 <Text style={styles.roleTitle}>{r.role}</Text>
                 <Text style={styles.roleDesc}>{r.desc}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
