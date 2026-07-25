@@ -11,6 +11,7 @@ import { News } from "@/components/landing/news";
 import { Spotlight } from "@/components/landing/spotlight";
 import { IntroReel } from "@/components/landing/intro-reel";
 import { CtaFooter } from "@/components/landing/cta-footer";
+import { AskAiFab } from "@/components/landing/ask-ai-fab";
 
 export default function LandingPage() {
   return (
@@ -46,6 +47,9 @@ export default function LandingPage() {
         <IntroReel />
         <CtaFooter />
       </div>
+
+      {/* Guest AI logistics assistant — same as the app's floating sparkle button */}
+      <AskAiFab />
     </main>
   );
 }

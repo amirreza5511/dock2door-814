@@ -46,7 +46,7 @@ export default function TruckingMessagesPage() {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(({ data }: { data: { user: { id: string } | null } }) => {
       if (data.user) setCurrentUserId(data.user.id);
     });
   }, [supabase]);

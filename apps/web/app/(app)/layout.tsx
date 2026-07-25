@@ -47,7 +47,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </div>
         <AutoWatchdog />
-        <AiFab />
+        <AiFab href={ctx.user ? "/copilot" : "/help/chat"} />
         <ExploreGate />
       </div>
     </ExploreProvider>

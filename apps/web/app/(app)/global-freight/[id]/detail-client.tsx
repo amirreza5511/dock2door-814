@@ -51,7 +51,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   const { isExploring } = useExplore();
   const guard = useActionGuard();
   const kind = freightRoleKind(role);
-  const isCustomer = kind === "customer" || (isExploring && kind !== "provider");
+  const isCustomer = kind === "customer" || (isExploring && kind !== "freight" && kind !== "ground");
   const [draft, setDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");

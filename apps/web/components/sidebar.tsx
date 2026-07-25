@@ -37,6 +37,7 @@ import {
   Ruler,
   Tag,
   Boxes,
+  Globe,
   ClipboardCheck,
   Megaphone,
   Sparkles,

@@ -259,7 +259,8 @@ export function Hero() {
         </div>
         <nav className="hidden items-center gap-8 md:flex">
           <a href="#how" className="text-sm font-medium text-white/70 transition hover:text-white">How it works</a>
-          <a href="#platform" className="text-sm font-medium text-white/70 transition hover:text-white">Platform</a>
+          <a href="#platform" className="text-sm font-medium text-white/70 transition hover:text-white">Explore worlds</a>
+          <a href="/help/chat" className="text-sm font-medium text-white/70 transition hover:text-white">AI assistant</a>
           <a href="#news" className="text-sm font-medium text-white/70 transition hover:text-white">News</a>
           <a href="#contact" className="text-sm font-medium text-white/70 transition hover:text-white">Contact</a>
         </nav>
@@ -316,10 +317,11 @@ export function Hero() {
             <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
           </a>
           <a
-            href="#how"
+            href="#platform"
+            data-testid="hero-explore"
             className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-7 py-3.5 text-sm font-medium text-white/90 backdrop-blur-md transition hover:border-white/30 hover:bg-white/10"
           >
-            See how it works
+            Explore any world — no account needed
           </a>
         </div>
 
