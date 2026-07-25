@@ -1,3 +1,4 @@
+import '@/lib/web-media-guard';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack, usePathname, useRootNavigationState, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';

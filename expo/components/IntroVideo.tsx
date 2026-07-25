@@ -67,7 +67,7 @@ export default function IntroVideo() {
     const onRejection = (e: PromiseRejectionEvent): void => {
       const reason = e?.reason as { message?: string } | string | undefined;
       const msg = String((typeof reason === 'object' ? reason?.message : reason) ?? '');
-      if (/play\(\) request was interrupted|interrupted by a new load request|interrupted because the media was paused/i.test(msg)) {
+      if (/play\(\) request was interrupted|interrupted by a new load request|media was paused|paused to save power|background media was paused/i.test(msg)) {
         e.preventDefault();
       }
     };
