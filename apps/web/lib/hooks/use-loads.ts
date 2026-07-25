@@ -149,11 +149,12 @@ async function currentUserId(): Promise<string> {
 }
 
 /** Loads posted by the current user (Shipper). */
-export function useMyPostedLoads() {
+export function useMyPostedLoads(options?: { enabled?: boolean }) {
   const supabase = getBrowserSupabase();
   return useQuery({
     queryKey: ["loads", "posted"],
     refetchInterval: 20000,
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<LoadRow[]> => {
       const uid = await currentUserId();
       const { data, error } = await supabase
@@ -170,11 +171,12 @@ export function useMyPostedLoads() {
 }
 
 /** Open loads on the marketplace (Driver). Optionally filtered by vehicle types. */
-export function useOpenLoads(vehicleTypes?: string[]) {
+export function useOpenLoads(vehicleTypes?: string[], options?: { enabled?: boolean }) {
   const supabase = getBrowserSupabase();
   return useQuery({
     queryKey: ["loads", "open", vehicleTypes ?? "all"],
     refetchInterval: 15000,
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<LoadRow[]> => {
       let q = supabase
         .from("loads")
@@ -192,11 +194,12 @@ export function useOpenLoads(vehicleTypes?: string[]) {
 }
 
 /** Loads the current driver has accepted / is running. */
-export function useMyTrips() {
+export function useMyTrips(options?: { enabled?: boolean }) {
   const supabase = getBrowserSupabase();
   return useQuery({
     queryKey: ["loads", "trips"],
     refetchInterval: 15000,
+    enabled: options?.enabled ?? true,
     queryFn: async (): Promise<LoadRow[]> => {
       const uid = await currentUserId();
       const { data, error } = await supabase

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { OperatorCard } from "@/components/operator-card";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const KINDS = [
   "check_in", "at_gate", "at_door", "loading", "unloading",
@@ -35,15 +36,31 @@ interface YardMove {
   created_at: string;
 }
 
+const SAMPLE_EVENTS: GateEvent[] = [
+  { id: "ex-ge-1", appointment_id: "ex-appt-01aa11bb", kind: "check_in", notes: "Driver: Marcus L. · Seal 88213", occurred_at: new Date(Date.now() - 3600000).toISOString() },
+  { id: "ex-ge-2", appointment_id: "ex-appt-01aa11bb", kind: "at_door", notes: "Door 7", occurred_at: new Date(Date.now() - 3000000).toISOString() },
+  { id: "ex-ge-3", appointment_id: "ex-appt-02cc22dd", kind: "unloading", notes: null, occurred_at: new Date(Date.now() - 1800000).toISOString() },
+  { id: "ex-ge-4", appointment_id: "ex-appt-03ee33ff", kind: "check_out", notes: "Empty out", occurred_at: new Date(Date.now() - 600000).toISOString() },
+];
+
+const SAMPLE_MOVES: YardMove[] = [
+  { id: "ex-ym-1", kind: "spot", truck_id: "BC 4821 KP", trailer_id: "TRL-204", from_zone: "Gate", to_zone: "Door 7", created_at: new Date(Date.now() - 3400000).toISOString() },
+  { id: "ex-ym-2", kind: "move", truck_id: null, trailer_id: "TRL-198", from_zone: "Yard A", to_zone: "Door 3", created_at: new Date(Date.now() - 7200000).toISOString() },
+  { id: "ex-ym-3", kind: "pull", truck_id: "BC 9930 TR", trailer_id: "TRL-160", from_zone: "Door 2", to_zone: "Yard B", created_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
 export default function DockStationPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [appointmentId, setAppointmentId] = useState("");
   const [kind, setKind] = useState("check_in");
   const [notes, setNotes] = useState("");
 
   const events = useQuery({
     queryKey: ["station", "dock", "events"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("gate_events")
@@ -57,6 +74,7 @@ export default function DockStationPage() {
 
   const moves = useQuery({
     queryKey: ["station", "dock", "moves"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("yard_moves")
@@ -110,7 +128,7 @@ export default function DockStationPage() {
       <Card>
         <CardHeader><CardTitle>Record event</CardTitle><CardDescription>Fires gate_record_event RPC.</CardDescription></CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); record.mutate(); }}>
+          <form className="grid gap-3 md:grid-cols-3" onSubmit={(e) => { e.preventDefault(); if (!guard("Log a gate event")) return; record.mutate(); }}>
             <div className="md:col-span-2"><Label>Appointment ID <span className="text-red-500">*</span></Label><Input value={appointmentId} onChange={(e) => setAppointmentId(e.target.value)} placeholder="UUID of the dock appointment" required /></div>
             <div>
               <Label>Event</Label>
@@ -132,11 +150,11 @@ export default function DockStationPage() {
         <CardHeader><CardTitle>Recent events</CardTitle></CardHeader>
         <CardContent>
           <DataTable
-            rows={events.data ?? []}
+            rows={isExploring ? SAMPLE_EVENTS : (events.data ?? [])}
             columns={eventCols}
             rowKey={(e) => e.id}
-            isLoading={events.isLoading}
-            error={events.error as Error | null}
+            isLoading={!isExploring && events.isLoading}
+            error={isExploring ? null : (events.error as Error | null)}
             searchPlaceholder="Search appt, notes…"
             filters={KINDS.map((k) => ({ value: k, label: k, predicate: (e: GateEvent) => e.kind === k }))}
             emptyMessage="No gate events."
@@ -148,11 +166,11 @@ export default function DockStationPage() {
         <CardHeader><CardTitle>Yard moves</CardTitle></CardHeader>
         <CardContent>
           <DataTable
-            rows={moves.data ?? []}
+            rows={isExploring ? SAMPLE_MOVES : (moves.data ?? [])}
             columns={moveCols}
             rowKey={(m) => m.id}
-            isLoading={moves.isLoading}
-            error={moves.error as Error | null}
+            isLoading={!isExploring && moves.isLoading}
+            error={isExploring ? null : (moves.error as Error | null)}
             emptyMessage="No yard moves yet."
           />
         </CardContent>

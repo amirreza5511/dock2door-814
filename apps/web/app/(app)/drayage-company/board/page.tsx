@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_DRAYAGE_DASHBOARD } from "@/lib/explore-samples";
 
 interface OrderRow {
   id: string;
@@ -47,10 +49,37 @@ interface QuoteRow {
   message: string | null;
 }
 
-function useOrders(filter: "open" | "mine", companyId: string | null) {
+function sampleOrders(filter: "open" | "mine"): OrderRow[] {
+  const rows = filter === "open" ? SAMPLE_DRAYAGE_DASHBOARD.openOrders : SAMPLE_DRAYAGE_DASHBOARD.myOrders;
+  return rows.map((o) => ({
+    id: o.id,
+    reference_code: o.reference_code,
+    status: o.status,
+    direction: o.direction,
+    container_number: o.container_number,
+    container_size: o.container_size,
+    weight_kg: 18000,
+    commodity: o.commodity,
+    bol_number: null,
+    booking_number: null,
+    port_reservation_date: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    port_reservation_time: "10:00",
+    is_prepull: false,
+    prepull_pickup_date: null,
+    is_hazmat: false,
+    is_overweight: o.container_size === "40HC",
+    is_oversized: false,
+    target_drayage_company_id: null,
+    drayage_company_id: filter === "mine" ? "explore-company" : null,
+    created_at: o.created_at,
+  }));
+}
+
+function useOrders(filter: "open" | "mine", companyId: string | null, enabled = true) {
   const supabase = getBrowserSupabase();
   return useQuery({
     queryKey: ["drayage", "board", filter, companyId],
+    enabled,
     queryFn: async (): Promise<OrderRow[]> => {
       let q = supabase.from("drayage_orders").select("*").order("created_at", { ascending: false }).limit(100);
       if (filter === "open") q = q.eq("status", "Open");
@@ -62,11 +91,11 @@ function useOrders(filter: "open" | "mine", companyId: string | null) {
   });
 }
 
-function useMyQuotes(companyId: string | null) {
+function useMyQuotes(companyId: string | null, enabled = true) {
   const supabase = getBrowserSupabase();
   return useQuery({
     queryKey: ["drayage", "myQuotes", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && enabled,
     queryFn: async (): Promise<QuoteRow[]> => {
       if (!companyId) return [];
       const { data, error } = await supabase
@@ -84,10 +113,12 @@ function useMyQuotes(companyId: string | null) {
 const DIRECTION_COLOR: Record<string, string> = { Import: "text-blue-500", Export: "text-emerald-500" };
 
 export default function DrayageBoardPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("DrayageCompany") ?? null;
   const [filter, setFilter] = useState<"open" | "mine">("open");
-  const ordersQ = useOrders(filter, companyId);
-  const quotesQ = useMyQuotes(companyId);
+  const ordersQ = useOrders(filter, companyId, !isExploring);
+  const quotesQ = useMyQuotes(companyId, !isExploring);
   const queryClient = useQueryClient();
   const supabase = getBrowserSupabase();
 
@@ -137,6 +168,7 @@ export default function DrayageBoardPage() {
   });
 
   const openSheet = (o: OrderRow) => {
+    if (!guard("Send a quote")) return;
     const existing = quoteByOrder[o.id];
     setPrice(existing?.price ? String(existing.price) : "");
     setEta(existing?.eta_note ?? "");
@@ -144,7 +176,7 @@ export default function DrayageBoardPage() {
     setQuoteOrder(o);
   };
 
-  const orders = ordersQ.data ?? [];
+  const orders = isExploring ? sampleOrders(filter) : (ordersQ.data ?? []);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -165,7 +197,7 @@ export default function DrayageBoardPage() {
         </Button>
       </div>
 
-      {ordersQ.isLoading ? (
+      {!isExploring && ordersQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : orders.length === 0 ? (
         <Card>
@@ -245,7 +277,7 @@ export default function DrayageBoardPage() {
                         variant="outline"
                         className="w-full"
                         disabled={claim.isPending}
-                        onClick={() => claim.mutate(o.id)}
+                        onClick={() => { if (!guard("Claim an order")) return; claim.mutate(o.id); }}
                       >
                         Claim instantly
                       </Button>

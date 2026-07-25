@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface ShiftPostRef {
   id: string;
@@ -43,9 +44,12 @@ interface FlatAssignment {
 export default function WorkerShiftsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const assignments = useQuery({
     queryKey: ["worker", "assignments"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -60,7 +64,13 @@ export default function WorkerShiftsPage() {
     },
   });
 
-  const flat: FlatAssignment[] = (assignments.data ?? []).map((a) => {
+  const sampleFlat: FlatAssignment[] = isExploring ? [
+    { id: "ex-as-1", shift_id: "ex-sp-1", status: "Scheduled", title: "Warehouse Loader", date: new Date().toISOString().slice(0, 10), start_time: "08:00", end_time: "16:00", hourly_rate: 24, created_at: new Date(Date.now() - 3600000 * 20).toISOString(), worker_confirmed: null },
+    { id: "ex-as-2", shift_id: "ex-sp-2", status: "Scheduled", title: "Forklift Operator", date: new Date(Date.now() + 86400000).toISOString().slice(0, 10), start_time: "07:00", end_time: "15:00", hourly_rate: 31, created_at: new Date(Date.now() - 3600000 * 10).toISOString(), worker_confirmed: true },
+    { id: "ex-as-3", shift_id: "ex-sp-9", status: "Completed", title: "Order Picker (evening)", date: new Date(Date.now() - 86400000 * 3).toISOString().slice(0, 10), start_time: "16:00", end_time: "23:00", hourly_rate: 26, created_at: new Date(Date.now() - 86400000 * 4).toISOString(), worker_confirmed: true },
+  ] : [];
+
+  const flat: FlatAssignment[] = isExploring ? sampleFlat : (assignments.data ?? []).map((a) => {
     const s = Array.isArray(a.shift_posts) ? a.shift_posts[0] : a.shift_posts;
     return {
       id: a.id,
@@ -106,9 +116,10 @@ export default function WorkerShiftsPage() {
         {a.status === "Scheduled" && a.worker_confirmed === null && (
           <>
             <Button size="sm" disabled={confirmAttendance.isPending}
-              onClick={() => confirmAttendance.mutate({ assignmentId: a.id, confirmed: true })}>Confirm</Button>
+              onClick={() => { if (!guard("Confirm attendance")) return; confirmAttendance.mutate({ assignmentId: a.id, confirmed: true }); }}>Confirm</Button>
             <Button size="sm" variant="outline" disabled={confirmAttendance.isPending}
               onClick={() => {
+                if (!guard("Decline a shift")) return;
                 const reason = window.prompt("Reason for declining this shift (the employer will see this):");
                 if (!reason || reason.trim().length < 5) return;
                 confirmAttendance.mutate({ assignmentId: a.id, confirmed: false, reason: reason.trim() });
@@ -141,8 +152,8 @@ export default function WorkerShiftsPage() {
             rows={flat}
             columns={cols}
             rowKey={(a) => a.id}
-            isLoading={assignments.isLoading}
-            error={assignments.error as Error | null}
+            isLoading={!isExploring && assignments.isLoading}
+            error={isExploring ? null : (assignments.error as Error | null)}
             searchPlaceholder="Search shift…"
             filters={[
               { value: "active", label: "Active", predicate: (a) => a.status === "Scheduled" || a.status === "InProgress" },

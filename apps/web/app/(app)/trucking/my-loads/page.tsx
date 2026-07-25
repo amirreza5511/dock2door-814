@@ -15,26 +15,36 @@ import {
   money,
   type LoadRow,
 } from "@/lib/hooks/use-loads";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 const FILTERS = ["Active", "Delivered", "All"] as const;
 type Filter = (typeof FILTERS)[number];
 
+const SAMPLE_MY_LOADS = [
+  { id: "ex-ml-1", vehicle_type: "five_ton", cargo_type: "palletized", pallets: 10, status: "EnRoute", pickup_address: "Richmond, BC", dropoff_address: "Surrey, BC", distance_km: 32, total_price: 520, created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+  { id: "ex-ml-2", vehicle_type: "reefer", cargo_type: "refrigerated", pallets: 8, status: "Accepted", pickup_address: "Abbotsford, BC", dropoff_address: "Vancouver, BC", distance_km: 68, total_price: 890, created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
+  { id: "ex-ml-3", vehicle_type: "cube_van", cargo_type: "general", pallets: 5, status: "Delivered", pickup_address: "Coquitlam, BC", dropoff_address: "Langley, BC", distance_km: 44, total_price: 610, created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
+] as unknown as LoadRow[];
+
 export default function TruckingMyLoadsPage() {
-  const q = useMyTrips();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
+  const q = useMyTrips({ enabled: !isExploring });
   const advance = useAdvanceLoad();
   const [filter, setFilter] = useState<Filter>("Active");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loads = useMemo<LoadRow[]>(() => {
-    const all = q.data ?? [];
+    const all = isExploring ? SAMPLE_MY_LOADS : (q.data ?? []);
     if (filter === "All") return all;
     if (filter === "Delivered") return all.filter((l) => l.status === "Delivered");
     return all.filter((l) => l.status !== "Delivered" && l.status !== "Cancelled");
-  }, [q.data, filter]);
+  }, [q.data, filter, isExploring]);
 
   const doAdvance = async (l: LoadRow) => {
     const flow = LOAD_STATUS_FLOW[l.status];
     if (!flow) return;
+    if (!guard(flow.label)) return;
     setBusyId(l.id);
     try {
       await advance.mutateAsync({ id: l.id, status: flow.next });
@@ -65,7 +75,7 @@ export default function TruckingMyLoadsPage() {
         ))}
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : loads.length === 0 ? (
         <Card>

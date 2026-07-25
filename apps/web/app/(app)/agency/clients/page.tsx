@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface ClientRow {
   id: string;
@@ -25,9 +26,17 @@ interface ClientRow {
   created_at: string;
 }
 
+const SAMPLE_CLIENTS: ClientRow[] = [
+  { id: "ex-ac-1", name: "Fraser Foods Ltd.", contact_name: "Janet Wu", email: "ops@fraserfoods.ca", phone: "+1 604 555 0110", address: "Richmond, BC", notes: "Weekly picking crews, Mon–Fri.", status: "Active", created_at: new Date(Date.now() - 86400000 * 60).toISOString() },
+  { id: "ex-ac-2", name: "Harbour Freight Ltd.", contact_name: "Ravi Patel", email: "dispatch@harbourfreight.ca", phone: null, address: "Burnaby, BC", notes: null, status: "Active", created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: "ex-ac-3", name: "Cedar & Co.", contact_name: null, email: "hello@cedarco.ca", phone: null, address: null, notes: "Seasonal only.", status: "Inactive", created_at: new Date(Date.now() - 86400000 * 200).toISOString() },
+];
+
 export default function AgencyClientsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("EmploymentAgency");
 
   const [open, setOpen] = useState(false);
@@ -41,7 +50,7 @@ export default function AgencyClientsPage() {
 
   const q = useQuery({
     queryKey: ["agency", "clients", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async (): Promise<ClientRow[]> => {
       const { data, error } = await supabase
         .from("agency_clients")
@@ -86,7 +95,7 @@ export default function AgencyClientsPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["agency", "clients"] }),
   });
 
-  const rows = q.data ?? [];
+  const rows = isExploring ? SAMPLE_CLIENTS : (q.data ?? []);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -96,13 +105,13 @@ export default function AgencyClientsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">My clients</h1>
           <p className="mt-1 text-sm text-muted-foreground">Your own customer book — companies you staff outside of Dock2Door&apos;s open shift board.</p>
         </div>
-        <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Add client</Button>
+        <Button onClick={() => { if (!guard("Add a client")) return; setOpen(true); }}><Plus className="mr-2 h-4 w-4" />Add client</Button>
       </div>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Clients ({rows.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -124,7 +133,7 @@ export default function AgencyClientsPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => statusMutation.mutate({ id: c.id, status: c.status === "Active" ? "Inactive" : "Active" })}
+                    onClick={() => { if (!guard("Update a client")) return; statusMutation.mutate({ id: c.id, status: c.status === "Active" ? "Inactive" : "Active" }); }}
                   >
                     {c.status === "Active" ? "Deactivate" : "Activate"}
                   </Button>

@@ -14,6 +14,8 @@ import {
   freightRoleKind, FREIGHT_MODE_LABEL, DELIVERY_METHOD_LABEL, FREIGHT_STATUS_META,
   formatMoney, type FreightMode, type DeliveryMethod, type FreightQuoteStatus,
 } from "@/lib/global-freight";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_FREIGHT_QUOTES } from "@/lib/explore-samples";
 
 interface Offer {
   id: string; provider_name: string; offer_kind: string; amount: number; currency: string;
@@ -21,16 +23,42 @@ interface Offer {
 }
 interface Msg { id: string; sender_name: string; body: string; created_at: string }
 
+/** Build a full sample quote record for explore mode from the shared list rows. */
+function sampleQuoteFor(quoteId: string): Record<string, unknown> {
+  const base = SAMPLE_FREIGHT_QUOTES.find((r) => r.id === quoteId) ?? SAMPLE_FREIGHT_QUOTES[0];
+  return {
+    ...base,
+    origin_port: base.freight_mode === "air" ? "FRA" : "CNSHA",
+    dest_port: base.freight_mode === "air" ? "YYZ" : "CAVAN",
+    volume: base.freight_mode === "air" ? null : 54,
+    commodity: "General merchandise",
+    declared_value: 42000,
+    delivery_method: "door_pickup",
+    awarded_company_id: base.status === "Accepted" ? "explore-company" : null,
+    ground_awarded_company_id: null,
+    rejected_reason: null,
+  };
+}
+
+const SAMPLE_OFFERS: Offer[] = [
+  { id: "ex-fo-1", provider_name: "Meridian Global Forwarding", offer_kind: "freight", amount: 4180, currency: "CAD", transit_days: 24, valid_until: null, note: "All-in ocean FCL, weekly sailing, customs not included.", status: "Pending", created_at: new Date(Date.now() - 3600000 * 20).toISOString() },
+  { id: "ex-fo-2", provider_name: "PacRim Freight Lines", offer_kind: "freight", amount: 3950, currency: "CAD", transit_days: 29, valid_until: null, note: "Slower routing via Prince Rupert.", status: "Pending", created_at: new Date(Date.now() - 3600000 * 9).toISOString() },
+  { id: "ex-fo-3", provider_name: "PacRim Drayage", offer_kind: "ground", amount: 420, currency: "CAD", transit_days: 1, valid_until: null, note: "Container pickup at Vanterm, door delivery.", status: "Pending", created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+];
+
 export function FreightDetailClient({ quoteId, role, userName }: { quoteId: string; role: UserRole | null; userName: string | null }) {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const kind = freightRoleKind(role);
-  const isCustomer = kind === "customer";
+  const isCustomer = kind === "customer" || (isExploring && kind !== "provider");
   const [draft, setDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const quoteQ = useQuery({
     queryKey: ["freight", "detail", quoteId],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error: e } = await supabase.rpc("freight_get_quote", { p_quote_id: quoteId });
       if (e) throw e;
@@ -39,6 +67,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   });
   const docsQ = useQuery({
     queryKey: ["freight", "docs", quoteId],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error: e } = await supabase.rpc("freight_list_documents", { p_quote_id: quoteId });
       if (e) throw e;
@@ -47,6 +76,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   });
   const offersQ = useQuery({
     queryKey: ["freight", "offers", quoteId],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error: e } = await supabase.rpc("freight_list_offers", { p_quote_id: quoteId });
       if (e) throw e;
@@ -63,11 +93,15 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
       return (data as Msg[] | null) ?? [];
     },
     refetchInterval: 8000,
+    enabled: !isExploring,
   });
 
-  const q = quoteQ.data as any;
+  const q = (isExploring ? sampleQuoteFor(quoteId) : quoteQ.data) as any;
   const docs = docsQ.data ?? [];
-  const offers = useMemo(() => offersQ.data ?? [], [offersQ.data]);
+  const offers = useMemo(
+    () => (isExploring ? SAMPLE_OFFERS.filter((o) => o.offer_kind === "freight" || Boolean(q?.needs_container_pickup)) : (offersQ.data ?? [])),
+    [offersQ.data, isExploring, q?.needs_container_pickup],
+  );
   const messages = msgsQ.data ?? [];
   const freightOffers = useMemo(() => offers.filter((o) => o.offer_kind === "freight"), [offers]);
   const groundOffers = useMemo(() => offers.filter((o) => o.offer_kind === "ground"), [offers]);
@@ -78,6 +112,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   }, [quoteQ, offersQ]);
 
   const accept = useCallback(async (offerId: string) => {
+    if (!guard("Accept a quote")) return;
     setBusyId(offerId); setError("");
     try {
       const { error: e } = await supabase.rpc("freight_accept_offer", { p_offer_id: offerId });
@@ -91,6 +126,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   }, [supabase, refreshAll]);
 
   const cancel = useCallback(async () => {
+    if (!guard("Cancel a freight request")) return;
     if (!confirm("Cancel this request for all providers?")) return;
     try {
       const { error: e } = await supabase.rpc("freight_cancel_quote", { p_quote_id: quoteId });
@@ -102,6 +138,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
   }, [supabase, quoteId, refreshAll]);
 
   const send = useCallback(async () => {
+    if (!guard("Send a message")) return;
     const body = draft.trim();
     if (!body) return;
     setDraft("");
@@ -122,7 +159,7 @@ export function FreightDetailClient({ quoteId, role, userName }: { quoteId: stri
         <ChevronLeft className="h-4 w-4" /> Back to freight exchange
       </Link>
 
-      {quoteQ.isLoading ? (
+      {!isExploring && quoteQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : !q ? (
         <Card><CardContent className="py-12 text-center text-sm text-muted-foreground">Request not found.</CardContent></Card>

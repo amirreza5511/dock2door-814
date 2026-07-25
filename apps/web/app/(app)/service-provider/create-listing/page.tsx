@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import { useActionGuard } from "@/lib/explore-store";
 
 const CATEGORIES = [
   { value: "Labour", label: "General Labour" },
@@ -25,6 +26,7 @@ export default function CreateServiceListingPage() {
   const router = useRouter();
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const guard = useActionGuard();
 
   const [category, setCategory] = useState<typeof CATEGORIES[number]["value"]>("Labour");
   const [hourlyRate, setHourlyRate] = useState(35);
@@ -128,7 +130,7 @@ export default function CreateServiceListingPage() {
 
       <div className="flex justify-end gap-3">
         <Link href="/service-provider/listings"><Button variant="secondary">Cancel</Button></Link>
-        <Button disabled={create.isPending} onClick={() => create.mutate()}>
+        <Button disabled={create.isPending} onClick={() => { if (!guard("Create a service listing")) return; create.mutate(); }}>
           {create.isPending ? "Creating…" : "Create listing"}
         </Button>
       </div>

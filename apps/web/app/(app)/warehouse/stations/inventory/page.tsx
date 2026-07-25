@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { OperatorCard } from "@/components/operator-card";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface CycleCount {
   id: string;
@@ -33,9 +34,24 @@ interface Movement {
   created_at: string;
 }
 
+const SAMPLE_COUNTS: CycleCount[] = [
+  { id: "ex-cc-1aaa0000", variant_id: "SKU-PALLET-JACK", location_id: "A-01-03", system_qty: 48, counted_qty: 48, variance: 0, counted_at: new Date(Date.now() - 3600000 * 2).toISOString() },
+  { id: "ex-cc-2bbb0000", variant_id: "SKU-STRETCH-WRAP", location_id: "B-04-11", system_qty: 120, counted_qty: 116, variance: -4, counted_at: new Date(Date.now() - 3600000 * 6).toISOString() },
+  { id: "ex-cc-3ccc0000", variant_id: "SKU-BOX-MED", location_id: "C-02-07", system_qty: 300, counted_qty: 300, variance: 0, counted_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
+const SAMPLE_MOVEMENTS: Movement[] = [
+  { id: "ex-sm-1", kind: "receive", variant_id: "SKU-BOX-MED", from_location_id: null, to_location_id: "DOCK-1", quantity: 120, notes: "ASN-77812", created_at: new Date(Date.now() - 3600000).toISOString() },
+  { id: "ex-sm-2", kind: "pick", variant_id: "SKU-STRETCH-WRAP", from_location_id: "B-04-11", to_location_id: null, quantity: 18, notes: "FUL-30412", created_at: new Date(Date.now() - 3600000 * 3).toISOString() },
+  { id: "ex-sm-3", kind: "adjust", variant_id: "SKU-STRETCH-WRAP", from_location_id: "B-04-11", to_location_id: null, quantity: -4, notes: "Count correction", created_at: new Date(Date.now() - 3600000 * 5).toISOString() },
+  { id: "ex-sm-4", kind: "transfer", variant_id: "SKU-PALLET-JACK", from_location_id: "A-01-03", to_location_id: "A-02-01", quantity: 6, notes: null, created_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
 export default function InventoryStationPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [variantId, setVariantId] = useState("");
   const [locationId, setLocationId] = useState("");
   const [delta, setDelta] = useState("");
@@ -43,6 +59,7 @@ export default function InventoryStationPage() {
 
   const counts = useQuery({
     queryKey: ["station", "inventory", "counts"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("cycle_counts")
@@ -56,6 +73,7 @@ export default function InventoryStationPage() {
 
   const movements = useQuery({
     queryKey: ["station", "inventory", "movements"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("stock_movements")
@@ -117,7 +135,7 @@ export default function InventoryStationPage() {
       <Card>
         <CardHeader><CardTitle>Stock adjustment</CardTitle><CardDescription>Audited via wms_adjust. Reason required.</CardDescription></CardHeader>
         <CardContent>
-          <form className="grid gap-3 md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); adjust.mutate(); }}>
+          <form className="grid gap-3 md:grid-cols-2" onSubmit={(e) => { e.preventDefault(); if (!guard("Apply a stock adjustment")) return; adjust.mutate(); }}>
             <div><Label>Variant id</Label><Input required value={variantId} onChange={(e) => setVariantId(e.target.value)} /></div>
             <div><Label>Location id</Label><Input required value={locationId} onChange={(e) => setLocationId(e.target.value)} /></div>
             <div><Label>Delta (+/-)</Label><Input required type="number" value={delta} onChange={(e) => setDelta(e.target.value)} /></div>
@@ -135,11 +153,11 @@ export default function InventoryStationPage() {
         <CardHeader><CardTitle>Cycle counts</CardTitle></CardHeader>
         <CardContent>
           <DataTable
-            rows={counts.data ?? []}
+            rows={isExploring ? SAMPLE_COUNTS : (counts.data ?? [])}
             columns={countCols}
             rowKey={(c) => c.id}
-            isLoading={counts.isLoading}
-            error={counts.error as Error | null}
+            isLoading={!isExploring && counts.isLoading}
+            error={isExploring ? null : (counts.error as Error | null)}
             filters={[{ value: "var", label: "Variance ≠ 0", predicate: (c) => Number(c.variance ?? 0) !== 0 }]}
             emptyMessage="No counts yet."
           />
@@ -150,11 +168,11 @@ export default function InventoryStationPage() {
         <CardHeader><CardTitle>Recent movements</CardTitle></CardHeader>
         <CardContent>
           <DataTable
-            rows={movements.data ?? []}
+            rows={isExploring ? SAMPLE_MOVEMENTS : (movements.data ?? [])}
             columns={moveCols}
             rowKey={(m) => m.id}
-            isLoading={movements.isLoading}
-            error={movements.error as Error | null}
+            isLoading={!isExploring && movements.isLoading}
+            error={isExploring ? null : (movements.error as Error | null)}
             searchPlaceholder="Search reason, variant…"
             emptyMessage="No movements yet."
           />

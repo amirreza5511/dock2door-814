@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_WORKER_SHIFTS } from "@/lib/explore-samples";
 
 interface ShiftRow {
   id: string;
@@ -34,6 +36,8 @@ interface RosterWorker {
 export default function AgencyShiftsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("EmploymentAgency");
 
   const [claimShift, setClaimShift] = useState<ShiftRow | null>(null);
@@ -42,6 +46,7 @@ export default function AgencyShiftsPage() {
 
   const shiftsQ = useQuery({
     queryKey: ["agency", "open-shifts"],
+    enabled: !isExploring,
     queryFn: async (): Promise<ShiftRow[]> => {
       const { data, error } = await supabase
         .from("shift_posts")
@@ -55,7 +60,7 @@ export default function AgencyShiftsPage() {
 
   const workersQ = useQuery({
     queryKey: ["agency", "linked-workers", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async (): Promise<RosterWorker[]> => {
       const { data, error } = await supabase
         .from("agency_workers")
@@ -85,7 +90,10 @@ export default function AgencyShiftsPage() {
     onError: (e: Error) => setClaimError(e.message),
   });
 
-  const shifts = useMemo(() => shiftsQ.data ?? [], [shiftsQ.data]);
+  const shifts = useMemo(
+    () => (isExploring ? (SAMPLE_WORKER_SHIFTS.map((s) => ({ ...s, workers_needed: 2 })) as unknown as ShiftRow[]) : (shiftsQ.data ?? [])),
+    [shiftsQ.data, isExploring],
+  );
   const workers = workersQ.data ?? [];
 
   return (
@@ -99,7 +107,7 @@ export default function AgencyShiftsPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Posted shifts ({shifts.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {shiftsQ.isLoading ? (
+          {!isExploring && shiftsQ.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : shifts.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -120,7 +128,7 @@ export default function AgencyShiftsPage() {
                     {s.hourly_rate ? <span>${Number(s.hourly_rate).toFixed(2)}/h</span> : null}
                   </p>
                 </div>
-                <Button size="sm" onClick={() => { setClaimShift(s); setSelectedWorker(null); setClaimError(""); }}>
+                <Button size="sm" onClick={() => { if (!guard("Claim a shift for a worker")) return; setClaimShift(s); setSelectedWorker(null); setClaimError(""); }}>
                   Claim for worker
                 </Button>
               </div>

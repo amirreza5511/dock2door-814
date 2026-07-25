@@ -9,6 +9,7 @@ import {
   Store, Search, Plus, Tag, Inbox, ChevronRight, Wrench, Forklift, Hammer, ShieldCheck, Construction,
 } from "lucide-react";
 import { SERVICE_TYPES, type ServiceType } from "@/lib/serviceMarketplace";
+import { useExplore } from "@/lib/explore-store";
 
 const TYPE_ICON: Record<ServiceType, typeof Wrench> = {
   service: Wrench,
@@ -26,11 +27,15 @@ const TYPE_ACCENT: Record<ServiceType, string> = {
   cargo_insurance: "text-yellow-500",
 };
 
+const SAMPLE_STATS = { myListings: 4, incoming: 3, sent: 2 };
+
 export default function MarketplaceHomePage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
 
   const statsQ = useQuery({
     queryKey: ["marketplace", "home-stats"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { myListings: 0, incoming: 0, sent: 0 };
@@ -71,7 +76,7 @@ export default function MarketplaceHomePage() {
     },
   });
 
-  const stats = statsQ.data ?? { myListings: 0, incoming: 0, sent: 0 };
+  const stats = isExploring ? SAMPLE_STATS : (statsQ.data ?? { myListings: 0, incoming: 0, sent: 0 });
 
   const cards = useMemo(() => [
     { href: "/marketplace/create", icon: Plus, title: "Post a listing", desc: "Rent out equipment or offer a service", accent: "text-emerald-500" },

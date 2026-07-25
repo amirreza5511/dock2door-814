@@ -8,6 +8,8 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { useExplore } from "@/lib/explore-store";
+import { SAMPLE_CONTAINER_ORDERS } from "@/lib/explore-samples";
 
 interface DrayageOrder {
   id: string;
@@ -25,9 +27,11 @@ interface DrayageOrder {
 
 export default function CustomerDrayagePage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
   const q = useQuery({
     queryKey: ["customer", "drayage-orders"],
     refetchInterval: 20000,
+    enabled: !isExploring,
     queryFn: async (): Promise<DrayageOrder[]> => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -42,7 +46,10 @@ export default function CustomerDrayagePage() {
     },
   });
 
-  const orders = useMemo(() => q.data ?? [], [q.data]);
+  const orders = useMemo(
+    () => (isExploring ? (SAMPLE_CONTAINER_ORDERS.map((o) => ({ ...o, pickup_city: o.direction === "Import" ? "Vancouver (Vanterm)" : "Richmond", delivery_city: o.direction === "Import" ? "Richmond" : "Vancouver (Vanterm)" })) as unknown as DrayageOrder[]) : (q.data ?? [])),
+    [q.data, isExploring],
+  );
   const stats = useMemo(
     () => ({
       total: orders.length,
@@ -71,7 +78,7 @@ export default function CustomerDrayagePage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Orders</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : orders.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">

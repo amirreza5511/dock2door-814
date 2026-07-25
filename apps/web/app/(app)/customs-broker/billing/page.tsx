@@ -7,6 +7,7 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { useExplore } from "@/lib/explore-store";
 
 interface BillingRow {
   id: string;
@@ -20,11 +21,19 @@ interface BillingRow {
   currency: string;
 }
 
+const SAMPLE_BILLING: BillingRow[] = [
+  { id: "ex-bb-1", title: "Import clearance — Produce (reefer)", customer_name: "Riverside Cold Storage", cleared_at: new Date(Date.now() - 86400000 * 2).toISOString(), fee: 275, platform_fee: 27.5, net_to_broker: 247.5, invoice_status: "Paid", currency: "CAD" },
+  { id: "ex-bb-2", title: "Import clearance — Apparel, 40HC", customer_name: "Preview Logistics Co.", cleared_at: new Date(Date.now() - 86400000 * 6).toISOString(), fee: 340, platform_fee: 34, net_to_broker: 306, invoice_status: "Paid", currency: "CAD" },
+  { id: "ex-bb-3", title: "Export clearance — Lumber", customer_name: "Harbour Freight Ltd.", cleared_at: new Date(Date.now() - 86400000 * 12).toISOString(), fee: 290, platform_fee: 29, net_to_broker: 261, invoice_status: "Issued", currency: "CAD" },
+];
+
 export default function BrokerBillingPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
 
   const q = useQuery({
     queryKey: ["broker", "billing"],
+    enabled: !isExploring,
     queryFn: async (): Promise<BillingRow[]> => {
       const { data, error } = await supabase.rpc("broker_list_billing");
       if (error) return [];
@@ -32,7 +41,7 @@ export default function BrokerBillingPage() {
     },
   });
 
-  const rows = useMemo(() => q.data ?? [], [q.data]);
+  const rows = useMemo(() => (isExploring ? SAMPLE_BILLING : (q.data ?? [])), [q.data, isExploring]);
   const totals = useMemo(
     () => ({
       fees: rows.reduce((s, r) => s + Number(r.fee ?? 0), 0),
@@ -59,7 +68,7 @@ export default function BrokerBillingPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Cleared shipments ({rows.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">

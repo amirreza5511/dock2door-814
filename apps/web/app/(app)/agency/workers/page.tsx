@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface WorkerRow {
   id: string;
@@ -23,6 +24,12 @@ interface WorkerRow {
   created_at: string;
 }
 
+const SAMPLE_WORKERS: WorkerRow[] = [
+  { id: "ex-aw-1", name: "Marcus Lee", email: "marcus@previewco.com", phone: "+1 604 555 0182", hourly_cost: 26, status: "Active", worker_user_id: "ex-u-1", created_at: new Date(Date.now() - 86400000 * 40).toISOString() },
+  { id: "ex-aw-2", name: "Priya Sharma", email: "priya@previewco.com", phone: "+1 604 555 0146", hourly_cost: 29, status: "Active", worker_user_id: "ex-u-2", created_at: new Date(Date.now() - 86400000 * 25).toISOString() },
+  { id: "ex-aw-3", name: "Dan Kowalski", email: "dan@previewco.com", phone: null, hourly_cost: 24, status: "Invited", worker_user_id: null, created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
+];
+
 const STATUS_CLASS: Record<string, string> = {
   Active: "bg-emerald-500/15 text-emerald-300",
   Invited: "bg-yellow-500/15 text-yellow-300",
@@ -32,6 +39,8 @@ const STATUS_CLASS: Record<string, string> = {
 export default function AgencyWorkersPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("EmploymentAgency");
 
   const [open, setOpen] = useState(false);
@@ -43,7 +52,7 @@ export default function AgencyWorkersPage() {
 
   const q = useQuery({
     queryKey: ["agency", "workers-full", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && !isExploring,
     queryFn: async (): Promise<WorkerRow[]> => {
       const { data, error } = await supabase
         .from("agency_workers")
@@ -85,7 +94,7 @@ export default function AgencyWorkersPage() {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["agency"] }),
   });
 
-  const rows = q.data ?? [];
+  const rows = isExploring ? SAMPLE_WORKERS : (q.data ?? []);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -95,13 +104,13 @@ export default function AgencyWorkersPage() {
           <h1 className="text-2xl font-semibold tracking-tight">My workers</h1>
           <p className="mt-1 text-sm text-muted-foreground">Your roster. Workers with a Dock2Door account link automatically by email.</p>
         </div>
-        <Button onClick={() => setOpen(true)}><UserPlus className="mr-2 h-4 w-4" />Add worker</Button>
+        <Button onClick={() => { if (!guard("Add a worker")) return; setOpen(true); }}><UserPlus className="mr-2 h-4 w-4" />Add worker</Button>
       </div>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Roster ({rows.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -125,7 +134,7 @@ export default function AgencyWorkersPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => statusMutation.mutate({ id: w.id, status: "Removed" })}
+                      onClick={() => { if (!guard("Remove a worker")) return; statusMutation.mutate({ id: w.id, status: "Removed" }); }}
                     >
                       Remove
                     </Button>
@@ -133,7 +142,7 @@ export default function AgencyWorkersPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => statusMutation.mutate({ id: w.id, status: w.worker_user_id ? "Active" : "Invited" })}
+                      onClick={() => { if (!guard("Restore a worker")) return; statusMutation.mutate({ id: w.id, status: w.worker_user_id ? "Active" : "Invited" }); }}
                     >
                       Restore
                     </Button>

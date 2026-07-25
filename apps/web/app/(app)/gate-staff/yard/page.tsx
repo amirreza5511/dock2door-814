@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useActiveCompanyId } from "@/lib/hooks/use-active-company";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface Listing {
   id: string;
@@ -27,6 +28,12 @@ interface Appointment {
   reference_number: string | null;
   [k: string]: unknown;
 }
+
+const SAMPLE_APPTS: Appointment[] = [
+  { id: "ex-ga-1", scheduled_start: new Date(Date.now() - 3600000).toISOString(), status: "CheckedIn", dock_door: "7", truck_plate: "BC 4821 KP", driver_name: "Marcus L.", appointment_type: "Delivery", pallet_count: 10, reference_number: "WB-20481" },
+  { id: "ex-ga-2", scheduled_start: new Date(Date.now() + 3600000 * 2).toISOString(), status: "Approved", dock_door: "3", truck_plate: "BC 9930 TR", driver_name: "Priya S.", appointment_type: "Pickup", pallet_count: 6, reference_number: null },
+  { id: "ex-ga-3", scheduled_start: new Date(Date.now() + 3600000 * 4).toISOString(), status: "Requested", dock_door: null, truck_plate: null, driver_name: "Dan K.", appointment_type: "Delivery", pallet_count: 12, reference_number: "WB-20502" },
+];
 
 const STATUS_TONE: Record<string, string> = {
   Requested: "bg-amber-500/15 text-amber-600",
@@ -78,8 +85,10 @@ function fmtTime(iso: string): string {
 }
 
 export default function GateStaffYardPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const companyId = useActiveCompanyId("Warehouse");
-  const listingsQ = useMyListings(companyId);
+  const listingsQ = useMyListings(isExploring ? undefined : companyId);
   const [listingId, setListingId] = useState<string | null>(null);
   const qc = useQueryClient();
   const supabase = getBrowserSupabase();
@@ -91,8 +100,8 @@ export default function GateStaffYardPage() {
     }
   }, [listingsQ.data, listingId]);
 
-  const panelQ = useGatePanel(listingId);
-  const appointments = useMemo(() => panelQ.data ?? [], [panelQ.data]);
+  const panelQ = useGatePanel(isExploring ? null : listingId);
+  const appointments = useMemo(() => (isExploring ? SAMPLE_APPTS : (panelQ.data ?? [])), [panelQ.data, isExploring]);
 
   const recordEvent = useMutation({
     mutationFn: async ({ appointmentId, kind }: { appointmentId: string; kind: string }) => {
@@ -110,6 +119,7 @@ export default function GateStaffYardPage() {
   });
 
   const doEvent = async (appointmentId: string, kind: string) => {
+    if (!guard(kind === "CheckIn" ? "Check a truck in" : "Check a truck out")) return;
     setBusyId(appointmentId);
     try {
       await recordEvent.mutateAsync({ appointmentId, kind });
@@ -143,7 +153,7 @@ export default function GateStaffYardPage() {
         </div>
       ) : null}
 
-      {panelQ.isLoading ? (
+      {!isExploring && panelQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : appointments.length === 0 ? (
         <Card><CardContent className="flex flex-col items-center gap-2 py-14 text-center"><DoorOpen className="h-8 w-8 text-muted-foreground" /><p className="text-sm text-muted-foreground">No appointments scheduled for today.</p></CardContent></Card>

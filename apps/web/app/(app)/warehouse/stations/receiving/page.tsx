@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { OperatorCard } from "@/components/operator-card";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface Receipt {
   id: string;
@@ -28,12 +29,21 @@ interface ReceiptRow {
   created_at: string;
 }
 
+const SAMPLE_ASNS: Receipt[] = [
+  { id: "ex-asn-1", reference: "ASN-77812", supplier: "Pacific Foods Ltd.", status: "Receiving", created_at: new Date(Date.now() - 3600000 * 2).toISOString() },
+  { id: "ex-asn-2", reference: "ASN-77820", supplier: "NorthStar Apparel", status: "Expected", created_at: new Date(Date.now() - 3600000 * 6).toISOString() },
+  { id: "ex-asn-3", reference: "ASN-77790", supplier: "Cascade Beverages", status: "Completed", created_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
 export default function ReceivingStationPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const receipts = useQuery({
     queryKey: ["station", "receipts"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("inventory_receipts")
@@ -77,7 +87,8 @@ export default function ReceivingStationPage() {
     },
   });
 
-  const open = (receipts.data ?? []).filter((r) => r.status !== "Completed");
+  const rows = isExploring ? SAMPLE_ASNS : (receipts.data ?? []);
+  const open = rows.filter((r) => r.status !== "Completed");
 
   const cols: Column<Receipt>[] = [
     { key: "ref", header: "Reference", render: (r) => <span className="font-medium">{r.reference || r.id.slice(0, 8)}</span>, sortable: true, sortValue: (r) => r.reference ?? r.id },
@@ -101,7 +112,7 @@ export default function ReceivingStationPage() {
 
       <div className="grid gap-3 md:grid-cols-3">
         <Card><CardContent className="p-4"><div className="text-2xl font-semibold">{open.length}</div><div className="text-xs uppercase text-muted-foreground">Open ASNs</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-2xl font-semibold">{(receipts.data ?? []).length - open.length}</div><div className="text-xs uppercase text-muted-foreground">Completed</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-2xl font-semibold">{rows.length - open.length}</div><div className="text-xs uppercase text-muted-foreground">Completed</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-2xl font-semibold">{receive.isSuccess ? "1" : "0"}</div><div className="text-xs uppercase text-muted-foreground">Last submit</div></CardContent></Card>
       </div>
 
@@ -113,7 +124,7 @@ export default function ReceivingStationPage() {
         <CardContent>
           <form
             className="grid gap-3 md:grid-cols-2"
-            onSubmit={(e) => { e.preventDefault(); receive.mutate(); }}
+            onSubmit={(e) => { e.preventDefault(); if (!guard("Receive & putaway")) return; receive.mutate(); }}
           >
             <div><Label>ASN / receipt id (optional)</Label><Input value={receiptId} onChange={(e) => setReceiptId(e.target.value)} placeholder="receipt_…" /></div>
             <div><Label>Reference</Label><Input value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Supplier note" /></div>
@@ -134,11 +145,11 @@ export default function ReceivingStationPage() {
         <CardHeader><CardTitle>ASN queue</CardTitle><CardDescription>Click "Use ASN" to load it into the form.</CardDescription></CardHeader>
         <CardContent>
           <DataTable
-            rows={receipts.data ?? []}
+            rows={rows}
             columns={cols}
             rowKey={(r) => r.id}
-            isLoading={receipts.isLoading}
-            error={receipts.error as Error | null}
+            isLoading={!isExploring && receipts.isLoading}
+            error={isExploring ? null : (receipts.error as Error | null)}
             searchPlaceholder="Search ref, supplier…"
             filters={[
               { value: "open", label: "Open", predicate: (r) => r.status !== "Completed" },

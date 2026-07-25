@@ -6,18 +6,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useOpenLoads, useAcceptLoad, CARGO_LABEL, VEHICLE_LABEL, money, type LoadRow } from "@/lib/hooks/use-loads";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
+import { SAMPLE_CARRIER_LOADS } from "@/lib/explore-samples";
 
 const VEHICLES = ["All", ...Object.keys(VEHICLE_LABEL)];
 
 export default function TruckingLoadsPage() {
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [vehicle, setVehicle] = useState<string>("All");
-  const q = useOpenLoads(vehicle === "All" ? undefined : [vehicle]);
+  const q = useOpenLoads(isExploring ? ["none"] : (vehicle === "All" ? undefined : [vehicle]), { enabled: !isExploring });
   const accept = useAcceptLoad();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const loads = useMemo<LoadRow[]>(() => q.data ?? [], [q.data]);
+  const loads = useMemo<LoadRow[]>(
+    () => (isExploring ? (SAMPLE_CARRIER_LOADS as unknown as LoadRow[]) : (q.data ?? [])),
+    [q.data, isExploring],
+  );
 
   const doAccept = async (id: string) => {
+    if (!guard("Accept a load")) return;
     setBusyId(id);
     try {
       await accept.mutateAsync(id);
@@ -48,7 +56,7 @@ export default function TruckingLoadsPage() {
         ))}
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : loads.length === 0 ? (
         <Card>

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface ListingRow {
   id: string;
@@ -31,6 +32,13 @@ const CAT_LABEL: Record<string, string> = {
   IndustrialCleaning: "Industrial Cleaning",
 };
 
+const SAMPLE_LISTINGS: ListingRow[] = [
+  { id: "ex-spl-1", category: "Forklift", coverage_area: ["Vancouver", "Burnaby", "Richmond"], hourly_rate: 68, per_job_rate: null, minimum_hours: 3, certifications: "Forklift cert", status: "Available", created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+  { id: "ex-spl-2", category: "Devanning", coverage_area: ["Delta", "Surrey"], hourly_rate: 52, per_job_rate: 480, minimum_hours: 4, certifications: null, status: "Available", created_at: new Date(Date.now() - 86400000 * 18).toISOString() },
+  { id: "ex-spl-3", category: "IndustrialCleaning", coverage_area: ["Vancouver"], hourly_rate: 45, per_job_rate: null, minimum_hours: 2, certifications: "WHMIS", status: "PendingApproval", created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
+  { id: "ex-spl-4", category: "PalletRework", coverage_area: ["Langley"], hourly_rate: 48, per_job_rate: null, minimum_hours: 2, certifications: null, status: "Draft", created_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
 const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "destructive"> = {
   Active: "success",
   Available: "success",
@@ -43,11 +51,14 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "secondary" | "dest
 export default function ServiceProviderListingsPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [editing, setEditing] = useState<ListingRow | null>(null);
   const [form, setForm] = useState({ hourly_rate: 0, per_job_rate: 0, minimum_hours: 1, certifications: "" });
 
   const listingsQ = useQuery({
     queryKey: ["service-provider", "listings"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("service_listings")
@@ -188,6 +199,7 @@ export default function ServiceProviderListingsPage() {
             size="sm"
             variant="outline"
             onClick={() => {
+              if (!guard("Edit listing rates")) return;
               setEditing(l);
               setForm({ hourly_rate: Number(l.hourly_rate), per_job_rate: Number(l.per_job_rate ?? 0), minimum_hours: l.minimum_hours, certifications: l.certifications ?? "" });
             }}>
@@ -197,7 +209,7 @@ export default function ServiceProviderListingsPage() {
           {/* Draft / Rejected → PendingApproval (via provider_submit_service_listing) */}
           {(l.status === "Draft" || l.status === "Rejected") && (
             <Button size="sm" variant="secondary" disabled={mutationPending}
-              onClick={() => submitM.mutate(l.id)}>
+              onClick={() => { if (!guard("Submit a listing for review")) return; submitM.mutate(l.id); }}>
               Submit for review
             </Button>
           )}
@@ -205,7 +217,7 @@ export default function ServiceProviderListingsPage() {
           {/* PendingApproval → Draft (via provider_withdraw_service_listing) */}
           {l.status === "PendingApproval" && (
             <Button size="sm" variant="outline" disabled={mutationPending}
-              onClick={() => withdrawM.mutate(l.id)}>
+              onClick={() => { if (!guard("Withdraw a listing")) return; withdrawM.mutate(l.id); }}>
               Withdraw
             </Button>
           )}
@@ -213,7 +225,7 @@ export default function ServiceProviderListingsPage() {
           {/* Available / Active → Hidden (via provider_hide_service_listing) */}
           {(l.status === "Available" || l.status === "Active") && (
             <Button size="sm" variant="secondary" disabled={mutationPending}
-              onClick={() => hideM.mutate(l.id)}>
+              onClick={() => { if (!guard("Hide a listing")) return; hideM.mutate(l.id); }}>
               Hide
             </Button>
           )}
@@ -221,7 +233,7 @@ export default function ServiceProviderListingsPage() {
           {/* Hidden → Available (via provider_unhide_service_listing) */}
           {l.status === "Hidden" && (
             <Button size="sm" disabled={mutationPending}
-              onClick={() => unhideM.mutate(l.id)}>
+              onClick={() => { if (!guard("Unhide a listing")) return; unhideM.mutate(l.id); }}>
               Unhide
             </Button>
           )}
@@ -257,16 +269,16 @@ export default function ServiceProviderListingsPage() {
         <CardHeader>
           <CardTitle>Your listings</CardTitle>
           <CardDescription>
-            {listingsQ.data?.length ?? 0} total · Listings must be approved by an admin before becoming visible.
+            {(isExploring ? SAMPLE_LISTINGS : listingsQ.data ?? []).length} total · Listings must be approved by an admin before becoming visible.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <DataTable
-            rows={listingsQ.data ?? []}
+            rows={isExploring ? SAMPLE_LISTINGS : (listingsQ.data ?? [])}
             columns={cols}
             rowKey={(l) => l.id}
-            isLoading={listingsQ.isLoading}
-            error={listingsQ.error as Error | null}
+            isLoading={!isExploring && listingsQ.isLoading}
+            error={isExploring ? null : (listingsQ.error as Error | null)}
             searchPlaceholder="Search listings…"
             filters={[
               { value: "active", label: "Active", predicate: (l) => l.status === "Active" || l.status === "Available" },

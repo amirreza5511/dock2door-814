@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useExplore } from "@/lib/explore-store";
+import { SAMPLE_WAREHOUSE_LISTINGS } from "@/lib/explore-samples";
 
 interface ListingRow {
   id: string;
@@ -36,14 +38,35 @@ const TYPE_COLORS: Record<string, string> = {
 
 const WH_TYPES = ["All", "Dry", "Chill", "Frozen"] as const;
 
+const SAMPLE_ROWS: ListingRow[] = SAMPLE_WAREHOUSE_LISTINGS.map((l) => ({
+  id: l.id,
+  name: l.name,
+  city: l.city,
+  warehouse_type: l.warehouse_type === "Chilled" ? "Chill" : l.warehouse_type,
+  available_pallet_capacity: l.available_pallet_capacity,
+  min_pallets: 10,
+  max_pallets: l.available_pallet_capacity,
+  storage_rate_per_pallet: l.storage_rate_per_pallet,
+  storage_term: "Month",
+  inbound_handling_fee_per_pallet: 4.5,
+  outbound_handling_fee_per_pallet: 4.5,
+  receiving_hours: "Mon–Fri 7am–3pm",
+  access_restrictions: null,
+  notes: null,
+  status: "Active",
+  company_name: l.name,
+}));
+
 export default function CustomerWarehousesPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<typeof WH_TYPES[number]>("All");
   const [selected, setSelected] = useState<ListingRow | null>(null);
 
   const listingsQ = useQuery({
     queryKey: ["customer", "warehouses"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("warehouse_listings")
@@ -61,7 +84,7 @@ export default function CustomerWarehousesPage() {
     },
   });
 
-  const filtered = (listingsQ.data ?? []).filter((l) => {
+  const filtered = (isExploring ? SAMPLE_ROWS : (listingsQ.data ?? [])).filter((l) => {
     const q = search.toLowerCase();
     const matchSearch =
       !q ||
@@ -108,9 +131,9 @@ export default function CustomerWarehousesPage() {
         </span>
       </div>
 
-      {listingsQ.isLoading ? (
+      {!isExploring && listingsQ.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading warehouses…</p>
-      ) : listingsQ.error ? (
+      ) : !isExploring && listingsQ.error ? (
         <p className="text-sm text-red-600">{(listingsQ.error as Error).message}</p>
       ) : filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">No warehouses found matching your criteria.</p>

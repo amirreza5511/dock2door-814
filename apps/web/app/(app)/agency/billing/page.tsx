@@ -7,6 +7,7 @@ import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useExplore } from "@/lib/explore-store";
 
 interface PayableRow {
   payable_id: string;
@@ -32,12 +33,20 @@ const STATUS_CLASS: Record<string, string> = {
   Cancelled: "bg-white/10 text-muted-foreground",
 };
 
+const SAMPLE_PAYABLES: PayableRow[] = [
+  { payable_id: "ex-pay-1", shift_title: "Warehouse Loader", shift_date: new Date(Date.now() - 86400000 * 2).toISOString().slice(0, 10), worker_name: "Marcus Lee", confirmed_hours: 8, hourly_rate: 24, gross_pay: 192, agency_fee: 19.2, net_to_agency: 172.8, status: "Paid", invoice_status: "Paid", paid_at: new Date(Date.now() - 86400000).toISOString() },
+  { payable_id: "ex-pay-2", shift_title: "Forklift Operator", shift_date: new Date(Date.now() - 86400000 * 4).toISOString().slice(0, 10), worker_name: "Priya Sharma", confirmed_hours: 8, hourly_rate: 31, gross_pay: 248, agency_fee: 24.8, net_to_agency: 223.2, status: "Approved", invoice_status: "Issued", paid_at: null },
+  { payable_id: "ex-pay-3", shift_title: "Order Picker (evening)", shift_date: new Date(Date.now() - 86400000 * 6).toISOString().slice(0, 10), worker_name: "Dan Kowalski", confirmed_hours: 7, hourly_rate: 26, gross_pay: 182, agency_fee: 18.2, net_to_agency: 163.8, status: "Pending", invoice_status: null, paid_at: null },
+];
+
 export default function AgencyBillingPage() {
   const supabase = getBrowserSupabase();
+  const { isExploring } = useExplore();
   const [filter, setFilter] = useState<Filter>("all");
 
   const q = useQuery({
     queryKey: ["agency", "payables"],
+    enabled: !isExploring,
     queryFn: async (): Promise<PayableRow[]> => {
       const { data, error } = await supabase.rpc("agency_list_payables");
       if (error) return [];
@@ -45,7 +54,7 @@ export default function AgencyBillingPage() {
     },
   });
 
-  const rows = useMemo(() => q.data ?? [], [q.data]);
+  const rows = useMemo(() => (isExploring ? SAMPLE_PAYABLES : (q.data ?? [])), [q.data, isExploring]);
   const filtered = filter === "all" ? rows : rows.filter((r) => r.status === filter);
   const totals = useMemo(
     () => ({
@@ -81,7 +90,7 @@ export default function AgencyBillingPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">Payables ({filtered.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">

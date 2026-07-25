@@ -7,20 +7,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMyPostedLoads, CARGO_LABEL, VEHICLE_LABEL, money, type LoadRow } from "@/lib/hooks/use-loads";
+import { useExplore } from "@/lib/explore-store";
+import { SAMPLE_SHIPPER_LOADS } from "@/lib/explore-samples";
 
 const FILTERS = ["All", "Open", "In transit", "Delivered"] as const;
 
 export default function CustomerLoadsPage() {
-  const q = useMyPostedLoads();
+  const { isExploring } = useExplore();
+  const q = useMyPostedLoads({ enabled: !isExploring });
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
 
   const loads = useMemo<LoadRow[]>(() => {
-    const all = q.data ?? [];
+    const all = isExploring ? (SAMPLE_SHIPPER_LOADS as unknown as LoadRow[]) : (q.data ?? []);
     if (filter === "Open") return all.filter((l) => l.status === "Open");
     if (filter === "In transit") return all.filter((l) => ["Accepted", "EnRoute", "Arrived"].includes(l.status));
     if (filter === "Delivered") return all.filter((l) => l.status === "Delivered");
     return all;
-  }, [q.data, filter]);
+  }, [q.data, filter, isExploring]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -44,7 +47,7 @@ export default function CustomerLoadsPage() {
         ))}
       </div>
 
-      {q.isLoading ? (
+      {!isExploring && q.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : loads.length === 0 ? (
         <Card>

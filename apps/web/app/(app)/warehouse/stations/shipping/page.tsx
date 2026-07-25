@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { OperatorCard } from "@/components/operator-card";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface Order {
   id: string;
@@ -34,15 +35,30 @@ interface Shipment {
   order_id: string | null;
 }
 
+const SAMPLE_SHIP_ORDERS: Order[] = [
+  { id: "ex-so-1", reference_code: "FUL-30405", status: "Packed", ship_to_name: "Harbour Outfitters", ship_to_city: "Burnaby", created_at: new Date(Date.now() - 3600000 * 4).toISOString() },
+  { id: "ex-so-2", reference_code: "FUL-30398", status: "Packed", ship_to_name: "Cedar & Co.", ship_to_city: "Richmond", created_at: new Date(Date.now() - 3600000 * 8).toISOString() },
+  { id: "ex-so-3", reference_code: "FUL-30390", status: "Shipped", ship_to_name: "Maple Retail Group", ship_to_city: "Vancouver", created_at: new Date(Date.now() - 86400000).toISOString() },
+];
+
+const SAMPLE_SHIPMENTS: Shipment[] = [
+  { id: "ex-sh-1aaa0000", carrier_code: "UPS", service_level: "Ground", tracking_code: "1Z999AA10123456784", status: "InTransit", rate_amount: 18.4, currency: "CAD", label_path: null, created_at: new Date(Date.now() - 86400000).toISOString(), order_id: "ex-so-3" },
+  { id: "ex-sh-2bbb0000", carrier_code: "Canada Post", service_level: "Expedited", tracking_code: null, status: "Draft", rate_amount: null, currency: "CAD", label_path: null, created_at: new Date(Date.now() - 3600000 * 2).toISOString(), order_id: "ex-so-1" },
+  { id: "ex-sh-3ccc0000", carrier_code: "Purolator", service_level: "Ground", tracking_code: "PUR20481133", status: "Delivered", rate_amount: 22.1, currency: "CAD", label_path: null, created_at: new Date(Date.now() - 86400000 * 3).toISOString(), order_id: null },
+];
+
 export default function ShippingStationPage() {
   const supabase = getBrowserSupabase();
   const qc = useQueryClient();
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
   const [selectedOrder, setSelectedOrder] = useState<string>("");
   const [carrier, setCarrier] = useState<string>("EasyPost");
   const [service, setService] = useState<string>("Ground");
 
   const orders = useQuery({
     queryKey: ["station", "shipping", "orders"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("fulfillment_orders")
@@ -57,6 +73,7 @@ export default function ShippingStationPage() {
 
   const shipments = useQuery({
     queryKey: ["station", "shipping", "shipments"],
+    enabled: !isExploring,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("shipments")
@@ -112,8 +129,8 @@ export default function ShippingStationPage() {
       <div className="flex justify-end gap-2">
         {o.status === "Packed" && (
           <>
-            <Button size="sm" variant="secondary" onClick={() => setSelectedOrder(o.id)}>Create shipment</Button>
-            <Button size="sm" disabled={markShipped.isPending} onClick={() => markShipped.mutate(o.id)}>Mark shipped</Button>
+            <Button size="sm" variant="secondary" onClick={() => { if (!guard("Create a shipment")) return; setSelectedOrder(o.id); }}>Create shipment</Button>
+            <Button size="sm" disabled={markShipped.isPending} onClick={() => { if (!guard("Mark an order shipped")) return; markShipped.mutate(o.id); }}>Mark shipped</Button>
           </>
         )}
       </div>
@@ -130,7 +147,7 @@ export default function ShippingStationPage() {
     { key: "actions", header: "", className: "text-right", render: (s) => (
       <div className="flex justify-end gap-2">
         {s.status === "Draft" && (
-          <Button size="sm" disabled={purchaseLabel.isPending} onClick={() => purchaseLabel.mutate(s.id)}>Buy label</Button>
+          <Button size="sm" disabled={purchaseLabel.isPending} onClick={() => { if (!guard("Buy a shipping label")) return; purchaseLabel.mutate(s.id); }}>Buy label</Button>
         )}
         {s.label_path && <Button size="sm" variant="secondary" onClick={() => window.open(s.label_path!, "_blank")}>Label</Button>}
       </div>
@@ -151,7 +168,7 @@ export default function ShippingStationPage() {
           <CardContent>
             <form
               className="grid gap-3 md:grid-cols-3"
-              onSubmit={(e) => { e.preventDefault(); createShipment.mutate(); }}
+              onSubmit={(e) => { e.preventDefault(); if (!guard("Create a shipment")) return; createShipment.mutate(); }}
             >
               <div><Label>Carrier</Label><Input value={carrier} onChange={(e) => setCarrier(e.target.value)} /></div>
               <div><Label>Service</Label><Input value={service} onChange={(e) => setService(e.target.value)} /></div>
@@ -169,11 +186,11 @@ export default function ShippingStationPage() {
         <CardHeader><CardTitle>Packed orders</CardTitle></CardHeader>
         <CardContent>
           <DataTable
-            rows={orders.data ?? []}
+            rows={isExploring ? SAMPLE_SHIP_ORDERS : (orders.data ?? [])}
             columns={orderCols}
             rowKey={(o) => o.id}
-            isLoading={orders.isLoading}
-            error={orders.error as Error | null}
+            isLoading={!isExploring && orders.isLoading}
+            error={isExploring ? null : (orders.error as Error | null)}
             searchPlaceholder="Search ref, ship-to…"
             emptyMessage="No packed orders."
           />
@@ -181,14 +198,14 @@ export default function ShippingStationPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Recent shipments</CardTitle><CardDescription>{shipments.data?.length ?? 0} shipments</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Recent shipments</CardTitle><CardDescription>{(isExploring ? SAMPLE_SHIPMENTS : shipments.data ?? []).length} shipments</CardDescription></CardHeader>
         <CardContent>
           <DataTable
-            rows={shipments.data ?? []}
+            rows={isExploring ? SAMPLE_SHIPMENTS : (shipments.data ?? [])}
             columns={shipCols}
             rowKey={(s) => s.id}
-            isLoading={shipments.isLoading}
-            error={shipments.error as Error | null}
+            isLoading={!isExploring && shipments.isLoading}
+            error={isExploring ? null : (shipments.error as Error | null)}
             searchPlaceholder="Search tracking, carrier…"
             filters={[
               { value: "draft", label: "Draft", predicate: (s) => s.status === "Draft" },

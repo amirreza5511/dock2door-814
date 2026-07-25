@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
+import { useExplore, useActionGuard } from "@/lib/explore-store";
 
 interface RequestRow {
   id: string;
@@ -23,6 +24,16 @@ interface RequestRow {
   created_at: string;
   [k: string]: unknown;
 }
+
+const SAMPLE_OPEN: RequestRow[] = [
+  { id: "ex-cbr-1", title: "Import clearance — Electronics, 40HQ", mode: "Ocean FCL", container_no: "CMAU5510012", port_of_entry: "Vancouver (Vanterm)", eta: new Date(Date.now() + 86400000 * 2).toISOString(), status: "Submitted", quote_amount: 0, customer_name: "Preview Logistics Co.", created_at: new Date(Date.now() - 3600000 * 8).toISOString() },
+  { id: "ex-cbr-2", title: "Import clearance — Furniture", mode: "Ocean LCL", container_no: "", port_of_entry: "Vancouver", eta: new Date(Date.now() + 86400000 * 4).toISOString(), status: "Submitted", quote_amount: 0, customer_name: "Harbour Freight Ltd.", created_at: new Date(Date.now() - 3600000 * 30).toISOString() },
+];
+
+const SAMPLE_MINE: RequestRow[] = [
+  { id: "ex-cbr-3", title: "Export clearance — Machinery parts", mode: "Air", container_no: "", port_of_entry: "YVR", eta: new Date(Date.now() + 86400000).toISOString(), status: "InProgress", quote_amount: 320, customer_name: "Annacis Island Distribution", created_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: "ex-cbr-4", title: "Import clearance — Produce (reefer)", mode: "Ocean FCL", container_no: "HLBU1122334", port_of_entry: "Vancouver", eta: null, status: "Cleared", quote_amount: 275, customer_name: "Riverside Cold Storage", created_at: new Date(Date.now() - 86400000 * 5).toISOString() },
+];
 
 const STATUS_CLASS: Record<string, string> = {
   Submitted: "bg-yellow-500/15 text-yellow-300",
@@ -39,10 +50,13 @@ export default function BrokerRequestsPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"open" | "mine">("open");
   const [claimError, setClaimError] = useState("");
+  const { isExploring } = useExplore();
+  const guard = useActionGuard();
 
   const q = useQuery({
     queryKey: ["broker", "requests", tab],
     refetchInterval: 20000,
+    enabled: !isExploring,
     queryFn: async (): Promise<RequestRow[]> => {
       const { data, error } = await supabase.rpc("broker_list_requests", { p_scope: tab });
       if (error) return [];
@@ -62,7 +76,10 @@ export default function BrokerRequestsPage() {
     onError: (e: Error) => setClaimError(e.message),
   });
 
-  const rows = useMemo(() => q.data ?? [], [q.data]);
+  const rows = useMemo(
+    () => (isExploring ? (tab === "open" ? SAMPLE_OPEN : SAMPLE_MINE) : (q.data ?? [])),
+    [q.data, isExploring, tab],
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -82,7 +99,7 @@ export default function BrokerRequestsPage() {
       <Card>
         <CardHeader><CardTitle className="text-base">{tab === "open" ? "Waiting for a broker" : "Assigned to you"} ({rows.length})</CardTitle></CardHeader>
         <CardContent className="space-y-2">
-          {q.isLoading ? (
+          {!isExploring && q.isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : rows.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
@@ -104,7 +121,7 @@ export default function BrokerRequestsPage() {
                 <div className="flex items-center gap-2">
                   <Badge className={STATUS_CLASS[r.status] ?? ""}>{r.status}</Badge>
                   {tab === "open" ? (
-                    <Button size="sm" disabled={claimMutation.isPending} onClick={() => claimMutation.mutate(r.id)}>
+                    <Button size="sm" disabled={claimMutation.isPending} onClick={() => { if (!guard("Claim this request")) return; claimMutation.mutate(r.id); }}>
                       Claim
                     </Button>
                   ) : null}
