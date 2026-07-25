@@ -151,7 +151,7 @@ export default function ShipQuotePage() {
         <div className="mt-8">
           <div className="mb-3 flex items-center gap-2">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live rates</h2>
-            <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600"><BadgeCheck className="h-3 w-3" />Live</span>
+            <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300"><BadgeCheck className="h-3 w-3" />Live</span>
           </div>
           <div className="space-y-3">
             {liveRates.map((r, i) => {
@@ -163,7 +163,7 @@ export default function ShipQuotePage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{r.service_name}</p>
                     <div className="mt-0.5 flex items-center gap-2 text-xs">
-                      {i === 0 && <span className="font-semibold text-emerald-600">Cheapest</span>}
+                      {i === 0 && <span className="font-semibold text-emerald-400">Cheapest</span>}
                       {r.est_delivery_days ? <span className="text-muted-foreground">{r.est_delivery_days} days</span> : null}
                     </div>
                   </div>
@@ -197,12 +197,12 @@ export default function ShipQuotePage() {
                     <div className="flex items-center gap-2">
                       <p className="font-semibold">{q.courier.name}</p>
                       {q.courier.implemented
-                        ? <span className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600"><BadgeCheck className="h-3 w-3" />Live-ready</span>
+                        ? <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300"><BadgeCheck className="h-3 w-3" />Live-ready</span>
                         : <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">Est.</span>}
                     </div>
                     <div className="mt-0.5 flex items-center gap-2 text-xs">
-                      {i === 0 && <span className="font-semibold text-emerald-600">Cheapest</span>}
-                      {fastest === q.courier.code && <span className="font-semibold text-amber-600">Fastest</span>}
+                      {i === 0 && <span className="font-semibold text-emerald-400">Cheapest</span>}
+                      {fastest === q.courier.code && <span className="font-semibold text-amber-400">Fastest</span>}
                       <span className="text-muted-foreground">{q.etaLabel}</span>
                     </div>
                   </div>

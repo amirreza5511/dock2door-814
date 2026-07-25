@@ -14,14 +14,14 @@ export const DOMAIN_LABELS: Record<Domain, string> = {
   globalfreight: "Global Freight",
 };
 
-/** Tailwind accent classes per domain (text + subtle bg + border). */
+/** Tailwind accent classes per domain (text + subtle bg + border) — dark-theme friendly. */
 export const DOMAIN_ACCENT: Record<Domain, string> = {
-  labour: "text-purple-600 bg-purple-50 border-purple-200",
-  logistics: "text-orange-600 bg-orange-50 border-orange-200",
-  freight: "text-emerald-600 bg-emerald-50 border-emerald-200",
-  drayage: "text-blue-600 bg-blue-50 border-blue-200",
-  marketplace: "text-amber-600 bg-amber-50 border-amber-200",
-  globalfreight: "text-sky-600 bg-sky-50 border-sky-200",
+  labour: "text-purple-300 bg-purple-500/10 border-purple-400/30",
+  logistics: "text-orange-300 bg-orange-500/10 border-orange-400/30",
+  freight: "text-emerald-300 bg-emerald-500/10 border-emerald-400/30",
+  drayage: "text-blue-300 bg-blue-500/10 border-blue-400/30",
+  marketplace: "text-amber-300 bg-amber-500/10 border-amber-400/30",
+  globalfreight: "text-sky-300 bg-sky-500/10 border-sky-400/30",
 };
 
 export interface ExploreRole {

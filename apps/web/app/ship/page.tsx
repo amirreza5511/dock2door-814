@@ -19,10 +19,10 @@ export default function ShipHubPage() {
         <ChevronLeft className="h-4 w-4" /> Back
       </Link>
 
-      <div className="mb-8 rounded-2xl border border-orange-200 bg-orange-50 p-6 text-orange-900">
+      <div className="mb-8 rounded-2xl border border-orange-400/30 bg-orange-500/10 p-6 text-orange-100">
         <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Ship &amp; Return · a post office in your pocket</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight">Send anything. Return anything.</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-orange-800">
+        <p className="mt-3 max-w-2xl text-sm leading-relaxed text-orange-200/90">
           Compare every courier, print a label with a scannable barcode, and drop it off or book a pickup — all in one place.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">

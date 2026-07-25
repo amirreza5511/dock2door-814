@@ -14,10 +14,10 @@ import {
 import type { UserRole } from "@/lib/types";
 
 const DOMAIN_ACCENT: Record<string, string> = {
-  labour: "text-purple-600 bg-purple-50 border-purple-200",
-  logistics: "text-teal-600 bg-teal-50 border-teal-200",
-  freight: "text-emerald-600 bg-emerald-50 border-emerald-200",
-  drayage: "text-blue-600 bg-blue-50 border-blue-200",
+  labour: "text-purple-300 bg-purple-500/10 border-purple-400/30",
+  logistics: "text-teal-300 bg-teal-500/10 border-teal-400/30",
+  freight: "text-emerald-300 bg-emerald-500/10 border-emerald-400/30",
+  drayage: "text-blue-300 bg-blue-500/10 border-blue-400/30",
 };
 
 interface RoleRequestRow { requested_role: string; status: string; rejection_reason: string | null }
